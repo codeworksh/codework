@@ -2,6 +2,7 @@ import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
+	EventList,
 	EventRegistry,
 	EventSchema,
 	ModelCatalog,
@@ -12,6 +13,8 @@ import {
 	SessionStore,
 	Settings,
 	State,
+	ThreadSchema,
+	ThreadStore,
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Option, Stream } from "effect";
 import {
@@ -21,6 +24,7 @@ import {
 	type RuntimeConfig,
 	type SandboxInfo,
 	type SessionInfo,
+	type ThreadInfo,
 } from "./contract.ts";
 import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
@@ -43,29 +47,34 @@ const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 
 const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	id: info.id,
-	title: info.title,
 	directory: info.directory,
 	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
 	...(info.project === undefined ? {} : { project: info.project }),
 	updatedAt: info.updatedAt,
+	mainThreadId: info.mainThreadId,
+});
+
+const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
+	id: info.id,
+	origin: info.origin,
+	...(info.title === undefined ? {} : { title: info.title }),
+	updatedAt: info.updatedAt,
 	...(info.model === undefined ? {} : { model: info.model }),
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
+	...(info.placement === undefined ? {} : { placement: info.placement }),
 	...(info.parked ? { parked: true } : {}),
+	session: toSessionInfo(info.session),
 });
 
-// Wire configs name only the keys they set, so `undefined` never reaches the
-// harness inputs under exactOptionalPropertyTypes.
+// Wire configs name only the keys they set, so `undefined` never reaches the harness under
+// exactOptionalPropertyTypes. Creating takes choices only; `null` clears nothing there.
 const runtimeInput = (runtime: RuntimeConfig | undefined): Session.RuntimeInput => ({
-	...(runtime?.model === undefined ? {} : { model: runtime.model }),
-	...(runtime?.thinkingLevel === undefined ? {} : { thinkingLevel: runtime.thinkingLevel }),
+	...(runtime?.model == null ? {} : { model: runtime.model }),
+	...(runtime?.thinkingLevel == null ? {} : { thinkingLevel: runtime.thinkingLevel }),
 });
 
-const sessionInfo = Effect.fn("Server.sessionInfo")(function* (sessionId: Session.SessionSchema.ID) {
-	const found = yield* Session.get(sessionId);
-	if (Option.isNone(found)) return yield* new SessionStore.SessionNotFoundError({ sessionId });
-	return toSessionInfo(yield* found.value.info);
-});
+const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
 
 // RpcServer's request span has no level, so it is Debug and drops every Info span under it.
 // Provisioning a sandbox is worth exporting, so it starts a trace of its own.
@@ -93,6 +102,9 @@ export const layer = Contract.Api.toLayer(
 		const control = yield* Control.Service;
 		const feed = yield* EventFeed.Service;
 		const sessions = yield* SessionStore.Service;
+		const threads = yield* ThreadStore.Service;
+		const resolve = (ref: Control.ThreadRef) =>
+			control.resolve(ref).pipe(Effect.map((thread) => ThreadSchema.ID.make(thread.id)));
 		const state = yield* State.Service;
 		const oauth = yield* OAuth.Service;
 		const identity = yield* Identity.Service;
@@ -119,7 +131,7 @@ export const layer = Contract.Api.toLayer(
 					...(project === undefined ? {} : { project }),
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
-				return toSessionInfo(yield* handle.info);
+				return toThreadInfo(yield* handle.main.info);
 			}),
 			"model.list": Effect.fnUntraced(function* ({ hostDir }) {
 				const filter = hostDir === undefined ? {} : { hostDir };
@@ -162,53 +174,29 @@ export const layer = Contract.Api.toLayer(
 			"plugin.reload": Effect.fnUntraced(function* () {
 				return yield* state.reload;
 			}),
-			"session.list": Effect.fnUntraced(function* () {
-				const rows = yield* sessions.list();
-				return yield* Effect.forEach(rows, (row) => sessionInfo(row.id).pipe(Effect.orDie));
-			}),
-			"session.configure": Effect.fnUntraced(function* ({ sessionId, runtime }) {
-				const handle = yield* Session.attach({ sessionId, ...runtimeInput(runtime) });
+			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
+				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
 				return toSessionInfo(yield* handle.info);
 			}),
-			"session.info": Effect.fnUntraced(function* ({ sessionId }) {
-				return yield* sessionInfo(sessionId);
+			"session.relink": Effect.fnUntraced(function* ({ sessionId, threadId, sandbox, directory }) {
+				const selection =
+					sandbox === undefined ? undefined : yield* exported("Server.session.relink", Sandbox.resolve(sandbox));
+				const selected = selection?.info;
+				const handle = yield* Session.relink({
+					sessionId,
+					...(threadId === undefined ? {} : { threadId }),
+					...(selected === undefined ? {} : { sandbox: selected }),
+					...(directory === undefined ? {} : { directory }),
+				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
+				return toSessionInfo(yield* handle.info);
 			}),
-			"session.history": Effect.fnUntraced(function* ({ sessionId }) {
-				if (Option.isNone(yield* sessions.get(sessionId))) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId });
-				}
-				const path = yield* sessions.path(sessionId);
-				const entries = path.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
-					entry.type === "user" || entry.type === "assistant"
-						? [
-								{
-									id: entry.id,
-									seq: entry.seq,
-									role: entry.type,
-									state: entry.state,
-									createdAt: DateTime.toEpochMillis(entry.createdAt),
-									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
-									// A part this schema does not render (a future aikit type) is skipped, not fatal.
-									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
-								},
-							]
-						: [],
-				);
-				return { entries };
+			"session.delete": Effect.fnUntraced(function* ({ sessionId }) {
+				return { deleted: yield* Session.remove(sessionId) };
 			}),
-			"session.queue": Effect.fnUntraced(function* ({ sessionId }) {
-				if (Option.isNone(yield* sessions.get(sessionId))) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId });
-				}
-				const pending = yield* control.pending(sessionId);
-				return {
-					entries: pending.map((input) => ({
-						id: input.id,
-						delivery: input.delivery,
-						text: PromptSchema.Prompt.text(input.prompt),
-						createdAt: DateTime.toEpochMillis(input.timeCreated),
-					})),
-				};
+			"session.interrupt": Effect.fnUntraced(function* ({ sessionId }) {
+				// Ack only: the wire answers "was there work to stop", and the caller
+				// uses `thread.wait` when it needs cleanup to have finished.
+				return { interrupted: yield* control.interruptSession(sessionId, { reason: "user" }) };
 			}),
 			"session.log": ({ sessionId, after, follow }) =>
 				Stream.unwrap(
@@ -225,58 +213,104 @@ export const layer = Contract.Api.toLayer(
 							.pipe(Stream.mapEffect(toLogItem(registry.get)));
 					}),
 				),
-			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
-				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
-				return toSessionInfo(yield* handle.info);
+			"thread.list": Effect.fnUntraced(function* ({ sessionId }) {
+				const rows = yield* threads.list(sessionId);
+				return yield* Effect.forEach(rows, (row) => threadInfo(ThreadSchema.ID.make(row.id)).pipe(Effect.orDie));
 			}),
-			"session.relink": Effect.fnUntraced(function* ({ sessionId, sandbox, directory }) {
-				const selection =
-					sandbox === undefined ? undefined : yield* exported("Server.session.relink", Sandbox.resolve(sandbox));
-				const selected = selection?.info;
-				const handle = yield* Session.relink({
-					sessionId,
-					...(selected === undefined ? {} : { sandbox: selected }),
-					...(directory === undefined ? {} : { directory }),
-				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
-				return toSessionInfo(yield* handle.info);
+			"thread.info": Effect.fnUntraced(function* (ref) {
+				return yield* threadInfo(yield* resolve(ref));
 			}),
-			"session.prompt": Effect.fnUntraced(function* ({ sessionId, text, delivery, id }) {
-				yield* control.prompt({
-					sessionId,
+			"thread.configure": Effect.fnUntraced(function* ({ runtime, ...ref }) {
+				const threadId = yield* resolve(ref);
+				const change = {
+					...(runtime.model === undefined ? {} : { model: runtime.model }),
+					...(runtime.thinkingLevel === undefined ? {} : { thinkingLevel: runtime.thinkingLevel }),
+				};
+				if (Object.keys(change).length > 0) {
+					yield* events.publish(EventList.ThreadConfigured, {
+						sessionId: ref.sessionId,
+						threadId,
+						timestamp: yield* DateTime.now,
+						change,
+					});
+				}
+				return yield* threadInfo(threadId);
+			}),
+			"thread.fork": Effect.fnUntraced(function* ({ entryId, mode, ...ref }) {
+				const forked = yield* threads.fork({
+					threadId: yield* resolve(ref),
+					entryId,
+					...(mode === undefined ? {} : { mode }),
+				});
+				return {
+					thread: yield* threadInfo(ThreadSchema.ID.make(forked.thread.id)),
+					...(forked.text === undefined ? {} : { text: forked.text }),
+				};
+			}),
+			"thread.history": Effect.fnUntraced(function* (ref) {
+				const line = yield* threads.line(yield* resolve(ref));
+				const entries = line.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
+					entry.type === "user" || entry.type === "assistant"
+						? [
+								{
+									id: entry.id,
+									threadId: entry.threadId,
+									seq: entry.seq,
+									role: entry.type,
+									state: entry.state,
+									createdAt: DateTime.toEpochMillis(entry.createdAt),
+									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
+									// A part this schema does not render (a future aikit type) is skipped, not fatal.
+									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+								},
+							]
+						: [],
+				);
+				return { entries };
+			}),
+			"thread.queue": Effect.fnUntraced(function* (ref) {
+				const pending = yield* control.pending(yield* resolve(ref));
+				return {
+					entries: pending.map((input) => ({
+						id: input.id,
+						delivery: input.delivery,
+						text: PromptSchema.Prompt.text(input.prompt),
+						createdAt: DateTime.toEpochMillis(input.timeCreated),
+					})),
+				};
+			}),
+			"thread.prompt": Effect.fnUntraced(function* ({ text, delivery, id, ...ref }) {
+				const admitted = yield* control.prompt({
+					...ref,
 					prompt: PromptSchema.Prompt.fromText(text),
 					...(delivery === undefined ? {} : { delivery }),
 					...(id === undefined ? {} : { id }),
 				});
+				return { threadId: admitted.threadId };
 			}),
-			"session.interrupt": Effect.fnUntraced(function* ({ sessionId }) {
+			"thread.interrupt": Effect.fnUntraced(function* (ref) {
 				// Ack only: the wire answers "was there work to stop", and the caller
-				// uses `session.wait` when it needs cleanup to have finished.
-				return { interrupted: yield* control.interrupt(sessionId, { reason: "user" }) };
+				// uses `thread.wait` when it needs cleanup to have finished.
+				return { interrupted: yield* control.interrupt(yield* resolve(ref), { reason: "user" }) };
 			}),
-			"session.cancel": Effect.fnUntraced(function* ({ sessionId, messageId }) {
-				if (Option.isNone(yield* sessions.get(sessionId))) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId });
-				}
-				return { cancelled: yield* control.cancel(sessionId, messageId) };
+			"thread.cancel": Effect.fnUntraced(function* ({ messageId, ...ref }) {
+				return { cancelled: yield* control.cancel(yield* resolve(ref), messageId) };
 			}),
-			"session.update": Effect.fnUntraced(function* ({ sessionId, messageId, delivery, text }) {
-				if (Option.isNone(yield* sessions.get(sessionId))) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId });
-				}
-				const updated = yield* control.update(sessionId, messageId, {
+			"thread.update": Effect.fnUntraced(function* ({ messageId, delivery, text, ...ref }) {
+				const updated = yield* control.update(yield* resolve(ref), messageId, {
 					...(delivery === undefined ? {} : { delivery }),
 					...(text === undefined ? {} : { prompt: PromptSchema.Prompt.fromText(text) }),
 				});
 				return { updated };
 			}),
-			"session.message": Effect.fnUntraced(function* ({ sessionId, messageId }) {
-				const found = yield* sessions.entry(messageId);
-				// Scoped to the session the caller named: an entry id is global, and a
-				// client should not learn about conversations it did not ask for.
-				return { found: Option.isSome(found) && found.value.entry.sessionId === sessionId };
+			"thread.message": Effect.fnUntraced(function* ({ messageId, ...ref }) {
+				// Scoped to the thread's line: an entry id is global, and a client should not learn
+				// about conversations it did not ask for. An inherited prompt is in the thread's.
+				const line = yield* threads.line(yield* resolve(ref));
+				return { found: line.some(({ entry }) => entry.id === messageId) };
 			}),
-			"session.wait": Effect.fnUntraced(function* ({ sessionId }) {
-				yield* control.wait(sessionId);
+			"thread.wait": Effect.fnUntraced(function* (ref) {
+				yield* control.wait(yield* resolve(ref));
 			}),
 			"sandbox.drivers": Effect.fnUntraced(function* () {
 				const drivers = yield* Sandbox.drivers();

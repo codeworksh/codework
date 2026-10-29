@@ -4,11 +4,19 @@ import { SessionFailure } from "../session/failure.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
+import { DocumentSchema } from "../document/schema.ts";
+import { ThreadSchema } from "../thread/schema.ts";
+import { AbsolutePath } from "../schema.ts";
 import { EventSchema } from "./schema.ts";
 
-const baseOptions = {
+const sessionOptions = {
 	timestamp: DateTimeUtcFromMillis,
 	sessionId: SessionSchema.ID,
+};
+// The aggregate stays the session: every thread of it writes one log, one seq space.
+const baseOptions = {
+	...sessionOptions,
+	threadId: ThreadSchema.ID,
 };
 const durableOptions = {
 	durable: {
@@ -62,12 +70,47 @@ export const PromptUpdated = EventSchema.define({
 });
 export type PromptUpdated = typeof PromptUpdated.Type;
 
-export const ConfigChanged = EventSchema.define({
-	type: "session.config.changed",
+/** A session and its `main` thread, whose `agent` document starts at `agent`. */
+export const SessionCreated = EventSchema.define({
+	type: "session.created",
 	...durableOptions,
-	schema: { ...baseOptions, ...SessionSchema.Config.fields },
+	schema: {
+		...baseOptions,
+		spaceId: Schema.String,
+		slug: Schema.String,
+		directory: AbsolutePath,
+		hostDir: optional(AbsolutePath),
+		tag: optional(Schema.String),
+		metadata: optional(Schema.Record(Schema.String, Schema.String)),
+		title: optional(Schema.String),
+		agent: DocumentSchema.Agent,
+	},
 });
-export type ConfigChanged = typeof ConfigChanged.Type;
+export type SessionCreated = typeof SessionCreated.Type;
+
+/**
+ * A new thread whose history continues from `originThreadId` through `entryId`. `sourceThreadId` is
+ * the thread the fork was asked of; the origin is the thread that owns the entry.
+ */
+export const ThreadForked = EventSchema.define({
+	type: "thread.forked",
+	...durableOptions,
+	schema: {
+		...baseOptions,
+		sourceThreadId: ThreadSchema.ID,
+		originThreadId: ThreadSchema.ID,
+		entryId: Schema.String,
+	},
+});
+export type ThreadForked = typeof ThreadForked.Type;
+
+/** A change to a thread's `agent` document; one revision at this event's seq. */
+export const ThreadConfigured = EventSchema.define({
+	type: "thread.configured",
+	...durableOptions,
+	schema: { ...baseOptions, change: DocumentSchema.AgentChange },
+});
+export type ThreadConfigured = typeof ThreadConfigured.Type;
 
 const LLMFields = {
 	...baseOptions,
@@ -232,27 +275,6 @@ export const ToolSettled = EventSchema.define({
 export type ToolSettled = typeof ToolSettled.Type;
 
 /**
- * First event in a forked session's log. The aggregate is the *new* session, so
- * this lands at `baseSeq + 1`: the fork seeds the new aggregate's sequence to
- * the fork point, reserving [0..baseSeq] for the copied entries. Recording it
- * makes the seeded range auditable from the log itself, not only from
- * `session.parentId`.
- */
-export const SessionForked = EventSchema.define({
-	type: "session.next.forked",
-	...durableOptions,
-	schema: {
-		...baseOptions,
-		sourceSessionId: SessionSchema.ID,
-		/** Entry in the source session the copy stops at (its leaf, for a clone). */
-		sourceEntryId: Schema.String,
-		/** Highest sequence carried over; the new log starts above it. */
-		baseSeq: NonNegativeInt,
-	},
-});
-export type SessionForked = typeof SessionForked.Type;
-
-/**
  * Lifecycle of a process-owned busy period. One `started` and exactly one
  * terminal per period, covering every drain the period coalesced. The terminals
  * are separate types rather than one event with a status, so each carries only
@@ -296,11 +318,12 @@ export const PluginUpdated = EventSchema.define({
 		file: optional(Schema.String),
 		error: optional(Schema.String),
 		/**
-		 * The session whose turn triggered the event, when one did -- `failed` from a
-		 * session's own `follow` names it. Absent on `reload` and boot, which no session owns:
+		 * The thread whose turn triggered the event, when one did -- `failed` from a
+		 * turn's own `follow` names it. Absent on `reload` and boot, which no thread owns:
 		 * the pool is process-wide, so this is the trigger, never an attribution of ownership.
 		 */
 		sessionId: optional(SessionSchema.ID),
+		threadId: optional(ThreadSchema.ID),
 	},
 });
 export type PluginUpdated = typeof PluginUpdated.Type;
@@ -318,8 +341,9 @@ export const Definitions = EventSchema.inventory(
 	Prompted,
 	PromptCancelled,
 	PromptUpdated,
-	ConfigChanged,
-	SessionForked,
+	SessionCreated,
+	ThreadForked,
+	ThreadConfigured,
 	TurnStarted,
 	TurnEnded,
 	TurnAborted,
@@ -352,8 +376,9 @@ export const DurableDefinitions = EventSchema.inventory(
 	Prompted,
 	PromptCancelled,
 	PromptUpdated,
-	ConfigChanged,
-	SessionForked,
+	SessionCreated,
+	ThreadForked,
+	ThreadConfigured,
 	TurnEnded,
 	LLMStarted,
 	LLMEnded,

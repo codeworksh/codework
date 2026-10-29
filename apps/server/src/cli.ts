@@ -144,7 +144,7 @@ export const serverAt = (home: string, isDefault: boolean) =>
 		const info = yield* Codework.call((client) => client("server.info", {})).pipe(Effect.option);
 		if (Option.isNone(info) || info.value.pid !== pid) return { _tag: "Unreachable", url, pid } satisfies CliServer;
 		const { version } = info.value;
-		const usable = yield* Codework.call((client) => client("session.list", {})).pipe(Effect.isSuccess);
+		const usable = yield* Codework.call((client) => client("thread.list", {})).pipe(Effect.isSuccess);
 		return { _tag: usable ? "Running" : "Incompatible", url, pid, version } satisfies CliServer;
 	});
 

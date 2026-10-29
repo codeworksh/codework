@@ -1,5 +1,5 @@
 /*
- * @file Durable session drain.
+ * @file Durable thread drain.
  *
  * The loop reads queues and projections, but every durable mutation is an
  * event. LLMStarted owns the speculative draft; TurnEnded is the only commit.
@@ -11,10 +11,10 @@ import { ContextCodec } from "../context/codec.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
-import { SessionInput } from "../session/input/input.ts";
+import { Inbox } from "../inbox/inbox.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
-import type { SessionSchema } from "../session/schema.ts";
-import { Session } from "../session/session.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
 import { State } from "../state/state.ts";
 import { Telemetry } from "../telemetry/telemetry.ts";
 import { errorMessage } from "../util/error.ts";
@@ -89,13 +89,13 @@ export const layer = (options: Options = {}) =>
 			const context = yield* Context.Service;
 			const events = yield* Event.Service;
 			const hooks = yield* Hooks.Service;
-			const inputs = yield* SessionInput.make;
-			const sessions = yield* Session.Service;
+			const inputs = yield* Inbox.make;
+			const threads = yield* Thread.Service;
 			const state = yield* State.Service;
 			const requestLLM = options.request ?? LLM.run;
 
 			const failureStub = Effect.fn("Loop.failureStub")(function* (
-				draft: Session.HydratedEntry,
+				draft: Thread.HydratedEntry,
 				reason: "aborted" | "error",
 				message: string,
 			) {
@@ -112,7 +112,7 @@ export const layer = (options: Options = {}) =>
 			});
 
 			const publishFailure = Effect.fn("Loop.publishFailure")(function* (
-				draft: Session.HydratedEntry,
+				draft: Thread.HydratedEntry,
 				cause: EventList.TurnAbortCause,
 			) {
 				const reason = cause._tag === "interrupted" ? "aborted" : "error";
@@ -120,17 +120,17 @@ export const layer = (options: Options = {}) =>
 				yield* events.publish(EventList.LLMFailed, {
 					timestamp: yield* DateTime.now,
 					sessionId: draft.entry.sessionId,
+					threadId: draft.entry.threadId,
 					messageId: SessionMessageSchema.ID.from(draft.entry.id),
 					reason,
 					message: yield* failureStub(draft, reason, message),
 				});
 			});
 
-			const healDanglingDraft = Effect.fn("Loop.healDanglingDraft")(function* (sessionId: SessionSchema.ID) {
-				const path = yield* sessions.path(sessionId);
-				const draft = path.find((entry) => entry.entry.type === "assistant" && entry.entry.state === "draft");
-				if (draft === undefined) return;
-				yield* publishFailure(draft, { _tag: "interrupted" });
+			const healDanglingDraft = Effect.fn("Loop.healDanglingDraft")(function* (threadId: ThreadSchema.ID) {
+				const draft = yield* threads.draft(threadId);
+				if (Option.isNone(draft)) return;
+				yield* publishFailure(draft.value, { _tag: "interrupted" });
 			});
 
 			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
@@ -152,6 +152,7 @@ export const layer = (options: Options = {}) =>
 					yield* events.publish(EventList.ToolSettled, {
 						timestamp: yield* DateTime.now,
 						sessionId: snapshot.sessionId,
+						threadId: snapshot.threadId,
 						messageId,
 						callID: call.callID,
 						part,
@@ -161,6 +162,7 @@ export const layer = (options: Options = {}) =>
 					yield* events.publish(EventList.TurnEnded, {
 						timestamp: yield* DateTime.now,
 						sessionId: snapshot.sessionId,
+						threadId: snapshot.threadId,
 						messageId,
 					});
 					markCommitted();
@@ -198,6 +200,7 @@ export const layer = (options: Options = {}) =>
 							yield* events.publish(EventList.ToolStarted, {
 								timestamp: yield* DateTime.now,
 								sessionId: snapshot.sessionId,
+								threadId: snapshot.threadId,
 								messageId,
 								callID: call.callID,
 								name: call.name,
@@ -207,6 +210,7 @@ export const layer = (options: Options = {}) =>
 							const execute = snapshot.tools
 								.handle(call, {
 									sessionId: snapshot.sessionId,
+									threadId: snapshot.threadId,
 									messageId,
 									modelInput: snapshot.resolvedModel.input,
 									onProgress: (progress) =>
@@ -214,6 +218,7 @@ export const layer = (options: Options = {}) =>
 											.publish(EventList.ToolProgress, {
 												timestamp: DateTime.makeUnsafe(progress.toolCall.time.end),
 												sessionId: snapshot.sessionId,
+												threadId: snapshot.threadId,
 												messageId,
 												callID: call.callID,
 												partial: progress.partial,
@@ -270,17 +275,17 @@ export const layer = (options: Options = {}) =>
 				snapshot: State.Snapshot,
 				continuing: boolean,
 			) {
-				const sessionId = snapshot.sessionId;
+				const { sessionId, threadId } = snapshot;
 				if (promotion !== undefined) {
 					const cutoff = yield* events.latestSequence(sessionId);
-					const followUp = promotion === "followUp" && (yield* inputs.promoteFollowUp(sessionId));
-					const steers = yield* inputs.promoteSteers(sessionId, cutoff);
+					const followUp = promotion === "followUp" && (yield* inputs.promoteFollowUp(threadId));
+					const steers = yield* inputs.promoteSteers(threadId, cutoff);
 					// The pending input this turn was started for was cancelled before promotion: with no
 					// earlier work to continue there is nothing to answer, so no provider request.
 					if (!continuing && !followUp && steers === 0) return undefined;
 				}
 
-				const assembled = yield* context.assemble(sessionId);
+				const assembled = yield* context.assemble(threadId);
 				const leaf =
 					assembled.lastAssistant?.entryId === assembled.leafEntryId ? assembled.lastAssistant.message : undefined;
 				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
@@ -297,14 +302,14 @@ export const layer = (options: Options = {}) =>
 				const settleDraft = (cause: EventList.TurnAbortCause) =>
 					Effect.gen(function* () {
 						if (publisher?.startedMessageId === undefined) return;
-						const stored = yield* sessions.entry(publisher.startedMessageId);
+						const stored = yield* threads.entry(publisher.startedMessageId);
 						if (Option.isSome(stored) && stored.value.entry.state === "draft") {
 							yield* publishFailure(stored.value, cause);
 						}
 					});
 
 				const attempt = Effect.gen(function* () {
-					publisher = yield* LLMEventPublisher.make({ sessionId }).pipe(
+					publisher = yield* LLMEventPublisher.make({ sessionId, threadId }).pipe(
 						Effect.provideService(Event.Service, events),
 					);
 					const prepared = yield* hooks.prepareRequest(
@@ -323,7 +328,7 @@ export const layer = (options: Options = {}) =>
 						},
 						{ retry: retries, ...(failed === undefined ? {} : { failed }) },
 					);
-					const terminal = yield* requestLLM({ sessionId, ...prepared, publisher });
+					const terminal = yield* requestLLM({ threadId, ...prepared, publisher });
 
 					if (terminal.outcome === "failed") {
 						if (terminal.reason === "aborted") return yield* Effect.interrupt;
@@ -357,6 +362,7 @@ export const layer = (options: Options = {}) =>
 								yield* events.publish(EventList.RetryScheduled, {
 									timestamp: yield* DateTime.now,
 									sessionId,
+									threadId,
 									attempt: retries,
 									maxRetries: snapshot.retry.maxRetries,
 									delayMs,
@@ -369,7 +375,7 @@ export const layer = (options: Options = {}) =>
 					);
 
 				const turnWindow = Effect.gen(function* () {
-					yield* events.publish(EventList.TurnStarted, { timestamp: yield* DateTime.now, sessionId });
+					yield* events.publish(EventList.TurnStarted, { timestamp: yield* DateTime.now, sessionId, threadId });
 					const terminal = yield* request().pipe(
 						Effect.onExit((exit) =>
 							retries === 0
@@ -378,6 +384,7 @@ export const layer = (options: Options = {}) =>
 										yield* events.publish(EventList.RetryFinished, {
 											timestamp: yield* DateTime.now,
 											sessionId,
+											threadId,
 											attempt: retries,
 											success: Exit.isSuccess(exit),
 											...(Exit.isSuccess(exit)
@@ -412,6 +419,7 @@ export const layer = (options: Options = {}) =>
 							yield* events.publish(EventList.TurnAborted, {
 								timestamp: yield* DateTime.now,
 								sessionId,
+								threadId,
 								cause: turnCause,
 							});
 						});
@@ -429,19 +437,19 @@ export const layer = (options: Options = {}) =>
 			});
 
 			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
-				readonly sessionId: SessionSchema.ID;
+				readonly threadId: ThreadSchema.ID;
 				readonly force: boolean;
 				readonly recovered?: boolean;
 			}) {
-				yield* healDanglingDraft(input.sessionId);
+				yield* healDanglingDraft(input.threadId);
 
-				const hasSteer = yield* inputs.hasPending(input.sessionId, "steer");
-				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.sessionId, "followUp");
+				const hasSteer = yield* inputs.hasPending(input.threadId, "steer");
+				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.threadId, "followUp");
 				if (!input.force && !hasSteer && !hasFollowUp) return;
 				yield* Effect.annotateCurrentSpan({
 					"gen_ai.operation.name": "invoke_agent",
 					"gen_ai.agent.name": "codework",
-					"gen_ai.conversation.id": input.sessionId,
+					"gen_ai.conversation.id": input.threadId,
 				});
 
 				// A recovered or explicitly resumed run first answers the reply it stopped in (cut off, or ended
@@ -451,7 +459,7 @@ export const layer = (options: Options = {}) =>
 					(input.recovered === true || input.force) &&
 					!hasSteer &&
 					hasFollowUp &&
-					(yield* context.assemble(input.sessionId).pipe(
+					(yield* context.assemble(input.threadId).pipe(
 						Effect.map((assembled) => {
 							const leaf =
 								assembled.lastAssistant?.entryId === assembled.leafEntryId
@@ -465,14 +473,14 @@ export const layer = (options: Options = {}) =>
 				// A cut-off run still promotes steers that land while it loads: they join the reply being answered.
 				let promotion: Promotion = hasSteer || cutOff ? "steer" : hasFollowUp ? "followUp" : undefined;
 				/** Steers when there are any, else the oldest follow-up: what a run promotes first. */
-				const peekPending = (sessionId: SessionSchema.ID) =>
-					Effect.map(inputs.pending(sessionId), (queued) => {
+				const peekPending = (threadId: ThreadSchema.ID) =>
+					Effect.map(inputs.pending(threadId), (queued) => {
 						const steers = queued.filter((item) => item.delivery === "steer");
 						return steers.length > 0 ? steers : queued.slice(0, 1);
 					});
 
 				const drain = Effect.gen(function* () {
-					let snapshot = yield* state.snapshot(input.sessionId);
+					let snapshot = yield* state.snapshot(input.threadId);
 					let continuing = input.force;
 					// Tool results and steers continue first; a follow-up only once both are exhausted.
 					while (true) {
@@ -481,7 +489,7 @@ export const layer = (options: Options = {}) =>
 						const completed: Hooks.Completed | undefined =
 							result === undefined
 								? undefined
-								: { ...result, snapshot, pending: yield* peekPending(input.sessionId) };
+								: { ...result, snapshot, pending: yield* peekPending(input.threadId) };
 						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
 						// Queued steers and follow-ups stay for the next run.
 						if (decision === "end") return;
@@ -489,14 +497,14 @@ export const layer = (options: Options = {}) =>
 						// A forced continuation after a finished reply sends nothing: the leaf guard in
 						// `runTurnAttempt` ends the turn unless something was appended after it.
 						continuing = toolUse || decision === "continue";
-						const steer = yield* inputs.hasPending(input.sessionId, "steer");
+						const steer = yield* inputs.hasPending(input.threadId, "steer");
 						// Only tool results outrank a follow-up. A forced continuation rides along with it: the
 						// follow-up is the natural next request, and the continuation only its fallback.
-						const followUp = !toolUse && !steer && (yield* inputs.hasPending(input.sessionId, "followUp"));
+						const followUp = !toolUse && !steer && (yield* inputs.hasPending(input.threadId, "followUp"));
 						if (!continuing && !steer && !followUp) return;
 						promotion = followUp ? "followUp" : "steer";
 
-						const next = yield* state.snapshot(input.sessionId);
+						const next = yield* state.snapshot(input.threadId);
 						snapshot = completed === undefined ? next : yield* hooks.prepareNextTurn(completed, next);
 					}
 				});

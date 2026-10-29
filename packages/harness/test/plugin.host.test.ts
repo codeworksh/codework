@@ -62,7 +62,7 @@ describe("plugin domains and exchange host", () => {
 			const open = immediateOpen();
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({
+					const { main: session } = yield* Session.create({
 						directory: root,
 						systemPrompt: {
 							custom: async (ctx) => `custom:${ctx.plugin.tools.list().length}`,
@@ -133,7 +133,7 @@ describe("plugin domains and exchange host", () => {
 			};
 			const failure = await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.run("hello");
 				}).pipe(
 					Effect.provide(
@@ -159,13 +159,13 @@ describe("plugin domains and exchange host", () => {
 			let setups = 0;
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({
+					const { main: session } = yield* Session.create({
 						directory: root,
 						model: { provider: "openai", id: "no-such-model" },
 					});
 					yield* session.run("hello");
 					expect(setups).toBe(0);
-					expect(yield* session.path()).toEqual([]);
+					expect(yield* session.history()).toEqual([]);
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
@@ -204,7 +204,7 @@ describe("plugin domains and exchange host", () => {
 				let requested = false;
 				await Effect.runPromise(
 					Effect.gen(function* () {
-						const session = yield* Session.create({ directory: root });
+						const { main: session } = yield* Session.create({ directory: root });
 						yield* session.run("hello");
 						expect(later).toBe(false);
 						expect(requested).toBe(false);
@@ -251,7 +251,7 @@ describe("plugin domains and exchange host", () => {
 					const entered = yield* Deferred.make<void>();
 					const release = yield* Deferred.make<void>();
 					yield* Effect.gen(function* () {
-						const session = yield* Session.create({ directory: root });
+						const { main: session } = yield* Session.create({ directory: root });
 						const fiber = yield* session.run("hello").pipe(Effect.forkChild);
 						yield* Deferred.await(entered);
 						yield* session.interrupt();
@@ -310,7 +310,7 @@ describe("plugin pipelines in the kernel loop", () => {
 						}),
 					);
 					yield* Effect.gen(function* () {
-						const session = yield* Session.create({ directory: root, tools: { execution: mode } });
+						const { main: session } = yield* Session.create({ directory: root, tools: { execution: mode } });
 						const run = yield* session.run("hello").pipe(Effect.forkChild);
 						yield* Deferred.await(firstAfter);
 						if (mode === "parallel") yield* Deferred.await(secondAfter);
@@ -325,7 +325,7 @@ describe("plugin pipelines in the kernel loop", () => {
 								`${id}:done`,
 							]);
 						if (mode === "sequential") expect(trace.indexOf("a:done")).toBeLessThan(trace.indexOf("b:before"));
-						const path = yield* session.path();
+						const path = yield* session.history();
 						expect(path).toHaveLength(3);
 					}).pipe(
 						Effect.provide(

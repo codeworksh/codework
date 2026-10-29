@@ -155,16 +155,16 @@ export const scenario = (target: Target) => () =>
 					directory: path.posix.join(repo, "pkg"),
 					hostDir: host.anchor,
 				});
-				yield* main.run("hello");
+				yield* main.main.run("hello");
 				const nested = yield* Session.create({
 					...on,
 					directory: path.posix.join(worktree, "pkg"),
 					hostDir: host.anchor,
 				});
-				yield* nested.run("hello");
+				yield* nested.main.run("hello");
 				// Settings follow the host directory link; files never do.
 				const linked = yield* Session.link({ sessionId: main.id, hostDir: host.off });
-				yield* linked.run("again");
+				yield* linked.main.run("again");
 				return base;
 			}),
 		);
@@ -222,16 +222,16 @@ export const relinkScenario = (drivers: ReadonlyArray<Sandbox.Driver>) => () =>
 					directory: path.posix.join(onDaytona.repo, "pkg"),
 					hostDir: host.anchor,
 				});
-				yield* session.run("on daytona");
+				yield* session.main.run("on daytona");
 				const toVercel = yield* Session.relink({
 					sessionId: session.id,
 					sandbox: vercel,
 					directory: onVercel.repo,
 				});
 				expect((yield* toVercel.info).directory).toBe(path.posix.join(onVercel.repo, "pkg"));
-				yield* toVercel.run("on vercel");
+				yield* toVercel.main.run("on vercel");
 				const toHost = yield* Session.relink({ sessionId: session.id, directory: onHost.repo });
-				yield* toHost.run("on host");
+				yield* toHost.main.run("on host");
 				return [
 					[onDaytona.base, "<daytona>"],
 					[onVercel.base, "<vercel>"],
@@ -303,7 +303,7 @@ export const repositoryScenario = (drivers: ReadonlyArray<Sandbox.Driver>) => ()
 					directory: path.posix.join(first.root, directories[0]),
 					hostDir: host.anchor,
 				});
-				yield* moving.run("api");
+				yield* moving.main.run("api");
 				for (const target of rest) {
 					const moved = yield* Session.relink({
 						sessionId: moving.id,
@@ -311,7 +311,7 @@ export const repositoryScenario = (drivers: ReadonlyArray<Sandbox.Driver>) => ()
 						directory: target.root,
 					});
 					expect((yield* moved.info).directory.endsWith(`/${directories[0]}`)).toBe(true);
-					yield* moved.run("api");
+					yield* moved.main.run("api");
 				}
 				for (const directory of directories.slice(1))
 					for (const target of targets) {
@@ -320,7 +320,7 @@ export const repositoryScenario = (drivers: ReadonlyArray<Sandbox.Driver>) => ()
 							directory: path.posix.join(target.root, directory),
 							hostDir: host.anchor,
 						});
-						yield* session.run(directory);
+						yield* session.main.run(directory);
 					}
 				return targets.map((target) => target.root);
 			}),

@@ -28,7 +28,7 @@ describe("SandboxInstance", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const insert = sql`
-					INSERT INTO sandbox_instance
+					INSERT INTO sandbox
 						(id, driver, kind, ownership, status, state_observed_at, created_at, updated_at)
 					VALUES ('local', 'local', 'local', 'external', 'online', 0, 0, 0)
 				`;
@@ -69,7 +69,7 @@ describe("SandboxInstance", () => {
 					VALUES ('s', 'p', '/workspace', 'plain', 'sbx_a', 'active', 0, 0)
 				`;
 
-				const deletion = sql`DELETE FROM sandbox_instance WHERE id = 'sbx_a'`;
+				const deletion = sql`DELETE FROM sandbox WHERE id = 'sbx_a'`;
 				expect(Option.isSome(yield* Effect.option(deletion))).toBe(false);
 			}),
 		);
@@ -119,7 +119,7 @@ describe("SandboxInstance", () => {
 				});
 
 				const alias = sql`
-					INSERT INTO sandbox_instance
+					INSERT INTO sandbox
 						(id, driver, kind, provider_resource_id, ownership, status, state_observed_at, created_at, updated_at)
 					VALUES ('sbx_b', 'sqldb', 'virtual', '/var/fs.db', 'managed', 'online', 0, 0, 0)
 				`;

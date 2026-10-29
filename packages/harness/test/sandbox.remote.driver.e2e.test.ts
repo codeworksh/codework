@@ -112,7 +112,7 @@ const lifecycle = async (input: {
 					expect(Option.getOrThrow(yield* controller.get(created.id)).status).toBe("removed");
 
 					const rows = yield* sql<{ runtimeConfig: string }>`
-							SELECT runtime_config AS runtimeConfig FROM sandbox_instance WHERE id = ${created.id}
+							SELECT runtime_config AS runtimeConfig FROM sandbox WHERE id = ${created.id}
 						`;
 					expect(rows[0]!.runtimeConfig).not.toContain(input.secret);
 					expect(input.remote.registered.capabilities.cancels).toBe(input.expectedCancels);

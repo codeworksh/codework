@@ -1,7 +1,5 @@
-import { Context, DateTime, Effect, Layer, Option, Result, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
-import { uuidv7 } from "uuidv7";
-import { Database } from "../db/db.ts";
 import {
 	type EntryState,
 	entryStates,
@@ -12,19 +10,22 @@ import {
 	type PartType,
 	partTypes,
 	ProjectRow,
-	SessionEntryPartRow,
-	SessionEntryRow,
 	SessionRow,
 	SpaceRow,
+	ThreadRow,
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql.ts";
+import { Document } from "../document/document.ts";
+import { DocumentSchema } from "../document/schema.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
+import { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
 import { posix } from "../util/posix.ts";
 import { Slug } from "../util/slug.ts";
 import { SessionSchema } from "./schema.ts";
@@ -34,8 +35,6 @@ export {
 	entryTypes,
 	messageEntryTypes,
 	partTypes,
-	SessionEntryPartRow,
-	SessionEntryRow,
 	SessionRow,
 	toolStatuses,
 	type EntryState,
@@ -49,29 +48,13 @@ export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundErro
 	sessionId: Schema.String,
 }) {}
 
-// The session's space row is gone — unreachable while the FK holds, but typed
-// so a run surfaces it as a failure a UI can offer `relink` to repair.
+// The space a run is placed in is gone — unreachable for a session's own while the FK holds, but a
+// thread placement names its space in a document, which no FK guards. Typed so a UI can offer
+// `relink` (with `--thread` for a placement) as the repair.
 export class SessionLinkedSpaceNotFoundError extends Schema.TaggedError<SessionLinkedSpaceNotFoundError>()(
 	"SessionLinkedSpaceNotFoundError",
-	{ sessionId: Schema.String },
+	{ sessionId: Schema.String, threadId: Schema.optional(Schema.String) },
 ) {}
-
-export class EntryNotFoundError extends Schema.TaggedError<EntryNotFoundError>()("EntryNotFoundError", {
-	sessionId: Schema.String,
-	entryId: Schema.String,
-}) {}
-
-export class ToolCallNotFoundError extends Schema.TaggedError<ToolCallNotFoundError>()("ToolCallNotFoundError", {
-	entryId: Schema.String,
-	callId: Schema.String,
-}) {}
-
-// Structural rejection — the data-structure layer's "index out of bounds".
-export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataError>()("InvalidEntryDataError", {
-	entryId: Schema.String,
-	type: Schema.String,
-	reason: Schema.String,
-}) {}
 
 // Relink rejections: the target is not a live space, the session would cross
 // projects, or an explicit directory would break the containment invariant.
@@ -87,16 +70,14 @@ export class RelinkError extends Schema.TaggedError<RelinkError>()("RelinkError"
 }) {}
 export type RelinkReason = RelinkError["reason"];
 
-// I6: a session's directory is its space's location or sits underneath it.
+// A directory is its space's location or sits underneath it.
 const directoryWithin = (location: AbsolutePath, directory: AbsolutePath) =>
 	directory === location || directory.startsWith(`${location}/`);
 
 /**
- * Re-root a session directory onto another space of the same project: the
- * position relative to the old root is kept, so `dir = /old/app/pkg/x` under
- * `from = /old/app` lands on `/new/app/pkg/x` under `to = /new/app`. A
- * directory not under the old root — a broken invariant — lands on the new
- * root instead.
+ * Re-root a directory onto another space of the same project: the position relative to the old
+ * root is kept, so `dir = /old/app/pkg/x` under `from = /old/app` lands on `/new/app/pkg/x` under
+ * `to = /new/app`. A directory not under the old root — a broken invariant — lands on the new root.
  */
 export const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory: AbsolutePath): AbsolutePath => {
 	if (!directoryWithin(from, directory)) return to;
@@ -122,9 +103,9 @@ export class SessionNotLinkedError extends Schema.TaggedError<SessionNotLinkedEr
 
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
+	readonly mainThreadId?: ThreadSchema.ID;
 	/** The space (one directory in one env) this session attaches to; must exist. */
 	readonly spaceId: SpaceSchema.ID;
-	readonly parentId?: SessionSchema.ID; // session hierarchy (subagents) or fork lineage
 	/** Absolute realpath of the cwd; equal to or under `space.location`. */
 	readonly directory: AbsolutePath;
 	/**
@@ -133,89 +114,28 @@ export interface CreateSession {
 	 * is a normal outcome. `link` assigns one later.
 	 */
 	readonly hostDir?: AbsolutePath;
-	readonly title: string;
+	/** The main thread's title; absent = its first prompt names it. */
+	readonly title?: string;
 	readonly tag?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
+	/** The main thread's first `agent` value: the choices given to create. */
+	readonly agent?: DocumentSchema.Agent;
+}
+
+export interface Created {
+	readonly session: SessionRow;
+	readonly thread: ThreadRow;
 }
 
 /** Sessions of every space of a project, or of one space. */
 export type ListInput = { readonly projectId: ProjectSchema.ID } | { readonly spaceId: SpaceSchema.ID };
 
-export interface AppendPart {
-	readonly id?: string; // uuidv7; generated when omitted
-	readonly type: PartType;
-	readonly status?: ToolStatus; // toolCall parts only
-	readonly callId?: string; // toolCall parts only
-	readonly toolName?: string; // toolCall parts only
-	readonly data: string; // verbatim aikit part JSON
-}
-
-export interface AppendEntry {
-	readonly id: string; // uuidv7; == aikit messageId for message types
-	readonly sessionId: SessionSchema.ID;
-	/**
-	 * Position in the session's durable log — the sequence of the event that
-	 * produced this entry. Must exceed every existing entry's seq, which the
-	 * event log guarantees since sequences only ever advance.
-	 */
-	readonly seq: number;
-	readonly type: EntryType;
-	/** Defaults to committed. Only LLMStarted inserts a draft. */
-	readonly state?: EntryState;
-	readonly data: string; // JSON: full payload, or message envelope
-	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
-	readonly parentId?: string; // explicit branch appends only; default = current leaf
-	/**
-	 * Publish-time context from the event that produced this entry. The log does
-	 * not store event metadata, so if it is to survive at all it survives here.
-	 */
-	readonly metadata?: Readonly<Record<string, string>>;
-}
-
-export interface SettleToolCall {
-	readonly entryId: string; // owning assistant entry
-	readonly callId: string; // from the loop's tool.execution.end
-	readonly status: Exclude<ToolStatus, "pending" | "running">;
-	readonly data: string; // settled aikit part JSON, verbatim
-}
-
-export interface ReplaceAssistant {
-	readonly id: string;
-	readonly sessionId: SessionSchema.ID;
-	readonly data: string;
-	readonly parts: ReadonlyArray<AppendPart>;
-}
-
-export interface SetEntryState {
-	readonly id: string;
-	readonly sessionId: SessionSchema.ID;
-	readonly state: "committed";
-}
-
-export interface AbortAssistant {
-	readonly id: string;
-	readonly sessionId: SessionSchema.ID;
-	/** Encoded assistant stub. Parts are always deleted by the transition. */
-	readonly data: string;
-}
-
-// Fork copies ONE path (root → fork point) into a new session — never sibling
-// or abandoned branches.
-// clone = fork at the current leaf.
-export interface ForkInput {
-	readonly sessionId: SessionSchema.ID; // source session
-	readonly entryId?: string; // fork point; default = current leaf (clone)
-	readonly mode?: "at" | "before"; // default "at"; "before" valid only for user entries
-	readonly id?: SessionSchema.ID; // new session id; generated when omitted
-	readonly title?: string; // default: source title
-	readonly tag?: string; // default: source tag
-}
-
-// The env move: point a session at another space of the same project (remote
-// env died, repo cloned locally, worktree consolidated). Transcript entries
-// are keyed by session id and are untouched.
+// The env move: point a session, or one thread, at another space of the same project (remote env
+// died, repo cloned locally, worktree consolidated). Entries are untouched either way.
 export interface RelinkInput {
 	readonly sessionId: SessionSchema.ID;
+	/** Absent moves the session's default space and directory; present sets that thread's `placement`. */
+	readonly threadId?: ThreadSchema.ID;
 	/** Target space; must be active and belong to the session's project. */
 	readonly spaceId: SpaceSchema.ID;
 	/**
@@ -225,128 +145,58 @@ export interface RelinkInput {
 	readonly directory?: AbsolutePath;
 }
 
-// Entry row + its part rows, zipped. Message decode happens above this layer.
-export interface HydratedEntry {
-	readonly entry: SessionEntryRow;
-	readonly parts: ReadonlyArray<SessionEntryPartRow>;
+/** Where a thread runs: its `agent.placement`, else the session's space and directory. */
+export interface Placement {
+	readonly space: SpaceSchema.Info;
+	readonly directory: AbsolutePath;
 }
 
 export interface Interface {
-	readonly create: (input: CreateSession) => Effect.Effect<SessionRow>;
+	/** A session with its `main` thread and that thread's `agent` document, in one event. */
+	readonly create: (input: CreateSession) => Effect.Effect<Created>;
+	/** Projector of `session.created`. */
+	readonly projectCreated: (data: EventList.SessionCreated["data"], seq: number) => Effect.Effect<void>;
 	/**
 	 * Point an existing session at a host directory, or clear it with `null`.
 	 *
-	 * Separate from `relink`, which moves a session between spaces: this changes nothing about
-	 * where the work happens, only which host project's settings and plugins the session reads.
-	 * The two are independent -- a session can move machines and keep its host project, or stay
-	 * put and be given one it never had.
+	 * Separate from `relink`, which moves where the work happens: this changes only which host
+	 * project's settings and plugins the session reads.
 	 */
 	readonly link: (input: {
 		sessionId: SessionSchema.ID;
 		hostDir: AbsolutePath | null;
 	}) => Effect.Effect<SessionRow, SessionNotFoundError>;
-	/**
-	 * Replace a session's {@link SessionSchema.DEFAULT_TITLE}. A session with any other title keeps it,
-	 * so a title someone chose is never overwritten. Returns whether the title changed.
-	 */
-	readonly retitle: (sessionId: SessionSchema.ID, title: string) => Effect.Effect<boolean>;
-	/**
-	 * Merge chosen keys into a session's {@link SessionSchema.Config}; keys not named keep their
-	 * value. The projection of `session.config.changed`, so it runs inside that event's commit.
-	 */
-	readonly configure: (sessionId: SessionSchema.ID, config: SessionSchema.Config) => Effect.Effect<void>;
-	/** Records that the session has a run to do: one starting, or one a prompt just woke. */
-	readonly markRunning: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
-	/**
-	 * Records how a run ended. `closed` (a shutdown) leaves it to resume. `stopped` (the user) and
-	 * `finished` clear it and the restart count, except that a finished run with prompts still
-	 * pending stays marked: they are accepted work a successor, or the next server start, runs.
-	 */
-	readonly endExecution: (
-		sessionId: SessionSchema.ID,
-		end: "finished" | "stopped" | "closed",
-		/** For a stop: the log position it was asked at. A prompt admitted after it keeps the mark. */
-		stoppedAt?: number,
-	) => Effect.Effect<void>;
-	/**
-	 * Claims a session's unfinished run for recovery: marks it running again, counting a restart when
-	 * a dying process left it running (a shutdown's closed run is not counted). The new count, or none
-	 * when nothing is unfinished any more, say because the user stopped it since.
-	 */
-	readonly claimRestart: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<number>>;
-	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
-	readonly resetRestarts: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
-	/** Sessions with a run left unfinished, oldest first. */
-	readonly unfinished: Effect.Effect<ReadonlyArray<SessionRow>>;
-	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
-	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
-	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
+	readonly get: (sessionId: string) => Effect.Effect<Option.Option<SessionRow>>;
+	/** The session's own space — its env and absolute location. None when the session is unknown. */
+	readonly space: (sessionId: string) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
+	/** Where a thread runs. None when the thread is unknown or its space is gone. */
+	readonly placement: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<Placement>>;
 	/** The project a session belongs to, through its space. None when the session is unknown. */
-	readonly project: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
+	readonly project: (sessionId: string) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
 	/** Sessions newest first, across the whole database when no scope is given. */
 	readonly list: (input?: ListInput) => Effect.Effect<SessionRow[]>;
-	readonly entry: (entryId: string) => Effect.Effect<Option.Option<HydratedEntry>>;
-	/** Active root→leaf path with parts attached. */
-	readonly path: (sessionId: SessionSchema.ID) => Effect.Effect<HydratedEntry[]>;
-	/** All branches, newest-first, paged by entry seq. */
-	readonly timeline: (input: {
-		sessionId: SessionSchema.ID;
-		cursorSeq?: number;
-		limit?: number;
-	}) => Effect.Effect<HydratedEntry[]>;
-	/** Unsettled toolCall parts (crash recovery / live status). */
-	readonly unsettled: (sessionId: SessionSchema.ID) => Effect.Effect<SessionEntryPartRow[]>;
-	readonly append: (
-		input: AppendEntry,
-	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
-	/** Projector-only: replace the payload of an existing draft assistant in place. */
-	readonly replaceAssistant: (input: ReplaceAssistant) => Effect.Effect<void>;
-	/** Projector-only: settle one pending/running tool part on a draft assistant. */
-	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void>;
-	/** Projector-only: commit a draft after every tool part is terminal. */
-	readonly setEntryState: (input: SetEntryState) => Effect.Effect<void>;
-	/** Projector-only: turn a draft into a partless aborted tombstone. */
-	readonly abortAssistant: (input: AbortAssistant) => Effect.Effect<void>;
-	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
-	readonly fork: (
-		input: ForkInput,
-	) => Effect.Effect<SessionRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	/**
-	 * Move the session to another space of the same project. Without an explicit
-	 * `directory` the cwd keeps its position relative to the old root; either way
-	 * the result satisfies I6 (directory at or under the space's location).
+	 * Move the session (or one thread) to another space of the same project. Without an explicit
+	 * `directory` the cwd keeps its position relative to the old root; either way the result is at
+	 * or under the space's location.
 	 */
-	readonly relink: (input: RelinkInput) => Effect.Effect<SessionRow, SessionNotFoundError | RelinkError>;
-	/** Move the leaf cursor; the next append forks a sibling branch. */
-	readonly branch: (input: {
-		sessionId: SessionSchema.ID;
-		entryId: string;
-	}) => Effect.Effect<void, EntryNotFoundError>;
-	/** Set or clear (null) the bookmark label on an entry. */
-	readonly setLabel: (input: {
-		sessionId: SessionSchema.ID;
-		entryId: string;
-		label: string | null;
-	}) => Effect.Effect<void, EntryNotFoundError>;
+	readonly relink: (
+		input: RelinkInput,
+	) => Effect.Effect<SessionRow, SessionNotFoundError | Thread.ThreadNotFoundError | RelinkError>;
+	/** Removes the session with every thread, entry, document and its event log. False when unknown. */
+	readonly delete: (sessionId: SessionSchema.ID) => Effect.Effect<boolean>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/session/session/Service") {}
-
-const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
-
-// Structural decode of the persisted envelope's usage; failures surface as
-// InvalidEntryDataError, never a defect — callers (Context Manager, UI) can act.
-const decodeEnvelopeUsage = Schema.decodeUnknownEffect(SessionSchema.AssistantEnvelopeUsage);
-const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(SessionSchema.MessageEnvelopeIdentity);
-const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
-const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
-const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
 
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		const events = yield* Event.Service;
+		const threads = yield* Thread.Service;
+		const documents = yield* Document.Service;
+
 		const findSession = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: SessionRow,
@@ -406,153 +256,60 @@ export const layer = Layer.effect(
 			execute: (row) => sql`INSERT INTO session ${sql.insert(row)}`,
 		});
 
-		const findEntry = SqlSchema.findOneOption({
-			Request: Schema.String,
-			Result: SessionEntryRow,
-			execute: (id) => sql`SELECT * FROM session_entry WHERE id = ${id}`,
-		});
-
-		// seq is supplied by the caller, not computed here: it is the sequence of
-		// the event that produced the entry, so the durable log and the tree share
-		// one position space.
-		//
-		// The WHERE NOT EXISTS keeps positions strictly advancing. `max(seq) + 1`
-		// used to make that structural; sourcing seq from outside would otherwise
-		// downgrade it to an unchecked contract, and a stale position fails
-		// silently — `selectPath` orders by seq, so a child would sort above its
-		// own parent. Inserting zero rows is the signal, checked by the callers.
-		const insertEntry = SqlSchema.findAll({
-			Request: SessionEntryRow.insert,
-			Result: Schema.Struct({ id: Schema.String }),
-			execute: (row) => sql`
-				INSERT INTO session_entry (id, session_id, parent_id, seq, type, state, data, label, metadata, created_at, updated_at)
-				SELECT
-					${row.id}, ${row.sessionId}, ${row.parentId ?? null}, ${row.seq},
-					${row.type}, ${row.state}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
-					${row.createdAt}, ${row.updatedAt}
-				WHERE NOT EXISTS (
-					SELECT 1 FROM session_entry WHERE session_id = ${row.sessionId} AND seq >= ${row.seq}
-				)
-				RETURNING id
-			`,
-		});
-
-		// Single-row insert: toolCall and non-tool parts have different encoded
-		// key sets (FieldOption omits absent keys), so multi-row sql.insert would
-		// mix shapes. Parts per message are few; sequential inserts inside the
-		// append transaction are fine.
-		const insertPart = SqlSchema.void({
-			Request: SessionEntryPartRow.insert,
-			execute: (row) => sql`INSERT INTO session_entry_part ${sql.insert(row)}`,
-		});
-
-		// Root→leaf in one query: a parent always exists before its child, so a
-		// parent's seq is always smaller and ORDER BY seq returns root-first.
-		const selectPath = SqlSchema.findAll({
-			Request: Schema.String,
-			Result: SessionEntryRow,
-			execute: (leafEntryId) => sql`
-				WITH RECURSIVE path AS (
-					SELECT * FROM session_entry WHERE id = ${leafEntryId}
-					UNION ALL
-					SELECT e.* FROM session_entry e
-					JOIN path p ON e.id = p.parent_id AND e.session_id = p.session_id
-				)
-				SELECT * FROM path ORDER BY seq
-			`,
-		});
-
-		// Recovery/import fallback when session.leaf_entry_id is NULL (§4.1).
-		const selectLatestEntry = SqlSchema.findOneOption({
-			Request: Schema.String,
-			Result: SessionEntryRow,
-			execute: (sessionId) => sql`
-				SELECT * FROM session_entry WHERE session_id = ${sessionId} ORDER BY seq DESC LIMIT 1
-			`,
-		});
-
-		const selectTimelinePage = SqlSchema.findAll({
-			Request: Schema.Struct({
-				sessionId: Schema.String,
-				cursorSeq: Schema.NullOr(Schema.Int),
-				limit: Schema.Int,
-			}),
-			Result: SessionEntryRow,
-			execute: (r) => sql`
-				SELECT * FROM session_entry
-				WHERE session_id = ${r.sessionId} AND (${r.cursorSeq} IS NULL OR seq < ${r.cursorSeq})
-				ORDER BY seq DESC LIMIT ${r.limit}
-			`,
-		});
-
-		const selectPartsForEntries = SqlSchema.findAll({
-			Request: Schema.Array(Schema.String),
-			Result: SessionEntryPartRow,
-			execute: (entryIds) => sql`
-				SELECT * FROM session_entry_part
-				WHERE ${sql.in("entry_id", entryIds)}
-				ORDER BY entry_id, part_index
-			`,
-		});
-
-		const selectUnsettled = SqlSchema.findAll({
-			Request: Schema.String,
-			Result: SessionEntryPartRow,
-			execute: (sessionId) => sql`
-				SELECT * FROM session_entry_part
-				WHERE session_id = ${sessionId} AND status IN ('pending', 'running')
-				ORDER BY entry_id, part_index
-			`,
-		});
-
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
-		// Zip rule (§7.2): group parts by entry id, attach while walking entries.
-		// entry.type says whether parts are expected; a mismatch is corruption,
-		// not an edge case (§10.4).
-		const hydrate = (
-			entries: ReadonlyArray<SessionEntryRow>,
-			parts: ReadonlyArray<SessionEntryPartRow>,
-		): HydratedEntry[] => {
-			const byEntry = new Map<string, SessionEntryPartRow[]>();
-			for (const part of parts) {
-				const bucket = byEntry.get(part.entryId);
-				if (bucket) bucket.push(part);
-				else byEntry.set(part.entryId, [part]);
-			}
-			return entries.map((entry) => ({ entry, parts: byEntry.get(entry.id) ?? [] }));
-		};
-
-		const partsFor = Effect.fnUntraced(function* (entries: ReadonlyArray<SessionEntryRow>) {
-			const ids = entries.filter((entry) => messageTypes.has(entry.type)).map((entry) => entry.id);
-			if (ids.length === 0) return [];
-			return yield* selectPartsForEntries(ids).pipe(Effect.orDie);
-		});
+		const projectCreated = Effect.fn("Session.projectCreated")(function* (
+			data: EventList.SessionCreated["data"],
+			seq: number,
+		) {
+			const row = yield* SessionRow.insert.makeEffect({
+				id: data.sessionId,
+				spaceId: data.spaceId,
+				slug: data.slug,
+				directory: data.directory,
+				hostDir: Option.fromUndefinedOr(data.hostDir),
+				tag: Option.fromUndefinedOr(data.tag),
+				metadata: Option.fromUndefinedOr(data.metadata),
+			});
+			yield* insertSession(row);
+			yield* threads.insert({
+				id: data.threadId,
+				sessionId: data.sessionId,
+				origin: { kind: "main" },
+				...(data.title === undefined ? {} : { title: data.title }),
+				seq,
+			});
+			yield* documents.create({
+				sessionId: data.sessionId,
+				threadId: data.threadId,
+				definition: DocumentSchema.agent,
+				value: yield* Schema.encodeEffect(DocumentSchema.Agent)(data.agent),
+				seq,
+			});
+		}, Effect.orDie);
 
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
 			const id = input.id ?? SessionSchema.ID.create();
-			const row = yield* SessionRow.insert
-				.makeEffect({
-					id,
-					spaceId: input.spaceId,
-					parentId: Option.fromUndefinedOr(input.parentId),
-					slug: yield* Slug.create(id),
-					directory: input.directory,
-					hostDir: Option.fromUndefinedOr(input.hostDir),
-					config: Option.none(),
-					execution: Option.none(),
-					title: input.title,
-					tag: Option.fromUndefinedOr(input.tag),
-					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
-					leafEntryId: Option.none(),
-				})
-				.pipe(Effect.orDie);
-			yield* insertSession(row).pipe(Effect.orDie);
-			const created = yield* findSession(id).pipe(Effect.orDie);
-			if (Option.isNone(created)) {
+			const threadId = input.mainThreadId ?? ThreadSchema.ID.create();
+			yield* events.publish(EventList.SessionCreated, {
+				timestamp: yield* DateTime.now,
+				sessionId: id,
+				threadId,
+				spaceId: input.spaceId,
+				slug: yield* Slug.create(id),
+				directory: input.directory,
+				...(input.hostDir === undefined ? {} : { hostDir: input.hostDir }),
+				...(input.tag === undefined ? {} : { tag: input.tag }),
+				...(input.metadata === undefined ? {} : { metadata: { ...input.metadata } }),
+				...(input.title === undefined ? {} : { title: input.title }),
+				agent: input.agent ?? {},
+			});
+			const session = yield* findSession(id).pipe(Effect.orDie);
+			const thread = yield* threads.get(threadId);
+			if (Option.isNone(session) || Option.isNone(thread)) {
 				return yield* Effect.die(new Error("session insert did not persist"));
 			}
-			return created.value;
+			return { session: session.value, thread: thread.value };
 		});
 
 		const get = Effect.fn("Session.get")(function* (sessionId: string) {
@@ -561,6 +318,20 @@ export const layer = Layer.effect(
 
 		const space = Effect.fn("Session.space")(function* (sessionId: string) {
 			return Option.map(yield* findSpace(sessionId).pipe(Effect.orDie), Space.fromRow);
+		});
+
+		const placement = Effect.fn("Session.placement")(function* (threadId: ThreadSchema.ID) {
+			const thread = yield* threads.get(threadId);
+			if (Option.isNone(thread)) return Option.none<Placement>();
+			const chosen = (yield* documents.agent(threadId)).placement;
+			if (chosen !== undefined) {
+				const target = yield* findSpaceById(chosen.spaceId).pipe(Effect.orDie);
+				return Option.map(target, (row) => ({ space: Space.fromRow(row), directory: chosen.directory }));
+			}
+			const session = yield* findSession(thread.value.sessionId).pipe(Effect.orDie);
+			const own = yield* space(thread.value.sessionId);
+			if (Option.isNone(session) || Option.isNone(own)) return Option.none<Placement>();
+			return Option.some({ space: own.value, directory: session.value.directory });
 		});
 
 		// A bare lookup has no checkout to ask, so the info carries no `vcs` (as with `Project.get`).
@@ -581,618 +352,6 @@ export const layer = Layer.effect(
 			return yield* rows.pipe(Effect.orDie);
 		});
 
-		const entry = Effect.fn("Session.entry")(function* (entryId: string) {
-			const found = yield* findEntry(entryId).pipe(Effect.orDie);
-			if (Option.isNone(found)) return Option.none<HydratedEntry>();
-			const parts = yield* partsFor([found.value]);
-			return Option.some(hydrate([found.value], parts)[0]!);
-		});
-
-		const resolveLeaf = Effect.fnUntraced(function* (session: SessionRow) {
-			if (Option.isSome(session.leafEntryId)) return session.leafEntryId;
-			const latest = yield* selectLatestEntry(session.id).pipe(Effect.orDie);
-			return Option.map(latest, (row) => row.id);
-		});
-
-		const path = Effect.fn("Session.path")(function* (sessionId: string) {
-			const session = yield* findSession(sessionId).pipe(Effect.orDie);
-			if (Option.isNone(session)) return [];
-			const leaf = yield* resolveLeaf(session.value);
-			if (Option.isNone(leaf)) return [];
-			const entries = yield* selectPath(leaf.value).pipe(Effect.orDie);
-			const parts = yield* partsFor(entries);
-			return hydrate(entries, parts);
-		});
-
-		const timeline = Effect.fn("Session.timeline")(function* (input: {
-			sessionId: string;
-			cursorSeq?: number;
-			limit?: number;
-		}) {
-			const entries = yield* selectTimelinePage({
-				sessionId: input.sessionId,
-				cursorSeq: input.cursorSeq ?? null,
-				limit: input.limit ?? 50,
-			}).pipe(Effect.orDie);
-			const parts = yield* partsFor(entries);
-			return hydrate(entries, parts);
-		});
-
-		const unsettled = Effect.fn("Session.unsettled")(function* (sessionId: string) {
-			return yield* selectUnsettled(sessionId).pipe(Effect.orDie);
-		});
-
-		type AppendTxResult =
-			| { readonly _tag: "sessionNotFound" }
-			| { readonly _tag: "parentNotFound" }
-			| { readonly _tag: "invalidData"; readonly reason: string }
-			| { readonly _tag: "inserted"; readonly entry: SessionEntryRow };
-
-		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
-			const parts = input.parts ?? [];
-			const state = input.state ?? "committed";
-			if (state === "aborted" || (input.type !== "assistant" && state !== "committed")) {
-				return yield* new InvalidEntryDataError({
-					entryId: input.id,
-					type: input.type,
-					reason:
-						state === "aborted"
-							? "an aborted assistant must be produced by abortAssistant"
-							: `entry type "${input.type}" must be committed`,
-				});
-			}
-			if (parts.length > 0 && !messageTypes.has(input.type)) {
-				return yield* new InvalidEntryDataError({
-					entryId: input.id,
-					type: input.type,
-					reason: `entry type "${input.type}" must not carry parts`,
-				});
-			}
-
-			// Part data is documented as verbatim aikit JSON and every reader parses
-			// it as such, so it is validated here for the same reason the envelope
-			// is: an unparseable part is only discovered by whoever reads it back,
-			// long after the write that could have rejected it.
-			for (const [index, part] of parts.entries()) {
-				yield* decodeJsonObject(part.data).pipe(
-					Effect.mapError(
-						(error) =>
-							new InvalidEntryDataError({
-								entryId: input.id,
-								type: input.type,
-								reason: `part ${index} ("${part.type}") is not a JSON object: ${error.message}`,
-							}),
-					),
-				);
-			}
-
-			const envelopeIdentity = messageTypes.has(input.type)
-				? yield* decodeMessageEnvelopeIdentity(input.data).pipe(
-						Effect.mapError(
-							(error) =>
-								new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
-						),
-					)
-				: undefined;
-			if (envelopeIdentity !== undefined && envelopeIdentity.messageId !== input.id) {
-				return yield* new InvalidEntryDataError({
-					entryId: input.id,
-					type: input.type,
-					reason: `messageId "${envelopeIdentity.messageId}" does not match entry id`,
-				});
-			}
-
-			const compaction =
-				input.type === "compaction"
-					? yield* decodeCompactionData(input.data).pipe(
-							Effect.mapError(
-								(error) =>
-									new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
-							),
-						)
-					: undefined;
-
-			// The envelope is authoritative; aggregate deltas are never accepted
-			// independently of the data persisted by this transaction.
-			const usage =
-				input.type === "assistant"
-					? yield* decodeEnvelopeUsage(input.data).pipe(
-							Effect.map((envelope) => envelope.usage),
-							Effect.mapError(
-								(error) =>
-									new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
-							),
-						)
-					: undefined;
-
-			const result: AppendTxResult = yield* sql
-				.withTransaction(
-					Effect.gen(function* () {
-						const session = yield* findSession(input.sessionId);
-						if (Option.isNone(session)) return { _tag: "sessionNotFound" } as const;
-						const currentLeaf = yield* resolveLeaf(session.value);
-
-						// Append anchor: explicit branch target
-						// (validated same-session; the composite FK is the schema backstop),
-						// else the current leaf resolved with the same fallback reads use (§4.1).
-						let parentId: Option.Option<string>;
-						if (input.parentId !== undefined) {
-							const rows = yield* sql`
-								SELECT id FROM session_entry
-								WHERE id = ${input.parentId} AND session_id = ${input.sessionId}
-							`;
-							if (rows.length === 0) return { _tag: "parentNotFound" } as const;
-							parentId = Option.some(input.parentId);
-						} else {
-							parentId = currentLeaf;
-						}
-
-						if (compaction !== undefined && compaction.firstKeptEntryId !== null) {
-							if (Option.isNone(parentId)) {
-								return {
-									_tag: "invalidData",
-									reason: `firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the compaction path`,
-								} as const;
-							}
-							const compactionPath = yield* selectPath(parentId.value);
-							if (!compactionPath.some((entry) => entry.id === compaction.firstKeptEntryId)) {
-								return {
-									_tag: "invalidData",
-									reason: `firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the compaction path`,
-								} as const;
-							}
-						}
-
-						const entryRow = yield* SessionEntryRow.insert.makeEffect({
-							id: input.id,
-							sessionId: input.sessionId,
-							parentId,
-							seq: input.seq,
-							type: input.type,
-							state,
-							data: input.data,
-							label: Option.none(),
-							metadata: Option.fromUndefinedOr(input.metadata),
-						});
-						const inserted = yield* insertEntry(entryRow);
-						// Keep the aggregate head above what was just written. An entry
-						// that arrived without an event still occupies its position, and
-						// the next event must land above it or hit the guard below
-						// forever.
-						yield* events.advance(input.sessionId, input.seq);
-						if (inserted.length === 0) {
-							return {
-								_tag: "invalidData",
-								reason: `seq ${input.seq} does not advance past the session's latest entry`,
-							} as const;
-						}
-
-						for (const [partIndex, part] of parts.entries()) {
-							const partRow = yield* SessionEntryPartRow.insert.makeEffect({
-								id: part.id ?? uuidv7(),
-								entryId: input.id,
-								sessionId: input.sessionId,
-								partIndex,
-								type: part.type,
-								status: Option.fromUndefinedOr(part.status),
-								callId: Option.fromUndefinedOr(part.callId),
-								toolName: Option.fromUndefinedOr(part.toolName),
-								data: part.data,
-							});
-							yield* insertPart(partRow);
-						}
-
-						// Advance the cursor and account for the envelope currently stored.
-						// Draft assistants are adjusted by replace/abort when their terminal
-						// envelope arrives.
-						const now = yield* epochNow;
-						yield* sql`
-							UPDATE session SET
-								leaf_entry_id = ${input.id},
-								updated_at = ${now},
-								cost = cost + ${usage?.cost.total ?? 0},
-								tokens_input = tokens_input + ${usage?.input ?? 0},
-								tokens_output = tokens_output + ${usage?.output ?? 0},
-								tokens_cache_read = tokens_cache_read + ${usage?.cacheRead ?? 0},
-								tokens_cache_write = tokens_cache_write + ${usage?.cacheWrite ?? 0}
-							WHERE id = ${input.sessionId}
-						`;
-
-						const entry = yield* findEntry(input.id);
-						if (Option.isNone(entry)) {
-							return yield* Effect.die(new Error("session append: inserted entry did not persist"));
-						}
-						return { _tag: "inserted", entry: entry.value } as const;
-					}),
-				)
-				.pipe(Effect.orDie);
-
-			switch (result._tag) {
-				case "sessionNotFound":
-					return yield* new SessionNotFoundError({ sessionId: input.sessionId });
-				case "parentNotFound":
-					return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.parentId ?? "" });
-				case "invalidData":
-					return yield* new InvalidEntryDataError({
-						entryId: input.id,
-						type: input.type,
-						reason: result.reason,
-					});
-				case "inserted":
-					return result.entry;
-			}
-		});
-
-		const replaceAssistant = Effect.fn("Session.replaceAssistant")(function* (input: ReplaceAssistant) {
-			const nextEnvelope = yield* decodeEnvelopeUsage(input.data);
-			yield* sql.withTransaction(
-				Effect.gen(function* () {
-					const current = yield* findEntry(input.id);
-					if (
-						Option.isNone(current) ||
-						current.value.sessionId !== input.sessionId ||
-						current.value.type !== "assistant" ||
-						current.value.state !== "draft"
-					) {
-						return yield* Effect.die(`replaceAssistant requires draft assistant ${input.id}`);
-					}
-					const previousEnvelope = yield* decodeEnvelopeUsage(current.value.data);
-					const now = yield* epochNow;
-					yield* sql`DELETE FROM session_entry_part WHERE entry_id = ${input.id}`;
-					for (const [partIndex, part] of input.parts.entries()) {
-						const partRow = yield* SessionEntryPartRow.insert.makeEffect({
-							id: part.id ?? uuidv7(),
-							entryId: input.id,
-							sessionId: input.sessionId,
-							partIndex,
-							type: part.type,
-							status: Option.fromUndefinedOr(part.status),
-							callId: Option.fromUndefinedOr(part.callId),
-							toolName: Option.fromUndefinedOr(part.toolName),
-							data: part.data,
-						});
-						yield* insertPart(partRow);
-					}
-					yield* sql`
-							UPDATE session_entry SET data = ${input.data}, updated_at = ${now}
-							WHERE id = ${input.id} AND session_id = ${input.sessionId} AND state = 'draft'
-						`;
-					yield* sql`
-							UPDATE session SET
-								updated_at = ${now},
-								cost = cost + ${nextEnvelope.usage.cost.total - previousEnvelope.usage.cost.total},
-								tokens_input = tokens_input + ${nextEnvelope.usage.input - previousEnvelope.usage.input},
-								tokens_output = tokens_output + ${nextEnvelope.usage.output - previousEnvelope.usage.output},
-								tokens_cache_read = tokens_cache_read + ${nextEnvelope.usage.cacheRead - previousEnvelope.usage.cacheRead},
-								tokens_cache_write = tokens_cache_write + ${nextEnvelope.usage.cacheWrite - previousEnvelope.usage.cacheWrite}
-							WHERE id = ${input.sessionId}
-						`;
-				}),
-			);
-		}, Effect.orDie);
-
-		const settleToolCall = Effect.fn("Session.settleToolCall")(function* (input: SettleToolCall) {
-			const data = yield* decodeJsonObject(input.data).pipe(Effect.orDie);
-			if (data["type"] !== "toolCall" || data["callID"] !== input.callId || data["status"] !== input.status) {
-				return yield* Effect.die(`settled tool payload does not match call ${input.callId}`);
-			}
-			const now = yield* epochNow;
-			const rows = yield* sql`
-				UPDATE session_entry_part
-				SET data = ${input.data}, status = ${input.status}, updated_at = ${now}
-				WHERE entry_id = ${input.entryId}
-					AND call_id = ${input.callId}
-					AND type = 'toolCall'
-					AND status IN ('pending', 'running')
-					AND EXISTS (
-						SELECT 1 FROM session_entry
-						WHERE id = ${input.entryId} AND state = 'draft'
-					)
-				RETURNING id
-			`;
-			if (rows.length !== 1) {
-				return yield* Effect.die(`settleToolCall requires one unsettled call ${input.entryId}/${input.callId}`);
-			}
-		}, Effect.orDie);
-
-		const setEntryState = Effect.fn("Session.setEntryState")(function* (input: SetEntryState) {
-			const now = yield* epochNow;
-			const rows = yield* sql`
-				UPDATE session_entry SET state = ${input.state}, updated_at = ${now}
-				WHERE id = ${input.id}
-					AND session_id = ${input.sessionId}
-					AND type = 'assistant'
-					AND state = 'draft'
-					AND NOT EXISTS (
-						SELECT 1 FROM session_entry_part
-						WHERE entry_id = ${input.id} AND status IN ('pending', 'running')
-					)
-				RETURNING id
-			`;
-			if (rows.length !== 1) return yield* Effect.die(`setEntryState requires a fully-settled draft ${input.id}`);
-		}, Effect.orDie);
-
-		const abortAssistant = Effect.fn("Session.abortAssistant")(function* (input: AbortAssistant) {
-			const nextEnvelope = yield* decodeEnvelopeUsage(input.data);
-			yield* sql.withTransaction(
-				Effect.gen(function* () {
-					const current = yield* findEntry(input.id);
-					if (
-						Option.isNone(current) ||
-						current.value.sessionId !== input.sessionId ||
-						current.value.type !== "assistant" ||
-						current.value.state !== "draft"
-					) {
-						return yield* Effect.die(`abortAssistant requires draft assistant ${input.id}`);
-					}
-					const previousEnvelope = yield* decodeEnvelopeUsage(current.value.data);
-					const now = yield* epochNow;
-					yield* sql`DELETE FROM session_entry_part WHERE entry_id = ${input.id}`;
-					yield* sql`
-							UPDATE session_entry
-							SET state = 'aborted', data = ${input.data}, updated_at = ${now}
-							WHERE id = ${input.id} AND session_id = ${input.sessionId} AND state = 'draft'
-						`;
-					yield* sql`
-							UPDATE session SET
-								updated_at = ${now},
-								cost = cost + ${nextEnvelope.usage.cost.total - previousEnvelope.usage.cost.total},
-								tokens_input = tokens_input + ${nextEnvelope.usage.input - previousEnvelope.usage.input},
-								tokens_output = tokens_output + ${nextEnvelope.usage.output - previousEnvelope.usage.output},
-								tokens_cache_read = tokens_cache_read + ${nextEnvelope.usage.cacheRead - previousEnvelope.usage.cacheRead},
-								tokens_cache_write = tokens_cache_write + ${nextEnvelope.usage.cacheWrite - previousEnvelope.usage.cacheWrite}
-							WHERE id = ${input.sessionId}
-						`;
-				}),
-			);
-		}, Effect.orDie);
-
-		type ForkTxResult =
-			| { readonly _tag: "sessionNotFound" }
-			| { readonly _tag: "entryNotFound"; readonly entryId: string }
-			| { readonly _tag: "invalidMode"; readonly entryId: string; readonly type: string }
-			| { readonly _tag: "invalidData"; readonly entryId: string; readonly type: string; readonly reason: string }
-			| { readonly _tag: "forked"; readonly session: SessionRow };
-
-		// Copied entries get NEW ids (ours are globally unique),
-		// so every entry-id reference on the path is remapped:
-		// parent edges, message envelopes' messageId, and compaction's
-		// `firstKeptEntryId` (when non-null, always on the copied path and mappable).
-		// branchSummary.fromEntryId is NOT remapped — it points at an abandoned
-		// leaf that is deliberately not copied;
-		const rewriteForkedData = Effect.fnUntraced(function* (
-			entry: SessionEntryRow,
-			newId: string,
-			idMap: ReadonlyMap<string, string>,
-		) {
-			if (!messageTypes.has(entry.type) && entry.type !== "compaction") return entry.data;
-			const invalidData = (reason: string) =>
-				new InvalidEntryDataError({ entryId: entry.id, type: entry.type, reason });
-			const payload: Record<string, unknown> = {
-				...(yield* decodeJsonObject(entry.data).pipe(Effect.mapError((error) => invalidData(error.message)))),
-			};
-			if (messageTypes.has(entry.type)) {
-				const identity = yield* decodeMessageEnvelopeIdentity(entry.data).pipe(
-					Effect.mapError((error) => invalidData(error.message)),
-				);
-				if (identity.messageId !== entry.id) {
-					return yield* invalidData(`messageId "${identity.messageId}" does not match entry id`);
-				}
-				payload["messageId"] = newId;
-			}
-			if (entry.type === "compaction") {
-				const compaction = yield* decodeCompactionData(entry.data).pipe(
-					Effect.mapError((error) => invalidData(error.message)),
-				);
-				if (compaction.firstKeptEntryId !== null) {
-					const mapped = idMap.get(compaction.firstKeptEntryId);
-					if (mapped === undefined) {
-						return yield* invalidData(
-							`firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the copied path`,
-						);
-					}
-					payload["firstKeptEntryId"] = mapped;
-				}
-			}
-			return yield* encodeJsonObject(payload).pipe(Effect.mapError((error) => invalidData(error.message)));
-		});
-
-		const fork = Effect.fn("Session.fork")(function* (input: ForkInput) {
-			const mode = input.mode ?? "at";
-			const newSessionId = input.id ?? SessionSchema.ID.create();
-
-			const result: ForkTxResult = yield* sql
-				.withTransaction(
-					Effect.gen(function* () {
-						const source = yield* findSession(input.sessionId);
-						if (Option.isNone(source)) return { _tag: "sessionNotFound" } as const;
-
-						// Resolve the fork-point entry: explicit (validated in-session)
-						// or the current leaf (clone). None = empty source.
-						let targetEntry: Option.Option<SessionEntryRow>;
-						if (input.entryId !== undefined) {
-							const found = yield* findEntry(input.entryId);
-							if (Option.isNone(found) || found.value.sessionId !== input.sessionId) {
-								return { _tag: "entryNotFound", entryId: input.entryId } as const;
-							}
-							targetEntry = found;
-						} else {
-							const leaf = yield* resolveLeaf(source.value);
-							targetEntry = Option.isNone(leaf) ? Option.none() : yield* findEntry(leaf.value);
-						}
-
-						// mode "before": land just above a user prompt so the caller can
-						// re-edit and resubmit it in the fork. Parent may be none (root prompt) — that yields an empty fork.
-						let targetId: Option.Option<string>;
-						if (Option.isSome(targetEntry) && mode === "before") {
-							if (targetEntry.value.type !== "user") {
-								return {
-									_tag: "invalidMode",
-									entryId: targetEntry.value.id,
-									type: targetEntry.value.type,
-								} as const;
-							}
-							targetId = targetEntry.value.parentId;
-						} else {
-							targetId = Option.map(targetEntry, (entry) => entry.id);
-						}
-
-						const pathEntries = Option.isSome(targetId) ? yield* selectPath(targetId.value) : [];
-						const idMap = new Map(pathEntries.map((entry) => [entry.id, uuidv7()]));
-
-						// Prepare the complete copy before the first write. Returning a tagged
-						// validation error after an insert would otherwise commit a partial fork.
-						const prepared = yield* Effect.result(
-							Effect.forEach(pathEntries, (entry) => {
-								const id = idMap.get(entry.id)!;
-								return rewriteForkedData(entry, id, idMap).pipe(
-									Effect.map((data) => ({ source: entry, id, data })),
-								);
-							}),
-						);
-						if (Result.isFailure(prepared)) {
-							return {
-								_tag: "invalidData",
-								entryId: prepared.failure.entryId,
-								type: prepared.failure.type,
-								reason: prepared.failure.reason,
-							} as const;
-						}
-						const preparedEntries = prepared.success;
-
-						// New session first (prepared entries FK it); leaf set after the copy.
-						// Aggregates start at 0 — spend stays recorded in the source.
-						const sessionRow = yield* SessionRow.insert.makeEffect({
-							id: newSessionId,
-							// Same space and directory as the source, so the same env and cwd.
-							spaceId: source.value.spaceId,
-							parentId: Option.some(source.value.id), // fork lineage
-							slug: yield* Slug.create(newSessionId),
-							directory: source.value.directory,
-							// A fork continues the same work, so it reads the same project.
-							hostDir: source.value.hostDir,
-							// And runs the same model, until the fork chooses another.
-							config: source.value.config,
-							// Nothing runs in a fork yet, whatever the source was doing.
-							execution: Option.none(),
-							title: input.title ?? source.value.title,
-							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
-							metadata: source.value.metadata,
-							leafEntryId: Option.none(),
-						});
-						yield* insertSession(sessionRow);
-
-						// Positions are carried over verbatim, not renumbered: they are log
-						// positions, and preserving them keeps the copy ordered exactly as
-						// the source. The new aggregate is then seeded above the highest of
-						// them so post-fork events never land underneath.
-						for (const prepared of preparedEntries) {
-							const entryRow = yield* SessionEntryRow.insert.makeEffect({
-								id: prepared.id,
-								sessionId: newSessionId,
-								parentId: Option.map(prepared.source.parentId, (parent) => idMap.get(parent)!),
-								seq: prepared.source.seq,
-								type: prepared.source.type,
-								state: prepared.source.state,
-								data: prepared.data,
-								label: prepared.source.label, // annotations ride the copy (§10.12)
-								metadata: prepared.source.metadata,
-							});
-							// Path order means source positions already ascend, so a
-							// rejection here would mean the source tree violated its own
-							// ordering invariant rather than anything about this copy.
-							const copied = yield* insertEntry(entryRow);
-							if (copied.length === 0) {
-								return yield* Effect.die(
-									`fork: copied entry ${prepared.id} at seq ${prepared.source.seq} does not advance`,
-								);
-							}
-						}
-
-						// Parts: new ids, re-keyed entry/session, everything else verbatim —
-						// including pending toolCalls (the fork inherits crash recovery).
-						const messageEntryIds = pathEntries
-							.filter((entry) => messageTypes.has(entry.type))
-							.map((entry) => entry.id);
-						if (messageEntryIds.length > 0) {
-							const parts = yield* selectPartsForEntries(messageEntryIds);
-							for (const part of parts) {
-								const partRow = yield* SessionEntryPartRow.insert.makeEffect({
-									id: uuidv7(),
-									entryId: idMap.get(part.entryId)!,
-									sessionId: newSessionId,
-									partIndex: part.partIndex,
-									type: part.type,
-									status: part.status,
-									callId: part.callId,
-									toolName: part.toolName,
-									data: part.data,
-								});
-								yield* insertPart(partRow);
-							}
-						}
-
-						if (Option.isSome(targetId)) {
-							const now = yield* epochNow;
-							yield* sql`
-								UPDATE session SET leaf_entry_id = ${idMap.get(targetId.value)!}, updated_at = ${now}
-								WHERE id = ${newSessionId}
-							`;
-						}
-
-						// The copied entries hold positions from the source's log, so the
-						// new aggregate starts above the highest of them. Without this its
-						// first event would land at 0, underneath the copy, and
-						// `parent.seq < child.seq` — which `selectPath` orders by — would
-						// invert. An empty fork copies nothing and starts at 0 normally.
-						if (preparedEntries.length > 0 && Option.isSome(targetId)) {
-							const baseSeq = preparedEntries.reduce(
-								(highest, prepared) => Math.max(highest, prepared.source.seq),
-								0,
-							);
-							yield* events.advance(newSessionId, baseSeq);
-							// Lands at baseSeq + 1, so the seeded range is recorded by the
-							// log itself rather than inferable only from `parentId`.
-							yield* events.publish(EventList.SessionForked, {
-								sessionId: newSessionId,
-								sourceSessionId: input.sessionId,
-								sourceEntryId: targetId.value,
-								baseSeq,
-								timestamp: yield* DateTime.now,
-							});
-						}
-
-						const created = yield* findSession(newSessionId);
-						if (Option.isNone(created)) {
-							return yield* Effect.die(new Error("session fork: created session did not persist"));
-						}
-						return { _tag: "forked", session: created.value } as const;
-					}),
-				)
-				.pipe(Effect.orDie);
-
-			switch (result._tag) {
-				case "sessionNotFound":
-					return yield* new SessionNotFoundError({ sessionId: input.sessionId });
-				case "entryNotFound":
-					return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: result.entryId });
-				case "invalidMode":
-					return yield* new InvalidEntryDataError({
-						entryId: result.entryId,
-						type: result.type,
-						reason: `fork mode "before" requires a user entry`,
-					});
-				case "invalidData":
-					return yield* new InvalidEntryDataError({
-						entryId: result.entryId,
-						type: result.type,
-						reason: result.reason,
-					});
-				case "forked":
-					return result.session;
-			}
-		});
-
 		const link = Effect.fn("Session.link")(function* (input: {
 			sessionId: SessionSchema.ID;
 			hostDir: AbsolutePath | null;
@@ -1209,189 +368,75 @@ export const layer = Layer.effect(
 			return updated.value;
 		});
 
-		const retitle = Effect.fn("Session.retitle")(function* (sessionId: SessionSchema.ID, title: string) {
-			const changed = yield* sql<{ readonly id: string }>`
-				UPDATE session SET title = ${title}
-				WHERE id = ${sessionId} AND title = ${SessionSchema.DEFAULT_TITLE}
-				RETURNING id
-			`.pipe(Effect.orDie);
-			return changed.length > 0;
-		});
-
-		const encodeConfig = Schema.encodeEffect(Schema.fromJsonString(SessionSchema.Config));
-		const configure = Effect.fn("Session.configure")(function* (
-			sessionId: SessionSchema.ID,
-			config: SessionSchema.Config,
-		) {
-			const patch = yield* encodeConfig(config);
-			yield* sql`
-				UPDATE session SET config = json_patch(COALESCE(config, '{}'), ${patch})
-				WHERE id = ${sessionId}
-			`;
-		}, Effect.orDie);
-
-		const markRunning = Effect.fn("Session.markRunning")(function* (sessionId: SessionSchema.ID) {
-			yield* sql`UPDATE session SET execution = 'running' WHERE id = ${sessionId}`;
-		}, Effect.orDie);
-
-		const endExecution = Effect.fn("Session.endExecution")(function* (
-			sessionId: SessionSchema.ID,
-			end: "finished" | "stopped" | "closed",
-			stoppedAt?: number,
-		) {
-			if (end === "closed") {
-				yield* sql`UPDATE session SET execution = 'closed' WHERE id = ${sessionId}`;
-				return;
-			}
-			// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
-			// after it, since what was queued before it stays parked by the user's choice.
-			const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
-			yield* sql`
-				UPDATE session SET execution = NULL, restarts = 0
-				WHERE id = ${sessionId} AND NOT EXISTS (
-					SELECT 1 FROM session_input
-					WHERE session_id = ${sessionId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
-						AND admitted_seq > ${after}
-				)
-			`;
-		}, Effect.orDie);
-
-		const claimRestart = Effect.fn("Session.claimRestart")(function* (sessionId: SessionSchema.ID) {
-			const rows = yield* sql<{ restarts: number }>`
-				UPDATE session
-				SET restarts = restarts + (CASE WHEN execution = 'running' THEN 1 ELSE 0 END), execution = 'running'
-				WHERE id = ${sessionId} AND execution IS NOT NULL
-				RETURNING restarts
-			`;
-			return Option.fromUndefinedOr(rows[0]?.restarts);
-		}, Effect.orDie);
-
-		const resetRestarts = Effect.fn("Session.resetRestarts")(function* (sessionId: SessionSchema.ID) {
-			yield* sql`UPDATE session SET restarts = 0 WHERE id = ${sessionId} AND restarts > 0`;
-		}, Effect.orDie);
-
-		const findUnfinished = SqlSchema.findAll({
-			Request: Schema.Void,
-			Result: SessionRow,
-			execute: () => sql`SELECT * FROM session WHERE execution IS NOT NULL ORDER BY updated_at`,
-		});
-		const unfinished = findUnfinished(undefined).pipe(Effect.orDie, Effect.withSpan("Session.unfinished"));
-
 		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
 			const reject = (reason: RelinkReason) =>
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
 			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
+			if (input.threadId !== undefined) {
+				const thread = yield* threads.get(input.threadId);
+				if (Option.isNone(thread) || thread.value.sessionId !== input.sessionId) {
+					return yield* new Thread.ThreadNotFoundError({ threadId: input.threadId });
+				}
+			}
 			const target = yield* findSpaceById(input.spaceId).pipe(Effect.orDie);
 			if (Option.isNone(target)) return yield* reject("space_not_found");
 			if (target.value.status !== "active") return yield* reject("space_is_archived");
-			// Same-project guard. A missing current space means the FK invariant is
-			// already broken; there is nothing to compare, so the move is allowed.
-			const current = yield* findSpace(input.sessionId).pipe(Effect.orDie);
-			if (Option.isSome(current) && current.value.projectId !== target.value.projectId) {
+			// Same-project guard: the session's own space names the project every placement stays in.
+			const own = yield* findSpace(input.sessionId).pipe(Effect.orDie);
+			if (Option.isSome(own) && own.value.projectId !== target.value.projectId) {
 				return yield* reject("project_scope_mismatch");
 			}
+			const current =
+				input.threadId === undefined
+					? Option.map(own, (row) => ({ location: row.location, directory: session.value.directory }))
+					: Option.map(yield* placement(input.threadId), (one) => ({
+							location: one.space.location,
+							directory: one.directory,
+						}));
 			const directory =
 				input.directory ??
 				(Option.isSome(current)
-					? rebaseDirectory(current.value.location, target.value.location, session.value.directory)
+					? rebaseDirectory(current.value.location, target.value.location, current.value.directory)
 					: target.value.location);
 			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory_outside_space");
-			const now = yield* epochNow;
-			yield* sql`
-				UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now}
-				WHERE id = ${input.sessionId}
-			`.pipe(Effect.orDie);
+			if (input.threadId === undefined) {
+				const now = yield* epochNow;
+				yield* sql`
+					UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now}
+					WHERE id = ${input.sessionId}
+				`.pipe(Effect.orDie);
+			} else {
+				yield* events.publish(EventList.ThreadConfigured, {
+					timestamp: yield* DateTime.now,
+					sessionId: input.sessionId,
+					threadId: input.threadId,
+					change: { placement: { spaceId: input.spaceId, directory } },
+				});
+			}
 			const updated = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(updated)) return yield* Effect.die(new Error("session relink did not persist"));
 			return updated.value;
 		});
 
-		const branch = Effect.fn("Session.branch")(function* (input: { sessionId: string; entryId: string }) {
-			const moved = yield* sql
+		// The log has no foreign key to the session, so both go in one transaction.
+		const remove = Effect.fn("Session.delete")(function* (sessionId: SessionSchema.ID) {
+			return yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
-						const rows = yield* sql`
-							SELECT id FROM session_entry WHERE id = ${input.entryId} AND session_id = ${input.sessionId}
-						`;
-						if (rows.length === 0) return false;
-						const now = yield* epochNow;
-						yield* sql`
-							UPDATE session SET leaf_entry_id = ${input.entryId}, updated_at = ${now}
-							WHERE id = ${input.sessionId}
-						`;
-						return true;
+						const deleted = yield* sql`DELETE FROM session WHERE id = ${sessionId} RETURNING id`;
+						yield* sql`DELETE FROM sequence WHERE aggregate_id = ${sessionId}`;
+						return deleted.length > 0;
 					}),
 				)
 				.pipe(Effect.orDie);
-
-			if (!moved) {
-				return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId });
-			}
 		});
 
-		const setLabel = Effect.fn("Session.setLabel")(function* (input: {
-			sessionId: string;
-			entryId: string;
-			label: string | null;
-		}) {
-			const labeled = yield* sql
-				.withTransaction(
-					Effect.gen(function* () {
-						const rows = yield* sql`
-							SELECT id FROM session_entry WHERE id = ${input.entryId} AND session_id = ${input.sessionId}
-						`;
-						if (rows.length === 0) return false;
-						const now = yield* epochNow;
-						yield* sql`
-							UPDATE session_entry SET label = ${input.label}, updated_at = ${now}
-							WHERE id = ${input.entryId}
-						`;
-						return true;
-					}),
-				)
-				.pipe(Effect.orDie);
-
-			if (!labeled) {
-				return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId });
-			}
-		});
-
-		return Service.of({
-			create,
-			link,
-			retitle,
-			configure,
-			markRunning,
-			endExecution,
-			claimRestart,
-			resetRestarts,
-			unfinished,
-			get,
-			space,
-			project,
-			list,
-			entry,
-			path,
-			timeline,
-			unsettled,
-			append,
-			replaceAssistant,
-			settleToolCall,
-			setEntryState,
-			abortAssistant,
-			fork,
-			relink,
-			branch,
-			setLabel,
-		});
+		return Service.of({ create, projectCreated, link, get, space, placement, project, list, relink, delete: remove });
 	}),
 );
 
-// Sessions foreign-key to sandbox_instance, so the host row has to exist before
-// a session can record which namespace it runs in.
-// Plain database: the host has no row and the namespace foreign key is skipped
-// on NULL, so a session needs no sandbox setup to exist.
-export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer));
+/** The session store with the thread and document stores it is built on. */
+export const storeLayer = layer.pipe(Layer.provideMerge(Thread.layer), Layer.provideMerge(Document.layer));
 
 export * as Session from "./session.ts";

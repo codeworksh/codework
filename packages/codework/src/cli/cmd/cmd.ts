@@ -130,6 +130,10 @@ export const Cmd = Spec.make("codework", {
 					Flag.withDescription("Continue an existing session"),
 					Flag.optional,
 				),
+				thread: Flag.String("thread").pipe(
+					Flag.withDescription("Thread of --session to continue: a thread ID, or main (default)"),
+					Flag.optional,
+				),
 				cwd: Flag.String("cwd").pipe(
 					Flag.withAlias("C"),
 					Flag.withDescription("Working directory for a new session"),
@@ -171,6 +175,10 @@ export const Cmd = Spec.make("codework", {
 				{
 					command: 'codework run --session <id> --provider openai --model gpt-5.6-luna "Now fix them"',
 					description: "Continue a session with explicit model bindings",
+				},
+				{
+					command: 'codework run --session <id> --thread <thread-id> "Try OAuth instead"',
+					description: "Continue one of the session's threads",
 				},
 			],
 		}),

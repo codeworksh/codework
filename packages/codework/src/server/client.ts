@@ -24,7 +24,7 @@ export class ExecutionError extends Schema.TaggedError<ExecutionError>()("Client
 /**
  * Runs one prompt against a server and renders its output.
  *
- * Sessions are shared, so the stream carries other clients' work too and every
+ * Threads are shared, so the stream carries other clients' work too and every
  * terminal event has to be attributed before it is believed. A terminal that
  * arrives before our own prompt is promoted belongs to somebody else's drain:
  * it is remembered rather than raised, and forgotten the moment our prompt is
@@ -34,7 +34,7 @@ export class ExecutionError extends Schema.TaggedError<ExecutionError>()("Client
  */
 export const run = Effect.fn("Client.run")(function* <E, R>(
 	rpc: Client,
-	input: { sessionId: Session.SessionSchema.ID; text: string },
+	input: { sessionId: Session.SessionSchema.ID; threadId: Session.ThreadSchema.ID; text: string },
 	render: (event: EventSchema.Payload) => Effect.Effect<void, E, R>,
 ) {
 	const id = Session.SessionMessageSchema.ID.create();
@@ -65,7 +65,7 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 		Stream.mapEffect(
 			Effect.fnUntraced(function* (envelope) {
 				if (envelope.type === Envelope.Connected.type) {
-					yield* rpc["session.prompt"]({ ...input, id, delivery: "followUp" });
+					yield* rpc["thread.prompt"]({ ...input, id, delivery: "followUp" });
 					return;
 				}
 				const event = yield* Envelope.decode(envelope).pipe(
@@ -73,8 +73,8 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 				);
 				if (
 					event === undefined ||
-					!Predicate.hasProperty(event.data, "sessionId") ||
-					event.data.sessionId !== input.sessionId
+					!Predicate.hasProperty(event.data, "threadId") ||
+					event.data.threadId !== input.threadId
 				)
 					return;
 				if (Schema.is(EventList.PromptAdmitted)(event) && event.data.messageId === id) admitted = true;
@@ -113,8 +113,8 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 	// finish; only a prompt that never materialized ends the run early.
 	let abandoned = false;
 	const reconcile = Deferred.await(stalled).pipe(
-		Effect.andThen(rpc["session.wait"]({ sessionId: input.sessionId })),
-		Effect.andThen(rpc["session.message"]({ sessionId: input.sessionId, messageId: id })),
+		Effect.andThen(rpc["thread.wait"]({ sessionId: input.sessionId, threadId: input.threadId })),
+		Effect.andThen(rpc["thread.message"]({ sessionId: input.sessionId, threadId: input.threadId, messageId: id })),
 		Effect.andThen(({ found }) =>
 			found
 				? Effect.never

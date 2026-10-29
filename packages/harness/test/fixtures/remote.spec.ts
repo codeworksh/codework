@@ -12,6 +12,7 @@ import { SandboxIO } from "../../src/sandbox/io.ts";
 import { Sandbox } from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
+import { SessionLive } from "../../src/session/live.ts";
 import { Session } from "../../src/session/session.ts";
 import { Hash } from "../../src/util/hash.ts";
 
@@ -166,7 +167,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								),
 							);
 							const database = Database.layer(":memory:");
-							// Spaces are foreign-keyed to sandbox_instance, so the remote
+							// Spaces are foreign-keyed to sandbox, so the remote
 							// namespace has to be registered before anything claims to live
 							// in it — and before Location resolves the repo into a space.
 							const registered = Layer.effectDiscard(
@@ -182,7 +183,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 							const location = Location.layerMounted().pipe(Layer.provide(sandbox), Layer.provide(registered));
 							// provideMerge, not provide: `registered` and the block below
 							// share the one in-memory database.
-							const application = Layer.merge(location, Session.layer).pipe(
+							const application = Layer.merge(location, SessionLive.layer).pipe(
 								Layer.provideMerge(Event.layer),
 								Layer.provideMerge(database),
 							);
@@ -195,7 +196,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									directory: resolved.directory,
 									title: `${options.kind} integration`,
 								});
-								const space = Option.getOrThrow(yield* sessions.space(created.id));
+								const space = Option.getOrThrow(yield* sessions.space(created.session.id));
 								return {
 									space: {
 										location: resolved.space.location,

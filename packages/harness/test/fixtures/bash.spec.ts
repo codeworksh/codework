@@ -37,13 +37,13 @@ export const bashPluginSpec = (options: {
 				driver: options.driver.registered.name,
 				providerResourceId: yield* Effect.promise(options.resourceId),
 			});
-			const session = yield* Session.create({
+			const { main: session } = yield* Session.create({
 				sandbox,
 				directory: "/tmp",
 				model: { provider: "openai", id: "gpt-5.6-luna" },
 			});
 			yield* session.run(`Use bash exactly once to execute this command: ${command}\nReport its output verbatim.`);
-			const path = yield* session.path();
+			const path = yield* session.history();
 			const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 			expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 			const calls = messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));

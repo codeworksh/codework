@@ -5,7 +5,9 @@ import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { AbsolutePath, NonNegativeInt } from "../schema.ts";
 import { Prompt } from "../session/prompt/schema.ts";
+import { DocumentSchema } from "../document/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
+import { ThreadSchema } from "../thread/schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
@@ -21,21 +23,13 @@ const Metadata = Schema.Record(Schema.String, Schema.String);
 
 // Session entry discriminant. Frozen once shipped — values live in persisted
 // rows, so a rename is a data migration. Additions are code-only (the column is unconstrained TEXT).
-export const entryTypes = [
-	"user",
-	"assistant",
-	"synthetic",
-	"compaction",
-	"branchSummary",
-	"custom",
-	"configChange",
-] as const;
+export const entryTypes = ["user", "assistant", "synthetic", "system", "compaction", "reset", "custom"] as const;
 export type EntryType = (typeof entryTypes)[number];
 
 export const messageEntryTypes = ["user", "assistant", "synthetic"] as const;
 export type MessageEntryType = (typeof messageEntryTypes)[number];
 
-// Conversation visibility for one tree node. Non-assistant entries are born
+// Conversation visibility for one entry. Non-assistant entries are born
 // committed; an assistant alone moves draft -> committed | aborted.
 export const entryStates = ["draft", "committed", "aborted"] as const;
 export type EntryState = (typeof entryStates)[number];
@@ -51,13 +45,16 @@ export type PartType = (typeof partTypes)[number];
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
 
+export const inboxKinds = ["prompt"] as const;
+export type InboxKind = (typeof inboxKinds)[number];
+
 export const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
 
 const EventData = Schema.Record(Schema.String, Schema.Unknown);
 
-// Head of the event sequence
-export class EventSequenceRow extends Model.Class<EventSequenceRow>("EventSequenceRow")({
+// Head of one aggregate's log (aggregate = session), and who holds it.
+export class SequenceRow extends Model.Class<SequenceRow>("SequenceRow")({
 	aggregateId: Schema.String,
 	seq: Schema.Natural,
 	ownerId: Model.FieldOption(Schema.String),
@@ -124,40 +121,46 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	id: SessionSchema.IDFromDb,
 	// Project and env are derived through the space, never denormalised here.
 	spaceId: Schema.String,
-	parentId: Model.FieldOption(SessionSchema.IDFromDb),
 	slug: Schema.String,
-	// Absolute realpath of the session cwd; always equal to or under `space.location`.
+	// Absolute realpath of the sandbox cwd, the default of every thread; at or under `space.location`.
 	directory: AbsolutePath,
-	// The host directory anchor this session belongs to.
+	// Host anchor for settings and plugins. Absent = no project layer.
 	hostDir: Model.FieldOption(AbsolutePath),
-	// The model and thinking level chosen over settings; see `SessionSchema.Config`.
-	config: Model.FieldOption(Model.JsonFromString(SessionSchema.Config)),
-	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
-	// Durable leaf cursor: read anchor (path walks leaf→root) and append anchor
-	// (new entries attach here). Moved inside every append/branch transaction.
-	leafEntryId: Model.FieldOption(Schema.String),
-	// Session-lifetime billed usage, mirroring aikit Usage. Bumped in the
-	// assistant-append transaction; a cache — assistant envelopes are truth.
+	...Timestamps,
+}) {}
+
+// One linear transcript of a session. `origin*` is the flattened `ThreadSchema.Origin`.
+export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
+	id: ThreadSchema.IDFromDb,
+	sessionId: SessionSchema.IDFromDb,
+	originKind: ThreadSchema.OriginKind,
+	originThreadId: Model.FieldOption(ThreadSchema.IDFromDb),
+	originEntryId: Model.FieldOption(Schema.String),
+	originCallId: Model.FieldOption(Schema.String),
+	// Absent until the thread's first own prompt names it.
+	title: Model.FieldOption(Schema.String),
+	execution: Model.FieldOption(ThreadSchema.Execution),
+	restarts: Model.GeneratedByDb(Schema.Int),
+	// Billed usage of own entries only, never the inherited prefix. A cache: assistant envelopes are truth.
 	cost: Model.GeneratedByDb(Schema.Finite),
 	tokensInput: Model.GeneratedByDb(Schema.Int),
 	tokensOutput: Model.GeneratedByDb(Schema.Int),
 	tokensCacheRead: Model.GeneratedByDb(Schema.Int),
 	tokensCacheWrite: Model.GeneratedByDb(Schema.Int),
-	// The run left unfinished, and how often a dying process cut it off; see `SessionSchema.Execution`.
-	execution: Model.FieldOption(SessionSchema.Execution),
-	restarts: Model.GeneratedByDb(Schema.Int),
+	createdSeq: NonNegativeInt,
 	...Timestamps,
 }) {}
 
-// Durable input-queue record. admittedSeq is arrival order; promotedSeq is
-// nullable until Control delivers the input to the Loop, then records delivery
-// order. Neither sequence is related to session_entry.seq.
-export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputRow")({
+// Work addressed to one thread, from admission to delivery. `kind` + `data` is the flattened item;
+// pending = neither `promotedSeq` nor `cancelledSeq`.
+export class InboxRow extends Model.Class<InboxRow>("InboxRow")({
 	id: Schema.String,
 	sessionId: SessionSchema.IDFromDb,
-	prompt: Model.JsonFromString(Prompt), // normalized Prompt, stored as JSON
+	threadId: ThreadSchema.IDFromDb,
+	kind: Schema.Literals(inboxKinds),
+	data: Model.JsonFromString(Prompt),
 	delivery: Schema.Literals(inputDeliveries),
 	admittedSeq: Schema.Int,
 	promotedSeq: Model.FieldOption(Schema.Int),
@@ -165,41 +168,59 @@ export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputR
 	createdAt: Model.DateTimeInsertFromNumber,
 }) {}
 
-// One timeline/tree node. Identity, tree position, and type are immutable.
-// A draft assistant's `data` and `state` are filled in place by lifecycle
-// projectors; other payloads are immutable. For message types
-// (user/assistant/synthetic), `data` holds the aikit message envelope
-// (everything except `parts`); parts live in SessionEntryPartRow.
-export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryRow")({
+// One transcript record in one thread. Immutable except a draft assistant, whose `data` and
+// `state` are filled in place until it is committed or aborted. For message types
+// (user/assistant/synthetic), `data` holds the aikit envelope without `parts`.
+export class EntryRow extends Model.Class<EntryRow>("EntryRow")({
 	id: Schema.String,
 	sessionId: SessionSchema.IDFromDb,
-	parentId: Model.FieldOption(Schema.String), // tree edge; NULL = root
-	// Position in the session's durable log: the sequence of the event that
-	// produced this entry. Sparse — events that append nothing (a prompt
-	// admission, say) leave gaps. Forked entries carry their source positions,
-	// which is why the fork seeds the new aggregate above them.
+	threadId: ThreadSchema.IDFromDb,
+	// The creating event. Sparse: events that append nothing leave gaps.
 	seq: NonNegativeInt,
+	// The event that committed or aborted it; equals `seq` for entries never drafted. Absent while draft.
+	committedSeq: Model.FieldOption(NonNegativeInt),
 	type: Schema.Literals(entryTypes),
 	state: Schema.Literals(entryStates),
-	data: Schema.String, // JSON: full payload, or message envelope
-	label: Model.FieldOption(Schema.String), // annotation: bookmark text
-	metadata: Model.FieldOption(Model.JsonFromString(Metadata)), // annotation: engine scratch
+	data: Schema.String,
+	label: Model.FieldOption(Schema.String),
+	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	...Timestamps,
 }) {}
 
-// One aikit message part. `data` is the verbatim aikit part JSON and is
-// authoritative; `status`/`callId`/`toolName` are promoted copies for indexed
-// queries, written together with `data`. The only mutation is toolCall
-// settlement (data + status), bounded by turn.end.
-export class SessionEntryPartRow extends Model.Class<SessionEntryPartRow>("SessionEntryPartRow")({
+// One aikit message part. `data` is the verbatim aikit part JSON and is authoritative;
+// `status`/`callId`/`toolName` are promoted copies for indexed queries. The only mutation is
+// toolCall settlement (data + status), bounded by the turn's commit.
+export class EntryPartRow extends Model.Class<EntryPartRow>("EntryPartRow")({
 	id: Schema.String,
 	entryId: Schema.String,
-	sessionId: SessionSchema.IDFromDb, // denormalized for session-scoped queries
-	partIndex: Schema.Int, // dense 0..n-1 within the entry; the loop's addressing unit
+	// Not the session: restart recovery finds a thread's unsettled calls by index.
+	threadId: ThreadSchema.IDFromDb,
+	partIndex: Schema.Int,
 	type: Schema.Literals(partTypes),
-	status: Model.FieldOption(Schema.Literals(toolStatuses)), // toolCall only
-	callId: Model.FieldOption(Schema.String), // toolCall only
-	toolName: Model.FieldOption(Schema.String), // toolCall only
-	data: Schema.String, // verbatim aikit part JSON
+	status: Model.FieldOption(Schema.Literals(toolStatuses)),
+	callId: Model.FieldOption(Schema.String),
+	toolName: Model.FieldOption(Schema.String),
+	data: Schema.String,
 	...Timestamps,
+}) {}
+
+// JSON state owned by a session (no thread) or a thread. Every change is a revision.
+export class DocumentRow extends Model.Class<DocumentRow>("DocumentRow")({
+	id: DocumentSchema.ID,
+	sessionId: SessionSchema.IDFromDb,
+	threadId: Model.FieldOption(ThreadSchema.IDFromDb),
+	kind: Schema.String,
+	history: Model.FieldOption(DocumentSchema.History),
+	fork: Model.FieldOption(DocumentSchema.Fork),
+	createdSeq: NonNegativeInt,
+	// Set when retired; a new document of the same kind may then be created.
+	retiredSeq: Model.FieldOption(NonNegativeInt),
+}) {}
+
+// A document's full value at the seq of the event that wrote it. Older versions migrate on read.
+export class DocumentRevisionRow extends Model.Class<DocumentRevisionRow>("DocumentRevisionRow")({
+	documentId: DocumentSchema.ID,
+	seq: NonNegativeInt,
+	version: Schema.Int,
+	value: Model.JsonFromString(Schema.Record(Schema.String, Schema.Json)),
 }) {}

@@ -7,6 +7,7 @@ import {
 	PromptSchema,
 	Session,
 	SessionStore,
+	ThreadStore,
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
 import pkg from "../../package.json" with { type: "json" };
@@ -82,6 +83,7 @@ type Services = Layer.Success<ReturnType<typeof Harness.layer>>;
 export const make = Effect.gen(function* () {
 	const control = yield* Control.Service;
 	const sessions = yield* SessionStore.Service;
+	const threads = yield* ThreadStore.Service;
 	// Handlers run on the agent's fibers, outside this layer; they carry the harness with them.
 	const context = yield* Effect.context<Services>();
 
@@ -113,7 +115,7 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const handle = yield* Session.create({ directory: cwd, hostDir: cwd });
-						const current = yield* Session.configuration(handle.id);
+						const current = yield* Session.configuration(handle.main.id);
 						return { sessionId: handle.id, configOptions: yield* Config.options(current, cwd) };
 					}),
 				),
@@ -121,11 +123,12 @@ export const make = Effect.gen(function* () {
 			loadSession: ({ sessionId: id }) =>
 				run(
 					Effect.gen(function* () {
-						yield* Session.attach({ sessionId: sessionId(id) });
+						// An ACP session is a CodeWork session's main thread.
+						const main = yield* Session.attach({ sessionId: sessionId(id) });
 						const row = yield* found(id);
 						const hostDir = Option.getOrUndefined(row.hostDir);
-						const current = yield* Session.configuration(row.id);
-						for (const entry of yield* sessions.path(sessionId(id))) {
+						const current = yield* Session.configuration(main.id);
+						for (const entry of yield* main.history()) {
 							for (const update of Feed.replay(entry)) {
 								yield* client.sessionUpdate({ sessionId: id, update });
 							}
@@ -140,6 +143,11 @@ export const make = Effect.gen(function* () {
 						const rows = (yield* sessions.list())
 							.filter((row) => cwd == null || Option.getOrUndefined(row.hostDir) === cwd)
 							.sort((a, b) => DateTime.Order(b.updatedAt ?? b.createdAt, a.updatedAt ?? a.createdAt));
+						const titles = new Map<string, string>();
+						for (const thread of yield* threads.list()) {
+							if (thread.originKind === "main" && Option.isSome(thread.title))
+								titles.set(thread.sessionId, thread.title.value);
+						}
 						const offset = cursor == null ? 0 : Number(cursor);
 						if (!Number.isSafeInteger(offset) || offset < 0) {
 							return yield* Agent.RequestError.invalidParams(`Invalid cursor: ${cursor}`);
@@ -149,7 +157,7 @@ export const make = Effect.gen(function* () {
 							sessions: rows.slice(offset, next).map((row) => ({
 								sessionId: row.id,
 								cwd: Option.getOrElse(row.hostDir, () => row.directory),
-								title: row.title,
+								title: titles.get(row.id) ?? null,
 								updatedAt: DateTime.formatIso(row.updatedAt ?? row.createdAt),
 							})),
 							...(next < rows.length ? { nextCursor: String(next) } : {}),
@@ -177,7 +185,8 @@ export const make = Effect.gen(function* () {
 						} else {
 							return yield* Agent.RequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
-						return { configOptions: yield* Config.options(yield* Session.configuration(row.id), hostDir) };
+						const main = yield* Session.attach({ sessionId: row.id });
+						return { configOptions: yield* Config.options(yield* Session.configuration(main.id), hostDir) };
 					}),
 				),
 
@@ -185,10 +194,11 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const parts = yield* promptParts(prompt);
-						const handle = Option.getOrUndefined(yield* Session.get(sessionId(id)));
-						if (handle === undefined) {
+						const session = Option.getOrUndefined(yield* Session.get(sessionId(id)));
+						if (session === undefined) {
 							return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
 						}
+						const handle = session.main;
 						if (running.has(id)) {
 							return yield* Agent.RequestError.invalidRequest("A prompt is already running for this session");
 						}
@@ -221,9 +231,9 @@ export const make = Effect.gen(function* () {
 						yield* handle.run({ parts });
 						const end = yield* Fiber.join(settled);
 
-						// The harness titles a session from its first prompt; tell the editor.
+						// The harness titles a thread from its first prompt; tell the editor.
 						const { title } = yield* handle.info;
-						if (title !== before) {
+						if (title !== undefined && title !== before) {
 							yield* client
 								.sessionUpdate({ sessionId: id, update: { sessionUpdate: "session_info_update", title } })
 								.pipe(Effect.ignore);
@@ -235,7 +245,7 @@ export const make = Effect.gen(function* () {
 					}).pipe(Effect.scoped),
 				),
 
-			cancel: ({ sessionId: id }) => control.interrupt(sessionId(id), { reason: "user" }).pipe(Effect.asVoid),
+			cancel: ({ sessionId: id }) => control.interruptSession(sessionId(id), { reason: "user" }).pipe(Effect.asVoid),
 		};
 	};
 });

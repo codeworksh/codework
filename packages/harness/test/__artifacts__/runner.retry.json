@@ -1,6 +1,9 @@
 {
 	"events": [
 		{
+			"type": "session.created"
+		},
+		{
 			"type": "session.turn.started"
 		},
 		{

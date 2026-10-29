@@ -57,6 +57,7 @@ export interface ProgressEvent {
  */
 export interface HandleOptions<RProgress = never, EProgress = never> {
 	readonly sessionId?: ToolBefore["sessionId"];
+	readonly threadId?: ToolBefore["threadId"];
 	readonly messageId?: ToolBefore["messageId"];
 	readonly modelInput?: ToolCallContext["modelInput"];
 	/** Sliding-queue capacity for best-effort progress. Bounded default (64); tunable. */
@@ -344,13 +345,15 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 			};
 
 			const hasHooks = hooks.beforeToolCall !== undefined || hooks.afterToolCall !== undefined;
-			if (hasHooks && (options?.sessionId === undefined || options.messageId === undefined)) {
-				return yield* Effect.die(new Error("Hooked tools require sessionId and messageId"));
+			const owner =
+				options?.sessionId !== undefined && options.threadId !== undefined && options.messageId !== undefined
+					? { sessionId: options.sessionId, threadId: options.threadId, messageId: options.messageId }
+					: undefined;
+			if (hasHooks && owner === undefined) {
+				return yield* Effect.die(new Error("Hooked tools require sessionId, threadId and messageId"));
 			}
 			const hookCall: ToolBefore | undefined =
-				options?.sessionId !== undefined && options.messageId !== undefined
-					? { ...ctx, sessionId: options.sessionId, messageId: options.messageId, params: decoded.success }
-					: undefined;
+				owner === undefined ? undefined : { ...ctx, ...owner, params: decoded.success };
 			if (hooks.beforeToolCall && hookCall) {
 				const before = yield* invoke(() => hooks.beforeToolCall!(hookCall)).pipe(Effect.exit);
 				if (Exit.isFailure(before)) {

@@ -25,9 +25,12 @@ import type { Plugin } from "../plugin/plugin.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
 import { SandboxIO } from "../sandbox/io.ts";
+import { Document } from "../document/document.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
 import { Global } from "../global.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
@@ -53,7 +56,7 @@ export type ToolExecutionMode = "sequential" | "parallel";
  *
  * - `signal` -- `LLM.run` binds it to the scope that aborts the transport on
  *   interruption. A caller value would silently break cancellation.
- * - `sessionId` -- Loop owns it.
+ * - `sessionId` -- Loop owns it: the thread's id.
  * - `reasoning` -- this *is* the thinking level. Exposing it alongside
  *   `thinkingLevel` would be two spellings of one value, free to drift.
  * - `modelId` -- duplicates {@link Options.model}.
@@ -87,7 +90,7 @@ export interface Options extends RequestOptions {
  * fails before any provider request goes out.
  */
 export class SnapshotError extends Schema.TaggedError<SnapshotError>()("State.SnapshotError", {
-	sessionId: Schema.String,
+	threadId: Schema.String,
 	reason: Schema.String,
 	cause: Schema.Defect(),
 }) {
@@ -109,6 +112,7 @@ export class SnapshotError extends Schema.TaggedError<SnapshotError>()("State.Sn
  */
 export interface Snapshot {
 	readonly sessionId: SessionId;
+	readonly threadId: ThreadSchema.ID;
 	readonly sandbox: SandboxIO.Identity;
 	readonly location: Location.Info;
 	readonly systemPrompt: string;
@@ -160,22 +164,22 @@ export interface Interface {
 	 */
 	readonly reload: Effect.Effect<Reloaded>;
 	/**
-	 * The model and thinking level a session's next turn runs with: its runtime bindings over
-	 * its chosen `SessionSchema.Config` over the caller's options over settings, resolved the
-	 * way {@link snapshot} resolves them. The level is the one the model will actually run at.
+	 * The model and thinking level a thread's next turn runs with: its session's runtime bindings
+	 * over its `agent` document over the caller's options over settings, resolved the way
+	 * {@link snapshot} resolves them. The level is the one the model will actually run at.
 	 */
 	readonly configuration: (
-		sessionId: SessionId,
+		threadId: ThreadSchema.ID,
 	) => Effect.Effect<
 		Configuration,
 		Settings.SettingsError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
 	>;
 	/**
-	 * Capture runtime state for one turn. Called inside a session drain,
+	 * Capture runtime state for one request. Called inside a thread drain,
 	 * where the mount it reads is already open.
 	 */
 	readonly snapshot: (
-		sessionId: SessionId,
+		threadId: ThreadSchema.ID,
 	) => Effect.Effect<
 		Snapshot,
 		| SnapshotError
@@ -246,6 +250,8 @@ export const layer = (
 		Effect.gen(function* () {
 			const runtime = yield* SessionRuntime.Service;
 			const sessions = yield* SessionStore.Service;
+			const threads = yield* Thread.Service;
+			const documents = yield* Document.Service;
 			const settings = yield* Settings.Service;
 			const eventRegistry = yield* EventRegistry.Service;
 			const eventService = yield* Event.Service;
@@ -324,24 +330,32 @@ export const layer = (
 			for (const [id, origin] of (yield* Ref.get(pool)).origins) {
 				yield* updated(origin, id, "loaded");
 			}
-			const publishFailed = (cause: { readonly message: string }, sessionId?: SessionId) =>
+			const publishFailed = (
+				cause: { readonly message: string },
+				owner?: { readonly sessionId: SessionId; readonly threadId: ThreadSchema.ID },
+			) =>
 				eventService.publish(EventList.PluginUpdated, {
 					status: "failed",
 					error: cause.message,
 					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
-					...(sessionId === undefined ? {} : { sessionId }),
+					...owner,
 				});
-			/** Settings and composed configuration for a session's next turn. */
-			const configure = Effect.fnUntraced(function* (sessionId: SessionId) {
-				// Read per turn, not captured at creation, so `Session.link` takes effect at
+			/** Settings and composed configuration for a thread's next request. */
+			const configure = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
+				const thread = yield* threads.get(threadId);
+				// A thread is only drained or configured once it exists; its session is gone with it.
+				if (Option.isNone(thread)) return yield* Effect.die(`thread ${threadId} not found`);
+				const sessionId: SessionId = thread.value.sessionId;
+				// Read per request, not captured at creation, so `Session.link` takes effect at
 				// the next one. A session with none discovers no project layer: there is no
 				// fallback to the process's directory, which would hand it a stranger's project
 				// (it is a long-running server; one process serves sessions in many projects, or
 				// in none).
 				const session = Option.getOrUndefined(yield* sessions.get(sessionId));
 				const hostDir = session === undefined ? undefined : Option.getOrUndefined(session.hostDir);
-				// The chosen config survives restarts; runtime bindings, set in this process, sit over it.
-				const chosen = session === undefined ? {} : Option.getOrElse(session.config, () => ({}));
+				// The `agent` document survives restarts and is read once per request; runtime bindings,
+				// set in this process, sit over it.
+				const chosen = yield* documents.agent(threadId);
 				const sessionOptions = {
 					...(chosen.model === undefined ? {} : { provider: chosen.model.provider, model: chosen.model.id }),
 					...(chosen.thinkingLevel === undefined ? {} : { thinkingLevel: chosen.thinkingLevel }),
@@ -360,7 +374,12 @@ export const layer = (
 				// The chosen level stays as written. What runs, is stamped on the message and is shown is
 				// the nearest level this model supports, re-fitted whenever the model changes.
 				const thinkingLevel = Model.clampThinkingLevel(resolvedModel, composed.thinkingLevel);
-				return { hostDir, loadedSettings, configured: { ...composed, resolvedModel, thinkingLevel } };
+				return {
+					sessionId,
+					hostDir,
+					loadedSettings,
+					configured: { ...composed, resolvedModel, thinkingLevel },
+				};
 			});
 			return Service.of({
 				reload: Effect.gen(function* () {
@@ -386,16 +405,17 @@ export const layer = (
 					const [first] = failures.keys();
 					return first === undefined ? { plugins } : { plugins, failure: first };
 				}),
-				configuration: Effect.fn("State.configuration")(function* (sessionId: SessionId) {
-					const { configured } = yield* configure(sessionId);
+				configuration: Effect.fn("State.configuration")(function* (threadId: ThreadSchema.ID) {
+					const { configured } = yield* configure(threadId);
 					return {
 						provider: configured.provider,
 						model: configured.model,
 						thinkingLevel: configured.thinkingLevel,
 					} satisfies Configuration;
 				}),
-				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
-					const { hostDir, loadedSettings, configured } = yield* configure(sessionId);
+				snapshot: Effect.fn("State.snapshot")(function* (threadId: ThreadSchema.ID) {
+					const { sessionId, hostDir, loadedSettings, configured } = yield* configure(threadId);
+					const owner = { sessionId, threadId };
 					const {
 						promptCustom,
 						promptSystemAppend,
@@ -412,7 +432,7 @@ export const layer = (
 
 					const refs = references(loadedSettings);
 					const failed = (cause: { readonly message: string }) =>
-						new SnapshotError({ sessionId, reason: cause.message, cause });
+						new SnapshotError({ threadId, reason: cause.message, cause });
 
 					// Follow the store: load an entry whose bytes are already here, and move to a
 					// newer generation of one that is. Never a fetch -- `plugin install` stays the
@@ -424,7 +444,7 @@ export const layer = (
 						const target = yield* poolOf(root);
 						const current = yield* Ref.get(target);
 						const moved = yield* follow(refs, current, loadedSettings, root).pipe(
-							Effect.tapError((cause) => publishFailed(cause, sessionId)),
+							Effect.tapError((cause) => publishFailed(cause, owner)),
 						);
 						if (Option.isNone(moved)) return current;
 						return yield* activate(target, moved.value);
@@ -453,12 +473,13 @@ export const layer = (
 							reference,
 							error,
 							...(where === undefined ? {} : { file: where.file }),
-							sessionId,
+							...owner,
 						});
 					}
 
 					const contributions = yield* setup(chosen.selection, {
 						sessionId,
+						threadId,
 						sandbox,
 						paths: global,
 						location,
@@ -469,10 +490,11 @@ export const layer = (
 							...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
 							...(promptSystemAppend === undefined ? {} : { promptSystemAppend: resolver(promptSystemAppend) }),
 						},
-					}).pipe(Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })));
+					}).pipe(Effect.mapError((cause) => new SnapshotError({ threadId, reason: cause.message, cause })));
 
 					return {
 						sessionId,
+						threadId,
 						sandbox,
 						location,
 						...contributions,
