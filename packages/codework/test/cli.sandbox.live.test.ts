@@ -69,11 +69,11 @@ describe.each(DRIVERS)("created $driver sandbox through the CLI", (live) => {
 				const db = new DatabaseSync(database);
 				try {
 					const sandboxes = db
-						.prepare("SELECT driver, kind, ownership, status, provider_status, last_error FROM sandbox_instance")
+						.prepare("SELECT driver, kind, ownership, status, provider_status, last_error FROM sandbox")
 						.all()
 						.map((row) => ({ ...row }));
 					const bash = db
-						.prepare("SELECT status FROM session_entry_part WHERE type = 'toolCall' AND tool_name = 'bash'")
+						.prepare("SELECT status FROM part WHERE type = 'toolCall' AND tool_name = 'bash'")
 						.all()
 						.map((row) => String(row["status"]));
 					expect(bash).toContain("completed");
