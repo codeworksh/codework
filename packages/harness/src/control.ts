@@ -231,8 +231,17 @@ export const layer = Layer.effect(
 		});
 
 		const deleteSession = Effect.fn("Control.deleteSession")(function* (sessionId: SessionSchema.ID) {
+			const ids = (yield* threads.list(sessionId)).map((thread) => ThreadSchema.ID.make(thread.id));
 			yield* interruptSession(sessionId, { reason: "user", awaitSettlement: true });
-			return yield* sessions.delete(sessionId);
+			const deleted = yield* sessions.delete(sessionId);
+			// A prompt that woke a thread after the stop above runs on rows that are now gone; stop it too.
+			const running = yield* execution.active;
+			yield* Effect.forEach(
+				ids.filter((id) => running.has(id)),
+				(id) => interrupt(id, { reason: "user", awaitSettlement: true }),
+				{ concurrency: "unbounded", discard: true },
+			);
+			return deleted;
 		});
 
 		// Uninterruptible like `prompt`: a change to the steer lane that commits must also wake.

@@ -106,6 +106,13 @@ export default Runtime.handler(
 		if (Option.isSome(thread) && Option.isNone(session)) {
 			return yield* new InvalidInputError({ message: "--thread continues a thread of --session" });
 		}
+		if (
+			Option.isSome(thread) &&
+			thread.value !== Session.ThreadSchema.MAIN &&
+			!Schema.is(Session.ThreadSchema.ID)(thread.value)
+		) {
+			return yield* new InvalidInputError({ message: "--thread takes a thread ID (thr_…) or main" });
+		}
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}

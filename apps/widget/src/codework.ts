@@ -209,6 +209,7 @@ export type RuntimeConfig = typeof RuntimeConfig.Type;
  */
 export const CreateError = Schema.Union([
 	SessionNotFoundError,
+	Schema.TaggedStruct("ThreadNotFoundError", { threadId: Schema.String }),
 	Schema.TaggedStruct("SessionLinkedSpaceNotFoundError", { sessionId: Schema.String }),
 	Schema.TaggedStruct("RelinkError", { sessionId: Schema.String, reason: Schema.String }),
 	Schema.TaggedStruct("SandboxNotFoundError", { id: Schema.String }),

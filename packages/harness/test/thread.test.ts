@@ -589,7 +589,16 @@ describe("threads", () => {
 				`),
 			};
 			expect(Object.values(results).every((result) => result.includes("constraint failed"))).toBe(true);
-			yield* artifact("thread.constraints.json", results);
+			// Below the index: a seq under the thread's latest is refused before the insert.
+			const threads = yield* Thread.Service;
+			const stale = yield* threads
+				.append({ id: "entry_stale", threadId: main, seq: entry.seq - 1, type: "custom", data: "{}" })
+				.pipe(Effect.flip);
+			expect(stale._tag).toBe("InvalidEntryDataError");
+			yield* artifact("thread.constraints.json", {
+				...results,
+				staleSeq: stale._tag === "InvalidEntryDataError" ? stale.reason : stale._tag,
+			});
 		}),
 	);
 });

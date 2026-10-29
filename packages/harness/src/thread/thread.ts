@@ -640,6 +640,7 @@ export const layer = Layer.effect(
 				RETURNING id
 			`;
 			if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
+			yield* sql`UPDATE thread SET updated_at = ${now} WHERE id = ${input.threadId}`;
 		}, Effect.orDie);
 
 		const abort = Effect.fn("Thread.abort")(function* (input: EndAssistant & { readonly data: string }) {
@@ -705,7 +706,7 @@ export const layer = Layer.effect(
 			input: EventList.ThreadForked["data"],
 			seq: number,
 		) {
-			// Checked again inside the commit: the entry may have moved since the request was read.
+			// Checked again inside the commit: the session may have been deleted since the request was read.
 			const point = yield* findEntry(input.entryId).pipe(Effect.orDie);
 			if (
 				Option.isNone(point) ||

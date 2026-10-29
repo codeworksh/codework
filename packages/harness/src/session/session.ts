@@ -373,9 +373,11 @@ export const layer = Layer.effect(
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
 			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
-			const thread = input.threadId === undefined ? undefined : yield* threads.get(input.threadId);
-			if (thread !== undefined && (Option.isNone(thread) || thread.value.sessionId !== input.sessionId)) {
-				return yield* new Thread.ThreadNotFoundError({ threadId: input.threadId! });
+			if (input.threadId !== undefined) {
+				const thread = yield* threads.get(input.threadId);
+				if (Option.isNone(thread) || thread.value.sessionId !== input.sessionId) {
+					return yield* new Thread.ThreadNotFoundError({ threadId: input.threadId });
+				}
 			}
 			const target = yield* findSpaceById(input.spaceId).pipe(Effect.orDie);
 			if (Option.isNone(target)) return yield* reject("space_not_found");

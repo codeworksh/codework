@@ -304,11 +304,10 @@ export const layer = Contract.Api.toLayer(
 				return { updated };
 			}),
 			"thread.message": Effect.fnUntraced(function* ({ messageId, ...ref }) {
-				const threadId = yield* resolve(ref);
-				const found = yield* threads.entry(messageId);
-				// Scoped to the thread the caller named: an entry id is global, and a
-				// client should not learn about conversations it did not ask for.
-				return { found: Option.isSome(found) && found.value.entry.threadId === threadId };
+				// Scoped to the thread's line: an entry id is global, and a client should not learn
+				// about conversations it did not ask for. An inherited prompt is in the thread's.
+				const line = yield* threads.line(yield* resolve(ref));
+				return { found: line.some(({ entry }) => entry.id === messageId) };
 			}),
 			"thread.wait": Effect.fnUntraced(function* (ref) {
 				yield* control.wait(yield* resolve(ref));

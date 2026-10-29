@@ -126,7 +126,8 @@ export const layer = Layer.effect(
 				),
 			drain: Effect.fnUntraced(function* (threadId: ThreadId, force) {
 				const thread = yield* threads.get(threadId);
-				if (Option.isNone(thread)) return yield* new Thread.ThreadNotFoundError({ threadId });
+				// Deleted with its session after something woke it: nothing is left to run.
+				if (Option.isNone(thread)) return;
 				const sessionId = thread.value.sessionId;
 				const recovered = recovering.delete(threadId);
 				if (recovered && Option.isNone(thread.value.execution)) return;
