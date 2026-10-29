@@ -39,8 +39,11 @@ codework run "Inspect and fix the failing tests"
 # Create a session with explicit provider and model
 codework run --provider openai --model gpt-5.5 --thinking high "Plan database migration"
 
-# Continue an existing session
+# Continue an existing session (its main thread)
 codework run --session ses_01a070f0 "Now implement the migration script"
+
+# Continue one of its threads
+codework run --session ses_01a070f0 --thread thr_01a071c2 "Try it without the cache"
 
 # Run in an isolated sandbox (local, daytona, vercel, memory, sqldb)
 codework run --sandbox-driver daytona "Inspect repository"
@@ -51,6 +54,7 @@ codework run --sandbox-driver daytona --sandbox-provider-id <remote-id> "Continu
 
 - `--server <url>` — Connect to a running RPC server, e.g. `ws://127.0.0.1:7433/rpc/v1`.
 - `-s, --session <id>` — Continue an existing session.
+- `--thread <id>` — Thread of `--session` to continue: a thread ID, or `main` (default).
 - `-C, --cwd <path>` — Working directory for a new session.
 - `--sandbox-driver <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
 - `--sandbox-id <id>` — Reuse an existing sandbox instance; mutually exclusive with driver/provider coordinates.
@@ -60,6 +64,26 @@ codework run --sandbox-driver daytona --sandbox-provider-id <remote-id> "Continu
 - `--thinking <level>` — Reasoning effort the model uses before answering (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
 
 Global flags: `--user-config-dir`, `--home`, `--database`.
+
+---
+
+### `codework thread`
+
+A session holds one or more threads: its `main` thread, and the forks made from it. These commands talk to a running server (`--server`, default `http://127.0.0.1:7433`).
+
+```bash
+# List a session's threads with their model and usage
+codework thread list ses_01a070f0
+
+# Start a new thread through an entry, or just before a prompt to send it again
+codework thread fork ses_01a070f0 --at <entry-id>
+codework thread fork ses_01a070f0 --thread thr_01a071c2 --before <entry-id>
+
+# Move where one thread runs, leaving the rest of the session where it is
+codework session relink ses_01a070f0 --thread thr_01a071c2 -C ~/work/api
+```
+
+`thread fork` prints the new thread ID, then for `--before` the text of the prompt it left out. `--json` prints the wire form.
 
 ---
 
@@ -76,7 +100,7 @@ codework run --server ws://127.0.0.1:7433/rpc/v1 --sandbox-id <sandbox-id> "Star
 
 The default address is `127.0.0.1:7433`; `--port 0` picks an available port and prints the actual URL. Set `--home`, `--database`, and `--user-config-dir` on the server. Model credentials, plugins, and working directories are resolved by the server. A remote run does not boot a local harness.
 
-Events are live and not replayed. The client subscribes before admitting its prompt and waits for execution completion after rendering. Lost connections and overflow fail the command; disconnecting leaves server work running. Ctrl-C sends `session.interrupt`, which interrupts the shared session. Remote runs print the sandbox ID for reuse. `session.interrupt` returns `{ interrupted }` as soon as the stop is accepted; `session.wait` is the separate cleanup barrier. A busy period reports itself as `session.execution.started` followed by exactly one of `succeeded`, `failed`, or `interrupted` -- a failure carries a category (`provider-authentication-error`, `model-not-found-error`, `sandbox-mount-error`, ...) that the client renders, and an interruption carries whether it was the user or a server shutdown. Managed sandboxes remain available until explicitly stopped or server shutdown; external sandboxes are not stopped.
+Events are live and not replayed. The client subscribes before admitting its prompt and waits for execution completion after rendering. Lost connections and overflow fail the command; disconnecting leaves server work running. Ctrl-C sends `thread.interrupt`, which stops the thread the run prompted. Remote runs print the sandbox ID for reuse. `thread.interrupt` returns `{ interrupted }` as soon as the stop is accepted; `thread.wait` is the separate cleanup barrier, and `session.interrupt` stops every thread of a session. A busy period reports itself as `session.execution.started` followed by exactly one of `succeeded`, `failed`, or `interrupted` -- a failure carries a category (`provider-authentication-error`, `model-not-found-error`, `sandbox-mount-error`, ...) that the client renders, and an interruption carries whether it was the user or a server shutdown. Managed sandboxes remain available until explicitly stopped or server shutdown; external sandboxes are not stopped.
 
 The v0 endpoint has no authentication; its default binding is loopback. Plugins publish their own event types by declaring them (`Plugin.define({ events: [...] })`, namespaced `plugin.<plugin-id>.*`); the feed carries those and skips types nothing declared. Invalid payloads for declared types fail with a typed encoding error.
 

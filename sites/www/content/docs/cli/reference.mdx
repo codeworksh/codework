@@ -25,9 +25,6 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `codework plugin update [spec]` | Fetch newer revisions                                          |
 | `codework plugin reload`        | Re-import plugins in a running server                          |
 | `codework session link <id>`    | Anchor a session to a project folder, through a running server |
-| `codework session relink <id>`  | Move where a session, or one thread, runs                      |
-| `codework thread list <id>`     | List a session's threads, with model and usage                 |
-| `codework thread fork <id>`     | Start a new thread from an entry, with `--at` or `--before`    |
 | `codework tui`                  | Open the terminal UI, starting the background server if needed |
 | `codework service start`        | Start the background server and print its URL                  |
 | `codework service restart`      | Restart the background server and print its URL                |
@@ -41,7 +38,6 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | Flag                         | Description                                                                            |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `-s`, `--session <id>`       | Continue an existing session                                                           |
-| `--thread <id>`              | Thread of `--session` to continue (default `main`)                                     |
 | `-C`, `--cwd <path>`         | Working directory for a new session                                                    |
 | `--provider <id>`            | Model catalog provider ID                                                              |
 | `--model <id>`               | Model ID                                                                               |
