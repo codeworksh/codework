@@ -25,8 +25,9 @@ import { SandboxDriverRegistry } from "../../src/sandbox/registry.ts";
 import * as VercelSandboxDriver from "../../src/sandboxes/vercel/index.ts";
 import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
-import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
+import type { ThreadSchema } from "../../src/thread/schema.ts";
+import { Thread } from "../../src/thread/thread.ts";
 import { builtins } from "../../src/plugin/builtin.ts";
 import { State } from "../../src/state/state.ts";
 import { pooled } from "./pool.ts";
@@ -74,7 +75,7 @@ const inputStateFor = (sql: SqlClient.SqlClient) =>
 			SELECT
 				COUNT(*) AS count,
 				SUM(CASE WHEN promoted_seq IS NULL THEN 1 ELSE 0 END) AS pending
-			FROM session_input
+			FROM inbox
 			WHERE session_id = ${sessionId}
 		`,
 	});
@@ -91,9 +92,9 @@ const thinkingOf = (message: Message.UserMessage | Message.AssistantMessage): st
 		.join("\n")
 		.trim();
 
-const waitUntilIdle = (control: Control.Interface, sessionId: SessionSchema.ID) =>
+const waitUntilIdle = (control: Control.Interface, threadId: ThreadSchema.ID) =>
 	Effect.gen(function* () {
-		while ((yield* control.active).has(sessionId)) yield* Effect.sleep("10 millis");
+		while ((yield* control.active).has(threadId)) yield* Effect.sleep("10 millis");
 	}).pipe(Effect.timeout("10 seconds"));
 
 const historyPrompts = [
@@ -140,6 +141,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const context = yield* Context.Service;
 							const events = yield* Event.Service;
 							const sessions = yield* Session.Service;
+							const threads = yield* Thread.Service;
 							const sandboxes = yield* SandboxController.Controller;
 
 							const sandboxInstanceId = (yield* sandboxes.register({
@@ -149,7 +151,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							})).id;
 
 							const { spaceId, location } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
-							const session = yield* sessions.create({
+							const { session, thread } = yield* sessions.create({
 								spaceId,
 								directory: location,
 								title: "Live runner cycle",
@@ -186,13 +188,13 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							yield* Effect.addFinalizer(() => removeTerminalListener);
 
 							const readLastAssistant = Effect.fnUntraced(function* () {
-								const path = yield* sessions.path(session.id);
+								const path = yield* threads.line(thread.id);
 								const last = path.at(-1);
 								if (last === undefined)
-									return yield* Effect.die("session path is empty after an LLM terminal event");
+									return yield* Effect.die("thread line is empty after an LLM terminal event");
 								const message = yield* ContextCodec.decodeMessage(last);
 								if (message.role !== "assistant") {
-									return yield* Effect.die(`last session entry is ${message.role}, not assistant`);
+									return yield* Effect.die(`last thread entry is ${message.role}, not assistant`);
 								}
 								return message;
 							});
@@ -203,7 +205,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 									prompt: { parts: [{ type: "text", text: prompt }] },
 								});
 								const terminal = yield* Queue.take(terminals).pipe(Effect.timeout("75 seconds"));
-								yield* waitUntilIdle(control, session.id);
+								yield* waitUntilIdle(control, thread.id);
 								expect(terminal).toBe("ended");
 								return yield* readLastAssistant();
 							});
@@ -214,7 +216,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 								const thinking = thinkingOf(assistant);
 								if (thinking.length > 0) persistedThinking.push(thinking);
 								expect(textOf(assistant).length).toBeGreaterThan(0);
-								const path = yield* sessions.path(session.id);
+								const path = yield* threads.line(thread.id);
 								expect(path.map((item) => item.entry.type)).toEqual(
 									Array.from({ length: (index + 1) * 2 }, (_, position) =>
 										position % 2 === 0 ? "user" : "assistant",
@@ -254,12 +256,12 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 								prompt: { parts: [{ type: "text", text: storyPrompt }] },
 							});
 							const firstTextDelta = yield* Queue.take(textDeltas).pipe(Effect.timeout("75 seconds"));
-							yield* control.interrupt(session.id);
+							yield* control.interrupt(thread.id);
 							const interruptedTerminal = yield* Queue.take(terminals).pipe(Effect.timeout("10 seconds"));
 
 							expect(interruptedTerminal).toBe("failed");
 							expect(Array.from(yield* control.active)).toEqual([]);
-							const interruptedPath = yield* sessions.path(session.id);
+							const interruptedPath = yield* threads.line(thread.id);
 							expect(interruptedPath.map((item) => item.entry.type)).toEqual(
 								Array.from({ length: 12 }, (_, position) => (position % 2 === 0 ? "user" : "assistant")),
 							);
@@ -298,11 +300,11 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							expect(requests.at(-1)?.effort).toBe("none");
 							expect(requests.at(-1)?.headers).toMatchObject({ "x-settings-revision": "off" });
 
-							const finalPath = yield* sessions.path(session.id);
+							const finalPath = yield* threads.line(thread.id);
 							expect(finalPath.map((item) => item.entry.type)).toEqual(
 								Array.from({ length: 14 }, (_, position) => (position % 2 === 0 ? "user" : "assistant")),
 							);
-							const snapshot = yield* context.assemble(session.id);
+							const snapshot = yield* context.assemble(thread.id);
 							expect(snapshot.messages).toHaveLength(13);
 							expect(snapshot.messages.some((message) => message.messageId === aborted.messageId)).toBe(false);
 							expect(snapshot.messages[12]).toMatchObject({ role: "assistant", stopReason: "stop" });
@@ -310,7 +312,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const inputState = yield* inputStateFor(sql)(session.id);
 							expect(inputState).toEqual({ count: 7, pending: 0 });
 							const finalEventTypes = yield* eventTypesFor(sql)(session.id);
-							expect(finalEventTypes).toHaveLength(34);
+							expect(finalEventTypes).toHaveLength(35);
 							expect(finalEventTypes.at(-1)?.type).toBe("session.turn.ended.1");
 							yield* Effect.logInfo("live recovery response", {
 								turn: 7,

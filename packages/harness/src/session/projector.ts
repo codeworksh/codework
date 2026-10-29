@@ -207,7 +207,11 @@ export const layer = Layer.effectDiscard(
 
 		yield* events.project(EventList.TurnEnded, (event) =>
 			Effect.gen(function* () {
-				yield* threads.commit({ id: event.data.messageId, threadId: event.data.threadId, seq: yield* seqOf(event) });
+				yield* threads.commit({
+					id: event.data.messageId,
+					threadId: event.data.threadId,
+					seq: yield* seqOf(event),
+				});
 				yield* threads.resetRestarts(event.data.threadId);
 			}),
 		);

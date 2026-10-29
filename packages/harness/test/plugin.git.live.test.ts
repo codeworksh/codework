@@ -71,9 +71,9 @@ const exchange = (workspace: Workspace, open?: LLM.Open) => {
 	const contexts: Message.Context[] = [];
 	const turn = open ?? toolTurn();
 	return Effect.gen(function* () {
-		const session = yield* Session.create({ directory: workspace.root, hostDir: workspace.root });
+		const { main: session } = yield* Session.create({ directory: workspace.root, hostDir: workspace.root });
 		yield* session.run("hello");
-		return { contexts, path: yield* session.path() } as const;
+		return { contexts, path: yield* session.history() } as const;
 	}).pipe(
 		Effect.provide(
 			Harness.layer({

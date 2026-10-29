@@ -151,8 +151,8 @@ describe.each(cases)("loop retry against live $name", (live) => {
 								}),
 							);
 							const handle = yield* Session.create({ directory: root });
-							yield* handle.run("Reply with the single word: retried");
-							return { journal, fragments, path: yield* handle.path() };
+							yield* handle.main.run("Reply with the single word: retried");
+							return { journal, fragments, path: yield* handle.main.history() };
 						}).pipe(
 							Effect.provide(
 								Harness.layer({

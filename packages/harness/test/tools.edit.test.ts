@@ -241,9 +241,12 @@ const cases: ReadonlyArray<{ readonly name: string; readonly before: string | nu
 
 const editAll = (root: string, custom: string) =>
 	Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const { main: session } = yield* Session.create({
+			directory: root,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+		});
 		yield* session.run("Edit the files.");
-		const path = yield* session.path();
+		const path = yield* session.history();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));

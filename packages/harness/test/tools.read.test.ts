@@ -135,9 +135,12 @@ const cases: ReadonlyArray<{
 /** Every case as one turn of parallel `read` calls through plugin setup, the local mount, and durable settlement. */
 const readAll = (root: string, custom: string) =>
 	Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const { main: session } = yield* Session.create({
+			directory: root,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+		});
 		yield* session.run("Read the files.");
-		const path = yield* session.path();
+		const path = yield* session.history();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));

@@ -102,7 +102,7 @@ describe("read on a text-only model, then a model switch", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* Effect.promise(() => select(textOnly));
-					const handle = yield* Session.create({ directory: root });
+					const { main: handle } = yield* Session.create({ directory: root });
 					yield* handle.run("read the image");
 					yield* Effect.promise(() => select(vision));
 					yield* handle.run("what do you see now?");

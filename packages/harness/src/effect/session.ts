@@ -114,7 +114,7 @@ export interface ThreadInfo {
 	readonly id: ThreadSchema.ID;
 	readonly sessionId: SessionSchema.ID;
 	readonly origin: ThreadSchema.Origin;
-	/** Absent until its first own prompt; a fork shows its source's until then. */
+	/** Absent until its first own prompt; clients show a fork's source title until then. */
 	readonly title?: string;
 	/** Last activity, epoch milliseconds: every appended entry moves it. */
 	readonly updatedAt: number;
@@ -153,7 +153,10 @@ export interface ThreadHandle {
 	/** A new thread cut at a committed entry of this one's line; `text` refills the editor for `before`. */
 	readonly fork: (
 		input: ForkInput,
-	) => Effect.Effect<{ readonly thread: ThreadHandle; readonly text?: string }, Thread.ThreadNotFoundError | Thread.ForkError>;
+	) => Effect.Effect<
+		{ readonly thread: ThreadHandle; readonly text?: string },
+		Thread.ThreadNotFoundError | Thread.ForkError
+	>;
 	/** Live notifications of this thread. Use Event.log for durable replay. */
 	readonly events: () => Stream.Stream<EventSchema.Payload, Event.SubscriptionOverflowError>;
 	/** The thread's line: inherited entries through the fork point, then its own. */
@@ -166,7 +169,9 @@ export interface Handle {
 	/** The session's `main` thread, where unaddressed prompts go. */
 	readonly main: ThreadHandle;
 	/** One of the session's threads; `main` names the main one. */
-	readonly thread: (id: ThreadSchema.ID | typeof ThreadSchema.MAIN) => Effect.Effect<ThreadHandle, Thread.ThreadNotFoundError>;
+	readonly thread: (
+		id: ThreadSchema.ID | typeof ThreadSchema.MAIN,
+	) => Effect.Effect<ThreadHandle, Thread.ThreadNotFoundError>;
 	readonly threads: Effect.Effect<ReadonlyArray<ThreadHandle>>;
 	/** Stops every running thread and waits for their cleanup; false when none was running. */
 	readonly interrupt: () => Effect.Effect<boolean>;
@@ -220,7 +225,8 @@ export const info = Effect.fn("Session.info")(function* (id: SessionSchema.ID) {
 	const sandboxes = yield* SandboxController.Controller;
 	const found = yield* sessions.get(id);
 	const main = yield* threads.main(id);
-	if (Option.isNone(found) || Option.isNone(main)) return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
+	if (Option.isNone(found) || Option.isNone(main))
+		return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
 	const row = found.value;
 	// The env is the space's. A missing space or a destroyed env both read as
 	// "no sandbox": the handle stays readable; running it is the mount's call,
@@ -282,7 +288,12 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 
 const makeThread = Effect.fn("Session.makeThread")(function* (sessionId: SessionSchema.ID, id: ThreadSchema.ID) {
 	const context = yield* Effect.context<
-		SessionStore.Service | Thread.Service | Document.Service | Control.Service | Event.Service | SandboxController.Controller
+		| SessionStore.Service
+		| Thread.Service
+		| Document.Service
+		| Control.Service
+		| Event.Service
+		| SandboxController.Controller
 	>();
 	const threads = yield* Thread.Service;
 	const control = yield* Control.Service;
@@ -322,7 +333,12 @@ const makeThread = Effect.fn("Session.makeThread")(function* (sessionId: Session
 
 const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.ID) {
 	const context = yield* Effect.context<
-		SessionStore.Service | Thread.Service | Document.Service | Control.Service | Event.Service | SandboxController.Controller
+		| SessionStore.Service
+		| Thread.Service
+		| Document.Service
+		| Control.Service
+		| Event.Service
+		| SandboxController.Controller
 	>();
 	const threads = yield* Thread.Service;
 	const control = yield* Control.Service;
@@ -342,12 +358,10 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 				}
 				return yield* makeThread(id, threadId);
 			}).pipe(Effect.provideContext(context)),
-		threads: threads
-			.list(id)
-			.pipe(
-				Effect.flatMap((rows) => Effect.forEach(rows, (row) => makeThread(id, ThreadSchema.ID.make(row.id)))),
-				Effect.provideContext(context),
-			),
+		threads: threads.list(id).pipe(
+			Effect.flatMap((rows) => Effect.forEach(rows, (row) => makeThread(id, ThreadSchema.ID.make(row.id)))),
+			Effect.provideContext(context),
+		),
 		interrupt: () => control.interruptSession(id, { awaitSettlement: true }),
 	} satisfies Handle;
 });
@@ -441,7 +455,11 @@ export const relink = Effect.fn("Session.relink")(function* (input: RelinkInput)
 					? Option.flatMap(session, (row) => Option.map(own, (space) => ({ space, directory: row.directory })))
 					: yield* sessions.placement(input.threadId);
 			const rebased = Option.isSome(current)
-				? SessionStore.rebaseDirectory(current.value.space.location, location.space.location, current.value.directory)
+				? SessionStore.rebaseDirectory(
+						current.value.space.location,
+						location.space.location,
+						current.value.directory,
+					)
 				: undefined;
 			const fs = yield* SandboxIO.FileSystem;
 			const directory =

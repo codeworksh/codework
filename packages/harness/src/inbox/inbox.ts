@@ -440,9 +440,7 @@ export const make = Effect.gen(function* () {
 			Effect.map(
 				Option.filter(
 					(stored) =>
-						stored.threadId === threadId &&
-						stored.promotedSeq === undefined &&
-						stored.cancelledSeq === undefined,
+						stored.threadId === threadId && stored.promotedSeq === undefined && stored.cancelledSeq === undefined,
 				),
 			),
 		);

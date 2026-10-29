@@ -6,7 +6,7 @@ import { llm, Model, Message } from "@codeworksh/aikit";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { LLM } from "../src/runner/llm.ts";
-import { SessionSchema } from "../src/session/schema.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
 import { compose } from "../src/settings/resolve.ts";
 import { merge } from "../src/settings/merge.ts";
 import { defaults } from "../src/settings/schema.ts";
@@ -83,7 +83,7 @@ describe("settings at the LLM boundary", () => {
 			const events = await Effect.runPromise(
 				LLM.openWith({ authFile })(
 					{
-						sessionId: SessionSchema.ID.create(),
+						threadId: ThreadSchema.ID.create(),
 						provider: "openai-codex",
 						model: model.id,
 						resolvedModel: model,
@@ -160,7 +160,7 @@ describe("settings at the LLM boundary", () => {
 			const events = await Effect.runPromise(
 				LLM.openWith({ authFile })(
 					{
-						sessionId: SessionSchema.ID.create(),
+						threadId: ThreadSchema.ID.create(),
 						provider: "github-copilot",
 						model: model.id,
 						resolvedModel: model,
@@ -192,7 +192,7 @@ describe("settings at the LLM boundary", () => {
 			const fromEnv = await Effect.runPromise(
 				LLM.openWith({ authFile })(
 					{
-						sessionId: SessionSchema.ID.create(),
+						threadId: ThreadSchema.ID.create(),
 						provider: "github-copilot",
 						model: model.id,
 						resolvedModel: model,
@@ -229,7 +229,7 @@ describe("settings at the LLM boundary", () => {
 		expect(model).toBeDefined();
 		if (!model) return;
 		const input: LLM.Input = {
-			sessionId: SessionSchema.ID.create(),
+			threadId: ThreadSchema.ID.create(),
 			provider: "lmstudio",
 			model: model.id,
 			resolvedModel: model,
@@ -307,7 +307,7 @@ describe("settings at the LLM boundary", () => {
 		const events = await Effect.runPromise(
 			LLM.open(
 				{
-					sessionId: SessionSchema.ID.create(),
+					threadId: ThreadSchema.ID.create(),
 					provider: selection.provider,
 					model: selection.model,
 					resolvedModel: await Effect.runPromise(

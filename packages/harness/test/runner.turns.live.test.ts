@@ -96,11 +96,11 @@ describe.each(LIVE)("turn snapshots against live $name", (live) => {
 					const handle = yield* Session.create({ directory: root });
 					const runtime = yield* SessionRuntime.Service;
 					yield* runtime.update(handle.id, { onPayload });
-					yield* handle.run(
+					yield* handle.main.run(
 						"Call the first tool and follow its instruction. Then reply with exactly the two tokens " +
 							"the tools returned, separated by one space, and nothing else.",
 					);
-					const messages = yield* Effect.forEach(yield* handle.path(), ContextCodec.decodeMessage);
+					const messages = yield* Effect.forEach(yield* handle.main.history(), ContextCodec.decodeMessage);
 					const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
 					return {
 						calls: messages

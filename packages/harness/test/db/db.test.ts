@@ -49,7 +49,7 @@ const queries = (sql: SqlClient.SqlClient) => ({
 	}),
 });
 
-// Spaces are foreign-keyed to sandbox_instance, so a namespace has to exist
+// Spaces are foreign-keyed to sandbox, so a namespace has to exist
 // before anything can claim to live in it. Registering here keeps these tests
 // about the schema rather than about the Controller.
 const instanceId = (id: string) => SandboxInstance.ID.make(id);
@@ -81,6 +81,38 @@ const registerInstances = (...ids: ReadonlyArray<string>) =>
 	});
 
 describe("Database", () => {
+	describe("migrations", () => {
+		memoryIt(
+			"applies the one threads migration and creates its tables",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const applied = yield* sql<{ migrationId: number; name: string }>`
+					SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
+				`;
+				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual(["202610290001_threads"]);
+				const tables = yield* sql<{ name: string }>`
+					SELECT name FROM sqlite_master
+					WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'effect_sql_migrations'
+					ORDER BY name
+				`;
+				expect(tables.map((row) => row.name)).toEqual([
+					"document",
+					"entry",
+					"event",
+					"inbox",
+					"part",
+					"project",
+					"revision",
+					"sandbox",
+					"sequence",
+					"session",
+					"space",
+					"thread",
+				]);
+			}),
+		);
+	});
+
 	describe("models", () => {
 		it(
 			"enforces foreign keys, one row per place, and one primary per env",

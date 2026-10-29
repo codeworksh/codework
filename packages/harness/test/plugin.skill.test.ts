@@ -49,7 +49,7 @@ const prompt = async (input: {
 	});
 	await Effect.runPromise(
 		Effect.gen(function* () {
-			const session = yield* Session.create({ directory: input.directory });
+			const { main: session } = yield* Session.create({ directory: input.directory });
 			yield* session.run("hello");
 		}).pipe(
 			Effect.provide(
@@ -376,7 +376,7 @@ describe("codework.prompt.skill", () => {
 			const requests: Array<{ systemPrompt: string; messages: unknown }> = [];
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: dir });
+					const { main: session } = yield* Session.create({ directory: dir });
 					yield* session.run("extract report.pdf");
 				}).pipe(
 					Effect.provide(

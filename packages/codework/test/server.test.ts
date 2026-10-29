@@ -76,17 +76,27 @@ describe("server", () => {
 			expect(drivers.map(({ name }) => name)).toEqual(expect.arrayContaining(["memory", "sqldb"]));
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
-	it("session.create + session.info + session.list round-trip", () =>
+	it("session.create + thread.info + thread.list round-trip", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			expect(created.id.startsWith("ses")).toBe(true);
+			expect(created.session.id.startsWith("ses")).toBe(true);
+			expect(created.id.startsWith("thr")).toBe(true);
+			expect(created.session.mainThreadId).toBe(created.id);
+			expect(created.origin).toEqual({ kind: "main" });
+			expect(created.title).toBeUndefined();
 
-			const info = yield* rpc["session.info"]({ sessionId: created.id });
+			const info = yield* rpc["thread.info"]({ sessionId: created.session.id });
 			expect(info.id).toBe(created.id);
+			expect((yield* rpc["thread.info"]({ sessionId: created.session.id, threadId: created.id })).id).toBe(
+				created.id,
+			);
 
-			const listed = yield* rpc["session.list"]({});
+			const listed = yield* rpc["thread.list"]({});
 			expect(listed.some(({ id }) => id === created.id)).toBe(true);
+			expect((yield* rpc["thread.list"]({ sessionId: created.session.id })).map(({ id }) => id)).toEqual([
+				created.id,
+			]);
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
 	it("uses the harness hostCwd for a local session when the client omits directory", () => {
@@ -95,7 +105,7 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			expect(created.directory).toBe(hostCwd);
+			expect(created.session.directory).toBe(hostCwd);
 		}).pipe(Effect.scoped, Effect.provide(layer({ hostCwd })), Effect.runPromise);
 	});
 
@@ -108,13 +118,13 @@ describe("server", () => {
 			// Passed through as given. The client is the owner of this machine, so naming a host
 			// path is no more privilege than running `codework` in it.
 			const placed = yield* rpc["session.create"]({ hostDir: Session.AbsolutePath.make(root) });
-			expect(placed.hostDir).toBe(root);
-			expect((yield* rpc["session.info"]({ sessionId: placed.id })).hostDir).toBe(root);
+			expect(placed.session.hostDir).toBe(root);
+			expect((yield* rpc["thread.info"]({ sessionId: placed.session.id })).session.hostDir).toBe(root);
 
 			// And nothing fills it in: a session the client did not place has no host project,
 			// rather than quietly adopting the server's own startup directory.
 			const unplaced = yield* rpc["session.create"]({});
-			expect(unplaced.hostDir).toBeUndefined();
+			expect(unplaced.session.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
 	});
 
@@ -125,18 +135,18 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			expect(created.hostDir).toBeUndefined();
+			expect(created.session.hostDir).toBeUndefined();
 
 			const linked = yield* rpc["session.link"]({
-				sessionId: created.id,
+				sessionId: created.session.id,
 				hostDir: Session.AbsolutePath.make(root),
 			});
 			expect(linked.hostDir).toBe(root);
 			// Stored, not held in the call: a later reader sees it too.
-			expect((yield* rpc["session.info"]({ sessionId: created.id })).hostDir).toBe(root);
+			expect((yield* rpc["thread.info"]({ sessionId: created.session.id })).session.hostDir).toBe(root);
 
 			// Omitting the field clears the anchor, leaving the session with no host directory.
-			const cleared = yield* rpc["session.link"]({ sessionId: created.id });
+			const cleared = yield* rpc["session.link"]({ sessionId: created.session.id });
 			expect(cleared.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
 	});
@@ -150,15 +160,15 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			const failure = yield* linkedDirectory(created.id, Option.some(home)).pipe(Effect.flip);
+			const failure = yield* linkedDirectory(created.session.id, Option.some(home)).pipe(Effect.flip);
 			expect(failure).toMatchObject({ _tag: "SessionNotLinkedError", reason: "session-not-linked" });
 
 			// Linked, the same lookup answers with the directory.
 			yield* rpc["session.link"]({
-				sessionId: created.id,
+				sessionId: created.session.id,
 				hostDir: Session.AbsolutePath.make(realpathSync(home)),
 			});
-			expect(yield* linkedDirectory(created.id, Option.some(home))).toBe(realpathSync(home));
+			expect(yield* linkedDirectory(created.session.id, Option.some(home))).toBe(realpathSync(home));
 		}).pipe(
 			Effect.scoped,
 			// A file database, because the lookup opens its own connection the way the CLI does.
@@ -183,7 +193,7 @@ describe("server", () => {
 				 * it was fixed: `my-project` came back as `<the server's repository>/my-project`.
 				 */
 				yield* rpc["session.link"]({
-					sessionId: created.id,
+					sessionId: created.session.id,
 					// Deliberately bypass the client type to prove the wire decoder rejects malformed input.
 					hostDir: "my-project" as Session.AbsolutePath,
 				});
@@ -211,7 +221,7 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			yield* rpc["session.link"]({ sessionId: created.id, hostDir: Session.AbsolutePath.make(project) });
+			yield* rpc["session.link"]({ sessionId: created.session.id, hostDir: Session.AbsolutePath.make(project) });
 
 			/*
 			 * `--session` exists for a server or a UI acting on a session's behalf, so the shell's
@@ -224,7 +234,17 @@ describe("server", () => {
 			yield* Effect.promise(() =>
 				exec(
 					process.execPath,
-					["--conditions=development", cli, "plugin", "add", "./tool", "--session", created.id, "--home", home],
+					[
+						"--conditions=development",
+						cli,
+						"plugin",
+						"add",
+						"./tool",
+						"--session",
+						created.session.id,
+						"--home",
+						home,
+					],
 					{
 						cwd: elsewhere,
 					},
@@ -250,13 +270,21 @@ describe("server", () => {
 			expect(reloaded.failure).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
-	it("session.info fails with SessionNotFoundError for a bogus id", () =>
+	it("thread.info fails with SessionNotFoundError for a bogus session and ThreadNotFoundError for a bogus thread", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
-			const failure = yield* rpc["session.info"]({
+			const failure = yield* rpc["thread.info"]({
 				sessionId: Session.SessionSchema.ID.ascending("ses_nope"),
 			}).pipe(Effect.flip);
 			expect(failure._tag).toBe("SessionNotFoundError");
+
+			const other = yield* rpc["session.create"]({});
+			const created = yield* rpc["session.create"]({});
+			// A real thread of another session is still not this session's.
+			const foreign = yield* rpc["thread.info"]({ sessionId: created.session.id, threadId: other.id }).pipe(
+				Effect.flip,
+			);
+			expect(foreign._tag).toBe("ThreadNotFoundError");
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
 	it("session.create and session.relink report invalid directories", () => {
@@ -287,7 +315,7 @@ describe("server", () => {
 
 			const session = yield* rpc["session.create"]({ directory: root });
 			const relinkError = yield* rpc["session.relink"]({
-				sessionId: session.id,
+				sessionId: session.session.id,
 				directory: "missing",
 				sandbox: { id: sandbox.id },
 			}).pipe(Effect.flip);
@@ -309,13 +337,13 @@ describe("server", () => {
 			);
 
 			const session = yield* rpc["session.create"]({});
-			yield* rpc["session.prompt"]({ sessionId: session.id, text: "hello" });
+			yield* rpc["thread.prompt"]({ sessionId: session.session.id, text: "hello" });
 
 			const envelope = yield* Fiber.join(admitted).pipe(Effect.timeout("10 seconds"));
 			expect(Option.isSome(envelope)).toBe(true);
 			const decoded = yield* Envelope.decode(Option.getOrThrow(envelope));
 			expect(decoded.type).toBe(EventList.PromptAdmitted.type);
-			expect((decoded.data as { readonly sessionId?: string }).sessionId).toBe(session.id);
+			expect(decoded.data).toMatchObject({ sessionId: session.session.id, threadId: session.id });
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
 	it("skips plugin events while keeping the subscription alive", () =>
@@ -329,6 +357,7 @@ describe("server", () => {
 			});
 			yield* events.publish(EventList.ExecutionSucceeded, {
 				sessionId: Session.SessionSchema.ID.create(),
+				threadId: Session.ThreadSchema.ID.create(),
 				timestamp: yield* DateTime.now,
 			});
 			expect((yield* Queue.take(queue)).type).toBe(EventList.ExecutionSucceeded.type);
@@ -364,9 +393,9 @@ describe("server", () => {
 			const sandbox = yield* rpc["sandbox.create"]({ driver: "memory" });
 			const first = yield* rpc["session.create"]({ sandbox: { id: sandbox.id } });
 			const second = yield* rpc["session.create"]({ sandbox: { id: sandbox.id } });
-			expect(first.sandbox?.id).toBe(sandbox.id);
-			expect(second.sandbox?.id).toBe(sandbox.id);
-			const relinked = yield* rpc["session.relink"]({ sessionId: first.id, sandbox: { id: sandbox.id } });
+			expect(first.session.sandbox?.id).toBe(sandbox.id);
+			expect(second.session.sandbox?.id).toBe(sandbox.id);
+			const relinked = yield* rpc["session.relink"]({ sessionId: first.session.id, sandbox: { id: sandbox.id } });
 			expect(relinked.sandbox?.id).toBe(sandbox.id);
 			yield* rpc["session.relink"]({
 				sessionId: Session.SessionSchema.ID.create(),
@@ -404,7 +433,7 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const projectOf = (sessionId: Session.SessionSchema.ID) =>
-				rpc["session.info"]({ sessionId }).pipe(Effect.map((info) => info.project));
+				rpc["thread.info"]({ sessionId }).pipe(Effect.map((info) => info.session.project));
 			const nameOf = (sessionId: Session.SessionSchema.ID) =>
 				projectOf(sessionId).pipe(Effect.map((project) => project?.name));
 
@@ -433,8 +462,8 @@ describe("server", () => {
 			const shared = dir("shared");
 			const first = yield* rpc["session.create"]({ directory: shared, project: { name: "A" } });
 			const second = yield* rpc["session.create"]({ directory: shared, project: { name: "B" } });
-			const firstProject = yield* projectOf(first.id);
-			const secondProject = yield* projectOf(second.id);
+			const firstProject = yield* projectOf(first.session.id);
+			const secondProject = yield* projectOf(second.session.id);
 			expect(secondProject?.id).toBe(firstProject?.id);
 
 			// 5. Rename shows through every session of the project.
@@ -443,7 +472,7 @@ describe("server", () => {
 			expect(missing).toMatchObject({ _tag: "ProjectNotFoundError", projectId: "prj_missing" });
 
 			// 6. Invalid names are refused at the edge and create nothing.
-			const before = (yield* rpc["session.list"]({})).length;
+			const before = (yield* rpc["thread.list"]({})).length;
 			const outcome = (exit: Exit.Exit<unknown, unknown>) =>
 				Exit.isFailure(exit) && String(exit.cause).includes("Schema validation failed") ? "rejected" : String(exit);
 			const invalid: Record<string, { create: string; rename: string }> = {};
@@ -459,13 +488,13 @@ describe("server", () => {
 					rename: outcome(rename),
 				};
 			}
-			const after = (yield* rpc["session.list"]({})).length;
+			const after = (yield* rpc["thread.list"]({})).length;
 			expect(after).toBe(before);
 
 			const artifact = {
-				memory: { named: yield* nameOf(memoryNamed.id), unnamed: yield* nameOf(memoryUnnamed.id) },
-				folder: { named: yield* nameOf(folderNamed.id), unnamed: yield* nameOf(folderUnnamed.id) },
-				repo: { named: yield* nameOf(repoNamed.id), unnamed: yield* nameOf(repoUnnamed.id) },
+				memory: { named: yield* nameOf(memoryNamed.session.id), unnamed: yield* nameOf(memoryUnnamed.session.id) },
+				folder: { named: yield* nameOf(folderNamed.session.id), unnamed: yield* nameOf(folderUnnamed.session.id) },
+				repo: { named: yield* nameOf(repoNamed.session.id), unnamed: yield* nameOf(repoUnnamed.session.id) },
 				existing: {
 					first: firstProject?.name,
 					second: secondProject?.name,
@@ -473,8 +502,8 @@ describe("server", () => {
 				},
 				rename: {
 					result: { sameId: renamed.id === firstProject?.id, name: renamed.name },
-					first: yield* nameOf(first.id),
-					second: yield* nameOf(second.id),
+					first: yield* nameOf(first.session.id),
+					second: yield* nameOf(second.session.id),
 					missing: { _tag: missing._tag, projectId: missing.projectId },
 				},
 				invalid,
@@ -591,12 +620,12 @@ describe("server", () => {
 			);
 	});
 
-	it("session.message reports an unknown prompt as absent", () =>
+	it("thread.message reports an unknown prompt as absent", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const session = yield* rpc["session.create"]({});
-			const found = yield* rpc["session.message"]({
-				sessionId: session.id,
+			const found = yield* rpc["thread.message"]({
+				sessionId: session.session.id,
 				messageId: Session.SessionMessageSchema.ID.create(),
 			});
 			expect(found.found).toBe(false);
@@ -782,18 +811,18 @@ describe("WebSocket client", () => {
 			const session = yield* rpc["session.create"]({});
 
 			const linked = yield* Effect.promise(() =>
-				execCli(["session", "link", session.id, project, "--server", url], project),
+				execCli(["session", "link", session.session.id, project, "--server", url], project),
 			);
 			expect(linked.status).toBe(0);
-			expect(linked.stdout).toContain(`Linked ${session.id} to ${project}`);
-			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBe(project);
+			expect(linked.stdout).toContain(`Linked ${session.session.id} to ${project}`);
+			expect((yield* rpc["thread.info"]({ sessionId: session.session.id })).session.hostDir).toBe(project);
 
 			const unlinked = yield* Effect.promise(() =>
-				execCli(["session", "link", session.id, "--unlink", "--server", url], project),
+				execCli(["session", "link", session.session.id, "--unlink", "--server", url], project),
 			);
 			expect(unlinked.status).toBe(0);
-			expect(unlinked.stdout).toContain(`Unlinked ${session.id}`);
-			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBeUndefined();
+			expect(unlinked.stdout).toContain(`Unlinked ${session.session.id}`);
+			expect((yield* rpc["thread.info"]({ sessionId: session.session.id })).session.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("20 seconds"), Effect.runPromise);
 	});
 
@@ -834,27 +863,120 @@ describe("WebSocket client", () => {
 				Effect.sync(() => {
 					if (Schema.is(EventList.LLMTextDelta)(event)) text.push(event.data.delta);
 				});
-			yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, render);
-			yield* Client.run(rpc, { sessionId: session.id, text: "again" }, render);
+			const ref = { sessionId: session.session.id, threadId: session.id };
+			yield* Client.run(rpc, { ...ref, text: "hello" }, render);
+			yield* Client.run(rpc, { ...ref, text: "again" }, render);
 			expect(text).toEqual(["response 1", "response 2"]);
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
 
-	it("session.message finds a prompt that ran, scoped to its own session", () =>
+	it("thread.message finds a prompt that ran, scoped to its own thread", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;
 			const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
 			const messageId = Session.SessionMessageSchema.ID.create();
 
-			yield* rpc["session.prompt"]({ sessionId: session.id, text: "hello", id: messageId });
-			yield* rpc["session.wait"]({ sessionId: session.id });
+			yield* rpc["thread.prompt"]({ sessionId: session.session.id, text: "hello", id: messageId });
+			yield* rpc["thread.wait"]({ sessionId: session.session.id });
 
 			// This is the reconcile a client falls back on when the stream let it down.
-			expect((yield* rpc["session.message"]({ sessionId: session.id, messageId })).found).toBe(true);
+			expect((yield* rpc["thread.message"]({ sessionId: session.session.id, messageId })).found).toBe(true);
 
 			// Entry ids are global; the answer is not. Another session never sees it.
 			const other = yield* rpc["session.create"]({});
-			expect((yield* rpc["session.message"]({ sessionId: other.id, messageId })).found).toBe(false);
+			expect((yield* rpc["thread.message"]({ sessionId: other.session.id, messageId })).found).toBe(false);
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
+
+	it("forks a thread, runs both, and deletes the session with every thread", () =>
+		Effect.gen(function* () {
+			const rpc = yield* connectedClient;
+			const main = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
+			const sessionId = main.session.id;
+			const text = (event: EventSchema.Payload) =>
+				Schema.is(EventList.LLMTextDelta)(event) ? [event.data.delta] : [];
+			const replies: string[] = [];
+			const render = (event: EventSchema.Payload) => Effect.sync(() => replies.push(...text(event)));
+
+			yield* Client.run(rpc, { sessionId, threadId: main.id, text: "hello" }, render);
+			const assistant = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
+			if (assistant === undefined) return yield* Effect.die("main thread has no exchange");
+
+			const at = yield* rpc["thread.fork"]({ sessionId, entryId: assistant.id });
+			yield* Client.run(rpc, { sessionId, threadId: at.thread.id, text: "branch" }, render);
+			const branched = (yield* rpc["thread.history"]({ sessionId, threadId: at.thread.id })).entries.at(-2);
+			if (branched === undefined) return yield* Effect.die("fork has no exchange");
+			// Editing the fork's own prompt again: a fork of a fork, through the inherited line.
+			const before = yield* rpc["thread.fork"]({
+				sessionId,
+				threadId: at.thread.id,
+				entryId: branched.id,
+				mode: "before",
+			});
+
+			const labels = new Map<string, string>([
+				[sessionId, "<session>"],
+				[main.id, "<main>"],
+				[at.thread.id, "<at>"],
+				[before.thread.id, "<before>"],
+				[assistant.id, "<main reply>"],
+				[branched.id, "<branch prompt>"],
+			]);
+			const label = (id: string) => labels.get(id) ?? id;
+			const origin = (info: typeof main) =>
+				info.origin.kind === "fork"
+					? { kind: info.origin.kind, threadId: label(info.origin.threadId), entryId: label(info.origin.entryId) }
+					: info.origin;
+			const history = (threadId: Session.ThreadSchema.ID) =>
+				rpc["thread.history"]({ sessionId, threadId }).pipe(
+					Effect.map(({ entries }) =>
+						entries.map((entry) => ({
+							thread: label(entry.threadId),
+							role: entry.role,
+							state: entry.state,
+							text: entry.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+						})),
+					),
+				);
+			const listed = yield* rpc["thread.list"]({ sessionId });
+			const histories = {
+				main: yield* history(main.id),
+				at: yield* history(at.thread.id),
+				before: yield* history(before.thread.id),
+			};
+
+			const deleted = yield* rpc["session.delete"]({ sessionId });
+			const afterDelete = {
+				threads: (yield* rpc["thread.list"]({ sessionId })).length,
+				info: (yield* rpc["thread.info"]({ sessionId }).pipe(Effect.flip))._tag,
+				again: yield* rpc["session.delete"]({ sessionId }),
+			};
+
+			const artifact = {
+				replies,
+				fork: {
+					at: { origin: origin(at.thread), text: at.text, session: label(at.thread.session.id) },
+					before: { origin: origin(before.thread), text: before.text },
+				},
+				listed: listed
+					.map(({ id, origin, title }) => ({ id: label(id), kind: origin.kind, title }))
+					.sort((a, b) => a.id.localeCompare(b.id)),
+				histories,
+				deleted,
+				afterDelete,
+			};
+			expect(replies).toEqual(["response 1", "response 2"]);
+			expect(at.thread.origin).toEqual({ kind: "fork", threadId: main.id, entryId: assistant.id });
+			expect(before.text).toBe("branch");
+			expect(histories.at.map(({ thread }) => thread)).toEqual(["<main>", "<main>", "<at>", "<at>"]);
+			expect(histories.main).toHaveLength(2);
+			expect(histories.before).toEqual(histories.main);
+			expect(deleted).toEqual({ deleted: true });
+			expect(afterDelete).toEqual({ threads: 0, info: "SessionNotFoundError", again: { deleted: false } });
+			return artifact;
+		})
+			.pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/server.fork.json"),
+			));
 
 	it("does not adopt a failure that belongs to another client's prompt", () =>
 		Effect.gen(function* () {
@@ -873,8 +995,8 @@ describe("WebSocket client", () => {
 				expect((yield* Queue.take(queue)).type).toBe(Envelope.Connected.type);
 
 				// Someone else's prompt owns the drain, and it is going to fail.
-				yield* rpc["session.prompt"]({
-					sessionId: session.id,
+				yield* rpc["thread.prompt"]({
+					sessionId: session.session.id,
 					text: "theirs",
 					id: Session.SessionMessageSchema.ID.create(),
 				});
@@ -882,9 +1004,11 @@ describe("WebSocket client", () => {
 
 				// Ours is admitted while that drain is still running, so the failure
 				// lands after our admission but before our promotion.
-				const ours = yield* Client.run(rpc, { sessionId: session.id, text: "ours" }, () => Effect.void).pipe(
-					Effect.forkChild,
-				);
+				const ours = yield* Client.run(
+					rpc,
+					{ sessionId: session.session.id, threadId: session.id, text: "ours" },
+					() => Effect.void,
+				).pipe(Effect.forkChild);
 				let admissions = 0;
 				while (admissions < 2) {
 					if ((yield* Queue.take(queue)).type === EventList.PromptAdmitted.type) admissions += 1;
@@ -918,9 +1042,11 @@ describe("WebSocket client", () => {
 			const session = yield* rpc["session.create"]({
 				runtime: { model: { provider: "missing-test-provider", id: "missing-model" } },
 			});
-			const error = yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, () => Effect.void).pipe(
-				Effect.flip,
-			);
+			const error = yield* Client.run(
+				rpc,
+				{ sessionId: session.session.id, threadId: session.id, text: "hello" },
+				() => Effect.void,
+			).pipe(Effect.flip);
 			expect(error._tag).toBe("Client.ExecutionError");
 			expect(error.message).toContain("missing-test-provider");
 			// The category survives the wire, so a client can branch on it.
@@ -972,13 +1098,15 @@ describe("WebSocket client", () => {
 				const session = yield* rpc["session.create"]({
 					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
 				});
-				const running = yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, () => Effect.void).pipe(
-					Effect.forkChild,
-				);
+				const running = yield* Client.run(
+					rpc,
+					{ sessionId: session.session.id, threadId: session.id, text: "hello" },
+					() => Effect.void,
+				).pipe(Effect.forkChild);
 				yield* Deferred.await(entered);
 				yield* Fiber.interrupt(running);
 				yield* Deferred.succeed(release, undefined);
-				yield* rpc["session.wait"]({ sessionId: session.id });
+				yield* rpc["thread.wait"]({ sessionId: session.session.id });
 				expect(completed).toBe(true);
 			});
 			yield* program.pipe(
@@ -1005,20 +1133,21 @@ describe("WebSocket client", () => {
 				const session = yield* rpc["session.create"]({
 					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
 				});
-				const running = yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, () => Effect.void).pipe(
-					Effect.flip,
-					Effect.forkChild,
-				);
+				const running = yield* Client.run(
+					rpc,
+					{ sessionId: session.session.id, threadId: session.id, text: "hello" },
+					() => Effect.void,
+				).pipe(Effect.flip, Effect.forkChild);
 				yield* Deferred.await(entered);
-				expect((yield* rpc["session.interrupt"]({ sessionId: session.id })).interrupted).toBe(true);
+				expect((yield* rpc["session.interrupt"]({ sessionId: session.session.id })).interrupted).toBe(true);
 				const error = yield* Fiber.join(running);
 				expect(error._tag).toBe("Client.ExecutionError");
 				// Not Effect's internal "All fibers interrupted without error".
 				expect(error.message).toBe("Session interrupted");
 				// A user-requested stop, not the shutdown path.
 				if (error._tag === "Client.ExecutionError") expect(error.type).toBe("aborted");
-				yield* rpc["session.wait"]({ sessionId: session.id });
-				expect((yield* rpc["session.interrupt"]({ sessionId: session.id })).interrupted).toBe(false);
+				yield* rpc["thread.wait"]({ sessionId: session.session.id });
+				expect((yield* rpc["session.interrupt"]({ sessionId: session.session.id })).interrupted).toBe(false);
 			});
 			yield* program.pipe(
 				Effect.scoped,
@@ -1038,15 +1167,15 @@ describe("WebSocket client", () => {
 				const session = yield* rpc["session.create"]({
 					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
 				});
-				yield* rpc["session.prompt"]({ sessionId: session.id, text: "hello" });
+				yield* rpc["thread.prompt"]({ sessionId: session.session.id, text: "hello" });
 				yield* Deferred.await(entered);
 				expect(
-					(yield* rpc["session.interrupt"]({ sessionId: session.id }).pipe(Effect.timeout("1 second")))
+					(yield* rpc["session.interrupt"]({ sessionId: session.session.id }).pipe(Effect.timeout("1 second")))
 						.interrupted,
 				).toBe(true);
 				expect(cleaned).toBe(false);
 				yield* Deferred.succeed(release, undefined);
-				yield* rpc["session.wait"]({ sessionId: session.id });
+				yield* rpc["thread.wait"]({ sessionId: session.session.id });
 				expect(cleaned).toBe(true);
 			});
 			yield* program.pipe(

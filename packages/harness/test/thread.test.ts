@@ -129,7 +129,9 @@ const layer = () => {
 	const seeded = pooled([...builtins, findTool]);
 	return Control.layer.pipe(
 		Layer.provideMerge(
-			RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request: LLM.make(open) }).pipe(Layer.provide(Hooks.layer)))),
+			RunnerExecute.layer.pipe(
+				Layer.provide(Loop.layer({ request: LLM.make(open) }).pipe(Layer.provide(Hooks.layer))),
+			),
 		),
 		Layer.provideMerge(State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild)),
 		Layer.provideMerge(SessionRuntime.layer),
@@ -162,16 +164,30 @@ const createSession = Effect.gen(function* () {
 	return { sessionId: SessionSchema.ID.make(session.id), main: ThreadSchema.ID.make(thread.id) };
 });
 
-const configure = (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID, change: EventList.ThreadConfigured["data"]["change"]) =>
+const configure = (
+	sessionId: SessionSchema.ID,
+	threadId: ThreadSchema.ID,
+	change: EventList.ThreadConfigured["data"]["change"],
+) =>
 	Effect.gen(function* () {
 		const events = yield* Event.Service;
-		yield* events.publish(EventList.ThreadConfigured, { timestamp: yield* DateTime.now, sessionId, threadId, change });
+		yield* events.publish(EventList.ThreadConfigured, {
+			timestamp: yield* DateTime.now,
+			sessionId,
+			threadId,
+			change,
+		});
 	});
 
 const run = (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID, text: string) =>
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
-		return yield* control.run({ sessionId, threadId, prompt: PromptSchema.Prompt.fromText(text), delivery: "followUp" });
+		return yield* control.run({
+			sessionId,
+			threadId,
+			prompt: PromptSchema.Prompt.fromText(text),
+			delivery: "followUp",
+		});
 	});
 
 /** Ids in the order first seen, so artifacts read `T1`, `E3` rather than uuids. */
@@ -253,7 +269,9 @@ const failureOf = <A, E>(exit: Exit.Exit<A, E>) =>
 	Exit.isFailure(exit) ? Option.getOrUndefined(Exit.findErrorOption(exit)) : undefined;
 
 const artifact = (name: string, value: unknown) =>
-	Effect.promise(() => expect(`${JSON.stringify(value, null, "\t")}\n`).toMatchFileSnapshot(`./__artifacts__/${name}`));
+	Effect.promise(() =>
+		expect(`${JSON.stringify(value, null, "\t")}\n`).toMatchFileSnapshot(`./__artifacts__/${name}`),
+	);
 
 describe("threads", () => {
 	it(
@@ -276,7 +294,11 @@ describe("threads", () => {
 						change: { modelTools: { add: [...(current.modelTools?.add ?? []), name] } },
 					});
 				});
-			script.set(main, [{ _tag: "find" }, { _tag: "reply", text: "login added" }, { _tag: "reply", text: "tests added" }]);
+			script.set(main, [
+				{ _tag: "find" },
+				{ _tag: "reply", text: "login added" },
+				{ _tag: "reply", text: "tests added" },
+			]);
 			yield* run(sessionId, main, "Add login");
 			yield* run(sessionId, main, "Now add tests");
 
@@ -338,8 +360,12 @@ describe("threads", () => {
 			const before = yield* threads.fork({ threadId: main, entryId: e3!.entry.id, mode: "before" });
 			expect(before.thread.originEntryId).toEqual(Option.some(e2!.entry.id));
 			expect(before.text).toBe("second");
-			const firstOfMain = yield* threads.fork({ threadId: main, entryId: e1!.entry.id, mode: "before" }).pipe(Effect.exit);
-			const notUser = yield* threads.fork({ threadId: main, entryId: e4!.entry.id, mode: "before" }).pipe(Effect.exit);
+			const firstOfMain = yield* threads
+				.fork({ threadId: main, entryId: e1!.entry.id, mode: "before" })
+				.pipe(Effect.exit);
+			const notUser = yield* threads
+				.fork({ threadId: main, entryId: e4!.entry.id, mode: "before" })
+				.pipe(Effect.exit);
 			const elsewhere = yield* threads.fork({ threadId: main, entryId: "missing" }).pipe(Effect.exit);
 
 			// A draft is still changing: no fork of in-flight state.
@@ -404,15 +430,22 @@ describe("threads", () => {
 			yield* Effect.forEach([main, t2], (threadId) => control.wait(threadId));
 
 			const own = (threadId: ThreadSchema.ID) =>
-				threads.line(threadId).pipe(
-					Effect.map((line) =>
-						line
-							.filter(({ entry }) => entry.threadId === threadId)
-							.map(({ entry }) => `${entry.type} ${entry.state}`),
-					),
-				);
+				threads
+					.line(threadId)
+					.pipe(
+						Effect.map((line) =>
+							line
+								.filter(({ entry }) => entry.threadId === threadId)
+								.map(({ entry }) => `${entry.type} ${entry.state}`),
+						),
+					);
 			const result = { bothActive: true, main: yield* own(main), fork: yield* own(t2) };
-			expect(result.main).toEqual(["user committed", "assistant committed", "user committed", "assistant committed"]);
+			expect(result.main).toEqual([
+				"user committed",
+				"assistant committed",
+				"user committed",
+				"assistant committed",
+			]);
 			expect(result.fork).toEqual(["user committed", "assistant committed"]);
 			// Seqs interleave between the two runs, so the artifact holds per-thread facts only.
 			yield* artifact("thread.concurrent.json", result);
@@ -442,7 +475,10 @@ describe("threads", () => {
 			expect(last.roles).toEqual(["user", "user"]);
 			expect(last.texts.includes("before the reset")).toBe(false);
 			expect(last.texts.includes("keep the login work")).toBe(true);
-			yield* artifact("thread.reset.json", { context: { roles: last.roles, texts: last.texts }, ...(yield* snapshot(sessionId)) });
+			yield* artifact("thread.reset.json", {
+				context: { roles: last.roles, texts: last.texts },
+				...(yield* snapshot(sessionId)),
+			});
 		}),
 	);
 
@@ -517,7 +553,10 @@ describe("threads", () => {
 			const sql = yield* SqlClient.SqlClient;
 			const { sessionId, main } = yield* createSession;
 			yield* run(sessionId, main, "hello");
-			const entry = (yield* sql<{ seq: number; sessionId: string }>`SELECT * FROM entry WHERE thread_id = ${main}`)[0]!;
+			const entry = (yield* sql<{
+				seq: number;
+				sessionId: string;
+			}>`SELECT * FROM entry WHERE thread_id = ${main}`)[0]!;
 			const document = (yield* sql<{ id: string }>`SELECT id FROM document WHERE thread_id = ${main}`)[0]!;
 			const refused = (statement: Effect.Effect<unknown, unknown>) =>
 				statement.pipe(

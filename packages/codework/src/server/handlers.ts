@@ -237,7 +237,11 @@ export const layer = Contract.Api.toLayer(
 				return yield* threadInfo(threadId);
 			}),
 			"thread.fork": Effect.fnUntraced(function* ({ entryId, mode, ...ref }) {
-				const forked = yield* threads.fork({ threadId: yield* resolve(ref), entryId, ...(mode === undefined ? {} : { mode }) });
+				const forked = yield* threads.fork({
+					threadId: yield* resolve(ref),
+					entryId,
+					...(mode === undefined ? {} : { mode }),
+				});
 				return {
 					thread: yield* threadInfo(ThreadSchema.ID.make(forked.thread.id)),
 					...(forked.text === undefined ? {} : { text: forked.text }),

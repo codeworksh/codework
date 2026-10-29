@@ -85,7 +85,7 @@ describe("settings at turn boundaries", () => {
 						return terminal(input, index, index === 1);
 					});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(requestEntered);
 						yield* Effect.promise(() => file(custom, "medium"));
@@ -106,7 +106,7 @@ describe("settings at turn boundaries", () => {
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 						// A virtual sandbox uses the same host settings, without any virtual settings file.
 						const sandbox = yield* Sandbox.create({ driver: "memory" });
-						const virtual = yield* Session.create({ sandbox });
+						const { main: virtual } = yield* Session.create({ sandbox });
 						yield* virtual.run("virtual");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 					}).pipe(
@@ -192,7 +192,7 @@ describe("settings at turn boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.run("parallel, including continuation");
 						yield* handle.run("fresh sequential");
 						expect(starts).toEqual([2, 2, 2]);
@@ -250,7 +250,7 @@ describe("settings at turn boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						const events = yield* Event.Service;
 						yield* events.listen((event) =>
 							event.type === "session.llm.started"
@@ -289,7 +289,7 @@ describe("settings at turn boundaries", () => {
 			const open: LLM.Open = (input) => Effect.sync(() => (inputs.push(input), terminal(input, inputs.length)));
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const handle = yield* Session.create({ directory: root });
+					const { main: handle } = yield* Session.create({ directory: root });
 					const events = yield* Event.Service;
 					yield* events.listen((event) =>
 						Effect.sync(() => {
@@ -357,11 +357,11 @@ describe("settings at turn boundaries", () => {
 							return terminal(input, inputs.length, inputs.length === 1);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(toolEntered);
 						// A binding set during a tool batch must not disturb the turn already running.
-						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+						yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 						yield* Deferred.succeed(toolRelease, undefined);
 						yield* handle.wait();
 						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "max"]);
@@ -403,12 +403,12 @@ describe("settings at turn boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						// A chosen thinking level is saved with the session; the file is read afresh.
-						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+						yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 						yield* handle.run("first");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
-						return handle.id;
+						return handle.sessionId;
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					yield* Effect.promise(() => file(custom, "medium"));
@@ -439,16 +439,16 @@ describe("settings at turn boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.run("first");
 						// Lookup fails before promotion; the admitted prompt remains queued.
-						expect(yield* handle.path()).toEqual([]);
+						expect(yield* handle.history()).toEqual([]);
 						expect(inputs).toHaveLength(0);
 
 						yield* Effect.promise(() => select("openai", "gpt-5.6-luna"));
 						yield* handle.resume();
 						expect(inputs.at(-1)?.model).toBe("gpt-5.6-luna");
-						const answered = yield* handle.path();
+						const answered = yield* handle.history();
 						expect(answered.filter(({ entry }) => entry.type === "user")).toHaveLength(1);
 						expect(answered.at(-1)?.entry.type).toBe("assistant");
 						expect(answered.at(-1)?.entry.state).toBe("committed");
@@ -484,7 +484,7 @@ describe("settings at turn boundaries", () => {
 							return terminal(input, inputs.length);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 
 						yield* handle.run("with A");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("low");
@@ -543,12 +543,12 @@ describe("settings at turn boundaries", () => {
 			];
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const handle = yield* Session.create({ directory: root });
+					const { main: handle } = yield* Session.create({ directory: root });
 					const rows: Array<Record<string, unknown>> = [];
 					for (const [index, item] of cases.entries()) {
 						yield* Effect.promise(() => select(item));
 						yield* handle.run(`turn ${index}`);
-						const persisted = (yield* handle.path()).at(-1)?.entry;
+						const persisted = (yield* handle.history()).at(-1)?.entry;
 						const envelope: { readonly thinkingLevel?: string } = JSON.parse(persisted?.data ?? "{}");
 						rows.push({
 							requested: item.thinkingLevel ?? defaults.model.thinkingLevel,
@@ -562,7 +562,7 @@ describe("settings at turn boundaries", () => {
 						});
 					}
 					// A session's own choice is clamped the same way, and re-fitted on a model change.
-					yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+					yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-4o-mini" }));
 					const chosenOff = (yield* Session.configuration(handle.id)).thinkingLevel;
 					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-5.6-luna" }));

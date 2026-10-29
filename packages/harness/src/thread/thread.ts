@@ -334,10 +334,7 @@ export const layer = Layer.effect(
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
 		// entry.type says whether parts are expected; a mismatch is corruption, not an edge case.
-		const hydrate = (
-			entries: ReadonlyArray<EntryRow>,
-			parts: ReadonlyArray<EntryPartRow>,
-		): HydratedEntry[] => {
+		const hydrate = (entries: ReadonlyArray<EntryRow>, parts: ReadonlyArray<EntryPartRow>): HydratedEntry[] => {
 			const byEntry = new Map<string, EntryPartRow[]>();
 			for (const part of parts) {
 				const bucket = byEntry.get(part.entryId);
@@ -468,7 +465,9 @@ export const layer = Layer.effect(
 			// it as such, so it is validated at the write that could reject it.
 			for (const [index, part] of parts.entries()) {
 				yield* decodeJsonObject(part.data).pipe(
-					Effect.mapError((error) => invalid(`part ${index} ("${part.type}") is not a JSON object: ${error.message}`)),
+					Effect.mapError((error) =>
+						invalid(`part ${index} ("${part.type}") is not a JSON object: ${error.message}`),
+					),
 				);
 			}
 
@@ -731,7 +730,10 @@ export const layer = Layer.effect(
 				const owned =
 					policy === "asOf" ? yield* documents.find(input.originThreadId, document.kind) : Option.some(document);
 				if (Option.isNone(owned)) continue;
-				const value = policy === "asOf" ? yield* documents.asOf(owned.value.id, cut) : yield* documents.current(owned.value.id);
+				const value =
+					policy === "asOf"
+						? yield* documents.asOf(owned.value.id, cut)
+						: yield* documents.current(owned.value.id);
 				if (Option.isNone(value)) continue;
 				yield* documents.create({
 					sessionId: input.sessionId,

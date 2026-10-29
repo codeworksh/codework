@@ -439,7 +439,9 @@ export const session = defineBackend({
 					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
 				},
 			}).pipe(
-				Effect.flatMap((info) => prompt({ sessionId: info.session.id, messageId, text }).pipe(Effect.as(info.session.id))),
+				Effect.flatMap((info) =>
+					prompt({ sessionId: info.session.id, messageId, text }).pipe(Effect.as(info.session.id)),
+				),
 				Effect.map((sessionId): Created => ({ _tag: "Created", sessionId })),
 				Effect.catch((error) => Effect.succeed<Created>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((created) => encodeCreated(created).pipe(Effect.orDie)),

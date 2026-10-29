@@ -86,7 +86,7 @@ describe("a running session", () => {
 			const open = immediateOpen();
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: project, hostDir: project });
+					const { main: session } = yield* Session.create({ directory: project, hostDir: project });
 					// `prompt` admits, `resume` drains, `wait` blocks until the exchange is done --
 					// which this test needs, so the edit lands strictly between two of them.
 					yield* session.prompt({ text: "one", delivery: "followUp" });
@@ -261,7 +261,7 @@ describe("a running session and the store", () => {
 			const open = immediateOpen();
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: project, hostDir: project });
+					const { main: session } = yield* Session.create({ directory: project, hostDir: project });
 					yield* session.prompt({ text: "one", delivery: "followUp" });
 					yield* session.resume();
 					yield* session.wait();
@@ -338,7 +338,7 @@ describe("boot", () => {
 			const open = immediateOpen();
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: project, hostDir: project });
+					const { main: session } = yield* Session.create({ directory: project, hostDir: project });
 					yield* session.prompt({ text: "go", delivery: "followUp" });
 					yield* session.resume();
 					yield* session.wait();
@@ -396,7 +396,7 @@ describe("boot", () => {
 			const open = immediateOpen();
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: plain, hostDir: plain });
+					const { main: session } = yield* Session.create({ directory: plain, hostDir: plain });
 					yield* session.prompt({ text: "go", delivery: "followUp" });
 					yield* session.resume();
 					yield* session.wait();
@@ -450,7 +450,7 @@ describe("reload", () => {
 		const open = immediateOpen();
 		return Effect.runPromise(
 			Effect.gen(function* () {
-				const created = yield* Session.create({ directory: input.project, hostDir: input.project });
+				const { main: created } = yield* Session.create({ directory: input.project, hostDir: input.project });
 				const state = yield* State.Service;
 				const run = () =>
 					created
@@ -693,10 +693,10 @@ describe("linking a session to a host directory", () => {
 				Effect.gen(function* () {
 					// No host directory: this session has no project layer, which is a normal
 					// state rather than a missing value.
-					const created = yield* Session.create({ directory: project });
+					const { main: created } = yield* Session.create({ directory: project });
 					// The key is absent rather than undefined, which is exactly why callers get to
 					// ask the question by name instead of knowing that.
-					expect((yield* created.info).hasHostLink).toBe(false);
+					expect((yield* created.info).session.hasHostLink).toBe(false);
 
 					const run = () =>
 						created
@@ -704,8 +704,8 @@ describe("linking a session to a host directory", () => {
 							.pipe(Effect.andThen(created.resume()), Effect.andThen(created.wait()));
 					yield* run();
 
-					yield* Session.link({ sessionId: created.id, hostDir: project });
-					expect(yield* created.info).toMatchObject({ hostDir: project, hasHostLink: true });
+					yield* Session.link({ sessionId: created.sessionId, hostDir: project });
+					expect((yield* created.info).session).toMatchObject({ hostDir: project, hasHostLink: true });
 
 					// Settings are re-read every exchange, so the project layer simply starts
 					// being read -- and its plugin is local, so its bytes were always here.

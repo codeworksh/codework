@@ -219,7 +219,9 @@ export const layer = Layer.effect(
 			options?: { readonly reason?: SessionSchema.InterruptReason; readonly awaitSettlement?: boolean },
 		) {
 			const running = yield* execution.active;
-			const owned = (yield* threads.list(sessionId)).filter((thread) => running.has(ThreadSchema.ID.make(thread.id)));
+			const owned = (yield* threads.list(sessionId)).filter((thread) =>
+				running.has(ThreadSchema.ID.make(thread.id)),
+			);
 			const interrupted = yield* Effect.forEach(
 				owned,
 				(thread) => interrupt(ThreadSchema.ID.make(thread.id), options),

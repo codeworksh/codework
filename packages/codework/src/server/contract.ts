@@ -68,7 +68,7 @@ export const ThreadOrigin = Schema.Union([
 export const ThreadInfo = Schema.Struct({
 	id: ThreadSchema.ID,
 	origin: ThreadOrigin,
-	/** Absent until its first own prompt; a fork shows its source's until then. */
+	/** Absent until its first own prompt; clients show a fork's source title until then. */
 	title: optional(Schema.String),
 	/** Last activity, epoch milliseconds. */
 	updatedAt: Schema.Finite,

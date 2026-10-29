@@ -12,6 +12,7 @@ import { LLM } from "../src/runner/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { Session } from "../src/session/session.ts";
+import { Thread } from "../src/thread/thread.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
@@ -21,13 +22,13 @@ const setup = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
-	const session = yield* sessions.create({
+	const { session, thread } = yield* sessions.create({
 		spaceId,
 		directory: location,
 		title: "Provider live test",
 		tag: "test",
 	});
-	return { sql, sessions, sessionId: session.id };
+	return { sql, threads: yield* Thread.Service, sessionId: session.id, threadId: thread.id };
 });
 
 const context = (text: string): Message.Context => ({
@@ -55,7 +56,7 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 			 * persisted exactly when thinking streamed, and that holds on every attempt.
 			 */
 			const attempt = Effect.gen(function* () {
-				const { sql, sessions, sessionId } = yield* setup;
+				const { sql, threads, sessionId, threadId } = yield* setup;
 				const thinkingDeltas = yield* Ref.make(0);
 				// Attempts run one after another and each removes its listener when its run ends, so
 				// every delta counted here is this session's.
@@ -64,9 +65,9 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 						? Ref.update(thinkingDeltas, (count) => count + 1)
 						: Effect.void,
 				);
-				const publisher = yield* LLMEventPublisher.make({ sessionId });
+				const publisher = yield* LLMEventPublisher.make({ sessionId, threadId });
 				const terminal = yield* LLM.run({
-					sessionId,
+					threadId,
 					context: context(
 						"Solve carefully, showing no work: how many positive integers below 1000 are divisible by 3 or 5 but not by 15? Reply with the number and one short verification sentence.",
 					),
@@ -81,7 +82,7 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 				}).pipe(Effect.ensuring(removeListener));
 
 				expect(terminal.outcome).toBe("ended");
-				const path = yield* sessions.path(sessionId);
+				const path = yield* threads.line(threadId);
 				expect(path.map((item) => item.entry.type)).toEqual(["assistant"]);
 				const stored = yield* ContextCodec.decodeMessage(path[0]!);
 				if (stored.role !== "assistant")
@@ -103,7 +104,11 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 			expect(JSON.parse(path[0]!.entry.data)).toMatchObject({ stopReason: "stop" });
 			expect(path[0]!.parts.some((part) => part.type === "thinking")).toBe(true);
 			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${sessionId} ORDER BY seq`;
-			expect(durable.map((row) => row.type)).toEqual(["session.llm.started.1", "session.llm.ended.1"]);
+			expect(durable.map((row) => row.type)).toEqual([
+				"session.created.1",
+				"session.llm.started.1",
+				"session.llm.ended.1",
+			]);
 		}),
 		{ timeout: 540_000 },
 	);
@@ -111,7 +116,7 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 	liveIt(
 		"bridges Effect interruption to a partless aborted tombstone",
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { threads, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const streaming = yield* Deferred.make<"thinking" | "text">();
 			yield* events.listen((event) =>
@@ -122,9 +127,9 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 						: Effect.void,
 			);
 
-			const publisher = yield* LLMEventPublisher.make({ sessionId });
+			const publisher = yield* LLMEventPublisher.make({ sessionId, threadId });
 			const running = yield* LLM.run({
-				sessionId,
+				threadId,
 				context: context("List 200 distinct first names, one per line."),
 				provider: live.provider,
 				model: live.id,
@@ -138,7 +143,7 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 			const exit = yield* Fiber.await(running);
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual(["assistant"]);
 			expect(path[0]!.entry.state).toBe("aborted");
 			const stored = yield* ContextCodec.decodeMessage(path[0]!);

@@ -88,7 +88,9 @@ export const layer = Layer.effect(
 				reportLifecycle(
 					threadId,
 					(recovering.has(threadId) ? Effect.void : threads.markRunning(threadId)).pipe(
-						Effect.andThen(publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionStarted, base))),
+						Effect.andThen(
+							publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionStarted, base)),
+						),
 					),
 				),
 			// One terminal per busy period, covering every drain it coalesced.

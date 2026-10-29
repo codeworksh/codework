@@ -53,9 +53,9 @@ describe("plugins built against another Effect instance", () => {
 			const contexts: Message.Context[] = [];
 			const { path } = await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.run("hello");
-					return { path: yield* session.path() } as const;
+					return { path: yield* session.history() } as const;
 				}).pipe(
 					Effect.provide(
 						Harness.layer({

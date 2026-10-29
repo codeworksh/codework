@@ -53,9 +53,12 @@ describe.each(direct)("search tools against live $name", (live) => {
 			}
 
 			const { calls, reply } = await Effect.gen(function* () {
-				const session = yield* Session.create({ directory: work, model: { provider: live.provider, id: live.id } });
+				const { main: session } = yield* Session.create({
+					directory: work,
+					model: { provider: live.provider, id: live.id },
+				});
 				yield* session.run(PROMPT);
-				const path = yield* session.path();
+				const path = yield* session.history();
 				const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 				const parts = messages.flatMap((message) => message.parts);
 				const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
