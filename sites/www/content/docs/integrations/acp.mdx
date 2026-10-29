@@ -33,6 +33,7 @@ You don't normally run this yourself. You tell your editor to run it, as in the 
 3. `session/prompt`: CodeWork streams its answer, reasoning, and tool calls back as `session/update` notifications, then returns a stop reason.
 4. `session/cancel`: interrupts the running prompt.
 5. `session/list` and `session/load`: list past sessions for the folder and reopen one, replaying its full history.
+6. `session/fork`: starts a new thread from the conversation so far.
 
 When the editor closes the connection, CodeWork interrupts anything still running and stops any sandboxes it manages.
 
@@ -48,7 +49,7 @@ Or pass an API key in the environment the editor launches CodeWork with, such as
 
 ## Sessions and Configuration
 
-ACP sessions are regular CodeWork sessions, stored in the same database as the ones you start with `codework run`. Your editor's history and the CLI see the same sessions.
+ACP sessions are regular CodeWork sessions, stored in the same database as the ones you start with `codework run`. Your editor's history and the CLI see the same sessions. Each thread of a session, a fork included, is an ACP session of its own.
 
 Each session exposes two selectors the editor shows as pickers:
 

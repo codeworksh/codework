@@ -64,6 +64,17 @@ export const ThreadOrigin = Schema.Union([
 	}),
 ]);
 
+/** Billed usage of a thread's own entries; what it inherits through a fork point counts for its source. */
+export const ThreadUsage = Schema.Struct({
+	/** Total cost in the provider's currency units. */
+	cost: Schema.Finite,
+	input: Schema.Int,
+	output: Schema.Int,
+	cacheRead: Schema.Int,
+	cacheWrite: Schema.Int,
+});
+export type ThreadUsage = typeof ThreadUsage.Type;
+
 /** One linear transcript of a session, with the session embedded. */
 export const ThreadInfo = Schema.Struct({
 	id: ThreadSchema.ID,
@@ -80,6 +91,7 @@ export const ThreadInfo = Schema.Struct({
 	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
 	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
 	parked: optional(Schema.Boolean),
+	usage: ThreadUsage,
 	session: SessionInfo,
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
@@ -333,6 +345,8 @@ export const Api = RpcGroup.make(
 	/**
 	 * Moves where the work happens. Without `threadId`, the session's default space and directory,
 	 * which every thread without its own placement follows; with it, that thread's placement only.
+	 * Answers with the addressed thread (`main` when absent): its `placement` and embedded session
+	 * show where it now runs.
 	 */
 	Rpc.make("session.relink", {
 		payload: {
@@ -341,7 +355,7 @@ export const Api = RpcGroup.make(
 			sandbox: optional(SandboxRef),
 			directory: optional(Schema.String),
 		},
-		success: SessionInfo,
+		success: ThreadInfo,
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
 	}),
 	/** Stops every thread, then removes the session with its log. `deleted` is false when it did not exist. */
@@ -362,9 +376,15 @@ export const Api = RpcGroup.make(
 	 * Ephemeral events (text and tool progress deltas) are never stored, so they are not here;
 	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
 	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
+	 * With `threadId`, only that thread's events; the marker still names the session's head.
 	 */
 	Rpc.make("session.log", {
-		payload: { sessionId: Session.SessionSchema.ID, after: optional(Schema.Int), follow: optional(Schema.Boolean) },
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: optional(ThreadSchema.ID),
+			after: optional(Schema.Int),
+			follow: optional(Schema.Boolean),
+		},
 		success: Schema.Union([EventEnvelope, LogSynced]),
 		error: Schema.Union([SessionStore.SessionNotFoundError, EncodingError]),
 		stream: true,
@@ -502,8 +522,12 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: SandboxErrors,
 	}),
+	/**
+	 * Every event the server publishes, live, after a `server.connected` frame. With `threadId`,
+	 * only the events naming that thread; the frame still comes first.
+	 */
 	Rpc.make("event.subscribe", {
-		payload: {},
+		payload: { threadId: optional(ThreadSchema.ID) },
 		success: EventEnvelope,
 		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,

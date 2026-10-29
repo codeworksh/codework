@@ -64,6 +64,7 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
 	...(info.parked ? { parked: true } : {}),
+	usage: info.usage,
 	session: toSessionInfo(info.session),
 });
 
@@ -188,7 +189,8 @@ export const layer = Contract.Api.toLayer(
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...(directory === undefined ? {} : { directory }),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
-				return toSessionInfo(yield* handle.info);
+				const thread = yield* handle.thread(threadId ?? ThreadSchema.MAIN);
+				return toThreadInfo(yield* thread.info);
 			}),
 			"session.delete": Effect.fnUntraced(function* ({ sessionId }) {
 				return { deleted: yield* Session.remove(sessionId) };
@@ -198,7 +200,7 @@ export const layer = Contract.Api.toLayer(
 				// uses `thread.wait` when it needs cleanup to have finished.
 				return { interrupted: yield* control.interruptSession(sessionId, { reason: "user" }) };
 			}),
-			"session.log": ({ sessionId, after, follow }) =>
+			"session.log": ({ sessionId, threadId, after, follow }) =>
 				Stream.unwrap(
 					Effect.gen(function* () {
 						if (Option.isNone(yield* sessions.get(sessionId))) {
@@ -210,7 +212,13 @@ export const layer = Contract.Api.toLayer(
 								follow: follow ?? false,
 								...(after === undefined ? {} : { after }),
 							})
-							.pipe(Stream.mapEffect(toLogItem(registry.get)));
+							.pipe(
+								Stream.filter(
+									(item) =>
+										threadId === undefined || Event.isSynced(item) || Envelope.ofThread(threadId)(item),
+								),
+								Stream.mapEffect(toLogItem(registry.get)),
+							);
 					}),
 				),
 			"thread.list": Effect.fnUntraced(function* ({ sessionId }) {
@@ -331,12 +339,14 @@ export const layer = Contract.Api.toLayer(
 			// Acquiring the feed subscription is the readiness barrier: `server.connected`
 			// is only emitted once this client is registered, so a prompt admitted after
 			// it cannot land in the gap.
-			"event.subscribe": () =>
+			"event.subscribe": ({ threadId }) =>
 				Stream.unwrap(
 					feed.subscribe.pipe(
 						Effect.map((events) =>
 							Stream.make({ id: EventSchema.ID.create(), type: Envelope.Connected.type, data: {} }).pipe(
-								Stream.concat(events),
+								Stream.concat(
+									threadId === undefined ? events : events.pipe(Stream.filter(Envelope.ofThread(threadId))),
+								),
 							),
 						),
 					),

@@ -396,7 +396,7 @@ describe("server", () => {
 			expect(first.session.sandbox?.id).toBe(sandbox.id);
 			expect(second.session.sandbox?.id).toBe(sandbox.id);
 			const relinked = yield* rpc["session.relink"]({ sessionId: first.session.id, sandbox: { id: sandbox.id } });
-			expect(relinked.sandbox?.id).toBe(sandbox.id);
+			expect(relinked.session.sandbox?.id).toBe(sandbox.id);
 			yield* rpc["session.relink"]({
 				sessionId: Session.SessionSchema.ID.create(),
 				sandbox: { id: sandbox.id },
@@ -648,6 +648,17 @@ const connectedClient = Effect.gen(function* () {
 	const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${server.address.port}/rpc/v1`));
 	return yield* Client.make.pipe(Effect.provideContext(context));
 });
+
+/** Two checkouts of one project, each with `packages/x`: a session can move between them. */
+const clones = async (root: string) => {
+	const checkouts = [join(root, "clone-a"), join(root, "clone-b")] as const;
+	for (const dir of checkouts) {
+		mkdirSync(join(dir, "packages", "x"), { recursive: true });
+		await exec("git", ["init", "-q", "-b", "main"], { cwd: dir });
+		await exec("git", ["remote", "add", "origin", "git@example.com:org/threads.git"], { cwd: dir });
+	}
+	return checkouts;
+};
 
 describe("WebSocket client", () => {
 	it("stores OpenAI Codex credentials explicitly over RPC", () =>
@@ -1052,6 +1063,203 @@ describe("WebSocket client", () => {
 			// The category survives the wire, so a client can branch on it.
 			if (error._tag === "Client.ExecutionError") expect(error.type).toBe("model-not-found-error");
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
+
+	it("reports per-thread usage, follows one thread's events, and relinks one thread", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-threads-")));
+		homes.push(root);
+		return Effect.gen(function* () {
+			const [a, b] = yield* Effect.promise(() => clones(root));
+			const rpc = yield* connectedClient;
+			const main = yield* rpc["session.create"]({
+				directory: join(a, "packages", "x"),
+				runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
+			});
+			const sessionId = main.session.id;
+			const quiet = () => Effect.void;
+			yield* Client.run(rpc, { sessionId, threadId: main.id, text: "hello" }, quiet);
+			const reply = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
+			if (reply === undefined) return yield* Effect.die("main thread has no reply");
+			const fork = (yield* rpc["thread.fork"]({ sessionId, entryId: reply.id })).thread;
+
+			// Subscribed to the fork alone while both threads run: main's turn must not show up.
+			const connected = yield* Deferred.make<void>();
+			const live = yield* rpc["event.subscribe"]({ threadId: fork.id }).pipe(
+				Stream.tap((envelope) =>
+					envelope.type === Envelope.Connected.type ? Deferred.succeed(connected, undefined) : Effect.void,
+				),
+				Stream.takeUntil((envelope) => envelope.type === "session.execution.succeeded"),
+				Stream.runCollect,
+				Effect.forkScoped,
+			);
+			yield* Deferred.await(connected);
+			yield* Client.run(rpc, { sessionId, threadId: main.id, text: "again" }, quiet);
+			yield* Client.run(rpc, { sessionId, threadId: fork.id, text: "branch" }, quiet);
+			const liveEvents = yield* Fiber.join(live);
+
+			const log = (threadId?: Session.ThreadSchema.ID) =>
+				rpc["session.log"]({ sessionId, ...(threadId === undefined ? {} : { threadId }) }).pipe(
+					Stream.runCollect,
+					Effect.map((items) => Array.from(items)),
+				);
+			const forkLog = yield* log(fork.id);
+			const sessionLog = yield* log();
+
+			const usage = Object.fromEntries(
+				(yield* rpc["thread.list"]({ sessionId })).map((info) => [
+					info.id === main.id ? "main" : "fork",
+					info.usage,
+				]),
+			);
+
+			// One thread moves to the other checkout and keeps its place under the new root; the
+			// session's default, which main follows, stays.
+			const movedFork = yield* rpc["session.relink"]({ sessionId, threadId: fork.id, directory: b });
+			const mainAfterFork = yield* rpc["thread.info"]({ sessionId });
+			const movedSession = yield* rpc["session.relink"]({ sessionId, directory: b });
+
+			const path = (value: string | undefined) => value?.replace(root, "<root>");
+			const threadOf = (data: unknown) =>
+				typeof data === "object" && data !== null && "threadId" in data
+					? data.threadId === fork.id
+						? "<fork>"
+						: data.threadId === main.id
+							? "<main>"
+							: "<other>"
+					: "<none>";
+			const artifact = {
+				usage,
+				live: liveEvents.map((envelope) => ({ type: envelope.type, thread: threadOf(envelope.data) })),
+				forkLog: forkLog.map((item) =>
+					"data" in item ? { type: item.type, thread: threadOf(item.data) } : { type: item.type },
+				),
+				sessionLogThreads: [
+					...new Set(sessionLog.flatMap((item) => ("data" in item ? [threadOf(item.data)] : []))),
+				],
+				relink: {
+					thread: {
+						returned: movedFork.id === fork.id ? "<fork>" : movedFork.id,
+						placement: path(movedFork.placement?.directory),
+						sessionDirectory: path(movedFork.session.directory),
+					},
+					mainAfterThreadMove: {
+						placement: path(mainAfterFork.placement?.directory),
+						directory: path(mainAfterFork.session.directory),
+					},
+					session: {
+						returned: movedSession.id === main.id ? "<main>" : movedSession.id,
+						directory: path(movedSession.session.directory),
+					},
+				},
+			};
+			expect(artifact.live[0]?.type).toBe(Envelope.Connected.type);
+			expect(artifact.live.slice(1).every(({ thread }) => thread === "<fork>")).toBe(true);
+			expect(artifact.live.at(-1)?.type).toBe("session.execution.succeeded");
+			expect(artifact.forkLog.at(-1)).toEqual({ type: "log.synced" });
+			expect(artifact.sessionLogThreads.sort()).toEqual(["<fork>", "<main>"]);
+			expect(usage.main).toMatchObject({ input: 2, output: 2 });
+			expect(usage.fork).toMatchObject({ input: 1, output: 1 });
+			expect(movedFork.placement?.directory).toBe(join(b, "packages", "x"));
+			expect(mainAfterFork.placement).toBeUndefined();
+			expect(movedSession.session.directory).toBe(join(b, "packages", "x"));
+			return artifact;
+		})
+			.pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("20 seconds"), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.threads.json",
+				),
+			);
+	});
+
+	it("lists, forks and relinks threads through the CLI", { timeout: 60_000 }, () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-threads-")));
+		homes.push(root);
+		return Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
+			const [a, b] = yield* Effect.promise(() => clones(root));
+			const rpc = yield* connectedClient;
+			const main = yield* rpc["session.create"]({
+				directory: join(a, "packages", "x"),
+				runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
+			});
+			const sessionId = main.session.id;
+			const quiet = () => Effect.void;
+			yield* Client.run(rpc, { sessionId, threadId: main.id, text: "hello" }, quiet);
+			const reply = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
+			if (reply === undefined) return yield* Effect.die("main thread has no reply");
+			const cli = (...args: string[]) => Effect.promise(() => execCli([...args, "--server", url], root));
+
+			const at = yield* cli("thread", "fork", sessionId, "--at", reply.id);
+			const forkId = Session.ThreadSchema.ID.make(at.stdout.trim());
+			yield* Client.run(rpc, { sessionId, threadId: forkId, text: "branch" }, quiet);
+			const branched = (yield* rpc["thread.history"]({ sessionId, threadId: forkId })).entries.at(-2);
+			if (branched === undefined) return yield* Effect.die("fork has no prompt");
+			const before = yield* cli("thread", "fork", sessionId, "--thread", forkId, "--before", branched.id);
+			const beforeId = before.stdout.split("\n")[0] ?? "";
+
+			const relinked = yield* cli("session", "relink", sessionId, "--thread", forkId, "-C", b);
+			const listed = yield* cli("thread", "list", sessionId);
+			const listedJson = yield* cli("thread", "list", sessionId, "--json");
+			const errors = {
+				bothPoints: yield* cli("thread", "fork", sessionId, "--at", reply.id, "--before", reply.id),
+				badThread: yield* cli("thread", "fork", sessionId, "--thread", "nope", "--at", reply.id),
+				unknownEntry: yield* cli("thread", "fork", sessionId, "--at", "missing-entry"),
+			};
+
+			const labels = new Map<string, string>([
+				[sessionId, "<session>"],
+				[main.id, "<main>"],
+				[forkId, "<at>"],
+				[beforeId, "<before>"],
+				[reply.id, "<reply>"],
+				[branched.id, "<branch prompt>"],
+			]);
+			const scrub = (text: string) => {
+				let out = text.replaceAll(root, "<root>");
+				for (const [id, label] of labels) out = out.replaceAll(id, label);
+				return out;
+			};
+			const result = (run: { status: number; stdout: string; stderr: string }) => ({
+				status: run.status,
+				stdout: scrub(run.stdout),
+				...(run.stderr === "" ? {} : { stderr: scrub(run.stderr) }),
+			});
+			// Decoding with the contract proves `--json` prints the wire form.
+			const json = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Contract.ThreadInfo)))(
+				listedJson.stdout,
+			);
+			const artifact = {
+				forkAt: result(at),
+				forkBefore: result(before),
+				relink: result(relinked),
+				list: result(listed),
+				listJson: json
+					.map((info) => ({
+						id: scrub(info.id),
+						origin: info.origin.kind,
+						placement: info.placement === undefined ? null : scrub(info.placement.directory),
+						usage: info.usage,
+					}))
+					.sort((x, y) => x.id.localeCompare(y.id)),
+				errors: Object.fromEntries(Object.entries(errors).map(([name, run]) => [name, result(run)])),
+			};
+			expect(at.status).toBe(0);
+			expect(Schema.is(Session.ThreadSchema.ID)(forkId)).toBe(true);
+			expect(before.stdout).toContain("\nbranch\n");
+			expect(relinked.stdout).toBe(`Moved thread ${forkId} of ${sessionId} to ${join(b, "packages", "x")}\n`);
+			expect(json).toHaveLength(3);
+			expect(Object.values(errors).every((run) => run.status === 1)).toBe(true);
+			return artifact;
+		})
+			.pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("50 seconds"), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.cli-threads.json",
+				),
+			);
+	});
 
 	it("runs the CLI against the server without booting a local harness", () =>
 		Effect.gen(function* () {

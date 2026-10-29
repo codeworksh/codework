@@ -14,6 +14,7 @@ import {
 	writeError,
 	writeOut,
 } from "../../output.ts";
+import { threadFlag } from "../../thread.ts";
 import { Cmd } from "../cmd.ts";
 
 interface RenderState {
@@ -106,13 +107,7 @@ export default Runtime.handler(
 		if (Option.isSome(thread) && Option.isNone(session)) {
 			return yield* new InvalidInputError({ message: "--thread continues a thread of --session" });
 		}
-		if (
-			Option.isSome(thread) &&
-			thread.value !== Session.ThreadSchema.MAIN &&
-			!Schema.is(Session.ThreadSchema.ID)(thread.value)
-		) {
-			return yield* new InvalidInputError({ message: "--thread takes a thread ID (thr_…) or main" });
-		}
+		const threadId = yield* threadFlag(thread);
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
@@ -151,11 +146,6 @@ export default Runtime.handler(
 				: { model: { provider: provider.value, id: model.value } }),
 			...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
 		};
-		// `main` names the session's main thread; anything else is a thread ID.
-		const threadId =
-			Option.isNone(thread) || thread.value === Session.ThreadSchema.MAIN
-				? undefined
-				: Session.ThreadSchema.ID.make(thread.value);
 		const remote = Effect.gen(function* () {
 			const rpc = yield* Client.make;
 			const info = Option.isSome(session)

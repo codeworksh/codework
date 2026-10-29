@@ -6,6 +6,8 @@ import { type Cause, Effect, Exit, Fiber, Option, Queue, type Scope, Stream } fr
 import * as EffectCause from "effect/Cause";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { crc32, deflateSync } from "node:zlib";
 import { dirname, join } from "node:path";
@@ -121,6 +123,7 @@ const connect = (handle: ChildProcessSpawner.ChildProcessHandle, updates: Queue.
 				createSession: request("session/new"),
 				loadSession: request("session/load"),
 				listSessions: request("session/list"),
+				forkSession: request("session/fork"),
 				setSessionConfigOption: request("session/set_config_option"),
 				prompt: request("session/prompt"),
 				cancel: (params: Acp.CancelNotification) =>
@@ -201,6 +204,38 @@ const solidPng = ([r, g, b]: readonly [number, number, number], size = 64): stri
 	]).toString("base64");
 };
 
+/**
+ * A chat-completions endpoint that answers every request with `reply <n>` and one token each way,
+ * for cases that need a conversation but not a real model. Its base URL closes with the scope.
+ */
+const fakeModel = Effect.acquireRelease(
+	Effect.callback<{ readonly url: string; readonly close: () => void }>((resume) => {
+		let count = 0;
+		const server = createServer((request, response) => {
+			request.resume();
+			request.on("end", () => {
+				count += 1;
+				const chunk = (body: Record<string, unknown>) =>
+					`data: ${JSON.stringify({ id: `c${count}`, ...body })}\n\n`;
+				response.writeHead(200, { "content-type": "text/event-stream" });
+				response.end(
+					chunk({ choices: [{ index: 0, delta: { role: "assistant", content: `reply ${count}` } }] }) +
+						chunk({
+							choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+							usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+						}) +
+						"data: [DONE]\n\n",
+				);
+			});
+		});
+		server.listen(0, "127.0.0.1", () => {
+			const { port } = server.address() as AddressInfo;
+			resume(Effect.succeed({ url: `http://127.0.0.1:${port}/v1`, close: () => server.close() }));
+		});
+	}),
+	(endpoint) => Effect.sync(endpoint.close),
+);
+
 const artifact = (record: Record<string, unknown>) => `${JSON.stringify(record, null, "\t")}\n`;
 
 describe("codework acp", () => {
@@ -266,6 +301,68 @@ describe("codework acp", () => {
 					);
 				}),
 			),
+		);
+	});
+
+	it("reaches every thread of a session, a fork included, as a session of its own", () => {
+		const { home, project } = workspace();
+		return run(
+			Effect.gen(function* () {
+				const endpoint = yield* fakeModel;
+				writeSettings(join(home, "settings.jsonc"), {
+					model: { provider: "fake", id: "echo" },
+					models: [newModel({ id: "fake", name: "Fake" }, "echo", { baseUrl: endpoint.url })],
+				});
+				yield* withAgent(
+					home,
+					(acp, updates) =>
+						Effect.gen(function* () {
+							const prompt = (sessionId: string, value: string) =>
+								acp.agent
+									.prompt({ sessionId, prompt: [{ type: "text", text: value }] })
+									.pipe(Effect.andThen(Queue.clear(updates)));
+							const load = (sessionId: string) =>
+								acp.agent.loadSession({ sessionId, cwd: project, mcpServers: [] }).pipe(
+									Effect.andThen(Queue.clear(updates)),
+									Effect.map((replayed) => ({
+										user: text(replayed, "user_message_chunk"),
+										agent: text(replayed, "agent_message_chunk"),
+									})),
+								);
+							const fork = (sessionId: string) =>
+								acp.agent.forkSession({ sessionId, cwd: project, mcpServers: [] });
+
+							const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+							const forkEmpty = yield* settle(fork(sessionId));
+							const mainReply = text(yield* prompt(sessionId, "hello"), "agent_message_chunk");
+							const forked = yield* fork(sessionId);
+							const forkReply = text(yield* prompt(forked.sessionId, "branch"), "agent_message_chunk");
+							const listed = yield* acp.agent.listSessions({ cwd: project });
+							const label = (id: string) =>
+								id === sessionId ? "<main>" : id === forked.sessionId ? "<fork>" : id;
+
+							const record = {
+								forkEmpty,
+								mainReply,
+								forkReply,
+								list: listed.sessions.map((session) => ({
+									sessionId: label(session.sessionId),
+									title: session.title,
+								})),
+								loadFork: yield* load(forked.sessionId),
+								loadMain: yield* load(sessionId),
+								cancelIdleFork: "ok" in (yield* settle(acp.agent.cancel({ sessionId: forked.sessionId }))),
+							};
+							expect(forked.sessionId.startsWith("thr_")).toBe(true);
+							expect(record.loadFork.user).toBe("hellobranch");
+							expect(record.loadMain.user).toBe("hello");
+							yield* Effect.promise(() =>
+								expect(artifact(record)).toMatchFileSnapshot("./__artifacts__/acp.fork.json"),
+							);
+						}),
+					withoutProviderKeys(),
+				);
+			}),
 		);
 	});
 

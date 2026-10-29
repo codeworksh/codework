@@ -1,0 +1,27 @@
+{
+	"forkEmpty": {
+		"code": -32600,
+		"message": "Nothing to fork yet: the session has no messages"
+	},
+	"mainReply": "reply 1",
+	"forkReply": "reply 2",
+	"list": [
+		{
+			"sessionId": "<fork>",
+			"title": "branch"
+		},
+		{
+			"sessionId": "<main>",
+			"title": "hello"
+		}
+	],
+	"loadFork": {
+		"user": "hellobranch",
+		"agent": "reply 1reply 2"
+	},
+	"loadMain": {
+		"user": "hello",
+		"agent": "reply 1"
+	},
+	"cancelIdleFork": true
+}

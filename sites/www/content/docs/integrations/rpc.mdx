@@ -63,24 +63,27 @@ The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc
 
 ### Methods
 
-| Group     | Methods                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------- |
-| `session` | `create`, `list`, `info`, `configure`, `link`, `relink`, `prompt`, `interrupt`, `wait`, `message` |
-| `sandbox` | `drivers`, `list`, `create`, `register`, `stop`                                                   |
-| `auth`    | `save`, `status`, `refresh`, `logout`                                                             |
-| `plugin`  | `reload`                                                                                          |
-| `event`   | `subscribe` (stream)                                                                              |
+| Group     | Methods                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `session` | `create`, `link`, `relink`, `delete`, `interrupt`, `log` (stream)                                                     |
+| `thread`  | `list`, `info`, `history`, `queue`, `configure`, `fork`, `prompt`, `cancel`, `update`, `interrupt`, `message`, `wait` |
+| `sandbox` | `drivers`, `list`, `create`, `register`, `stop`                                                                       |
+| `auth`    | `save`, `status`, `refresh`, `logout`                                                                                 |
+| `plugin`  | `reload`                                                                                                              |
+| `event`   | `subscribe` (stream)                                                                                                  |
+
+Thread methods take `sessionId` and an optional `threadId`; without it they address the session's `main` thread.
 
 ### Events
 
-`event.subscribe` streams every event the server publishes. Events are live and not replayed, so subscribe before you send a prompt.
+`event.subscribe` streams every event the server publishes. Events are live and not replayed, so subscribe before you send a prompt. Pass `threadId` to receive only that thread's events; `session.log` takes the same filter.
 
 Each busy period starts with `session.execution.started` and ends with exactly one of `succeeded`, `failed`, or `interrupted`. A failure carries a category such as `provider-authentication-error` or `sandbox-mount-error`. Plugins publish their own events under `plugin.<plugin-id>.*`; a client skips types it doesn't know.
 
 ### Lifecycle
 
-- `session.prompt` returns once the prompt is admitted. Follow the event stream for the result.
-- `session.interrupt` returns as soon as the stop is accepted; `session.wait` resolves when the session has settled.
+- `thread.prompt` returns once the prompt is admitted. Follow the event stream for the result.
+- `thread.interrupt` returns as soon as the stop is accepted; `thread.wait` resolves when the thread has settled. `session.interrupt` stops every thread.
 - Managed sandboxes stay up until you stop them or the server shuts down. External sandboxes are never stopped by the server.
 
 ## RPC or ACP?
