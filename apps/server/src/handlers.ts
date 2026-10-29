@@ -17,12 +17,14 @@ import { Servers } from "./servers.ts";
 import { Workspaces } from "./workspaces.ts";
 
 /**
- * Sessions grouped by project, both newest first. A session whose project row is missing gets a
- * group of its own folder, so it still shows rather than vanishing.
+ * Sessions grouped by project, both newest first, each shown as its main thread. A session whose
+ * project row is missing gets a group of its own folder, so it still shows rather than vanishing.
  */
-const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => {
+const byProject = (threads: ReadonlyArray<Codework.ThreadInfo>): Project[] => {
 	const groups = new Map<string, Project & { sessions: Project["sessions"][number][] }>();
-	for (const session of [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)) {
+	const mains = threads.filter((thread) => thread.origin.kind === "main");
+	for (const thread of [...mains].sort((a, b) => b.updatedAt - a.updatedAt)) {
+		const session = thread.session;
 		const folder = session.hostDir ?? session.directory;
 		const key = session.project?.id ?? folder;
 		const group = groups.get(key) ?? {
@@ -34,9 +36,9 @@ const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => 
 		};
 		group.sessions.push({
 			id: session.id,
-			title: session.title,
-			updated: session.updatedAt,
-			...(session.model === undefined ? {} : { model: session.model }),
+			title: thread.title ?? Codework.UNTITLED,
+			updated: thread.updatedAt,
+			...(thread.model === undefined ? {} : { model: thread.model }),
 		});
 		groups.set(key, group);
 	}
@@ -67,7 +69,7 @@ export const layer = Contract.Api.toLayer(
 			...desk,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
-				return byProject(yield* call((client) => client("session.list", {})));
+				return byProject(yield* call((client) => client("thread.list", {})));
 			}),
 
 			// The catalog's own errors are kept apart from an unreachable server, so their detail shows.
