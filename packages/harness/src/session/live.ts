@@ -1,5 +1,5 @@
 /*
- * @file The session service with its projections registered.
+ * @file The session, thread and document services with their projections registered.
  *
  * Provide this, not `Session.layer` alone. `Control.prompt` records a prompt by
  * publishing an event, and the row only appears because a projector reacted to
@@ -11,6 +11,6 @@ import { Layer } from "effect";
 import { SessionProjector } from "./projector.ts";
 import { Session } from "./session.ts";
 
-export const layer = Layer.provideMerge(SessionProjector.layer, Session.layer);
+export const layer = Layer.provideMerge(SessionProjector.layer, Session.storeLayer);
 
 export * as SessionLive from "./live.ts";

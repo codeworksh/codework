@@ -8,7 +8,7 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import type { Admitted } from "../session/input/schema.ts";
+import type { Admitted } from "../inbox/schema.ts";
 import type { State } from "../state/state.ts";
 import type { LLM } from "./llm.ts";
 
@@ -27,7 +27,7 @@ export interface Completed {
 }
 
 /** One provider request, as the loop built it. */
-export type Request = Omit<LLM.Input, "sessionId">;
+export type Request = Omit<LLM.Input, "threadId">;
 
 export interface Attempt {
 	/** 0 for the first attempt of a turn. */

@@ -13,7 +13,7 @@ import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworks
 import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Cause, Data, Duration, Effect, Exit, Fiber, Schema, Scope, Stream } from "effect";
 import { ModelCatalog } from "../model/catalog.ts";
-import type { SessionSchema } from "../session/schema.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
 import { merge } from "../settings/merge.ts";
 import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
 import { type Block, type DeclaredModel, keyName } from "../settings/schema.ts";
@@ -24,7 +24,8 @@ import { LLMEventPublisher } from "./event.ts";
 import { Runner } from "./run.ts";
 
 export interface Input {
-	readonly sessionId: SessionSchema.ID;
+	/** Also the provider session and prompt-cache key: fresh per thread, never inherited. */
+	readonly threadId: ThreadSchema.ID;
 	readonly context: Message.Context;
 	readonly provider: string;
 	readonly model: string;
@@ -67,7 +68,7 @@ export const runtimeOptions = (input: Input, model: Model.Info, signal: AbortSig
 		...options,
 		...(activeTools === undefined ? {} : { activeTools: [...activeTools] }),
 		...(input.thinkingLevel === undefined || input.thinkingLevel === "off" ? {} : { reasoning: input.thinkingLevel }),
-		sessionId: input.sessionId,
+		sessionId: input.threadId,
 		signal,
 	};
 };
@@ -305,7 +306,7 @@ export const make = (openStream: Open): Request => {
 			"gen_ai.operation.name": "chat",
 			"gen_ai.provider.name": input.provider,
 			"gen_ai.request.model": input.model,
-			"gen_ai.conversation.id": input.sessionId,
+			"gen_ai.conversation.id": input.threadId,
 			"gen_ai.request.stream": true,
 		});
 		const start = yield* Effect.clockWith((clock) => clock.currentTimeMillis);

@@ -16,14 +16,18 @@ import { Runner } from "./run.ts";
 
 // session
 import { SessionFailure } from "../session/failure.ts";
-import type { ID as SessionId } from "../session/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
+import { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
+
+type ThreadId = ThreadSchema.ID;
 
 export const layer = Layer.effect(
 	RunnerExecution.Service,
 	Effect.gen(function* () {
-		const store = yield* Session.Service;
+		const sessions = yield* Session.Service;
+		const threads = yield* Thread.Service;
 		const sandbox = yield* SandboxController.Controller;
 		const sql = yield* SqlClient.SqlClient;
 		// Captured here, not requested inside `drain`: `RunCoordinator.make`
@@ -33,78 +37,106 @@ export const layer = Layer.effect(
 		const events = yield* Event.Service;
 		// A lifecycle publish that fails is reported, never thrown back into the
 		// coordinator: losing the observation must not change how the drain ends.
-		const reportLifecycle = (sessionId: SessionId, publish: Effect.Effect<unknown>) =>
+		const reportLifecycle = (threadId: ThreadId, publish: Effect.Effect<unknown>) =>
 			publish.pipe(
 				Effect.tapCause((cause) =>
 					Cause.hasInterruptsOnly(cause)
 						? Effect.void
 						: Effect.logError("Failed to publish session execution lifecycle", cause).pipe(
-								Effect.annotateLogs({ sessionId }),
+								Effect.annotateLogs({ threadId }),
 							),
 				),
 				Effect.ignore,
 			);
 
-		// Sessions being recovered: their run neither marks the session nor runs once it is unmarked.
-		const recovering = new Set<SessionId>();
-		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
-		const stoppedAt = new Map<SessionId, number>();
+		// The session a thread belongs to, for the lifecycle events its log carries. Threads never
+		// move between sessions, so one lookup per thread is enough.
+		const owners = new Map<ThreadId, SessionSchema.ID>();
+		const sessionOf = (threadId: ThreadId) =>
+			Effect.gen(function* () {
+				const known = owners.get(threadId);
+				if (known !== undefined) return Option.some(known);
+				const thread = yield* threads.get(threadId);
+				if (Option.isNone(thread)) return Option.none<SessionSchema.ID>();
+				const sessionId = SessionSchema.ID.make(thread.value.sessionId);
+				owners.set(threadId, sessionId);
+				return Option.some(sessionId);
+			});
+		const publishLifecycle = (
+			threadId: ThreadId,
+			publish: (base: {
+				readonly sessionId: SessionSchema.ID;
+				readonly threadId: ThreadId;
+				readonly timestamp: DateTime.Utc;
+			}) => Effect.Effect<unknown>,
+		) =>
+			Effect.gen(function* () {
+				const sessionId = yield* sessionOf(threadId);
+				if (Option.isNone(sessionId)) return;
+				yield* publish({ sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now });
+			});
 
-		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError, SessionSchema.InterruptReason>({
+		// Threads being recovered: their run neither marks the thread nor runs once it is unmarked.
+		const recovering = new Set<ThreadId>();
+		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
+		const stoppedAt = new Map<ThreadId, number>();
+
+		const coordinator = yield* RunCoordinator.make<ThreadId, Runner.RunError, SessionSchema.InterruptReason>({
 			// The run is recorded unfinished before it starts, so a process dying anywhere in it
-			// leaves the session for the next server start to resume. A recovered one already is.
-			started: (sessionId) =>
+			// leaves the thread for the next server start to resume. A recovered one already is.
+			started: (threadId) =>
 				reportLifecycle(
-					sessionId,
-					(recovering.has(sessionId) ? Effect.void : store.markRunning(sessionId)).pipe(
-						Effect.andThen(DateTime.now),
-						Effect.andThen((timestamp) => events.publish(EventList.ExecutionStarted, { sessionId, timestamp })),
+					threadId,
+					(recovering.has(threadId) ? Effect.void : threads.markRunning(threadId)).pipe(
+						Effect.andThen(publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionStarted, base))),
 					),
 				),
 			// One terminal per busy period, covering every drain it coalesced.
-			settled: (sessionId, exit, reason) =>
+			settled: (threadId, exit, reason) =>
 				reportLifecycle(
-					sessionId,
+					threadId,
 					Effect.gen(function* () {
 						// A shutdown leaves the run to resume on the next start; a user stop or any other end
 						// finishes it.
 						const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
-						const stop = stoppedAt.get(sessionId);
-						stoppedAt.delete(sessionId);
-						yield* store.endExecution(
-							sessionId,
+						const stop = stoppedAt.get(threadId);
+						stoppedAt.delete(threadId);
+						yield* threads.endExecution(
+							threadId,
 							!interrupted ? "finished" : reason === "user" ? "stopped" : "closed",
 							stop,
 						);
-						const timestamp = yield* DateTime.now;
-						if (Exit.isSuccess(exit))
-							return yield* events.publish(EventList.ExecutionSucceeded, { sessionId, timestamp });
+						const sessionId = yield* sessionOf(threadId);
+						if (Option.isNone(sessionId)) return;
+						const base = { sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now };
+						if (Exit.isSuccess(exit)) return yield* events.publish(EventList.ExecutionSucceeded, base);
 						if (Cause.hasInterruptsOnly(exit.cause))
 							// Nobody named a reason, so the process took the decision itself.
 							return yield* events.publish(EventList.ExecutionInterrupted, {
-								sessionId,
-								timestamp,
+								...base,
 								reason: reason ?? "shutdown",
 							});
 						return yield* events.publish(EventList.ExecutionFailed, {
-							sessionId,
-							timestamp,
+							...base,
 							error: SessionFailure.fromCause(Cause.squash(exit.cause)),
 						});
 					}),
 				),
-			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
-				const session = yield* store.get(sessionId);
-				if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
-				const recovered = recovering.delete(sessionId);
-				if (recovered && Option.isNone(session.value.execution)) return;
-				const space = yield* store.space(sessionId);
-				// Unreachable while the FK holds; typed so a UI can offer relink
-				// as the repair instead of surfacing a defect.
-				if (Option.isNone(space)) return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId });
-				// The session's env is derived through its space; its cwd is its own (D-SESSION).
-				const instanceId = space.value.env;
-				const mount = sandbox.mount(instanceId, { cwd: session.value.directory });
+			drain: Effect.fnUntraced(function* (threadId: ThreadId, force) {
+				const thread = yield* threads.get(threadId);
+				if (Option.isNone(thread)) return yield* new Thread.ThreadNotFoundError({ threadId });
+				const sessionId = thread.value.sessionId;
+				const recovered = recovering.delete(threadId);
+				if (recovered && Option.isNone(thread.value.execution)) return;
+				// The thread's placement, else the session's space and directory. A placement names its
+				// space in a document no FK guards, so a space gone since is typed: `relink --thread`
+				// is the repair.
+				const placement = yield* sessions.placement(threadId);
+				if (Option.isNone(placement)) {
+					return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId, threadId });
+				}
+				const instanceId = placement.value.space.env;
+				const mount = sandbox.mount(instanceId, { cwd: placement.value.directory });
 
 				const scopedRun = Effect.gen(function* () {
 					const mountContext = yield* Layer.build(mount);
@@ -112,7 +144,7 @@ export const layer = Layer.effect(
 					const fs = Context.get(mountContext, SandboxIO.FileSystem);
 					if (!(yield* fs.exists(current.cwd))) {
 						return yield* new Runner.SandboxDirectoryNotFoundError({
-							sessionId,
+							threadId,
 							sandboxInstanceId: instanceId,
 							directory: current.cwd,
 						});
@@ -127,7 +159,7 @@ export const layer = Layer.effect(
 							["Location.DirectoryNotFoundError", "Location.NotDirectoryError"],
 							(error) =>
 								new Runner.SandboxDirectoryNotFoundError({
-									sessionId,
+									threadId,
 									sandboxInstanceId: error.sandboxInstanceId,
 									directory: error.directory,
 								}),
@@ -135,7 +167,7 @@ export const layer = Layer.effect(
 					);
 
 					return yield* runner
-						.run({ sessionId, force, recovered })
+						.run({ threadId, force, recovered })
 						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));
 				});
 
@@ -143,32 +175,33 @@ export const layer = Layer.effect(
 					Effect.scoped,
 					Effect.tapCause((cause) =>
 						Cause.hasDies(cause)
-							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ sessionId }))
+							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ threadId }))
 							: Effect.void,
 					),
 				);
 			}),
 		});
 
-		const interrupt: RunnerExecution.Interface["interrupt"] = (sessionId, reason, options) =>
+		const interrupt: RunnerExecution.Interface["interrupt"] = (threadId, reason, options) =>
 			Effect.gen(function* () {
 				// The first stop of a run sets its position; a repeat while it settles keeps that one.
-				const recorded = reason === "user" && !stoppedAt.has(sessionId);
-				if (recorded) stoppedAt.set(sessionId, yield* events.latestSequence(sessionId));
-				const accepted = yield* coordinator.interrupt(sessionId, reason, options);
+				const sessionId = reason === "user" && !stoppedAt.has(threadId) ? yield* sessionOf(threadId) : undefined;
+				const recorded = sessionId !== undefined && Option.isSome(sessionId);
+				if (recorded) stoppedAt.set(threadId, yield* events.latestSequence(sessionId.value));
+				const accepted = yield* coordinator.interrupt(threadId, reason, options);
 				// Nothing was running, so no settlement will read the position this call set.
-				if (recorded && !accepted) stoppedAt.delete(sessionId);
+				if (recorded && !accepted) stoppedAt.delete(threadId);
 				return accepted;
 			});
 
-		const recover = (sessionId: SessionId) =>
+		const recover = (threadId: ThreadId) =>
 			Effect.suspend(() => {
-				recovering.add(sessionId);
-				return coordinator.run(sessionId);
+				recovering.add(threadId);
+				return coordinator.run(threadId);
 			}).pipe(
 				Effect.ensuring(
 					Effect.sync(() => {
-						recovering.delete(sessionId);
+						recovering.delete(threadId);
 					}),
 				),
 			);

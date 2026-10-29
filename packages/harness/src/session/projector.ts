@@ -5,7 +5,7 @@
  * must happen exactly once and before anything publishes -- `Layer` gives both,
  * because a layer is built once per graph, at startup.
  *
- * Registering from `SessionInput.make` instead would run once per consumer, and
+ * Registering from `Inbox.make` instead would run once per consumer, and
  * a projector registered twice runs twice on one event: the second insert hits
  * ON CONFLICT, raises LifecycleConflict inside the commit, and rolls the event
  * back. Every admission would fail, blaming a conflict that does not exist.
@@ -32,20 +32,29 @@ import { DateTime, Effect, Layer } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
-import { SessionInput } from "./input/input.ts";
+import { Document } from "../document/document.ts";
+import { Inbox } from "../inbox/inbox.ts";
+import { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
 import { PromptSchema } from "./prompt/schema.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
-import { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
 
 export const layer = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const events = yield* Event.Service;
-		const input = yield* SessionInput.make;
+		const input = yield* Inbox.make;
 		const sessions = yield* Session.Service;
+		const threads = yield* Thread.Service;
+		const documents = yield* Document.Service;
+
+		/** The sequence is assigned by the commit itself, so a durable event without one never went through it. */
+		const seqOf = (event: { readonly type: string; readonly durable?: { readonly seq: number } }) =>
+			event.durable === undefined
+				? Effect.die(`${event.type} is missing its aggregate sequence`)
+				: Effect.succeed(event.durable.seq);
 
 		const encodeAssistant = Effect.fn("SessionProjector.encodeAssistant")(function* (input: {
-			readonly sessionId: SessionSchema.ID;
 			readonly messageId: SessionMessageSchema.ID;
 			readonly message: Message.AssistantMessage;
 		}) {
@@ -57,16 +66,25 @@ export const layer = Layer.effectDiscard(
 			return yield* ContextCodec.encodeMessage(input.message).pipe(Effect.orDie);
 		});
 
+		yield* events.project(EventList.SessionCreated, (event) =>
+			seqOf(event).pipe(Effect.flatMap((seq) => sessions.projectCreated(event.data, seq))),
+		);
+
+		yield* events.project(EventList.ThreadForked, (event) =>
+			seqOf(event).pipe(Effect.flatMap((seq) => threads.projectForked(event.data, seq))),
+		);
+
+		yield* events.project(EventList.ThreadConfigured, (event) =>
+			seqOf(event).pipe(Effect.flatMap((seq) => documents.configure(event.data.threadId, event.data.change, seq))),
+		);
+
 		yield* events.project(EventList.PromptAdmitted, (event) =>
 			Effect.gen(function* () {
-				// The sequence is assigned by the commit itself, so a durable event
-				// arriving without one means it never went through the transaction.
-				if (event.durable === undefined)
-					return yield* Effect.die("PromptAdmitted is missing its aggregate sequence");
 				yield* input.projectAdmitted({
-					admittedSeq: event.durable.seq,
+					admittedSeq: yield* seqOf(event),
 					id: event.data.messageId,
 					sessionId: event.data.sessionId,
+					threadId: event.data.threadId,
 					prompt: event.data.prompt,
 					delivery: event.data.delivery,
 					timeCreated: event.data.timestamp,
@@ -76,12 +94,10 @@ export const layer = Layer.effectDiscard(
 
 		yield* events.project(EventList.PromptCancelled, (event) =>
 			Effect.gen(function* () {
-				if (event.durable === undefined)
-					return yield* Effect.die("PromptCancelled is missing its aggregate sequence");
 				yield* input.projectCancelled({
-					cancelledSeq: event.durable.seq,
+					cancelledSeq: yield* seqOf(event),
 					id: event.data.messageId,
-					sessionId: event.data.sessionId,
+					threadId: event.data.threadId,
 				});
 			}),
 		);
@@ -89,7 +105,7 @@ export const layer = Layer.effectDiscard(
 		yield* events.project(EventList.PromptUpdated, (event) =>
 			input.projectUpdated({
 				id: event.data.messageId,
-				sessionId: event.data.sessionId,
+				threadId: event.data.threadId,
 				...(event.data.prompt === undefined ? {} : { prompt: event.data.prompt }),
 				...(event.data.delivery === undefined ? {} : { delivery: event.data.delivery }),
 			}),
@@ -99,11 +115,12 @@ export const layer = Layer.effectDiscard(
 		// what makes `promoteSteers` / `promoteFollowUp` take effect at all.
 		yield* events.project(EventList.Prompted, (event) =>
 			Effect.gen(function* () {
-				if (event.durable === undefined) return yield* Effect.die("Prompted is missing its aggregate sequence");
+				const seq = yield* seqOf(event);
 				yield* input.projectPrompted({
-					promotedSeq: event.durable.seq,
+					promotedSeq: seq,
 					id: event.data.messageId,
 					sessionId: event.data.sessionId,
+					threadId: event.data.threadId,
 					prompt: event.data.prompt,
 					delivery: event.data.delivery,
 					timeCreated: event.data.timestamp,
@@ -111,9 +128,6 @@ export const layer = Layer.effectDiscard(
 				// Promotion is what puts a prompt into the conversation, so the append
 				// belongs in this commit: "promoted but absent from history" is then
 				// unrepresentable rather than a window someone has to reconcile.
-				// Materialize the canonical conversation message now. Context later
-				// rehydrates this envelope + parts; aikit performs only the target-model
-				// conversion when Loop calls the provider.
 				const encoded = yield* ContextCodec.encodeMessage(
 					Message.createUserMessage({
 						messageId: event.data.messageId,
@@ -122,11 +136,11 @@ export const layer = Layer.effectDiscard(
 						parts: [...event.data.prompt.parts],
 					}),
 				).pipe(Effect.orDie);
-				yield* sessions
+				yield* threads
 					.append({
 						id: event.data.messageId,
-						sessionId: event.data.sessionId,
-						seq: event.durable.seq,
+						threadId: event.data.threadId,
+						seq,
 						state: "committed",
 						...encoded,
 						// Rides the in-memory payload; the event row never carried it, so
@@ -134,29 +148,19 @@ export const layer = Layer.effectDiscard(
 						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
 					})
 					.pipe(Effect.orDie);
-				const title = SessionSchema.titleFrom(PromptSchema.Prompt.text(event.data.prompt));
-				if (title !== undefined) yield* sessions.retitle(event.data.sessionId, title);
+				const title = ThreadSchema.titleFrom(PromptSchema.Prompt.text(event.data.prompt));
+				if (title !== undefined) yield* threads.retitle(event.data.threadId, title);
 			}),
 		);
 
-		yield* events.project(EventList.ConfigChanged, (event) => {
-			const { sessionId, timestamp: _timestamp, ...config } = event.data;
-			return sessions.configure(sessionId, config);
-		});
-
 		yield* events.project(EventList.LLMStarted, (event) =>
 			Effect.gen(function* () {
-				if (event.durable === undefined) return yield* Effect.die("LLMStarted is missing its aggregate sequence");
-				const encoded = yield* encodeAssistant({
-					sessionId: event.data.sessionId,
-					messageId: event.data.messageId,
-					message: event.data.message,
-				});
-				yield* sessions
+				const encoded = yield* encodeAssistant(event.data);
+				yield* threads
 					.append({
 						id: event.data.messageId,
-						sessionId: event.data.sessionId,
-						seq: event.durable.seq,
+						threadId: event.data.threadId,
+						seq: yield* seqOf(event),
 						state: "draft",
 						...encoded,
 						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
@@ -167,14 +171,10 @@ export const layer = Layer.effectDiscard(
 
 		yield* events.project(EventList.LLMEnded, (event) =>
 			Effect.gen(function* () {
-				const encoded = yield* encodeAssistant({
-					sessionId: event.data.sessionId,
-					messageId: event.data.messageId,
-					message: event.data.message,
-				});
-				yield* sessions.replaceAssistant({
+				const encoded = yield* encodeAssistant(event.data);
+				yield* threads.replaceAssistant({
 					id: event.data.messageId,
-					sessionId: event.data.sessionId,
+					threadId: event.data.threadId,
 					data: encoded.data,
 					parts: encoded.parts,
 				});
@@ -183,14 +183,11 @@ export const layer = Layer.effectDiscard(
 
 		yield* events.project(EventList.LLMFailed, (event) =>
 			Effect.gen(function* () {
-				const encoded = yield* encodeAssistant({
-					sessionId: event.data.sessionId,
-					messageId: event.data.messageId,
-					message: event.data.message,
-				});
-				yield* sessions.abortAssistant({
+				const encoded = yield* encodeAssistant(event.data);
+				yield* threads.abort({
 					id: event.data.messageId,
-					sessionId: event.data.sessionId,
+					threadId: event.data.threadId,
+					seq: yield* seqOf(event),
 					data: encoded.data,
 				});
 			}),
@@ -199,7 +196,7 @@ export const layer = Layer.effectDiscard(
 		yield* events.project(EventList.ToolSettled, (event) =>
 			Effect.gen(function* () {
 				const encoded = yield* ContextCodec.encodePart(event.data.part).pipe(Effect.orDie);
-				yield* sessions.settleToolCall({
+				yield* threads.settleToolCall({
 					entryId: event.data.messageId,
 					callId: event.data.callID,
 					status: event.data.part.status,
@@ -209,13 +206,10 @@ export const layer = Layer.effectDiscard(
 		);
 
 		yield* events.project(EventList.TurnEnded, (event) =>
-			sessions
-				.setEntryState({
-					id: event.data.messageId,
-					sessionId: event.data.sessionId,
-					state: "committed",
-				})
-				.pipe(Effect.andThen(sessions.resetRestarts(event.data.sessionId))),
+			Effect.gen(function* () {
+				yield* threads.commit({ id: event.data.messageId, threadId: event.data.threadId, seq: yield* seqOf(event) });
+				yield* threads.resetRestarts(event.data.threadId);
+			}),
 		);
 	}),
 );

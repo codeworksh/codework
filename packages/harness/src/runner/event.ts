@@ -8,7 +8,7 @@
  *
  * The LLM boundary sequences the stream and hands each event over; this
  * module decides what the event means. It writes nothing itself -- durable
- * lifecycle events reach `session_entry` through the projectors in
+ * lifecycle events reach `entry` through the projectors in
  * `session/projector.ts`.
  *
  * There are no fragment buffers here, which is the main structural difference
@@ -26,6 +26,7 @@ import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { SessionSchema } from "../session/schema.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
 import { Runner } from "./run.ts";
 
 /** How the response settled. The loop branches on this, never on `result()`. */
@@ -50,7 +51,10 @@ export interface Publisher {
 	readonly terminal: Effect.Effect<Terminal, Runner.LLMStreamError>;
 }
 
-export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { readonly sessionId: SessionSchema.ID }) {
+export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
+	readonly sessionId: SessionSchema.ID;
+	readonly threadId: ThreadSchema.ID;
+}) {
 	const events = yield* Event.Service;
 
 	let messageId: SessionMessageSchema.ID | undefined;
@@ -58,7 +62,7 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 	let settled: Terminal | undefined;
 	const clone = (message: Message.AssistantMessage): Message.AssistantMessage => structuredClone(message);
 
-	const fault = (reason: string) => new Runner.LLMStreamError({ sessionId: input.sessionId, reason });
+	const fault = (reason: string) => new Runner.LLMStreamError({ threadId: input.threadId, reason });
 
 	/**
 	 * Every event names the message it belongs to. The first one to arrive fixes
@@ -90,7 +94,7 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 				return yield* fault(`received "${event.type}" after the response had already terminated`);
 			}
 			const timestamp = yield* DateTime.now;
-			const base = { sessionId: input.sessionId, timestamp };
+			const base = { sessionId: input.sessionId, threadId: input.threadId, timestamp };
 
 			switch (event.type) {
 				case "start": {

@@ -1,5 +1,5 @@
 import type * as Acp from "@agentclientprotocol/sdk";
-import { EventList, type EventSchema, type SessionStore } from "@codeworksh/harness/effect";
+import { EventList, type EventSchema, type ThreadStore } from "@codeworksh/harness/effect";
 import { Option, Schema } from "effect";
 
 const isTextDelta = Schema.is(EventList.LLMTextDelta);
@@ -92,7 +92,7 @@ export const noticeUpdate = (notice: string): Acp.SessionUpdate => ({
 });
 
 /** The `session/update`s that replay one stored entry during `session/load`. */
-export const replay = ({ entry, parts }: SessionStore.HydratedEntry): ReadonlyArray<Acp.SessionUpdate> => {
+export const replay = ({ entry, parts }: ThreadStore.HydratedEntry): ReadonlyArray<Acp.SessionUpdate> => {
 	if (entry.type !== "user" && entry.type !== "assistant") return [];
 	return parts.flatMap((row): ReadonlyArray<Acp.SessionUpdate> => {
 		const part = decodePart(row.data);

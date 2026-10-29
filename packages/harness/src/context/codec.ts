@@ -6,13 +6,13 @@ import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { validateAikitMessage, validateAikitUserMessage } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
-import type { Session } from "../session/session.ts";
+import type { Thread } from "../thread/thread.ts";
 import { ContextDecodeError, ContextEncodeError } from "./errors.ts";
 
 export interface EncodedMessage {
 	readonly type: "user" | "assistant";
 	readonly data: string;
-	readonly parts: ReadonlyArray<Session.AppendPart>;
+	readonly parts: ReadonlyArray<Thread.AppendPart>;
 }
 
 type AikitPart = Message.AssistantMessage["parts"][number] | Message.UserMessage["parts"][number];
@@ -26,7 +26,7 @@ const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
 
 export const encodePart = Effect.fn("Context.encodePart")(function* (
 	part: AikitPart,
-): Effect.fn.Return<Session.AppendPart, ContextEncodeError> {
+): Effect.fn.Return<Thread.AppendPart, ContextEncodeError> {
 	const data = yield* encodeJsonObject(part).pipe(
 		Effect.mapError(
 			(cause) =>
@@ -124,7 +124,7 @@ export const encodeMessage = Effect.fn("Context.encodeMessage")(function* (
 });
 
 const decodeParts = Effect.fn("Context.decodeParts")(function* (
-	hydrated: Session.HydratedEntry,
+	hydrated: Thread.HydratedEntry,
 ): Effect.fn.Return<ReadonlyArray<unknown>, ContextDecodeError> {
 	const { entry } = hydrated;
 	const sorted = [...hydrated.parts].sort((left, right) => left.partIndex - right.partIndex);
@@ -183,7 +183,7 @@ const decodeParts = Effect.fn("Context.decodeParts")(function* (
 });
 
 export const decodeSyntheticMessage = Effect.fn("Context.decodeSyntheticMessage")(function* (
-	hydrated: Session.HydratedEntry,
+	hydrated: Thread.HydratedEntry,
 ): Effect.fn.Return<Message.UserMessage, ContextDecodeError> {
 	const { entry } = hydrated;
 	const parts = yield* decodeParts(hydrated);
@@ -200,7 +200,7 @@ export const decodeSyntheticMessage = Effect.fn("Context.decodeSyntheticMessage"
 });
 
 export const decodeMessage = Effect.fn("Context.decodeMessage")(function* (
-	hydrated: Session.HydratedEntry,
+	hydrated: Thread.HydratedEntry,
 ): Effect.fn.Return<ContextMessage, ContextDecodeError> {
 	const { entry } = hydrated;
 	if (entry.type !== "user" && entry.type !== "assistant") {
