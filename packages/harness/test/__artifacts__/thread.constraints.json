@@ -1,0 +1,7 @@
+{
+	"secondMain": "constraint failed: thread.session_id",
+	"twoEntriesOneEvent": "constraint failed: entry.thread_id, entry.seq",
+	"twoRevisionsOneEvent": "constraint failed: revision.document_id, revision.seq",
+	"draftWithCommit": "constraint failed: (state = 'draft') = (committed_seq IS NULL)",
+	"forkWithoutCut": "constraint failed: origin_kind <> 'fork' OR origin_entry_id IS NOT NULL"
+}
