@@ -13,7 +13,7 @@ import { SqlClient } from "effect/sql";
 // The thread model replaced every earlier migration: databases created before it are discarded,
 // not upgraded, so this one assumes an empty database.
 export const migrations = {
-	"202610290001_threads": Effect.gen(function* () {
+	"202610290001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 
 		// Head of one aggregate's log (aggregate = session), and who holds it.

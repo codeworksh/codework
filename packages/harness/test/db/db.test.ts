@@ -89,7 +89,7 @@ describe("Database", () => {
 				const applied = yield* sql<{ migrationId: number; name: string }>`
 					SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
 				`;
-				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual(["202610290001_threads"]);
+				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual(["202610290001_init"]);
 				const tables = yield* sql<{ name: string }>`
 					SELECT name FROM sqlite_master
 					WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'effect_sql_migrations'
