@@ -16,7 +16,8 @@ it("mcp: a changed tool list applies from the next request, a withdrawn tool say
 	const home = join(dir.path, "home");
 	const work = join(dir.path, "work");
 	await fs.mkdir(work, { recursive: true });
-	await write(join(home, "mcp.json"), { mcpServers: { live: stdio({}, {}, "changes.mjs") } });
+	const release = join(dir.path, "release");
+	await write(join(home, "mcp.json"), { mcpServers: { live: stdio({}, { E2E_RELEASE: release }, "changes.mjs") } });
 
 	const model = scripted();
 	const result = await Effect.gen(function* () {
@@ -46,16 +47,16 @@ it("mcp: a changed tool list applies from the next request, a withdrawn tool say
 
 		model.turn(main.id, [pendingCall("mcp__live__new", {}, "new")], [pendingCall("mcp__live__burst", {}, "burst")]);
 		yield* main.run("two");
-		// The slow first listing of the burst answers 500 ms after it was asked, well after the fresh one.
-		const afterBurst = yield* waitFor(tools, (names) => names.includes("fresh"));
-		yield* Effect.sleep("800 millis");
-		const settled = yield* tools;
-
+		// The second change arrived while the listing of the first was held. Listings run one at a time,
+		// so the one with `fresh` follows; only that latest one is taken in.
+		const whileHeld = yield* tools;
+		yield* Effect.promise(() => fs.writeFile(release, ""));
+		const settled = yield* waitFor(tools, (names) => names.includes("fresh"));
 		yield* main.run("three");
 		return {
 			declared: { first: declaredAt(0), second: declaredAt(1), last: model.declared() },
 			afterSwap,
-			afterBurst,
+			whileHeld,
 			settled,
 			calls: yield* results(main),
 			events: seen.read(),
@@ -79,6 +80,7 @@ it("mcp: a changed tool list applies from the next request, a withdrawn tool say
 	expect(result.declared.second).toEqual(["mcp__live__swap", "mcp__live__burst", "mcp__live__new"]);
 	expect(result.calls.undeclared).toBe("Unknown Tool: mcp__live__old");
 	expect(result.calls.new).toBe("new");
+	expect(result.whileHeld).toEqual(["swap", "burst", "new"]);
 	expect(result.settled).toEqual(["swap", "burst", "new", "fresh"]);
 	expect(result.declared.last).toContain("mcp__live__fresh");
 	const published = (result.events.main?.live ?? []).flatMap((status) => ("tools" in status ? status.tools : []));

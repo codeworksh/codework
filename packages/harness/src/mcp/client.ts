@@ -5,7 +5,7 @@ import {
 	Client,
 	type Implementation,
 	InsufficientScopeError,
-	isJSONRPCResponse,
+	isJSONRPCErrorResponse,
 	isJSONRPCResultResponse,
 	ProtocolError,
 	ProtocolErrorCode,
@@ -25,7 +25,7 @@ import {
 	type Transport,
 	UnauthorizedError,
 } from "@modelcontextprotocol/client";
-import { Cause, Clock, Data, Duration, Effect, Exit, FiberSet, Schedule } from "effect";
+import { Cause, Clock, Data, Duration, Effect, Exit, FiberSet, Schedule, Semaphore } from "effect";
 import { hostPath } from "../host.ts";
 import { ConnectError, NeedsAuthError, RequestError, SessionExpiredError } from "./error.ts";
 import { McpStdio } from "./stdio.ts";
@@ -63,6 +63,11 @@ export interface Skipped {
 	readonly reason: string;
 }
 
+export interface Listing {
+	readonly tools: Tool[];
+	readonly skipped: ReadonlyArray<Skipped>;
+}
+
 /** Handle over a connected MCP server that keeps the SDK `Client` out of the rest of the harness. */
 export interface Connection {
 	readonly serverInfo: Implementation | undefined;
@@ -70,11 +75,11 @@ export interface Connection {
 	readonly instructions: string | undefined;
 	/**
 	 * Every tool the SDK accepts, following pagination. Empty when the server has no tools capability.
-	 * The ones it rejects are left out; see {@link Connection.skipped}.
+	 * The ones it rejects are left out; see {@link Connection.listing}.
 	 */
 	readonly tools: () => Effect.Effect<Tool[], Failed>;
-	/** The entries the latest listing left out, page by page. */
-	readonly skipped: () => ReadonlyArray<Skipped>;
+	/** Every tool the SDK accepts, and the entries it rejected, of one listing. */
+	readonly listing: () => Effect.Effect<Listing, Failed>;
 	/** One page of resources, starting at `cursor`. Empty when the server has no resources capability. */
 	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, Failed>;
 	/** One page of resource templates; empty when the server does not implement the method. */
@@ -153,6 +158,30 @@ const condense = (message: string) => {
 	const match = /^(Invalid result for [^:]+): (\[[\s\S]*\])$/.exec(message);
 	const parts = match ? issues(match[2]!) : undefined;
 	return parts === undefined ? message : `${match![1]}: ${parts}`;
+};
+
+/** The request a `notifications/cancelled` message cancels. */
+const cancelled = (message: unknown) =>
+	isJSONRPCNotification(message) && message.method === "notifications/cancelled"
+		? (message.params as { readonly requestId?: RequestId } | undefined)?.requestId
+		: undefined;
+
+/**
+ * Runs `answered` with the id of each response the transport receives, and `closed` once it closes.
+ * Set before the client connects the transport, so it runs ahead of the SDK's own handlers.
+ */
+const settled = (transport: Transport, answered: (id: RequestId) => void, closed: () => void) => {
+	const receive = transport.onmessage;
+	transport.onmessage = (message, extra) => {
+		receive?.(message, extra);
+		if ((isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) && message.id !== undefined)
+			answered(message.id);
+	};
+	const close = transport.onclose;
+	transport.onclose = () => {
+		close?.();
+		closed();
+	};
 };
 
 class CheckingClient extends Client {
@@ -293,21 +322,29 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		});
 		// The SDK passes no request signal to the transport in the legacy wire era, so a request cancelled
 		// while it waits for a token or an authorization retry would still be sent afterwards. Each request
-		// gets one, aborted when its cancellation is sent.
+		// gets one, aborted when its cancellation is sent. `send` settles once an SSE response opens, while
+		// the request is still pending, so the signal is kept until its response arrives.
 		const pending = new Map<RequestId, AbortController>();
 		const send = transport.send.bind(transport);
 		transport.send = (message, options) => {
-			if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
-				const id = (message.params as { readonly requestId?: RequestId } | undefined)?.requestId;
-				if (id !== undefined) pending.get(id)?.abort();
+			const id = cancelled(message);
+			if (id !== undefined) {
+				pending.get(id)?.abort();
+				pending.delete(id);
 			}
 			if (!isJSONRPCRequest(message) || options?.requestSignal !== undefined) return send(message, options);
 			const controller = new AbortController();
 			pending.set(message.id, controller);
-			return send(message, { ...options, requestSignal: controller.signal }).finally(() => {
+			return send(message, { ...options, requestSignal: controller.signal }).catch((error: unknown) => {
 				pending.delete(message.id);
+				throw error;
 			});
 		};
+		settled(
+			transport,
+			(id) => pending.delete(id),
+			() => pending.clear(),
+		);
 		return transport;
 	};
 	// Ends the HTTP session a transport holds, bounded: the server expires it anyway.
@@ -325,9 +362,10 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 
 	// The SDK checks a `tools/list` page as a whole, so one entry it rejects would fail every tool of the
 	// server. Each entry is checked on its own first, and the rejected ones are dropped from the page
-	// before the SDK sees it. What a page dropped is kept under the cursor it was asked for, the latest
-	// answer for each, so a listing reads it back however the SDK paged or cached it.
+	// before the SDK sees it. What a page dropped is kept under the cursor it was asked for, for the
+	// listing in progress: listings run one at a time, each starting afresh, and read it back at the end.
 	const pages = new Map<string | null, { readonly skipped: ReadonlyArray<Skipped>; readonly next?: string }>();
+	const listingLock = yield* Semaphore.make(1);
 	const skipped = () => {
 		const all: Skipped[] = [];
 		const seen = new Set<string | null>();
@@ -360,22 +398,29 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		const listings = new Map<RequestId, string | null>();
 		const send = transport.send.bind(transport);
 		transport.send = (message, options) => {
-			if (isJSONRPCRequest(message) && message.method === "tools/list") {
-				const cursor = message.params?.cursor;
-				listings.set(message.id, typeof cursor === "string" ? cursor : null);
-			}
-			return send(message, options);
+			const id = cancelled(message);
+			if (id !== undefined) listings.delete(id);
+			if (!isJSONRPCRequest(message) || message.method !== "tools/list") return send(message, options);
+			const cursor = message.params?.cursor;
+			listings.set(message.id, typeof cursor === "string" ? cursor : null);
+			return send(message, options).catch((error: unknown) => {
+				listings.delete(message.id);
+				throw error;
+			});
 		};
 		const receive = transport.onmessage;
 		transport.onmessage = (message, extra) => {
-			if (isJSONRPCResponse(message) && message.id !== undefined && listings.has(message.id)) {
-				const cursor = listings.get(message.id)!;
-				listings.delete(message.id);
-				const page = isJSONRPCResultResponse(message) ? screen(client, message.result) : undefined;
-				if (page !== undefined) pages.set(cursor, page);
+			if (isJSONRPCResultResponse(message) && listings.has(message.id)) {
+				const page = screen(client, message.result);
+				if (page !== undefined) pages.set(listings.get(message.id)!, page);
 			}
 			receive?.(message, extra);
 		};
+		settled(
+			transport,
+			(id) => listings.delete(id),
+			() => listings.clear(),
+		);
 	};
 
 	const initialize = Effect.fnUntraced(function* (transport: Transport, timeout: number) {
@@ -561,17 +606,26 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 					),
 				);
 
+	// Servers without the tools capability (prompts or resources only) do not answer tools/list. Every
+	// listing asks the server, never the SDK's cache, so what it skipped is this listing's own.
+	const listing = () =>
+		capabilities?.tools === undefined
+			? Effect.succeed({ tools: [], skipped: [] })
+			: listingLock.withPermits(1)(
+					Effect.suspend(() => {
+						pages.clear();
+						return read("tools/list", (signal) =>
+							client.listTools(undefined, { ...options(signal), cacheMode: "refresh" }),
+						).pipe(Effect.map((result) => ({ tools: result.tools, skipped: skipped() })));
+					}),
+				);
+
 	const connection: Connection = {
 		serverInfo: client.getServerVersion(),
 		capabilities,
 		instructions: client.getInstructions()?.trim() || undefined,
-		tools: () =>
-			// Servers without the tools capability (prompts or resources only) do not answer tools/list.
-			capabilities?.tools === undefined
-				? Effect.succeed([])
-				: read("tools/list", (signal) => client.listTools(undefined, options(signal))).pipe(
-						Effect.map((result) => result.tools),
-					),
+		tools: () => listing().pipe(Effect.map((result) => result.tools)),
+		listing,
 		resources: (cursor) =>
 			capabilities?.resources === undefined
 				? Effect.succeed({ resources: [] })
@@ -603,7 +657,6 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			request("tools/call", (signal) =>
 				client.callTool({ name: call.name, arguments: call.args ?? {} }, options(signal, call.onProgress)),
 			),
-		skipped,
 		onToolsChanged: (handler) => listen("tools", handler),
 		onResourcesChanged: (handler) => listen("resources", handler),
 		onSessionExpired: (handler) => {

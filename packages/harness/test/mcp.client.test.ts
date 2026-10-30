@@ -745,8 +745,9 @@ describe("mcp client", () => {
 				server: "malformed",
 				endpoint: stdio("malformed.mjs", { MCP_MALFORMED: "skipped" }),
 			});
-			const tools = (yield* connection.tools()).map((tool) => tool.name);
-			const skipped = connection.skipped();
+			const listing = yield* connection.listing();
+			const tools = listing.tools.map((tool) => tool.name);
+			const skipped = listing.skipped;
 			// Structured content must be an object; a result without content gets an empty one.
 			const scalar = failure(yield* connection.callTool({ name: "scalar" }).pipe(Effect.flip));
 			const bare = yield* connection.callTool({ name: "bare" });

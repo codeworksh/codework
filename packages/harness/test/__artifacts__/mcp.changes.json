@@ -22,11 +22,10 @@
 		"burst",
 		"new"
 	],
-	"afterBurst": [
+	"whileHeld": [
 		"swap",
 		"burst",
-		"new",
-		"fresh"
+		"new"
 	],
 	"settled": [
 		"swap",
