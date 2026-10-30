@@ -5,5 +5,6 @@
 	],
 	"promptChange": "in place",
 	"earlierSectionSent": true,
-	"changeBeforePrompt": true
+	"change": "before",
+	"cached": true
 }

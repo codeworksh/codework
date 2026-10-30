@@ -485,16 +485,28 @@ export function transcriptToolSupport(
 }
 
 /**
- * Whether prompt changes go in place as developer messages. Only our own Responses transport
- * sends them; the AI SDK adapters take the current prompt as the leading system prompt.
+ * Whether prompt changes go in place as system messages. Our own Responses transport and the
+ * AI SDK's OpenAI Responses and Anthropic Messages adapters keep them where they stand; Chat
+ * Completions takes the current prompt as the leading system prompt.
  */
 export function supportsMidConvoSystemMessages(model: Model.Info, method: Model.APIMethodEnum | undefined): boolean {
-	return isOwnResponses(model, method) && model.compat?.supportsMidConvoSystemMessages === true;
+	if (model.compat?.supportsMidConvoSystemMessages !== true) return false;
+	return isOwnResponses(model, method) || !isChatCompletions(model, resolveMethod(model, method));
 }
 
-/** The prompt the AI SDK adapters take as `system`: the current one, every change folded in. */
-export function leadingSystemPrompt(context: Message.Context): string | undefined {
-	return Transcript.getCurrentSystemPrompt(context) || undefined;
+/**
+ * The prompt the AI SDK adapters take as `system`: the leading one when changes go in place,
+ * else the current one, every change folded in.
+ */
+export function leadingSystemPrompt(
+	context: Message.Context,
+	model: Model.Info,
+	method: Model.APIMethodEnum | undefined,
+): string | undefined {
+	return (
+		Transcript.resolveTranscriptPrompt(context, supportsMidConvoSystemMessages(model, method)).systemPrompt ||
+		undefined
+	);
 }
 
 /** A tool as the language model receives it, for declaring it inside the prompt. */
@@ -557,6 +569,12 @@ export function convertMessages(
 		messages.push({ role: "system", content: sanitizeSurrogates(prompt.systemPrompt) });
 	}
 
+	// Anthropic takes a later system message only after a user message, and never between a tool
+	// call and its result: each is held for the next assistant message, or the end (pi). One ahead
+	// of the conversation joins the leading prompt instead, where it caches like the rest of it; a
+	// trailing system message's cache entry is never read once a reply follows it.
+	const anthropic = isAnthropicWire(model, method);
+	const held: ModelMessage[] = [];
 	let systemIndex = 0;
 	for (const msg of transformedMessages) {
 		if (msg.role === "system") {
@@ -571,17 +589,19 @@ export function convertMessages(
 				model,
 				method,
 			);
-			if (change) messages.push(change);
+			if (change) (anthropic && messages.some((one) => one.role !== "system") ? held : messages).push(change);
 			continue;
 		}
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts));
 			continue;
 		}
-		messages.push(...assistantMessages(msg, model, method));
+		const converted = assistantMessages(msg, model, method);
+		if (converted.length > 0) messages.push(...held.splice(0));
+		messages.push(...converted);
 	}
 
-	return messages;
+	return [...messages, ...held];
 }
 
 /**

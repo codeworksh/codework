@@ -353,6 +353,9 @@ function applyOpenAiMetadata(model: Model.Info, source: ModelsDevModel | undefin
 		}
 		// models.dev reports the input sub-limit as gpt-5-pro's output.
 		if (id === "gpt-5-pro") model.maxTokens = OPENAI_MAX_TOKENS;
+		if (model.api?.method === Model.APIMethodEnum.responses && OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(id)) {
+			mergeCompat(model, { supportsMidConvoSystemMessages: true });
+		}
 	}
 	model.cost.serviceTierMultipliers = serviceTierMultipliers(model, source);
 
@@ -391,6 +394,9 @@ function isAnthropicMessages(model: Model.Info): boolean {
 
 // The Messages API rejects `temperature` on these.
 const ANTHROPIC_NO_TEMPERATURE = /opus-4[-.][78]|opus-5|(sonnet|haiku)-5[-.]5/;
+// These take system messages inside the conversation (pi).
+const ANTHROPIC_MID_CONVO_SYSTEM_MESSAGES =
+	/^claude-(?:opus-(?:4[.-]8|5(?:[.-]5)?)|(?:sonnet|haiku)-5[.-]5|(?:fable|mythos)-5(?:[.-]1)?)(?:-\d{8})?$/;
 
 // Checked live against the Messages API: effort levels each adaptive family
 // accepts, the 5.5 and Fable models that reject `thinking: {type: "disabled"}`, and
@@ -422,6 +428,9 @@ function applyAnthropicMetadata(model: Model.Info): void {
 		mergeThinkingLevelMap(model, { off: null });
 	}
 	if (ANTHROPIC_NO_TEMPERATURE.test(id)) mergeCompat(model, { supportsTemperature: false });
+	if (model.provider.id === "anthropic" && ANTHROPIC_MID_CONVO_SYSTEM_MESSAGES.test(id)) {
+		mergeCompat(model, { supportsMidConvoSystemMessages: true });
+	}
 }
 
 //
