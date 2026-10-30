@@ -26,6 +26,7 @@ type Stored = Record<
 >;
 
 const AUTHORIZE = /http:\/\/127\.0\.0\.1:\d+\/authorize\S+/;
+const PROMPT = "Or paste the URL the browser was redirected to:";
 
 /** A home with `mcp.json` built from the fixture's URL, and the CLI commands a case runs in it. */
 const setup = async (options: object, servers: (url: string) => Record<string, object>) => {
@@ -70,14 +71,15 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 	/**
 	 * `codework mcp login`, playing the browser: follow the authorization URL to the loopback
 	 * callback, with `before` and `after` sent the callback URL around that request. `cancel`
-	 * interrupts the CLI instead, once it shows the URL. `paste` runs it in a terminal and types the
-	 * callback URL in when asked, never requesting it.
+	 * interrupts the CLI instead, once it shows the URL. `paste` writes the callback URL to its
+	 * standard input instead of requesting it; `closeStdin` closes that input as the CLI starts.
 	 */
 	const login = async (
 		name: string,
 		options: {
 			readonly cancel?: boolean;
 			readonly paste?: boolean;
+			readonly closeStdin?: boolean;
 			readonly before?: (callback: string) => Promise<void>;
 			readonly after?: (callback: string) => Promise<void>;
 		} = {},
@@ -88,7 +90,7 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 		let child: { kill: (signal: NodeJS.Signals) => void; stdin: NodeJS.WritableStream } | undefined;
 		const browse = (text: string) => {
 			const url = AUTHORIZE.exec(text)?.[0];
-			if (url === undefined || browsing !== undefined || (options.paste && !text.includes("redirected to:"))) return;
+			if (url === undefined || browsing !== undefined) return;
 			browsing = (async () => {
 				const approved = await fetch(url, { redirect: "manual" });
 				callback = approved.headers.get("location") ?? undefined;
@@ -103,22 +105,20 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 		const result = await runCli([...shared, "mcp", "login", name, "--browser=false"], {
 			cwd: project,
 			env,
-			tty: options.paste ?? false,
 			onSpawn: (spawned) => {
 				child = spawned;
+				if (options.closeStdin) spawned.stdin.end();
 			},
-			onStdout: browse,
 			onStderr: browse,
 		});
 		await browsing;
-		// In a terminal both streams arrive as one.
-		const lines = (options.paste ? result.stdout : result.stderr).trim().split(/\r?\n/);
+		const lines = result.stderr.trim().split("\n");
 		return {
 			status: result.status,
 			stdout: result.stdout,
 			// The last line says why a sign-in failed. An interrupted one says nothing, and leaves the
-			// authorization URL as its last line.
-			error: result.status === 0 || AUTHORIZE.test(lines.at(-1) ?? "") ? undefined : normalise(lines.at(-1) ?? ""),
+			// paste prompt as its last line.
+			error: result.status === 0 || lines.at(-1) === PROMPT ? undefined : normalise(lines.at(-1) ?? ""),
 			page,
 			callback,
 		};
@@ -467,18 +467,31 @@ it("the sign-in callback ignores stray and replayed requests, and a denied autho
 	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.callback.json");
 }, 120_000);
 
-it("codework mcp login signs in with the redirect URL pasted into the terminal", async () => {
+it("codework mcp login signs in with the redirect URL piped to it, and with the browser once its input is closed", async () => {
 	const { server, login, stored, normalise } = await setup({}, (url) => ({ secure: { url: `${url}/mcp` } }));
 	const pasted = await login("secure", { paste: true });
 	expect(pasted.status, pasted.error).toBe(0);
 	expect(pasted.page).toBeUndefined();
-	const outcome = pasted.stdout.split(/\r?\n/).find((line) => line.startsWith("Signed in"));
-	expect(outcome).toBe('Signed in to MCP server "secure" (1 tool).');
+	expect(pasted.stdout).toBe('Signed in to MCP server "secure" (1 tool).\n');
 	const access = stored()[`mcp__secure|${server.url}/mcp`]?.tokens?.access_token;
 	expect(access).toBe("access-1");
 
+	// Input that ends without a URL is not a cancel: the callback still completes the sign-in.
+	const closed = await setup({}, (url) => ({ secure: { url: `${url}/mcp` } }));
+	const browsed = await closed.login("secure", { closeStdin: true });
+	expect(browsed.status, browsed.error).toBe(0);
+	expect(browsed.page).toBe(200);
+	expect(closed.stored()[`mcp__secure|${closed.server.url}/mcp`]?.tokens?.access_token).toBe("access-1");
+
 	await expect(
-		`${JSON.stringify({ outcome, access, server: JSON.parse(normalise(JSON.stringify(server.state.log))) }, null, "\t")}\n`,
+		`${JSON.stringify(
+			{
+				pasted: { stdout: pasted.stdout, access, server: JSON.parse(normalise(JSON.stringify(server.state.log))) },
+				closed: { stdout: browsed.stdout, page: browsed.page },
+			},
+			null,
+			"\t",
+		)}\n`,
 	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.paste.json");
 }, 120_000);
 
