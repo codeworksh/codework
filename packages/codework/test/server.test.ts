@@ -634,12 +634,12 @@ describe("server", () => {
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 });
 
-const websocket = (options: Harness.Options = {}) => {
+const websocket = (options: Harness.Options = {}, port = 0) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-ws-"));
 	homes.push(home);
 	return Server.layer({
 		host: "127.0.0.1",
-		port: 0,
+		port,
 		harness: { home, hostCwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
 	});
 };
@@ -864,6 +864,22 @@ describe("WebSocket client", () => {
 			Effect.provide(websocket({ plugins: [module] })),
 			Effect.timeout("20 seconds"),
 			Effect.runPromise,
+		);
+	});
+
+	it("reaches a server on the default port without --server", async (context) => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-default-")));
+		homes.push(root);
+		const result = await Effect.gen(function* () {
+			// A server already on the default port, such as a running service, is never talked to.
+			const built = yield* Effect.exit(Layer.build(websocket({}, 7433)));
+			if (Exit.isFailure(built)) return undefined;
+			return yield* Effect.promise(() => execCli(["plugin", "reload"], root));
+		}).pipe(Effect.scoped, Effect.timeout("20 seconds"), Effect.runPromise);
+		if (result === undefined) return context.skip("port 7433 is in use");
+		expect(result.status, result.stderr).toBe(0);
+		await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+			"./__artifacts__/server.default-url.json",
 		);
 	});
 
