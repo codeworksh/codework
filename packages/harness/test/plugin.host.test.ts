@@ -331,7 +331,7 @@ describe("plugin pipelines in the kernel loop", () => {
 							]);
 						if (mode === "sequential") expect(trace.indexOf("a:done")).toBeLessThan(trace.indexOf("b:before"));
 						const path = yield* session.history();
-						expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant", "assistant"]);
+						expect(path.map((item) => item.entry.type)).toEqual(["system", "user", "assistant", "assistant"]);
 					}).pipe(
 						Effect.provide(
 							Harness.layer({

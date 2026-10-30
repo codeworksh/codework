@@ -172,8 +172,8 @@ describe("runner loop — aikit input/output", () => {
 			const bySeq = [...rows].sort((left, right) => (left.promotedSeq ?? 0) - (right.promotedSeq ?? 0));
 			expect(bySeq.map((row) => row.id)).toEqual(["msg_steer", "msg_follow"]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
-				"user",
 				"system",
+				"user",
 				"assistant",
 				"user",
 				"assistant",
@@ -182,8 +182,8 @@ describe("runner loop — aikit input/output", () => {
 			// Every request is rebuilt from durable history. The second request sees
 			// the first terminal assistant and the newly promoted follow-up.
 			expect(contexts.map((context) => context.messages.map((message) => message.role))).toEqual([
-				["user", "system"],
-				["user", "system", "assistant", "user"],
+				["system", "user"],
+				["system", "user", "assistant", "user"],
 			]);
 		}),
 	);
@@ -199,10 +199,10 @@ describe("runner loop — aikit input/output", () => {
 			yield* execution.resume(threadId);
 			yield* execution.resume(threadId);
 
-			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 3 }]);
+			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 4 }]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
-				"user",
 				"system",
+				"user",
 				"assistant",
 			]);
 		}),
@@ -224,10 +224,10 @@ describe("runner loop — aikit input/output", () => {
 
 			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual([
-				"user",
-				"user",
-				"user",
 				"system",
+				"user",
+				"user",
+				"user",
 				"assistant",
 				"user",
 				"assistant",
@@ -356,8 +356,8 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 
 			const path = yield* threads.line(threadId);
 			expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
-				["user", "committed"],
 				["system", "committed"],
+				["user", "committed"],
 				["assistant", "committed"],
 				["assistant", "committed"],
 			]);
@@ -512,7 +512,7 @@ describe("runner loop — tool interruption", () => {
 				expect(interrupted.data.reason).toBe("user");
 
 			const path = yield* threads.line(threadId);
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path.map((item) => item.entry.type)).toEqual(["system", "user", "assistant"]);
 			expect(path[2]!.entry.state).toBe("committed");
 			expect(path[2]!.parts.map((part) => Option.getOrThrow(part.status))).toEqual(["aborted", "aborted"]);
 			for (const part of path[2]!.parts) {
@@ -578,7 +578,7 @@ describe("runner loop — provider interruption", () => {
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
 			const path = yield* threads.line(threadId);
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path.map((item) => item.entry.type)).toEqual(["system", "user", "assistant"]);
 			expect(path[2]!.entry.state).toBe("aborted");
 			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({ stopReason: "aborted" });
 			expect(path[2]!.parts).toEqual([]);
@@ -635,7 +635,7 @@ describe("runner loop — provider failure", () => {
 			}
 
 			const path = yield* threads.line(threadId);
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path.map((item) => item.entry.type)).toEqual(["system", "user", "assistant"]);
 			expect(path[2]!.entry.state).toBe("aborted");
 			expect(path[2]!.parts).toEqual([]);
 			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({
@@ -1559,8 +1559,8 @@ describe("runner loop — lifecycle hooks", () => {
 				const threads = yield* Thread.Service;
 				const path = yield* threads.line(threadId);
 				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
-					["user", "committed"],
 					["system", "committed"],
+					["user", "committed"],
 					["assistant", "committed"],
 				]);
 				const tool = path[2]!.parts.find((part) => part.type === "toolCall");
@@ -1571,10 +1571,10 @@ describe("runner loop — lifecycle hooks", () => {
 				// The next run answers the tool results first, then picks the queued follow-up up.
 				yield* execution.resume(threadId);
 				expect(contexts).toHaveLength(3);
-				expect(contexts[1]!.messages.map((message) => message.role)).toEqual(["user", "system", "assistant"]);
+				expect(contexts[1]!.messages.map((message) => message.role)).toEqual(["system", "user", "assistant"]);
 				expect(contexts[2]!.messages.map((message) => message.role)).toEqual([
-					"user",
 					"system",
+					"user",
 					"assistant",
 					"assistant",
 					"user",

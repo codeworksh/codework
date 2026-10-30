@@ -60,12 +60,6 @@
 		{
 			"id": "E1",
 			"seq": 4,
-			"type": "user",
-			"state": "committed"
-		},
-		{
-			"id": "E2",
-			"seq": 5,
 			"type": "system",
 			"state": "committed",
 			"data": {
@@ -82,6 +76,12 @@
 				],
 				"hash": "d6d66014ddda5da53e6e8e6520f0e6e1851a1a9c246d23802463da98342397a1"
 			}
+		},
+		{
+			"id": "E2",
+			"seq": 5,
+			"type": "user",
+			"state": "committed"
 		},
 		{
 			"id": "E3",

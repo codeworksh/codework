@@ -674,7 +674,8 @@ export const layer = Layer.effect(
 			if (target.state !== "committed") return yield* reject("entry_not_committed");
 			if (input.mode !== "before") return { point: target, text: undefined };
 			if (target.type !== "user") return yield* reject("not_a_user_entry");
-			const before = entries.slice(0, index).findLast((one) => one.state === "committed");
+			// A `system` entry only declares setup for the prompt after it: the prompt's own resend declares again.
+			const before = entries.slice(0, index).findLast((one) => one.state === "committed" && one.type !== "system");
 			if (before === undefined) return yield* reject("nothing_before_entry");
 			const parts = yield* partsFor([target]);
 			const text = parts

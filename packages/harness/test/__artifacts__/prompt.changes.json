@@ -2,8 +2,8 @@
 	"requests": [
 		{
 			"roles": [
-				"user",
-				"system"
+				"system",
+				"user"
 			],
 			"declared": [
 				{
@@ -17,11 +17,11 @@
 		},
 		{
 			"roles": [
-				"user",
 				"system",
-				"assistant",
 				"user",
-				"system"
+				"assistant",
+				"system",
+				"user"
 			],
 			"declared": [
 				{
@@ -38,42 +38,13 @@
 		},
 		{
 			"roles": [
-				"user",
 				"system",
-				"assistant",
 				"user",
+				"assistant",
 				"system",
+				"user",
 				"assistant",
-				"user",
-				"system"
-			],
-			"declared": [
-				{
-					"tools": "…",
-					"rules": "…",
-					"cwd": "…",
-					"mode": "<mode>\nPlan only.\n</mode>"
-				},
-				{
-					"mode": "<mode>\nBuild allowed.\n</mode>"
-				},
-				{
-					"mode": null
-				}
-			],
-			"mode": null
-		},
-		{
-			"roles": [
-				"user",
 				"system",
-				"assistant",
-				"user",
-				"system",
-				"assistant",
-				"user",
-				"system",
-				"assistant",
 				"user"
 			],
 			"declared": [
@@ -94,15 +65,13 @@
 		},
 		{
 			"roles": [
-				"user",
 				"system",
-				"assistant",
 				"user",
-				"system",
 				"assistant",
+				"system",
 				"user",
-				"system",
 				"assistant",
+				"system",
 				"user",
 				"assistant",
 				"user"
@@ -125,21 +94,52 @@
 		},
 		{
 			"roles": [
-				"user",
 				"system",
-				"assistant",
 				"user",
+				"assistant",
 				"system",
-				"assistant",
 				"user",
+				"assistant",
 				"system",
+				"user",
 				"assistant",
+				"user",
+				"assistant",
+				"user"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				},
+				{
+					"mode": null
+				}
+			],
+			"mode": null
+		},
+		{
+			"roles": [
+				"system",
+				"user",
+				"assistant",
+				"system",
+				"user",
+				"assistant",
+				"system",
 				"user",
 				"assistant",
 				"user",
 				"assistant",
 				"user",
-				"system"
+				"assistant",
+				"system",
+				"user"
 			],
 			"declared": [
 				{
@@ -162,11 +162,11 @@
 		},
 		{
 			"roles": [
-				"user",
 				"system",
-				"assistant",
 				"user",
-				"system"
+				"assistant",
+				"system",
+				"user"
 			],
 			"declared": [
 				{
@@ -191,29 +191,29 @@
 	],
 	"threads": {
 		"main": [
-			"user",
 			"system",
-			"assistant",
 			"user",
+			"assistant",
 			"system",
-			"assistant",
 			"user",
+			"assistant",
 			"system",
-			"assistant",
 			"user",
 			"assistant",
 			"user",
 			"assistant",
 			"user",
+			"assistant",
 			"system",
+			"user",
 			"assistant"
 		],
 		"fork": [
-			"user",
 			"system",
+			"user",
 			"assistant",
-			"user",
 			"system",
+			"user",
 			"assistant"
 		]
 	}

@@ -4,5 +4,6 @@
 		"bravo"
 	],
 	"promptChange": "in place",
-	"earlierSectionSent": true
+	"earlierSectionSent": true,
+	"changeBeforePrompt": true
 }

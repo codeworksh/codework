@@ -9,8 +9,8 @@
 	"events": [
 		"1 session.created.1 T1",
 		"2 session.prompt.admitted.1 T1",
-		"3 session.prompt.promoted.1 T1",
-		"4 session.thread.system.changed.1 T1",
+		"3 session.thread.system.changed.1 T1",
+		"4 session.prompt.promoted.1 T1",
 		"5 session.llm.started.1 T1",
 		"6 session.llm.ended.1 T1",
 		"7 session.turn.ended.1 T1",
@@ -42,7 +42,7 @@
 		},
 		{
 			"thread": "T3",
-			"origin": "fork T1 at E1",
+			"origin": "fork T1 at E2",
 			"createdSeq": 14,
 			"title": null
 		},
@@ -54,8 +54,8 @@
 		}
 	],
 	"entries": [
-		"E1 T1 user seq=3 committed=3 committed",
-		"E2 T1 system seq=4 committed=4 committed",
+		"E1 T1 system seq=3 committed=3 committed",
+		"E2 T1 user seq=4 committed=4 committed",
 		"E3 T1 assistant seq=5 committed=7 committed",
 		"E4 T1 user seq=9 committed=9 committed",
 		"E5 T1 assistant seq=10 committed=12 committed",

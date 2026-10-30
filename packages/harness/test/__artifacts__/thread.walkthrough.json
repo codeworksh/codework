@@ -3,8 +3,8 @@
 		"1 session.created.1 T1",
 		"2 session.thread.configured.1 T1",
 		"3 session.prompt.admitted.1 T1",
-		"4 session.prompt.promoted.1 T1",
-		"5 session.thread.system.changed.1 T1",
+		"4 session.thread.system.changed.1 T1",
+		"5 session.prompt.promoted.1 T1",
 		"6 session.llm.started.1 T1",
 		"7 session.llm.ended.1 T1",
 		"8 session.thread.configured.1 T1",
@@ -48,8 +48,8 @@
 		}
 	],
 	"entries": [
-		"E1 T1 user seq=4 committed=4 committed",
-		"E2 T1 system seq=5 committed=5 committed",
+		"E1 T1 system seq=4 committed=4 committed",
+		"E2 T1 user seq=5 committed=5 committed",
 		"E3 T1 assistant seq=6 committed=10 committed",
 		"E4 T1 assistant seq=11 committed=13 committed",
 		"E5 T1 user seq=15 committed=15 committed",
@@ -84,8 +84,8 @@
 		}
 	],
 	"t2Context": [
-		"user",
 		"system",
+		"user",
 		"assistant",
 		"assistant",
 		"user"

@@ -8,6 +8,7 @@ import { ContextDecodeError } from "./errors.ts";
 
 export interface Snapshot {
 	readonly threadId: string;
+	/** The newest entry other than `system`: a declaration left by a cancelled prompt is nothing to answer. */
 	readonly leafEntryId: string | null;
 	readonly messages: ReadonlyArray<Message.Message>;
 	readonly lastAssistant?: {
@@ -70,7 +71,7 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 	threadId: string,
 	line: ReadonlyArray<Thread.HydratedEntry>,
 ): Effect.fn.Return<Snapshot, ContextDecodeError> {
-	const leafEntryId = line.at(-1)?.entry.id ?? null;
+	const leafEntryId = line.findLast((hydrated) => hydrated.entry.type !== "system")?.entry.id ?? null;
 	const committedPath = line.filter((hydrated) => hydrated.entry.state === "committed");
 	let lastAssistant: Snapshot["lastAssistant"];
 	let latestStart:

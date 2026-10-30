@@ -13,7 +13,8 @@ import "./utils/live.ts";
 
 /**
  * A prompt section changed between two prompts reaches a real model. Codex takes system messages
- * in place, so the second request still carries the first codeword and adds the change after it.
+ * in place, so the second request still carries the first codeword and adds the change after it,
+ * ahead of the prompt it came with.
  */
 
 const Codeword = Section.define("codeword");
@@ -85,8 +86,12 @@ describe("prompt sections against live openai-codex", () => {
 					answers: replies.map((reply) => ["alpha", "bravo"].find((word) => reply.includes(word))),
 					promptChange: second.includes('Updated system prompt section \\"codeword\\"') ? "in place" : "folded",
 					earlierSectionSent: second.includes("The codeword is alpha."),
+					changeBeforePrompt:
+						second.indexOf("The codeword is bravo.") >= 0 &&
+						second.indexOf("The codeword is bravo.") < second.indexOf("What is the codeword now?"),
 				};
 				expect(artifact.promptChange).toBe("in place");
+				expect(artifact.changeBeforePrompt).toBe(true);
 				await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 					"./__artifacts__/prompt.changes.live.openai-codex.json",
 				);

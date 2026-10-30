@@ -114,11 +114,11 @@
 		},
 		{
 			"seq": 3,
-			"type": "session.prompt.promoted.1"
+			"type": "session.thread.system.changed.1"
 		},
 		{
 			"seq": 4,
-			"type": "session.thread.system.changed.1"
+			"type": "session.prompt.promoted.1"
 		},
 		{
 			"seq": 5,
@@ -173,12 +173,6 @@
 		{
 			"id": "E1",
 			"seq": 3,
-			"type": "user",
-			"state": "committed"
-		},
-		{
-			"id": "E2",
-			"seq": 4,
 			"type": "system",
 			"state": "committed",
 			"data": {
@@ -191,6 +185,12 @@
 				"toolsRemoved": [],
 				"hash": "2aedbc0fffd70a2b41a7ce78f786f9809d727be73bf31b672ac2d603d3817fbb"
 			}
+		},
+		{
+			"id": "E2",
+			"seq": 4,
+			"type": "user",
+			"state": "committed"
 		},
 		{
 			"id": "E3",
