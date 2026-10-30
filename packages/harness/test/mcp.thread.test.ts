@@ -327,7 +327,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		const startsAfterRaces = yield* Effect.promise(startCount);
 
 		const unknown = yield* Effect.flip(mcp.connect(main.id, "nope"));
-		return {
+		const outcome = {
 			firstDeclared,
 			registeredMain: registered[main.id],
 			forkRegistered,
@@ -351,6 +351,17 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			unknown: { tag: unknown._tag, message: unknown.message },
 			events: seen.read(),
 		};
+
+		// Deleting the session closes its servers and reports nothing more to its threads.
+		const eventCount = () => Object.values(seen).flatMap((byServer) => Object.values(byServer).flat()).length;
+		const eventsBeforeDelete = eventCount();
+		yield* Session.remove(session.id);
+		const deleted = {
+			running: (yield* running(0)).length,
+			status: yield* status(main.id),
+			events: eventCount() - eventsBeforeDelete,
+		};
+		return { ...outcome, deleted };
 	}).pipe(
 		Effect.provide(
 			Harness.layer({
@@ -395,6 +406,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		state: "connected",
 		running: 1,
 	});
+	expect(result.deleted).toEqual({ running: 0, status: {}, events: 0 });
 
 	const pids = [
 		...new Set([
@@ -558,7 +570,9 @@ it("mcp: an instance that idles out tells the threads still using it", async () 
 			Effect.sync(() => seen.read()),
 			(read) => read.main?.idle?.at(-1)?.state === "disconnected",
 		);
-		return { afterTurn, idled, events };
+		// Connect does not revive it; the thread's next turn does.
+		const connect = yield* Effect.flip(mcp.connect(main.id, "idle"));
+		return { afterTurn, idled, events, connect: { tag: connect._tag, message: connect.message } };
 	}).pipe(
 		Effect.provide(
 			Harness.layer({
@@ -577,6 +591,7 @@ it("mcp: an instance that idles out tells the threads still using it", async () 
 	expect(result.afterTurn).toBe("connected");
 	expect(result.idled).toBe("disconnected");
 	expect(result.events.main?.idle?.at(-1)?.state).toBe("disconnected");
+	expect(result.connect.message).toContain("was closed while idle");
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.idle.json");
 }, 60_000);
 

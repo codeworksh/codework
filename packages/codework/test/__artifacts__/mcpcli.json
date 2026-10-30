@@ -50,7 +50,7 @@
 	"list": {
 		"text": {
 			"status": 1,
-			"stdout": "✗ old     failed (hidden, user)\n    old-server --verbose\n    command not found: old-server\n✓ echo    connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n⚠ secure  authenticate (direct, user)\n    <oauth>/mcp\n    MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\".\n✗ crash   failed (direct, project)\n    <node> -e console.error('cannot start: missing config'); process.exit(3)\n    Connection closed: mcp server process exited with code 3: cannot start: missing config\nconfig error: <home>/project/.codework/mcp.json: server \"broken\" needs either \"command\" (stdio) or \"url\" (streamable HTTP)\n",
+			"stdout": "✗ old     failed (hidden, user)\n    old-server --verbose\n    command not found: old-server\n✓ echo    connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n⚠ secure  authenticate (direct, user)\n    <oauth>/mcp\n    MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\".\n✗ crash   failed (direct, project)\n    <node> -e console.error('cannot start: missing config'); process.exit(3)\n    connection closed: mcp server process exited with code 3: cannot start: missing config\nconfig error: <home>/project/.codework/mcp.json: server \"broken\" needs either \"command\" (stdio) or \"url\" (streamable HTTP)\n",
 			"stderr": ""
 		},
 		"json": {
@@ -102,7 +102,7 @@
 					"transport": "<node> -e console.error('cannot start: missing config'); process.exit(3)",
 					"state": "failed",
 					"tools": [],
-					"error": "Connection closed: mcp server process exited with code 3: cannot start: missing config"
+					"error": "connection closed: mcp server process exited with code 3: cannot start: missing config"
 				}
 			],
 			"errors": [

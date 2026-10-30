@@ -18,7 +18,8 @@
  *
  * - A connection that drops fails the calls running on it, and the next call reconnects.
  * - Reconcile never restarts a failed server; only a config change or {@link Interface.connect}
- *   does. A server whose tools were declared still reconnects on its next call.
+ *   does. A server whose tools were declared still reconnects on its next call, and one waiting for
+ *   sign-in reconnects on a turn once its stored credential changed.
  * - A Streamable HTTP session the server forgot is replaced, and calls that hit it run once more on
  *   the new one. The old connection closes when its last call finishes, never under one.
  * - A tool call is never retried after the server may have run it.
@@ -149,6 +150,8 @@ export interface Interface {
 	readonly connect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
 	/** Close the instance and keep it disconnected, for every thread sharing it, until {@link connect} or a config change. */
 	readonly disconnect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
+	/** Forget the threads of a deleted session, and close the instances no other thread uses. */
+	readonly remove: (sessionId: SessionId) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/mcp/mcp/Service") {}
@@ -551,10 +554,7 @@ export const layer = (options: {
 					// Closed or disconnected while connecting: the connection must not outlive that.
 					if (server.closed || server.stopped) {
 						yield* Scope.close(scope, Exit.void);
-						return yield* new ConnectError({
-							server: server.name,
-							message: `MCP server "${server.name}" is ${server.closed ? "shut down" : "disconnected"}`,
-						});
+						return yield* new ConnectError({ server: server.name, message: halted(server) });
 					}
 					const live: Live = {
 						connection: exit.value.connection,
@@ -579,20 +579,16 @@ export const layer = (options: {
 					Effect.provide(context),
 				);
 
+			/** Why the server has no connection to offer: closed, disconnected, or between attempts. */
+			const halted = (server: Server) =>
+				`MCP server "${server.name}" is ${server.closed ? "shut down" : server.stopped ? "disconnected" : "reconnecting"}`;
+
 			/** The server's current connection, connecting first when it has none. */
 			const open = (server: Server): Effect.Effect<Live, ConnectError | UnavailableError> =>
 				Effect.gen(function* () {
-					const shutDown = new UnavailableError({
-						server: server.name,
-						message: `MCP server "${server.name}" is shut down`,
-					});
+					const unavailable = () => new UnavailableError({ server: server.name, message: halted(server) });
 					const next = yield* Effect.gen(function* () {
-						if (server.closed) return yield* shutDown;
-						if (server.stopped)
-							return yield* new UnavailableError({
-								server: server.name,
-								message: `MCP server "${server.name}" is disconnected`,
-							});
+						if (server.closed || server.stopped) return yield* unavailable();
 						const current = server.live;
 						// A drop is known here before its `onClose` handler has run.
 						const reason = current?.connection.dropped();
@@ -613,7 +609,10 @@ export const layer = (options: {
 					// An interrupted caller leaves the attempt running for whoever needs the server next.
 					const exit = yield* Fiber.await(next);
 					if (Exit.isSuccess(exit)) return exit.value;
-					return yield* Cause.hasInterruptsOnly(exit.cause) ? Effect.fail(shutDown) : Effect.failCause(exit.cause);
+					// Interrupted by `connect`, `disconnect` or closing; the server's state now says which.
+					return yield* Cause.hasInterruptsOnly(exit.cause)
+						? Effect.fail(unavailable())
+						: Effect.failCause(exit.cause);
 				});
 
 			/** Interrupt a connect in progress, and retire the connection the instance has. */
@@ -650,8 +649,9 @@ export const layer = (options: {
 						for (let attempt = 1; ; attempt++) {
 							const entry = thread.servers.get(name);
 							const server = entry?.server;
-							if (entry === undefined || server === undefined || server.closed)
+							if (entry === undefined || server === undefined)
 								return yield* refuse(`MCP server "${name}" is disabled.`);
+							if (server.closed) return yield* refuse(`MCP server "${name}" is shut down.`);
 							const reason = unavailable(entry, server);
 							if (reason !== undefined) return yield* refuse(reason);
 							const live = yield* open(server).pipe(
@@ -774,6 +774,17 @@ export const layer = (options: {
 			/** The instances a thread uses, each once. */
 			const used = (thread: Thread) =>
 				new Set([...thread.servers.values()].flatMap((entry) => (entry.server ? [entry.server] : [])));
+
+			/** The thread stops using these instances, and its drains stop holding them; returns the ones nobody uses now. */
+			const leave = (thread: Thread, servers: Iterable<Server>) => {
+				const unused: Server[] = [];
+				for (const server of servers) {
+					server.users.delete(thread.id);
+					hold(server, -thread.leases);
+					if (server.users.size === 0) unused.push(server);
+				}
+				return unused;
+			};
 
 			const threadOf = (threadId: ThreadId, sessionId: SessionId) => {
 				let thread = threads.get(threadId);
@@ -974,14 +985,10 @@ export const layer = (options: {
 					}
 					// Instances this thread no longer uses: a removed server, or changed settings.
 					const current = used(thread);
-					const unused: Server[] = [];
-					for (const server of previous) {
-						if (current.has(server)) continue;
-						server.users.delete(thread.id);
-						hold(server, -thread.leases);
-						if (server.users.size === 0) unused.push(server);
-					}
-					return unused;
+					return leave(
+						thread,
+						[...previous].filter((server) => !current.has(server)),
+					);
 				}).pipe(thread.lock.withPermits(1));
 				// A thread joining a running instance learns where it stands. Skipped when the instance has
 				// published since it joined: that newer status already reached the thread, and this one would be stale.
@@ -1000,9 +1007,10 @@ export const layer = (options: {
 					([name, entry]) => hasTools(entry.config, "direct") || loadsFrom(name, loaded),
 				);
 				if (pending.length > 0) {
-					const finished = yield* Effect.forEach(pending, ([, , server]) => firstAttempt(server)).pipe(
-						Effect.timeoutOption(STARTUP_WAIT),
-					);
+					const finished = yield* Effect.forEach(pending, ([, , server]) => firstAttempt(server), {
+						concurrency: "unbounded",
+						discard: true,
+					}).pipe(Effect.timeoutOption(STARTUP_WAIT));
 					if (finished._tag === "None")
 						yield* Effect.logInfo("mcp servers are still connecting; their tools appear once connected");
 				}
@@ -1070,6 +1078,12 @@ export const layer = (options: {
 					const server = entry.server;
 					if (server === undefined) return statusOf(name, entry);
 					return yield* Effect.gen(function* () {
+						// Only an idle timeout closes an instance a thread still uses; the next turn opens a new one.
+						if (server.closed)
+							return yield* new UnknownServerError({
+								server: name,
+								message: `MCP server "${name}" was closed while idle; the thread's next message starts it again`,
+							});
 						yield* operation(server);
 						const current = threads.get(threadId)?.servers.get(name);
 						if (current?.server !== server) return yield* unknown;
@@ -1099,6 +1113,20 @@ export const layer = (options: {
 				),
 			);
 
+			const remove = Effect.fn("Mcp.remove")(function* (sessionId: SessionId) {
+				for (const thread of threads.values()) {
+					if (thread.sessionId !== sessionId) continue;
+					const unused = yield* Effect.sync(() => {
+						if (threads.get(thread.id) === thread) threads.delete(thread.id);
+						const unused = leave(thread, used(thread));
+						thread.servers.clear();
+						return unused;
+					}).pipe(thread.lock.withPermits(1));
+					// Stopping can take seconds; deleting the session does not wait for it.
+					for (const server of unused) fork(close(server));
+				}
+			});
+
 			return Service.of({
 				reconcile,
 				lease,
@@ -1114,6 +1142,7 @@ export const layer = (options: {
 					),
 				connect,
 				disconnect,
+				remove,
 			});
 		}),
 	);

@@ -261,7 +261,7 @@
 			"status": "error",
 			"isError": true,
 			"content": [
-				"MCP tool \"e2e/crash\" failed: Connection closed: mcp server process exited with code 3: fatal: e2e fixture crashed on purpose"
+				"MCP tool \"e2e/crash\" failed: connection closed: mcp server process exited with code 3: fatal: e2e fixture crashed on purpose"
 			]
 		},
 		"pid-after": {
