@@ -37,6 +37,31 @@ describe("provider failure normalization", () => {
 		expect(JSON.stringify(failure)).not.toContain("sensitive");
 	});
 
+	it("reads the message from a body the adapter could not parse", () => {
+		// Copilot answers its Anthropic route with OpenAI-style errors.
+		const failure = Failure.normalize(
+			new APICallError({
+				message: "Bad Request",
+				url: "https://api.githubcopilot.com/v1/messages",
+				requestBodyValues: {},
+				statusCode: 400,
+				responseBody: JSON.stringify({
+					error: {
+						message: "The requested model is not supported.",
+						code: "model_not_supported",
+						type: "invalid_request_error",
+					},
+				}),
+			}),
+		);
+
+		expect(failure).toMatchObject({
+			message: "the requested model is not supported",
+			code: "model_not_supported",
+			status: 400,
+		});
+	});
+
 	it("reads retry-after-ms and an HTTP-date retry-after", () => {
 		const retryAfter = (responseHeaders: Record<string, string>) =>
 			Failure.normalize(

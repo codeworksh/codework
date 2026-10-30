@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
+import type { AnthropicOptions, GoogleOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
 import * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
 import { convertMessages } from "../../src/llm/transform.ts";
@@ -12,15 +12,18 @@ import {
 	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
+	describeIfGoogle,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
 	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
+	getGoogleModel,
 	getOpenAIModel,
 	getOpenAICodexModel,
 	getOpenRouterModel,
 	getText,
+	googleOptions,
 	OPENAI_CODEX_E2E_MODELS,
 	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
@@ -32,8 +35,9 @@ type SupportedModel =
 	| Model.TModel<typeof Model.KnownProviderEnum.anthropic>
 	| Model.TModel<typeof Model.KnownProviderEnum.openai>
 	| Model.TModel<typeof Model.KnownProviderEnum.openaiCodex>
-	| Model.TModel<typeof Model.KnownProviderEnum.openrouter>;
-type SupportedOptions = AnthropicOptions | OpenAICodexOptions | OpenAIOptions;
+	| Model.TModel<typeof Model.KnownProviderEnum.openrouter>
+	| Model.TModel<typeof Model.KnownProviderEnum.google>;
+type SupportedOptions = AnthropicOptions | GoogleOptions | OpenAICodexOptions | OpenAIOptions;
 
 function getImageBase64(): string {
 	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
@@ -147,7 +151,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 				parts: [
 					{
 						type: "text",
-						text: "Use the get_circle_with_description tool and tell me the shape color plus the image metadata.",
+						text: "Use the get_circle_with_description tool and tell me what you learned. Also say what color the shape is.",
 					},
 				],
 				time: { created: Date.now() },
@@ -254,6 +258,37 @@ describe("Tool Results with Images", () => {
 		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenAIModel(modelId);
 			await handleImagesOnTextOnlyModel(model, options, "openai");
+		});
+	});
+
+	// Chat Completions cannot carry tool result images, so they follow the tool results.
+	describeIfOpenAI("OpenAI Chat Completions (gpt-6-luna)", () => {
+		// gpt-6-luna takes no function tools with a reasoning effort on Chat Completions.
+		const { reasoning: _, ...options } = openaiOptions({ maxTokens: 256, method: Model.APIMethodEnum.chat });
+
+		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getOpenAIModel("gpt-6-luna");
+			await handleToolWithImageResult(model, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getOpenAIModel("gpt-6-luna");
+			await handleToolWithTextAndImageResult(model, options);
+		});
+	});
+
+	// Gemini before 3 takes the images after the function responses; Gemini 3 takes them inside.
+	describeIfGoogle.each(["gemini-2.5-flash", "gemini-3.5-flash"])("Google provider (%s)", (modelId) => {
+		const options = googleOptions({ maxTokens: 4_096 });
+
+		it("should handle tool result with only image", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getGoogleModel(modelId);
+			await handleToolWithImageResult(model, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getGoogleModel(modelId);
+			await handleToolWithTextAndImageResult(model, options);
 		});
 	});
 

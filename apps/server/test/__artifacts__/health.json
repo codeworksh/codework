@@ -1,0 +1,11 @@
+{
+	"first": "Stopped",
+	"registered": "Unreachable",
+	"gone": "Stopped",
+	"health": {
+		"interval": 300
+	},
+	"changed": {
+		"interval": 60
+	}
+}

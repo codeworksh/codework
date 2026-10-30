@@ -1,0 +1,128 @@
+{
+	"before": {
+		"agent": {},
+		"firstRequest": {
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch",
+				"notes_read"
+			],
+			"system": []
+		},
+		"results": [
+			{
+				"name": "weather_forecast",
+				"arguments": {
+					"city": "Porto"
+				},
+				"status": "error",
+				"text": "Tool \"weather_forecast\" is not available in this thread.",
+				"details": {
+					"_tag": "ToolUnavailable",
+					"name": "weather_forecast"
+				}
+			}
+		]
+	},
+	"after": {
+		"agent": {
+			"modelTools": {
+				"add": [
+					"weather_forecast"
+				]
+			}
+		},
+		"firstRequest": {
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch",
+				"notes_read"
+			],
+			"system": [
+				{
+					"added": [
+						"weather_forecast"
+					],
+					"removed": []
+				}
+			]
+		},
+		"results": [
+			{
+				"name": "weather_forecast",
+				"arguments": {
+					"city": "Porto"
+				},
+				"status": "completed",
+				"text": "weather_forecast ran",
+				"details": "weather_forecast ran"
+			}
+		],
+		"entries": [
+			{
+				"id": "E1",
+				"seq": 24,
+				"type": "user",
+				"state": "committed"
+			},
+			{
+				"id": "E2",
+				"seq": 25,
+				"type": "system",
+				"state": "committed",
+				"data": {
+					"toolsAdded": [
+						{
+							"name": "weather_forecast",
+							"description": "Get the weather forecast for a city.\nReturns daily highs and lows.",
+							"parameters": {
+								"type": "object",
+								"properties": {
+									"city": {
+										"type": "string",
+										"description": "City to get the weather forecast for"
+									},
+									"days": {
+										"anyOf": [
+											{
+												"type": "number",
+												"description": "Number of forecast days"
+											},
+											{
+												"type": "null"
+											}
+										]
+									}
+								},
+								"required": [
+									"city"
+								],
+								"additionalProperties": true
+							}
+						}
+					],
+					"toolsRemoved": [],
+					"hash": "ec3094bdf14770d4650a88a2307556654cabf8623185fefb11702ba2e9a9c6e8"
+				}
+			},
+			{
+				"id": "E3",
+				"seq": 26,
+				"type": "assistant",
+				"state": "committed"
+			},
+			{
+				"id": "E4",
+				"seq": 30,
+				"type": "assistant",
+				"state": "committed"
+			}
+		]
+	}
+}

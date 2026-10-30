@@ -1,0 +1,59 @@
+{
+	"results": [
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "   "
+			},
+			"status": "error",
+			"text": "query must not be empty",
+			"details": {
+				"_tag": "ToolSearchFailed",
+				"message": "query must not be empty"
+			}
+		},
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "weather",
+				"limit": 0
+			},
+			"status": "error",
+			"text": "limit must be a positive integer",
+			"details": {
+				"_tag": "ToolSearchFailed",
+				"message": "limit must be a positive integer"
+			}
+		},
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "weather",
+				"limit": 1.5
+			},
+			"status": "error",
+			"text": "limit must be a positive integer",
+			"details": {
+				"_tag": "ToolSearchFailed",
+				"message": "limit must be a positive integer"
+			}
+		},
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "zebra xylophone"
+			},
+			"status": "completed",
+			"text": "No matching tools found.",
+			"details": {
+				"loaded": []
+			}
+		}
+	],
+	"agent": [
+		{
+			"seq": 1,
+			"value": {}
+		}
+	]
+}

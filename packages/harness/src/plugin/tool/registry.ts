@@ -1,5 +1,5 @@
 import { Predicate, Schema } from "effect";
-import type { RegisteredTool } from "../../tool/tool.ts";
+import { type RegisteredTool, ToolExposure } from "../../tool/tool.ts";
 import type { ToolAddOptions, ToolDefPatch, ToolRegistration, ToolRegistry } from "./schema.ts";
 
 const definition = (tool: RegisteredTool): RegisteredTool => ({
@@ -29,6 +29,8 @@ const assertTool = (tool: RegisteredTool) => {
 	if (!Schema.isSchema(def.success)) throw new Error(`Tool ${name}: success must be an Effect Schema`);
 	if (def.failure !== undefined && !Schema.isSchema(def.failure))
 		throw new Error(`Tool ${name}: failure must be an Effect Schema`);
+	if (def.exposure !== undefined && !Schema.is(ToolExposure)(def.exposure))
+		throw new Error(`Tool ${name}: exposure must be one of ${ToolExposure.literals.join(", ")}`);
 	if (def.encodeContent !== undefined && !Predicate.isFunction(def.encodeContent))
 		throw new Error(`Tool ${name}: encodeContent must be a function`);
 	if (def.encodeFailureContent !== undefined && !Predicate.isFunction(def.encodeFailureContent))

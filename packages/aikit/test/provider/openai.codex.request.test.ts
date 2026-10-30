@@ -1,14 +1,17 @@
+import Type from "typebox";
 import { stream } from "../../src/stream.ts";
-import { makeUserMessage } from "../utils/fixtures.ts";
+import * as Message from "../../src/message/message.ts";
+import { makeAssistantMessage, makeCompletedToolCall, makeUserMessage } from "../utils/fixtures.ts";
 /** Request shaping for the OpenAI Codex Responses endpoint. */
 import { describe, expect, it } from "vite-plus/test";
-import { createOpenAICodex, resolveOpenAICodexUrl } from "../../src/providers/openai-codex/index.ts";
+import { createOpenAICodex, openAICodexTools, resolveOpenAICodexUrl } from "../../src/providers/openai-codex/index.ts";
 import {
 	createOpenAICodexMockFetch,
 	OPENAI_CODEX_TEST_ACCOUNT_ID,
 	OPENAI_CODEX_TEST_API_KEY,
-	openAICodexDeferredTools,
-	openAICodexDeferredToolsPrompt,
+	openAICodexLoadableTools,
+	openAICodexToolChangePrompt,
+	openAICodexToolRemovalPrompt,
 	openAICodexModels,
 	openAICodexSSEResponse,
 	openAICodexTextEvents,
@@ -105,53 +108,65 @@ describe("request", () => {
 		});
 	});
 
-	it("keeps deferred grammar tools native inside additional_tools", async () => {
+	it("declares every tool in additional_tools and keeps grammar tools native", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			fetch,
-			compat: { ...openAICodexModels()["gpt-5.6-luna"]!.compat },
-		})("gpt-5.6-luna").doStream({
-			prompt: openAICodexDeferredToolsPrompt,
-			tools: [
-				openAICodexDeferredTools[0]!,
-				{
-					...openAICodexDeferredTools[1]!,
-					providerOptions: {
-						"openai-codex": {
-							grammar: {
-								type: "grammar",
-								format: "regex",
-								definition: "[a-z]+",
-								inputProperty: "value",
-							},
-						},
-					},
+		const grammarTool = {
+			...openAICodexLoadableTools[1]!,
+			providerOptions: {
+				"openai-codex": {
+					grammar: { type: "grammar", format: "regex", definition: "[a-z]+", inputProperty: "value" },
 				},
-			],
+			},
+		};
+		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: openAICodexToolChangePrompt("changes", grammarTool),
+			tools: [openAICodexLoadableTools[0]!, grammarTool],
 		});
 
-		const additionalTools = (body().input as Array<Record<string, unknown>>).find(
-			(item) => item.type === "additional_tools",
-		);
-		expect(additionalTools?.tools).toEqual([
-			expect.objectContaining({
-				type: "custom",
-				name: "late_tool",
-				format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
-			}),
+		const payload = body();
+		expect(payload.tools).toBeUndefined();
+		const input = payload.input as Array<Record<string, unknown>>;
+		const additionalTools = input.filter((item) => item.type === "additional_tools");
+		expect(additionalTools.map((item) => item.tools)).toEqual([
+			[expect.objectContaining({ type: "function", name: "base_tool" })],
+			[
+				expect.objectContaining({
+					type: "custom",
+					name: "late_tool",
+					format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
+				}),
+			],
+		]);
+		// The head declaration leads the input; the later one follows the tool result.
+		expect(input[0]).toMatchObject({ type: "additional_tools" });
+		const late = input.indexOf(additionalTools[1]!);
+		expect(input[late - 2]).toMatchObject({ type: "function_call_output" });
+		expect(input[late - 1]).toMatchObject({
+			role: "developer",
+			content: expect.stringContaining("incremental tools update"),
+		});
+	});
+
+	it("announces removals as text and lists them while still unavailable", async () => {
+		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
+		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: openAICodexToolRemovalPrompt,
+			tools: [openAICodexLoadableTools[1]!],
+		});
+
+		const input = body().input as Array<Record<string, unknown>>;
+		const developer = input.filter((item) => item.role === "developer" && typeof item.content === "string");
+		expect(developer.map((item) => item.content)).toEqual([
+			expect.stringContaining("no longer available. Do not call them:\n- base_tool"),
+			expect.stringContaining("Still unavailable: base_tool."),
 		]);
 	});
 
-	it("falls back to transcript tool_search items without additional tools", async () => {
+	it("declares later tools as a synthetic tool search in additions mode", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			fetch,
-			compat: { supportsOpenAIGrammarTools: true, supportsToolSearch: true },
-		})("gpt-6-luna").doStream({
-			prompt: openAICodexDeferredToolsPrompt,
-			tools: openAICodexDeferredTools,
+		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-6-luna").doStream({
+			prompt: openAICodexToolChangePrompt("additions"),
+			tools: openAICodexLoadableTools,
 		});
 
 		const payload = body();
@@ -169,11 +184,11 @@ describe("request", () => {
 		expect(input.some((item) => item.type === "additional_tools")).toBe(false);
 	});
 
-	it("keeps all tools top-level when the Codex model has no deferred-tool support", async () => {
+	it("keeps all tools top-level when the prompt declares no tool changes", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.3-codex-spark").doStream({
-			prompt: openAICodexDeferredToolsPrompt,
-			tools: openAICodexDeferredTools,
+			prompt: openAICodexUserPrompt,
+			tools: openAICodexLoadableTools,
 		});
 
 		const payload = body();
@@ -327,5 +342,34 @@ describe("transport failures", () => {
 		);
 		expect(calls).toBe(1);
 		expect(result.stopReason).toBe("aborted");
+	});
+
+	it("replays a grammar tool's calls after the tool is removed", async () => {
+		const model = openAICodexModels()["gpt-6-luna"]!;
+		const edit = openAICodexTools.custom({
+			name: "edit",
+			description: "Edit text",
+			parameters: Type.Object({ patch: Type.String() }),
+			format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
+		});
+		const call = makeCompletedToolCall("call_1|ctc_1", "edit", [{ type: "text", text: "done" }], { patch: "abc" });
+		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
+		const result = await stream.complete(
+			model,
+			{
+				tools: [edit],
+				messages: [
+					makeUserMessage("edit it"),
+					makeAssistantMessage(model, { stopReason: "toolUse", parts: [call] }),
+					Message.createSystemMessage({ toolsRemoved: [{ name: "edit" }] }),
+				],
+			},
+			{ apiKey: OPENAI_CODEX_TEST_API_KEY, factoryOptions: { fetch } },
+		);
+
+		expect(result.stopReason, result.errorMessage).toBe("stop");
+		expect(body().input).toContainEqual(
+			expect.objectContaining({ type: "custom_tool_call", name: "edit", input: "abc" }),
+		);
 	});
 });

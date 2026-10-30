@@ -1,14 +1,13 @@
-import { CircleAlert, Clock, type LucideIcon, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, Clock, type LucideIcon, X } from "lucide-react";
 
 /**
  * Something the reader should know before writing more: a short title, and a line only when it adds
- * a fact. `expired` is a state the session is in, not a fault, so it reads neutral rather than red;
- * `warning` is a state outside the session (its server is down) that one action may fix.
+ * a fact. `expired` is a state the session is in, not a fault, so it reads neutral rather than red.
  */
 export interface Notice {
 	readonly title: string;
 	readonly description?: string;
-	readonly tone: "error" | "warning" | "expired";
+	readonly tone: "error" | "expired";
 	readonly action?: NoticeAction;
 }
 
@@ -25,11 +24,6 @@ const tones: Record<Notice["tone"], { readonly icon: LucideIcon; readonly text: 
 		icon: CircleAlert,
 		text: "text-destructive",
 		surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
-	},
-	warning: {
-		icon: TriangleAlert,
-		text: "text-warning",
-		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
 	},
 	expired: {
 		icon: Clock,

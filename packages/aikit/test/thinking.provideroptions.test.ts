@@ -92,6 +92,20 @@ describe("Thinking.disabledProviderOptions", () => {
 		).toEqual({ anthropic: { effort: "high" } });
 	});
 
+	it("leaves thinking out for a Copilot Claude that cannot disable it", () => {
+		const copilotClaude = (thinkingLevelMap?: Record<string, string | null>) =>
+			off({
+				id: "claude-sonnet-5.5",
+				protocol: "github-copilot",
+				providerOptionsKey: "github-copilot",
+				api: { id: "claude-sonnet-5.5", method: "messages" },
+				reasoning: true,
+				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+			});
+		expect(copilotClaude({ off: null })).toEqual({});
+		expect(copilotClaude()).toEqual({ "github-copilot": { thinking: { type: "disabled" } } });
+	});
+
 	it("falls back to the lowest level for Gemini 3, which cannot disable thinking", () => {
 		expect(
 			off({

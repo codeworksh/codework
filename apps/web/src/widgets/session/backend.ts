@@ -4,7 +4,8 @@ import {
 	HistoryEntry,
 	type Part,
 	QueuedPrompt,
-	type SessionInfo,
+	type ThreadInfo,
+	UNTITLED,
 } from "@codeworksh/widget/codework";
 import { Deferred, Effect, Fiber, Option, Schedule, Schema, Stream } from "effect";
 
@@ -29,13 +30,14 @@ import {
 	type Window,
 } from "./schema.ts";
 
-const toInfo = (info: SessionInfo): Info => ({
-	title: info.title,
+// A session shows as its main thread until threads get a view of their own.
+const toInfo = (info: ThreadInfo): Info => ({
+	title: info.title ?? UNTITLED,
 	updated: info.updatedAt,
-	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
-	...(info.sandbox === undefined ? {} : { sandbox: info.sandbox.driver }),
+	...(info.session.hostDir === undefined ? {} : { hostDir: info.session.hostDir }),
+	...(info.session.sandbox === undefined ? {} : { sandbox: info.session.sandbox.driver }),
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
-	...(info.project === undefined ? {} : { project: info.project }),
+	...(info.session.project === undefined ? {} : { project: info.session.project }),
 	...(info.model === undefined ? {} : { model: info.model }),
 });
 
@@ -180,9 +182,9 @@ export const session = defineBackend({
 		const refresh = Effect.fn("Session.refresh")(function* (id: string, cursor: number | undefined) {
 			// In this order: a prompt promoted between the queue and history reads is then in both, never in neither.
 			const { info, queue, history } = yield* Effect.all({
-				info: codework("session.info", { sessionId: id }),
-				queue: codework("session.queue", { sessionId: id }),
-				history: codework("session.history", { sessionId: id }),
+				info: codework("thread.info", { sessionId: id }),
+				queue: codework("thread.queue", { sessionId: id }),
+				history: codework("thread.history", { sessionId: id }),
 			});
 			const before = yield* load(id);
 			const next = toInfo(info);
@@ -410,7 +412,7 @@ export const session = defineBackend({
 		);
 
 		const prompt = ({ sessionId, messageId, text, delivery }: Prompt) =>
-			codework("session.prompt", {
+			codework("thread.prompt", {
 				sessionId,
 				text,
 				id: messageId,
@@ -437,7 +439,9 @@ export const session = defineBackend({
 					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
 				},
 			}).pipe(
-				Effect.flatMap((info) => prompt({ sessionId: info.id, messageId, text }).pipe(Effect.as(info.id))),
+				Effect.flatMap((info) =>
+					prompt({ sessionId: info.session.id, messageId, text }).pipe(Effect.as(info.session.id)),
+				),
 				Effect.map((sessionId): Created => ({ _tag: "Created", sessionId })),
 				Effect.catch((error) => Effect.succeed<Created>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((created) => encodeCreated(created).pipe(Effect.orDie)),
@@ -446,7 +450,7 @@ export const session = defineBackend({
 
 		// The session's own log moves with the change, so the refresh that follows publishes the new info.
 		yield* handle(topics.configure, Configure, ({ sessionId, model, thinkingLevel }) =>
-			codework("session.configure", {
+			codework("thread.configure", {
 				sessionId,
 				runtime: {
 					...(model === undefined ? {} : { model }),
@@ -462,7 +466,7 @@ export const session = defineBackend({
 		// A cancel that lost to promotion answers `Sent`: the prompt is in the conversation, and the
 		// refresh that follows the log moving shows it there.
 		yield* handle(topics.cancel, Cancel, ({ sessionId, messageId }) =>
-			codework("session.cancel", { sessionId, messageId }).pipe(
+			codework("thread.cancel", { sessionId, messageId }).pipe(
 				Effect.map(({ cancelled }): Cancelled => (cancelled ? { _tag: "Cancelled" } : { _tag: "Sent" })),
 				Effect.catch((error) => Effect.succeed<Cancelled>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeCancelled(reply).pipe(Effect.orDie)),
@@ -470,7 +474,7 @@ export const session = defineBackend({
 		);
 
 		yield* handle(topics.change, Change, ({ sessionId, messageId, delivery, text }) =>
-			codework("session.update", {
+			codework("thread.update", {
 				sessionId,
 				messageId,
 				...(delivery === undefined ? {} : { delivery }),

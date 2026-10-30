@@ -12,6 +12,8 @@ import {
 	Session,
 	SessionStore,
 	Settings,
+	ThreadSchema,
+	ThreadStore,
 } from "@codeworksh/harness/effect";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
@@ -35,30 +37,77 @@ export const SandboxInfo = Schema.Struct({
 });
 export type SandboxInfo = typeof SandboxInfo.Type;
 
+/** The container: where its threads run by default, and which host project it reads. */
 export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
-	title: Schema.String,
 	directory: Session.AbsolutePath,
 	/** The host directory this session is anchored to. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 	/** The project the session's space belongs to. */
 	project: optional(Schema.Struct({ id: Schema.String, name: Schema.String })),
-	/** Last activity, epoch milliseconds. */
+	/** Last activity in any of its threads, epoch milliseconds. */
 	updatedAt: Schema.Finite,
-	/** The model chosen for this session; absent when settings decide. */
-	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-	/** The thinking level chosen for this session; absent when settings decide. */
-	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
-	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
-	parked: optional(Schema.Boolean),
+	/** Where unaddressed prompts go. */
+	mainThreadId: ThreadSchema.ID,
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
-/** One message on a session's active branch, oldest first. */
+export const ThreadOrigin = Schema.Union([
+	Schema.Struct({ kind: Schema.Literal("main") }),
+	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String }),
+	Schema.Struct({
+		kind: Schema.Literal("subagent"),
+		threadId: Schema.String,
+		callId: Schema.String,
+		entryId: optional(Schema.String),
+	}),
+]);
+
+/** Billed usage of a thread's own entries; what it inherits through a fork point counts for its source. */
+export const ThreadUsage = Schema.Struct({
+	/** Total cost in US dollars, from the catalog's prices. */
+	cost: Schema.Finite,
+	input: Schema.Int,
+	output: Schema.Int,
+	cacheRead: Schema.Int,
+	cacheWrite: Schema.Int,
+});
+export type ThreadUsage = typeof ThreadUsage.Type;
+
+/** One linear transcript of a session, with the session embedded. */
+export const ThreadInfo = Schema.Struct({
+	id: ThreadSchema.ID,
+	origin: ThreadOrigin,
+	/** Absent until its first own prompt; clients show a fork's source title until then. */
+	title: optional(Schema.String),
+	/** Last activity, epoch milliseconds. */
+	updatedAt: Schema.Finite,
+	/** The model chosen for this thread; absent when settings decide. */
+	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** The thinking level chosen for this thread; absent when settings decide. */
+	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+	/** Where it runs instead of the session's space and directory. */
+	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
+	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
+	parked: optional(Schema.Boolean),
+	usage: ThreadUsage,
+	session: SessionInfo,
+});
+export type ThreadInfo = typeof ThreadInfo.Type;
+
+/** A thread of a session: `threadId`, or the session's `main` thread when absent. */
+const ThreadRef = {
+	sessionId: Session.SessionSchema.ID,
+	threadId: optional(ThreadSchema.ID),
+};
+
+/** One message in a thread's line (inherited ones first), oldest first. */
 export const HistoryEntry = Schema.Struct({
-	/** The entry id: what live events and `session.message` refer to. */
+	/** The entry id: what live events and `thread.message` refer to. */
 	id: Schema.String,
+	/** The thread that wrote it: this one, or a source it was forked from. */
+	threadId: Schema.String,
 	/** Its place in the session's durable log; live events continue from it. */
 	seq: Schema.Int,
 	role: Schema.Literals(["user", "assistant"]),
@@ -92,9 +141,10 @@ export const LogSynced = Schema.Struct({
 });
 export type LogSynced = typeof LogSynced.Type;
 
+/** A thread's model and thinking choices: a given field replaces the stored one, `null` clears it. */
 export const RuntimeConfig = Schema.Struct({
-	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+	model: optional(Schema.NullOr(Schema.Struct({ provider: Schema.String, id: Schema.String }))),
+	thinkingLevel: optional(Schema.NullOr(Schema.Enum(Model.ThinkingLevelEnum))),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
@@ -165,9 +215,12 @@ export type OAuthInfo = typeof OAuthInfo.Type;
 
 const SessionErrors = Schema.Union([
 	SessionStore.SessionNotFoundError,
+	ThreadStore.ThreadNotFoundError,
 	SessionStore.SessionLinkedSpaceNotFoundError,
 	SessionStore.RelinkError,
 ]);
+
+const ThreadErrors = Schema.Union([SessionStore.SessionNotFoundError, ThreadStore.ThreadNotFoundError]);
 
 // Every lifecycle error the sandbox control plane can raise; narrowing per
 // endpoint would misreport what `withMount` and `stop` actually fail with.
@@ -218,8 +271,10 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: OAuthError,
 	}),
+	/** A session and its `main` thread; the main thread's info, with the session embedded. */
 	Rpc.make("session.create", {
 		payload: {
+			/** The main thread's title; absent = its first prompt names it. */
 			title: optional(Schema.String),
 			directory: optional(Schema.String),
 			/**
@@ -241,7 +296,7 @@ export const Api = RpcGroup.make(
 			 */
 			project: optional(Schema.Struct({ name: ProjectName })),
 		},
-		success: SessionInfo,
+		success: ThreadInfo,
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
 	}),
 	Rpc.make("project.rename", {
@@ -271,52 +326,6 @@ export const Api = RpcGroup.make(
 		}),
 		error: Schema.Union([Settings.SettingsError, Runner.ModelCatalogError]),
 	}),
-	Rpc.make("session.list", {
-		payload: {},
-		success: Schema.Array(SessionInfo),
-	}),
-	/**
-	 * The conversation on a session's active branch: user and assistant messages, oldest first.
-	 * Other branches and the harness's own entries (compactions, summaries) are left out.
-	 */
-	Rpc.make("session.history", {
-		payload: { sessionId: Session.SessionSchema.ID },
-		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
-		error: SessionStore.SessionNotFoundError,
-	}),
-	/**
-	 * Prompts admitted but not yet promoted, in admission order. Admission and promotion are
-	 * durable events, so a client following `session.log` rereads this whenever the log moves.
-	 */
-	Rpc.make("session.queue", {
-		payload: { sessionId: Session.SessionSchema.ID },
-		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
-		error: SessionStore.SessionNotFoundError,
-	}),
-	/**
-	 * A session's durable events after `after` (exclusive; omitted reads from the start), then a
-	 * `log.synced` marker at the head read when the call began. With `follow`, each event then
-	 * streams as it commits; without it the stream ends at the marker.
-	 * Ephemeral events (text and tool progress deltas) are never stored, so they are not here;
-	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
-	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
-	 */
-	Rpc.make("session.log", {
-		payload: { sessionId: Session.SessionSchema.ID, after: optional(Schema.Int), follow: optional(Schema.Boolean) },
-		success: Schema.Union([EventEnvelope, LogSynced]),
-		error: Schema.Union([SessionStore.SessionNotFoundError, EncodingError]),
-		stream: true,
-	}),
-	Rpc.make("session.configure", {
-		payload: { sessionId: Session.SessionSchema.ID, runtime: RuntimeConfig },
-		success: SessionInfo,
-		error: SessionStore.SessionNotFoundError,
-	}),
-	Rpc.make("session.info", {
-		payload: { sessionId: Session.SessionSchema.ID },
-		success: SessionInfo,
-		error: SessionStore.SessionNotFoundError,
-	}),
 	/**
 	 * Point an existing session at a host directory, or clear it with `null`.
 	 *
@@ -333,66 +342,150 @@ export const Api = RpcGroup.make(
 		success: SessionInfo,
 		error: SessionStore.SessionNotFoundError,
 	}),
+	/**
+	 * Moves where the work happens. Without `threadId`, the session's default space and directory,
+	 * which every thread without its own placement follows; with it, that thread's placement only.
+	 * Answers with the addressed thread (`main` when absent): its `placement` and embedded session
+	 * show where it now runs.
+	 */
 	Rpc.make("session.relink", {
 		payload: {
 			sessionId: Session.SessionSchema.ID,
+			threadId: optional(ThreadSchema.ID),
 			sandbox: optional(SandboxRef),
 			directory: optional(Schema.String),
 		},
-		success: SessionInfo,
+		success: ThreadInfo,
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
 	}),
-	Rpc.make("session.prompt", {
-		payload: {
-			sessionId: Session.SessionSchema.ID,
-			text: Schema.String,
-			delivery: optional(PromptSchema.Delivery),
-			id: optional(Session.SessionMessageSchema.ID),
-		},
-		success: Schema.Void,
-		error: Schema.Union([SessionStore.SessionNotFoundError, Control.PromptConflictError]),
+	/** Stops every thread, then removes the session with its log. `deleted` is false when it did not exist. */
+	Rpc.make("session.delete", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: Schema.Struct({ deleted: Schema.Boolean }),
 	}),
-	/**
-	 * Withdraws a queued prompt before it joins the conversation. `cancelled` is false when it had
-	 * already been promoted (it then stays in the conversation) or no pending prompt has that id.
-	 */
-	Rpc.make("session.cancel", {
-		payload: { sessionId: Session.SessionSchema.ID, messageId: Session.SessionMessageSchema.ID },
-		success: Schema.Struct({ cancelled: Schema.Boolean }),
-		error: SessionStore.SessionNotFoundError,
-	}),
-	/**
-	 * Moves a queued prompt to the other lane or rewrites it, keeping its place in the queue.
-	 * `delivery: "steer"` also wakes the session, so a prompt left waiting after a stop runs now.
-	 * `updated` is false when it had already been promoted or cancelled, or no pending prompt has that id.
-	 */
-	Rpc.make("session.update", {
-		payload: {
-			sessionId: Session.SessionSchema.ID,
-			messageId: Session.SessionMessageSchema.ID,
-			delivery: optional(PromptSchema.Delivery),
-			text: optional(Schema.String),
-		},
-		success: Schema.Struct({ updated: Schema.Boolean }),
-		error: SessionStore.SessionNotFoundError,
-	}),
+	/** Interrupts every running thread of the session. */
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Session.SessionSchema.ID },
 		success: Schema.Struct({ interrupted: Schema.Boolean }),
 	}),
 	/**
-	 * Whether a prompt materialized into the conversation. An admitted prompt
-	 * that is still queued has no entry yet, so this is the projection a client
-	 * reconciles against when the volatile stream left it unsure
+	 * A session's durable events after `after` (exclusive; omitted reads from the start), then a
+	 * `log.synced` marker at the head read when the call began. With `follow`, each event then
+	 * streams as it commits; without it the stream ends at the marker. Every thread of the session
+	 * writes this one log; events name their `threadId`.
+	 * Ephemeral events (text and tool progress deltas) are never stored, so they are not here;
+	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
+	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
+	 * With `threadId`, only that thread's events; the marker still names the session's head. A fork's
+	 * own log starts at its `session.thread.forked`: what it inherits is in `thread.history`.
 	 */
-	Rpc.make("session.message", {
-		payload: { sessionId: Session.SessionSchema.ID, messageId: Session.SessionMessageSchema.ID },
-		success: Schema.Struct({ found: Schema.Boolean }),
+	Rpc.make("session.log", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: optional(ThreadSchema.ID),
+			after: optional(Schema.Int),
+			follow: optional(Schema.Boolean),
+		},
+		success: Schema.Union([EventEnvelope, LogSynced]),
+		error: Schema.Union([SessionStore.SessionNotFoundError, EncodingError]),
+		stream: true,
 	}),
-	Rpc.make("session.wait", {
-		payload: { sessionId: Session.SessionSchema.ID },
+	/** Threads newest first, each with its session embedded: of one session, or all. */
+	Rpc.make("thread.list", {
+		payload: { sessionId: optional(Session.SessionSchema.ID) },
+		success: Schema.Array(ThreadInfo),
+	}),
+	Rpc.make("thread.info", {
+		payload: ThreadRef,
+		success: ThreadInfo,
+		error: ThreadErrors,
+	}),
+	/**
+	 * The conversation in a thread's line: user and assistant messages, inherited ones first, oldest
+	 * first. The harness's own entries (compactions, resets, notices) are left out.
+	 */
+	Rpc.make("thread.history", {
+		payload: ThreadRef,
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
+		error: ThreadErrors,
+	}),
+	/**
+	 * Prompts admitted to the thread but not yet promoted, in admission order. Admission and
+	 * promotion are durable events, so a client following `session.log` rereads this whenever the
+	 * log moves.
+	 */
+	Rpc.make("thread.queue", {
+		payload: ThreadRef,
+		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
+		error: ThreadErrors,
+	}),
+	Rpc.make("thread.configure", {
+		payload: { ...ThreadRef, runtime: RuntimeConfig },
+		success: ThreadInfo,
+		error: ThreadErrors,
+	}),
+	/**
+	 * A new thread whose history continues from this one's line through `entryId`, which must be
+	 * committed. `before` stops at the entry's predecessor and returns its text to edit again.
+	 */
+	Rpc.make("thread.fork", {
+		payload: { ...ThreadRef, entryId: Schema.String, mode: optional(Schema.Literals(["at", "before"])) },
+		success: Schema.Struct({ thread: ThreadInfo, text: optional(Schema.String) }),
+		error: Schema.Union([ThreadErrors, ThreadStore.ForkError]),
+	}),
+	Rpc.make("thread.prompt", {
+		payload: {
+			...ThreadRef,
+			text: Schema.String,
+			delivery: optional(PromptSchema.Delivery),
+			id: optional(Session.SessionMessageSchema.ID),
+		},
+		success: Schema.Struct({ threadId: ThreadSchema.ID }),
+		error: Schema.Union([ThreadErrors, Control.PromptConflictError]),
+	}),
+	/**
+	 * Withdraws a queued prompt before it joins the conversation. `cancelled` is false when it had
+	 * already been promoted (it then stays in the conversation) or no pending prompt has that id.
+	 */
+	Rpc.make("thread.cancel", {
+		payload: { ...ThreadRef, messageId: Session.SessionMessageSchema.ID },
+		success: Schema.Struct({ cancelled: Schema.Boolean }),
+		error: ThreadErrors,
+	}),
+	/**
+	 * Moves a queued prompt to the other lane or rewrites it, keeping its place in the queue.
+	 * `delivery: "steer"` also wakes the thread, so a prompt left waiting after a stop runs now.
+	 * `updated` is false when it had already been promoted or cancelled, or no pending prompt has that id.
+	 */
+	Rpc.make("thread.update", {
+		payload: {
+			...ThreadRef,
+			messageId: Session.SessionMessageSchema.ID,
+			delivery: optional(PromptSchema.Delivery),
+			text: optional(Schema.String),
+		},
+		success: Schema.Struct({ updated: Schema.Boolean }),
+		error: ThreadErrors,
+	}),
+	Rpc.make("thread.interrupt", {
+		payload: ThreadRef,
+		success: Schema.Struct({ interrupted: Schema.Boolean }),
+		error: ThreadErrors,
+	}),
+	/**
+	 * Whether a prompt materialized into the thread's conversation. An admitted prompt that is still
+	 * queued has no entry yet, so this is the projection a client reconciles against when the
+	 * volatile stream left it unsure.
+	 */
+	Rpc.make("thread.message", {
+		payload: { ...ThreadRef, messageId: Session.SessionMessageSchema.ID },
+		success: Schema.Struct({ found: Schema.Boolean }),
+		error: ThreadErrors,
+	}),
+	Rpc.make("thread.wait", {
+		payload: ThreadRef,
 		success: Schema.Void,
-		error: SessionStore.SessionNotFoundError,
+		error: ThreadErrors,
 	}),
 	/**
 	 * Re-import every configured plugin, for the whole server.
@@ -430,8 +523,12 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: SandboxErrors,
 	}),
+	/**
+	 * Every event the server publishes, live, after a `server.connected` frame. With `threadId`,
+	 * only the events naming that thread; the frame still comes first.
+	 */
 	Rpc.make("event.subscribe", {
-		payload: {},
+		payload: { threadId: optional(ThreadSchema.ID) },
 		success: EventEnvelope,
 		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,

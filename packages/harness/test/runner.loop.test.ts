@@ -12,28 +12,30 @@ import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";
 import { Session as SessionApi } from "../src/effect/session.ts";
 import { Database } from "../src/db/db.ts";
-import { SessionInputRow } from "../src/db/schema.sql.ts";
+import { InboxRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { EventRegistry } from "../src/event/registry.ts";
 import type { EventSchema } from "../src/event/schema.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
+import { Hooks } from "../src/runner/hooks.ts";
+import { Inbox } from "../src/inbox/inbox.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
-import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
+import type { ThreadSchema } from "../src/thread/schema.ts";
+import { Thread } from "../src/thread/thread.ts";
 import { pooled } from "./fixtures/pool.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { assistant, immediateOpen } from "./fixtures/llm.ts";
+import { assistant, immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 import { Mcp } from "../src/mcp/mcp.ts";
@@ -46,6 +48,7 @@ const runtime = (
 		readonly state?: State.Options;
 		readonly plugins?: ReadonlyArray<Plugin>;
 		readonly settings?: Info;
+		readonly hooks?: Hooks.Interface;
 		/** Runs as each turn's snapshot loads settings: after the loop checks for pending input, before it promotes. */
 		readonly beforeSettings?: { run: Effect.Effect<void> };
 	} = {},
@@ -57,7 +60,17 @@ const runtime = (
 		Layer.provideMerge(database),
 	);
 	return Control.layer.pipe(
-		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
+		Layer.provideMerge(
+			RunnerExecute.layer.pipe(
+				Layer.provide(
+					Loop.layer({ request }).pipe(
+						Layer.provide(
+							options.hooks === undefined ? Hooks.layer : Layer.succeed(Hooks.Service, options.hooks),
+						),
+					),
+				),
+			),
+		),
 		Layer.provideMerge(
 			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(
 				pooled(options.plugins ?? plugins),
@@ -76,7 +89,7 @@ const runtime = (
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),
-		Layer.provideMerge(Session.layer),
+		Layer.provideMerge(Session.storeLayer),
 		Layer.provideMerge(Event.layer),
 		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
@@ -84,42 +97,56 @@ const runtime = (
 	);
 };
 
+/** Hooks that do nothing, except where overridden. */
+const hooksOf = (overrides: Partial<Hooks.Interface>): Hooks.Interface => ({
+	prepareNextTurn: (_turn, next) => Effect.succeed(next),
+	prepareRequest: (request) => Effect.succeed(request),
+	finishTurn: () => Effect.undefined,
+	...overrides,
+});
+
 const inputsFor = (sql: SqlClient.SqlClient) =>
 	SqlSchema.findAll({
 		Request: Schema.String,
-		Result: SessionInputRow,
-		execute: (sessionId) => sql`
-			SELECT * FROM session_input WHERE session_id = ${sessionId} ORDER BY admitted_seq
+		Result: InboxRow,
+		execute: (threadId) => sql`
+			SELECT * FROM inbox WHERE thread_id = ${threadId} ORDER BY admitted_seq
 		`,
 	});
 
-const delivered = Effect.fnUntraced(function* (sessionId: string) {
+const delivered = Effect.fnUntraced(function* (threadId: string) {
 	const sql = yield* SqlClient.SqlClient;
-	const rows = yield* inputsFor(sql)(sessionId);
+	const rows = yield* inputsFor(sql)(threadId);
 	return rows.map((row) => ({ id: row.id, promotedSeq: Option.getOrNull(row.promotedSeq) }));
 });
 
 const seedSession = Effect.fnUntraced(function* () {
 	const sessions = yield* Session.Service;
 	const { spaceId, location } = yield* seedSpace({ location: process.cwd(), projectId: "p" });
-	const session = yield* sessions.create({
+	const { session, thread } = yield* sessions.create({
 		spaceId,
 		directory: location,
 		title: "runner loop",
 	});
-	return session.id;
+	return { sessionId: session.id, threadId: thread.id };
+});
+
+const sessionOf = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
+	const threads = yield* Thread.Service;
+	return Option.getOrThrow(yield* threads.get(threadId)).sessionId;
 });
 
 const admit = Effect.fnUntraced(function* (input: {
 	readonly id: string;
-	readonly sessionId: SessionSchema.ID;
+	readonly threadId: ThreadSchema.ID;
 	readonly delivery: "steer" | "followUp";
 	readonly text?: string;
 }) {
-	const inputs = yield* SessionInput.make;
+	const inputs = yield* Inbox.make;
 	return yield* inputs.admit({
 		id: SessionMessageSchema.ID.make(input.id),
-		sessionId: input.sessionId,
+		sessionId: yield* sessionOf(input.threadId),
+		threadId: input.threadId,
 		prompt: { parts: [{ type: "text", text: input.text ?? input.id }] },
 		delivery: input.delivery,
 	});
@@ -134,17 +161,17 @@ describe("runner loop — aikit input/output", () => {
 		Effect.gen(function* () {
 			contexts.length = 0;
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
 
-			yield* admit({ id: "msg_follow", sessionId, delivery: "followUp" });
-			yield* admit({ id: "msg_steer", sessionId, delivery: "steer" });
-			yield* execution.resume(sessionId);
+			yield* admit({ id: "msg_follow", threadId, delivery: "followUp" });
+			yield* admit({ id: "msg_steer", threadId, delivery: "steer" });
+			yield* execution.resume(threadId);
 
-			const rows = yield* delivered(sessionId);
+			const rows = yield* delivered(threadId);
 			const bySeq = [...rows].sort((left, right) => (left.promotedSeq ?? 0) - (right.promotedSeq ?? 0));
 			expect(bySeq.map((row) => row.id)).toEqual(["msg_steer", "msg_follow"]);
-			expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual([
+			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
 				"user",
 				"assistant",
 				"user",
@@ -164,15 +191,15 @@ describe("runner loop — aikit input/output", () => {
 		"does not promote an input twice and the leaf guard skips a settled reply",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_once", sessionId, delivery: "steer" });
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_once", threadId, delivery: "steer" });
 
-			yield* execution.resume(sessionId);
-			yield* execution.resume(sessionId);
+			yield* execution.resume(threadId);
+			yield* execution.resume(threadId);
 
-			expect(yield* delivered(sessionId)).toEqual([{ id: "msg_once", promotedSeq: 1 }]);
-			expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 3 }]);
+			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
 		}),
 	);
 
@@ -180,17 +207,17 @@ describe("runner loop — aikit input/output", () => {
 		"promotes all current steers as one request, then follow-ups one per request",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_s1", sessionId, delivery: "steer" });
-			yield* admit({ id: "msg_f1", sessionId, delivery: "followUp" });
-			yield* admit({ id: "msg_s2", sessionId, delivery: "steer" });
-			yield* admit({ id: "msg_f2", sessionId, delivery: "followUp" });
-			yield* admit({ id: "msg_s3", sessionId, delivery: "steer" });
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_s1", threadId, delivery: "steer" });
+			yield* admit({ id: "msg_f1", threadId, delivery: "followUp" });
+			yield* admit({ id: "msg_s2", threadId, delivery: "steer" });
+			yield* admit({ id: "msg_f2", threadId, delivery: "followUp" });
+			yield* admit({ id: "msg_s3", threadId, delivery: "steer" });
 
-			yield* execution.resume(sessionId);
+			yield* execution.resume(threadId);
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual([
 				"user",
 				"user",
@@ -222,20 +249,20 @@ describe("runner loop — aikit input/output", () => {
 				location: `/definitely-missing-${crypto.randomUUID()}`,
 				projectId: "p",
 			});
-			const session = yield* sessions.create({
+			const { session, thread } = yield* sessions.create({
 				spaceId,
 				directory: location,
 				title: "missing sandbox cwd",
 			});
 
-			const exit = yield* execution.resume(session.id).pipe(Effect.exit);
+			const exit = yield* execution.resume(thread.id).pipe(Effect.exit);
 			expect(Exit.isFailure(exit)).toBe(true);
 			if (Exit.isFailure(exit)) {
 				const failure = Cause.findErrorOption(exit.cause);
 				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.SandboxDirectoryNotFoundError");
 			}
 			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id}`;
-			expect(durable).toEqual([]);
+			expect(durable).toEqual([{ type: "session.created.1" }]);
 		}),
 	);
 });
@@ -301,25 +328,27 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 	);
 
 	it(
-		"continues after toolUse with no steer, pins state, and never moves the assistant seq",
+		"continues after toolUse with no steer, re-snapshots each turn, and never moves the assistant seq",
 		Effect.gen(function* () {
 			contexts.length = 0;
 			snapshots = 0;
 			responseIndex = 0;
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
+			const threads = yield* Thread.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_tool", sessionId, delivery: "steer" });
+			const { sessionId, threadId } = yield* seedSession();
+			yield* admit({ id: "msg_tool", threadId, delivery: "steer" });
 
-			yield* execution.resume(sessionId);
+			yield* execution.resume(threadId);
 
 			expect(contexts).toHaveLength(2);
-			expect(snapshots).toBe(1);
-			const firstTool = contexts[1]!.messages[1]!.parts.find((part) => part.type === "toolCall");
+			expect(snapshots).toBe(2);
+			const second = contexts[1]!.messages[1]!;
+			const firstTool =
+				second.role === "assistant" ? second.parts.find((part) => part.type === "toolCall") : undefined;
 			expect(firstTool).toMatchObject({ callID: "call_echo", status: "completed" });
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
 				["user", "committed"],
 				["assistant", "committed"],
@@ -363,11 +392,11 @@ describe("runner loop — crash healing", () => {
 			snapshots = 0;
 			const events = yield* Event.Service;
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
+			const threads = yield* Thread.Service;
+			const { sessionId, threadId } = yield* seedSession();
 			const input: LLM.Input = {
 				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
-				sessionId,
+				threadId,
 				context: { messages: [] },
 				provider: "openai",
 				model: "gpt-6-luna",
@@ -376,14 +405,15 @@ describe("runner loop — crash healing", () => {
 			yield* events.publish(EventList.LLMStarted, {
 				timestamp: DateTime.makeUnsafe(1),
 				sessionId,
+				threadId,
 				messageId: SessionMessageSchema.ID.from(draft.messageId),
 				message: draft,
 			});
 
-			yield* execution.wake(sessionId);
-			while ((yield* execution.active).has(sessionId)) yield* Effect.yieldNow;
+			yield* execution.wake(threadId);
+			while ((yield* execution.active).has(threadId)) yield* Effect.yieldNow;
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path).toHaveLength(1);
 			expect(path[0]!.entry.state).toBe("aborted");
 			expect(path[0]!.parts).toEqual([]);
@@ -441,10 +471,10 @@ describe("runner loop — tool interruption", () => {
 			toolGate = yield* Deferred.make<string>();
 			const execution = yield* RunnerExecution.Service;
 			const events = yield* Event.Service;
-			const sessions = yield* Session.Service;
+			const threads = yield* Thread.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_interrupt_tools", sessionId, delivery: "steer" });
+			const { sessionId, threadId } = yield* seedSession();
+			yield* admit({ id: "msg_interrupt_tools", threadId, delivery: "steer" });
 
 			const bothStarted = yield* Deferred.make<void>();
 			let started = 0;
@@ -457,7 +487,7 @@ describe("runner loop — tool interruption", () => {
 					: Effect.void,
 			);
 
-			const running = yield* execution.resume(sessionId).pipe(Effect.forkChild);
+			const running = yield* execution.resume(threadId).pipe(Effect.forkChild);
 			yield* Deferred.await(bothStarted);
 			const lifecycle: EventSchema.Payload[] = [];
 			yield* events.listen((event) =>
@@ -465,7 +495,7 @@ describe("runner loop — tool interruption", () => {
 					if (event.type === EventList.ExecutionInterrupted.type) lifecycle.push(event);
 				}),
 			);
-			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
 			const exit = yield* Fiber.await(running);
 			expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
 			// The reason is the caller's, not something inferred from the cause.
@@ -474,7 +504,7 @@ describe("runner loop — tool interruption", () => {
 			if (interrupted !== undefined && Schema.is(EventList.ExecutionInterrupted)(interrupted))
 				expect(interrupted.data.reason).toBe("user");
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path[1]!.entry.state).toBe("committed");
 			expect(path[1]!.parts.map((part) => Option.getOrThrow(part.status))).toEqual(["aborted", "aborted"]);
 			for (const part of path[1]!.parts) {
@@ -522,9 +552,9 @@ describe("runner loop — provider interruption", () => {
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
 			const events = yield* Event.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_interrupted", sessionId, delivery: "steer" });
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_interrupted", threadId, delivery: "steer" });
 
 			const streaming = yield* Deferred.make<void>();
 			yield* events.listen((event) =>
@@ -532,14 +562,14 @@ describe("runner loop — provider interruption", () => {
 					? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
 					: Effect.void,
 			);
-			const waiting = yield* execution.resume(sessionId).pipe(Effect.forkChild);
+			const waiting = yield* execution.resume(threadId).pipe(Effect.forkChild);
 			yield* Deferred.await(streaming);
 
-			yield* execution.interrupt(sessionId);
+			yield* execution.interrupt(threadId);
 			const exit = yield* Fiber.await(waiting);
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
 			expect(path[1]!.entry.state).toBe("aborted");
 			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({ stopReason: "aborted" });
@@ -579,11 +609,11 @@ describe("runner loop — provider failure", () => {
 		"aborts a provider-failed assistant before failing the turn",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_failed", sessionId, delivery: "steer" });
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_failed", threadId, delivery: "steer" });
 
-			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+			const exit = yield* execution.resume(threadId).pipe(Effect.exit);
 			expect(Exit.isFailure(exit)).toBe(true);
 			if (Exit.isFailure(exit)) {
 				const failure = Cause.findErrorOption(exit.cause);
@@ -596,7 +626,7 @@ describe("runner loop — provider failure", () => {
 				}
 			}
 
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
 			expect(path[1]!.entry.state).toBe("aborted");
 			expect(path[1]!.parts).toEqual([]);
@@ -619,10 +649,10 @@ describe("runner loop — provider failure", () => {
 					if (event.type.startsWith("session.execution.")) lifecycle.push(event);
 				}),
 			);
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_failed_lifecycle", sessionId, delivery: "steer" });
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_failed_lifecycle", threadId, delivery: "steer" });
 
-			yield* execution.resume(sessionId).pipe(Effect.exit);
+			yield* execution.resume(threadId).pipe(Effect.exit);
 
 			expect(lifecycle.map((event) => event.type)).toEqual([
 				EventList.ExecutionStarted.type,
@@ -638,49 +668,51 @@ describe("runner loop — provider failure", () => {
 	);
 });
 
-describe("runner loop — retry", () => {
-	type Failure = { readonly _tag: string; readonly retryable: boolean; readonly retryAfterMs?: number };
+type Failure = { readonly _tag: string; readonly retryable: boolean; readonly retryAfterMs?: number };
 
-	/** Each call takes the next script entry: a failure (optionally after streaming text), else success. */
-	const scripted = (
-		script: ReadonlyArray<{ readonly failure: Failure; readonly streamed?: string } | "ok">,
-		contexts: Message.Context[] = [],
-	): LLM.Open => {
-		let index = 0;
-		return (input) =>
-			Effect.sync(() => {
-				index += 1;
-				contexts.push(structuredClone(input.context));
-				const step = script[index - 1] ?? "ok";
-				const events = createAssistantMessageEventStream();
-				if (step === "ok") {
-					const message = assistant(input, index);
-					events.push({ type: "start", partial: message });
-					events.push({ type: "done", reason: "stop", message });
-					return events;
-				}
-				const failed = Object.assign(
-					assistant(input, index, {
-						stopReason: "error",
-						errorMessage: `${step.failure._tag} failure`,
-						parts: step.streamed === undefined ? [] : [{ type: "text", text: step.streamed }],
-					}),
-					{ failure: { ...step.failure, message: `${step.failure._tag} failure` } },
-				);
-				events.push({ type: "start", partial: failed });
-				if (step.streamed !== undefined) {
-					events.push({ type: "text.delta", partIndex: 0, delta: step.streamed, partial: failed });
-				}
-				events.push({ type: "error", reason: "error", error: failed });
+/** Each call takes the next script entry: a failure (optionally after streaming text), else success. */
+const scripted = (
+	script: ReadonlyArray<{ readonly failure: Failure; readonly streamed?: string } | "ok">,
+	contexts: Message.Context[] = [],
+	models: string[] = [],
+): LLM.Open => {
+	let index = 0;
+	return (input) =>
+		Effect.sync(() => {
+			index += 1;
+			contexts.push(structuredClone(input.context));
+			models.push(input.model);
+			const step = script[index - 1] ?? "ok";
+			const events = createAssistantMessageEventStream();
+			if (step === "ok") {
+				const message = assistant(input, index);
+				events.push({ type: "start", partial: message });
+				events.push({ type: "done", reason: "stop", message });
 				return events;
-			});
-	};
+			}
+			const failed = Object.assign(
+				assistant(input, index, {
+					stopReason: "error",
+					errorMessage: `${step.failure._tag} failure`,
+					parts: step.streamed === undefined ? [] : [{ type: "text", text: step.streamed }],
+				}),
+				{ failure: { ...step.failure, message: `${step.failure._tag} failure` } },
+			);
+			events.push({ type: "start", partial: failed });
+			if (step.streamed !== undefined) {
+				events.push({ type: "text.delta", partIndex: 0, delta: step.streamed, partial: failed });
+			}
+			events.push({ type: "error", reason: "error", error: failed });
+			return events;
+		});
+};
 
-	const settings = (retry: Partial<Info["retry"]>): Info => ({
-		...Settings.defaults,
-		retry: { ...Settings.defaults.retry, ...retry },
-	});
+const settings = (retry: Partial<Info["retry"]>): Info => ({
+	...Settings.defaults,
+	retry: { ...Settings.defaults.retry, ...retry },
+});
 
+describe("runner loop — retry", () => {
 	/** The turn's lifecycle as a client sees it, without timestamps or ids. */
 	const journal = Effect.fnUntraced(function* () {
 		const events = yield* Event.Service;
@@ -701,9 +733,9 @@ describe("runner loop — retry", () => {
 		return seen;
 	});
 
-	const pathOf = Effect.fnUntraced(function* (sessionId: SessionSchema.ID) {
-		const sessions = yield* Session.Service;
-		return (yield* sessions.path(sessionId)).map((item) => ({
+	const pathOf = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
+		const threads = yield* Thread.Service;
+		return (yield* threads.line(threadId)).map((item) => ({
 			id: item.entry.id,
 			type: item.entry.type,
 			state: item.entry.state,
@@ -727,19 +759,21 @@ describe("runner loop — retry", () => {
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
 				const seen = yield* journal();
-				const sessionId = yield* seedSession();
-				yield* admit({ id: "msg_retry", sessionId, delivery: "steer" });
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_retry", threadId, delivery: "steer" });
 
-				yield* execution.resume(sessionId);
+				yield* execution.resume(threadId);
 
-				const path = yield* pathOf(sessionId);
+				const path = yield* pathOf(threadId);
 				expect(path.map((entry) => entry.state)).toEqual(["committed", "aborted", "aborted", "committed"]);
 				// Every attempt is sent the original context: the failed drafts and their partial text never leak in.
 				expect(contexts).toHaveLength(3);
 				expect(contexts[1]).toEqual(contexts[0]);
 				expect(contexts[2]).toEqual(contexts[0]);
 				yield* Effect.promise(() =>
-					expect({ events: seen, path }).toMatchFileSnapshot("./__artifacts__/runner.retry.json"),
+					expect(`${JSON.stringify({ events: seen, path }, null, "\t")}\n`).toMatchFileSnapshot(
+						"./__artifacts__/runner.retry.json",
+					),
 				);
 			}),
 		);
@@ -755,8 +789,8 @@ describe("runner loop — retry", () => {
 				const execution = yield* RunnerExecution.Service;
 				const events = yield* Event.Service;
 				const seen = yield* journal();
-				const sessionId = yield* seedSession();
-				yield* admit({ id: "msg_retry_interrupt", sessionId, delivery: "steer" });
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_retry_interrupt", threadId, delivery: "steer" });
 
 				const scheduled = yield* Deferred.make<void>();
 				yield* events.listen((event) =>
@@ -764,13 +798,13 @@ describe("runner loop — retry", () => {
 						? Deferred.succeed(scheduled, undefined).pipe(Effect.asVoid)
 						: Effect.void,
 				);
-				const waiting = yield* execution.resume(sessionId).pipe(Effect.forkChild);
+				const waiting = yield* execution.resume(threadId).pipe(Effect.forkChild);
 				yield* Deferred.await(scheduled);
-				yield* execution.interrupt(sessionId);
+				yield* execution.interrupt(threadId);
 				const exit = yield* Fiber.await(waiting);
 				expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
-				expect((yield* pathOf(sessionId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+				expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
 				expect(seen.slice(-2)).toEqual([
 					{ type: EventList.RetryFinished.type, attempt: 1, success: false, message: "interrupted" },
 					{ type: EventList.TurnAborted.type, cause: { _tag: "interrupted" } },
@@ -795,13 +829,13 @@ describe("runner loop — retry", () => {
 				Effect.gen(function* () {
 					const execution = yield* RunnerExecution.Service;
 					const seen = yield* journal();
-					const sessionId = yield* seedSession();
-					yield* admit({ id: "msg_no_retry", sessionId, delivery: "steer" });
+					const { threadId } = yield* seedSession();
+					yield* admit({ id: "msg_no_retry", threadId, delivery: "steer" });
 
-					const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+					const exit = yield* execution.resume(threadId).pipe(Effect.exit);
 					expect(Exit.isFailure(exit)).toBe(true);
 					expect(seen.some((event) => String(event.type).startsWith("session.retry."))).toBe(false);
-					expect((yield* pathOf(sessionId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+					expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
 				}),
 			);
 		}
@@ -876,21 +910,22 @@ const texts = (context: Message.Context) =>
 	);
 
 /** A user prompt as a client sends one: admitted, then the session woken. */
-const send = (sessionId: SessionSchema.ID, id: string, delivery: "steer" | "followUp" = "steer") =>
+const send = (threadId: ThreadSchema.ID, id: string, delivery: "steer" | "followUp" = "steer") =>
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
 		yield* control.prompt({
-			sessionId,
+			sessionId: yield* sessionOf(threadId),
+			threadId,
 			id: SessionMessageSchema.ID.make(id),
 			prompt: PromptSchema.Prompt.fromText(id),
 			delivery,
 		});
 	});
 
-const settle = (sessionId: SessionSchema.ID) =>
+const settle = (threadId: ThreadSchema.ID) =>
 	Effect.gen(function* () {
 		const execution = yield* RunnerExecution.Service;
-		yield* execution.awaitIdle(sessionId);
+		yield* execution.awaitIdle(threadId);
 	});
 
 /** The busy periods' outcomes, in order. */
@@ -922,12 +957,12 @@ describe("runner loop — queued input", () => {
 	);
 
 	/** Cancels `id` the first time a turn loads settings: inside the window between the pending check and promotion. */
-	const cancelBeforePromotion = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, id: string) {
+	const cancelBeforePromotion = Effect.fnUntraced(function* (threadId: ThreadSchema.ID, id: string) {
 		const services = yield* Effect.context<SqlClient.SqlClient | Event.Service>();
 		beforeSettings.run = Effect.gen(function* () {
 			beforeSettings.run = Effect.void;
-			const inputs = yield* SessionInput.make;
-			yield* inputs.cancel(sessionId, SessionMessageSchema.ID.make(id));
+			const inputs = yield* Inbox.make;
+			yield* inputs.cancel(threadId, SessionMessageSchema.ID.make(id));
 		}).pipe(Effect.provideContext(services));
 	});
 
@@ -935,24 +970,24 @@ describe("runner loop — queued input", () => {
 		"asks the model nothing when the only pending prompt is cancelled before promotion",
 		Effect.gen(function* () {
 			yield* reset;
-			const sessions = yield* Session.Service;
-			const inputs = yield* SessionInput.make;
+			const threads = yield* Thread.Service;
+			const inputs = yield* Inbox.make;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
-			yield* admit({ id: "msg_withdrawn", sessionId, delivery: "steer" });
-			yield* cancelBeforePromotion(sessionId, "msg_withdrawn");
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_withdrawn", threadId, delivery: "steer" });
+			yield* cancelBeforePromotion(threadId, "msg_withdrawn");
 
 			// A wake, as a prompt sends: a forced resume would answer regardless.
 			const execution = yield* RunnerExecution.Service;
-			yield* execution.wake(sessionId);
-			yield* settle(sessionId);
+			yield* execution.wake(threadId);
+			yield* settle(threadId);
 
 			expect(seen).toEqual(["succeeded"]);
 			expect(
 				Option.getOrThrow(yield* inputs.find(SessionMessageSchema.ID.make("msg_withdrawn"))).cancelledSeq,
 			).toBeDefined();
 			expect(contexts).toEqual([]);
-			expect(yield* sessions.path(sessionId)).toEqual([]);
+			expect(yield* threads.line(threadId)).toEqual([]);
 		}),
 	);
 
@@ -961,16 +996,16 @@ describe("runner loop — queued input", () => {
 		Effect.gen(function* () {
 			yield* reset;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
-			yield* send(sessionId, "A");
-			yield* settle(sessionId);
+			const { threadId } = yield* seedSession();
+			yield* send(threadId, "A");
+			yield* settle(threadId);
 
-			yield* admit({ id: "B", sessionId, delivery: "followUp" });
-			yield* admit({ id: "S", sessionId, delivery: "steer" });
-			yield* cancelBeforePromotion(sessionId, "S");
+			yield* admit({ id: "B", threadId, delivery: "followUp" });
+			yield* admit({ id: "S", threadId, delivery: "steer" });
+			yield* cancelBeforePromotion(threadId, "S");
 			const execution = yield* RunnerExecution.Service;
-			yield* execution.wake(sessionId);
-			yield* settle(sessionId);
+			yield* execution.wake(threadId);
+			yield* settle(threadId);
 
 			expect(seen).toEqual(["succeeded", "succeeded"]);
 			expect(contexts.map(texts)).toEqual([["A"], ["A", "B"]]);
@@ -983,17 +1018,17 @@ describe("runner loop — queued input", () => {
 		Effect.gen(function* () {
 			yield* reset;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
-			const services = yield* Effect.context<Control.Service>();
+			const { threadId } = yield* seedSession();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
 			script.push("fail");
-			during.run = Effect.all([send(sessionId, "F1", "followUp"), send(sessionId, "S1")]).pipe(
+			during.run = Effect.all([send(threadId, "F1", "followUp"), send(threadId, "S1")]).pipe(
 				Effect.asVoid,
 				Effect.orDie,
 				Effect.provideContext(services),
 			);
 
-			yield* send(sessionId, "A");
-			yield* settle(sessionId);
+			yield* send(threadId, "A");
+			yield* settle(threadId);
 
 			expect(seen).toEqual(["failed", "succeeded"]);
 			expect(contexts.map(texts)).toEqual([["A"], ["A", "S1"], ["A", "S1", "F1"]]);
@@ -1009,7 +1044,7 @@ describe("runner loop — queued input", () => {
 			const events = yield* Event.Service;
 			const execution = yield* RunnerExecution.Service;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
+			const { threadId } = yield* seedSession();
 			script.push("hang");
 			const streaming = yield* Deferred.make<void>();
 			yield* events.listen((event) =>
@@ -1018,22 +1053,22 @@ describe("runner loop — queued input", () => {
 					: Effect.void,
 			);
 
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* Deferred.await(streaming);
-			yield* send(sessionId, "S1");
-			yield* send(sessionId, "F1", "followUp");
-			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
-			yield* settle(sessionId);
+			yield* send(threadId, "S1");
+			yield* send(threadId, "F1", "followUp");
+			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
+			yield* settle(threadId);
 
 			expect(seen).toEqual(["interrupted"]);
-			expect((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
+			expect((yield* delivered(threadId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
 				["A", true],
 				["S1", false],
 				["F1", false],
 			]);
 
-			yield* send(sessionId, "N");
-			yield* settle(sessionId);
+			yield* send(threadId, "N");
+			yield* settle(threadId);
 
 			expect(seen).toEqual(["interrupted", "succeeded"]);
 			expect(contexts.map(texts).slice(1)).toEqual([
@@ -1049,24 +1084,24 @@ describe("runner loop — resume after restart", () => {
 	const { contexts, script } = provider;
 	const { effect: it } = testEffect(runtime({ open: provider.open }));
 
-	const stateOf = (sessionId: SessionSchema.ID) =>
+	const stateOf = (threadId: ThreadSchema.ID) =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
 			const [row] = yield* sql<{ execution: string | null; restarts: number }>`
-				SELECT execution, restarts FROM session WHERE id = ${sessionId}
+				SELECT execution, restarts FROM thread WHERE id = ${threadId}
 			`;
 			return row;
 		});
 
-	/** The session's state each time a run starts, as it starts. */
-	const atEachStart = (sessionId: SessionSchema.ID) =>
+	/** The thread's state each time a run starts, as it starts. */
+	const atEachStart = (threadId: ThreadSchema.ID) =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;
 			const sql = yield* SqlClient.SqlClient;
 			const seen: Array<{ execution: string | null; restarts: number } | undefined> = [];
 			yield* events.listen((event) =>
-				Schema.is(EventList.ExecutionStarted)(event) && event.data.sessionId === sessionId
-					? stateOf(sessionId).pipe(
+				Schema.is(EventList.ExecutionStarted)(event) && event.data.threadId === threadId
+					? stateOf(threadId).pipe(
 							Effect.map((state) => {
 								seen.push(state);
 							}),
@@ -1094,15 +1129,15 @@ describe("runner loop — resume after restart", () => {
 	 * What a process that died mid-reply leaves: the prompt in the conversation, the reply it was
 	 * streaming still a draft, and the run still marked running.
 	 */
-	const crashedMidReply = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, id: string) {
+	const crashedMidReply = Effect.fnUntraced(function* (threadId: ThreadSchema.ID, id: string) {
 		const events = yield* Event.Service;
-		const sessions = yield* Session.Service;
-		const inputs = yield* SessionInput.make;
-		yield* admit({ id, sessionId, delivery: "steer" });
-		yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
+		const threads = yield* Thread.Service;
+		const inputs = yield* Inbox.make;
+		yield* admit({ id, threadId, delivery: "steer" });
+		yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
 		const input: LLM.Input = {
 			resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
-			sessionId,
+			threadId,
 			context: { messages: [] },
 			provider: "openai",
 			model: "gpt-6-luna",
@@ -1110,11 +1145,12 @@ describe("runner loop — resume after restart", () => {
 		const draft = assistant(input, 99, { parts: [{ type: "text", text: "half a reply" }] });
 		yield* events.publish(EventList.LLMStarted, {
 			timestamp: DateTime.makeUnsafe(1),
-			sessionId,
+			sessionId: yield* sessionOf(threadId),
+			threadId,
 			messageId: SessionMessageSchema.ID.from(draft.messageId),
 			message: draft,
 		});
-		yield* sessions.markRunning(sessionId);
+		yield* threads.markRunning(threadId);
 	});
 
 	it(
@@ -1124,22 +1160,22 @@ describe("runner loop — resume after restart", () => {
 			const control = yield* Control.Service;
 			const execution = yield* RunnerExecution.Service;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
+			const { threadId } = yield* seedSession();
 			const streaming = yield* hanging;
 			script.push("hang");
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* streaming;
-			yield* send(sessionId, "S1");
-			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
-			yield* settle(sessionId);
+			yield* send(threadId, "S1");
+			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
+			yield* settle(threadId);
 
 			// The stop is the user's: what was queued behind it stays queued, unmarked.
-			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
 			yield* control.resumeUnfinished;
 
 			expect(seen).toEqual(["interrupted"]);
 			expect(contexts.map(texts)).toEqual([["A"]]);
-			expect((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
+			expect((yield* delivered(threadId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
 				["A", true],
 				["S1", false],
 			]);
@@ -1154,18 +1190,18 @@ describe("runner loop — resume after restart", () => {
 			const control = yield* Control.Service;
 			const execution = yield* RunnerExecution.Service;
 			const seen = yield* outcomes;
-			const sessionId = yield* seedSession();
+			const { threadId } = yield* seedSession();
 			const streaming = yield* hanging;
 			script.push("hang");
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* streaming;
-			yield* send(sessionId, "S1");
-			yield* send(sessionId, "F1", "followUp");
-			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
-			yield* settle(sessionId);
+			yield* send(threadId, "S1");
+			yield* send(threadId, "F1", "followUp");
+			yield* execution.interrupt(threadId, "shutdown", { awaitSettlement: true });
+			yield* settle(threadId);
 
-			expect(yield* stateOf(sessionId)).toEqual({ execution: "closed", restarts: 0 });
-			const atStart = yield* atEachStart(sessionId);
+			expect(yield* stateOf(threadId)).toEqual({ execution: "closed", restarts: 0 });
+			const atStart = yield* atEachStart(threadId);
 			yield* control.resumeUnfinished;
 
 			expect(atStart).toEqual([{ execution: "running", restarts: 0 }]);
@@ -1174,25 +1210,25 @@ describe("runner loop — resume after restart", () => {
 				["A", "S1"],
 				["A", "S1", "F1"],
 			]);
-			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
 		}),
 	);
 
-	// Pi resends the cut-off request as it was; a follow-up queued behind it waits for the answer.
+	// The cut-off request is resent as it was; a follow-up queued behind it waits for the answer.
 	it(
 		"answers the reply a shutdown cut off before a queued follow-up goes in",
 		Effect.gen(function* () {
 			yield* provider.reset;
 			const control = yield* Control.Service;
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession();
+			const { threadId } = yield* seedSession();
 			const streaming = yield* hanging;
 			script.push("hang");
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* streaming;
-			yield* send(sessionId, "B", "followUp");
-			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
-			yield* settle(sessionId);
+			yield* send(threadId, "B", "followUp");
+			yield* execution.interrupt(threadId, "shutdown", { awaitSettlement: true });
+			yield* settle(threadId);
 
 			yield* control.resumeUnfinished;
 
@@ -1205,22 +1241,22 @@ describe("runner loop — resume after restart", () => {
 		Effect.gen(function* () {
 			yield* provider.reset;
 			const control = yield* Control.Service;
-			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession();
-			yield* crashedMidReply(sessionId, "A");
-			const atStart = yield* atEachStart(sessionId);
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* crashedMidReply(threadId, "A");
+			const atStart = yield* atEachStart(threadId);
 
 			yield* control.resumeUnfinished;
 
 			expect(atStart).toEqual([{ execution: "running", restarts: 1 }]);
 			expect(contexts.map(texts)).toEqual([["A"]]);
-			const path = yield* sessions.path(sessionId);
+			const path = yield* threads.line(threadId);
 			expect(path.map((entry) => [entry.entry.type, entry.entry.state])).toEqual([
 				["user", "committed"],
 				["assistant", "aborted"],
 				["assistant", "committed"],
 			]);
-			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
 		}),
 	);
 
@@ -1230,16 +1266,16 @@ describe("runner loop — resume after restart", () => {
 		"runs nothing when a session recovery chose was stopped before its run began",
 		Effect.gen(function* () {
 			yield* provider.reset;
-			const sessions = yield* Session.Service;
+			const threads = yield* Thread.Service;
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession();
-			yield* crashedMidReply(sessionId, "A");
-			yield* sessions.endExecution(sessionId, "stopped");
+			const { threadId } = yield* seedSession();
+			yield* crashedMidReply(threadId, "A");
+			yield* threads.endExecution(threadId, "stopped");
 
-			yield* execution.recover(sessionId);
+			yield* execution.recover(threadId);
 
 			expect(contexts).toEqual([]);
-			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
 		}),
 	);
 
@@ -1249,22 +1285,24 @@ describe("runner loop — resume after restart", () => {
 			yield* provider.reset;
 			const control = yield* Control.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession();
-			yield* crashedMidReply(sessionId, "A");
-			yield* sql`UPDATE session SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${sessionId}`;
+			const { sessionId, threadId } = yield* seedSession();
+			yield* crashedMidReply(threadId, "A");
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${threadId}`;
 
 			yield* control.resumeUnfinished;
 
 			expect(contexts).toEqual([]);
-			expect(yield* stateOf(sessionId)).toEqual({ execution: "running", restarts: Control.RESTART_LIMIT });
-			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).info).parked).toBe(true);
+			expect(yield* stateOf(threadId)).toEqual({ execution: "running", restarts: Control.RESTART_LIMIT });
+			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).main.info).parked).toBe(
+				true,
+			);
 
-			yield* send(sessionId, "B");
-			yield* settle(sessionId);
+			yield* send(threadId, "B");
+			yield* settle(threadId);
 
 			expect(contexts.map(texts)).toEqual([["A", "B"]]);
-			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
-			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).info).parked).toBe(
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).main.info).parked).toBe(
 				false,
 			);
 		}),
@@ -1277,18 +1315,18 @@ describe("runner loop — resume after restart", () => {
 			yield* provider.reset;
 			const sql = yield* SqlClient.SqlClient;
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession();
-			yield* sql`UPDATE session SET restarts = 3 WHERE id = ${sessionId}`;
+			const { threadId } = yield* seedSession();
+			yield* sql`UPDATE thread SET restarts = 3 WHERE id = ${threadId}`;
 			const streaming = yield* hanging;
-			const services = yield* Effect.context<Control.Service>();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
 			script.push("answer", "hang");
-			provider.during.run = send(sessionId, "S").pipe(Effect.orDie, Effect.provideContext(services));
+			provider.during.run = send(threadId, "S").pipe(Effect.orDie, Effect.provideContext(services));
 
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* streaming;
 
-			expect(yield* stateOf(sessionId)).toEqual({ execution: "running", restarts: 0 });
-			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+			expect(yield* stateOf(threadId)).toEqual({ execution: "running", restarts: 0 });
+			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
 		}),
 	);
 });
@@ -1307,7 +1345,7 @@ describe("runner loop — cancel and unfinished replies", () => {
 			const execution = yield* RunnerExecution.Service;
 			const events = yield* Event.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession();
+			const { threadId } = yield* seedSession();
 			const streaming = yield* Deferred.make<void>();
 			yield* events.listen((event) =>
 				Schema.is(EventList.LLMTextDelta)(event) && event.data.delta === "partial"
@@ -1315,16 +1353,500 @@ describe("runner loop — cancel and unfinished replies", () => {
 					: Effect.void,
 			);
 			provider.script.push("hang");
-			yield* send(sessionId, "A");
+			yield* send(threadId, "A");
 			yield* Deferred.await(streaming);
-			yield* send(sessionId, "B", "followUp");
-			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
-			yield* settle(sessionId);
+			yield* send(threadId, "B", "followUp");
+			yield* execution.interrupt(threadId, "shutdown", { awaitSettlement: true });
+			yield* settle(threadId);
 
-			yield* control.cancel(sessionId, SessionMessageSchema.ID.make("B"));
+			yield* control.cancel(threadId, SessionMessageSchema.ID.make("B"));
 
-			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM session WHERE id = ${sessionId}`;
+			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM thread WHERE id = ${threadId}`;
 			expect(row?.execution).toBe("closed");
+		}),
+	);
+});
+
+describe("runner loop — lifecycle hooks", () => {
+	const echo = Tool.register(
+		Tool.make({
+			name: "echo",
+			description: "echoes text",
+			parameters: Schema.Struct({ value: Schema.String }),
+			success: Schema.String,
+			encodeContent: (value: string) => [{ type: "text", text: value }],
+			handler: ({ value }) => Effect.succeed(value),
+		}),
+	);
+	const late = Tool.register(
+		Tool.make({
+			name: "echo_late",
+			description: "declared from the second snapshot on",
+			parameters: Schema.Struct({ value: Schema.String }),
+			success: Schema.String,
+			encodeContent: (value: string) => [{ type: "text", text: value }],
+			handler: ({ value }) => Effect.succeed(value),
+		}),
+	);
+	const echoCall = {
+		type: "toolCall" as const,
+		callID: "call_echo",
+		name: "echo",
+		arguments: { value: "hello" },
+		status: "pending" as const,
+		time: { start: 1, end: 1 },
+	};
+	/** A fresh tool turn per test, since it counts its own requests. */
+	const recording = (contexts: Message.Context[]): LLM.Open => {
+		const next = toolTurn(echoCall);
+		return (input, signal) => {
+			contexts.push(input.context);
+			return next(input, signal);
+		};
+	};
+	const toolNames = (context: Message.Context) =>
+		(context.tools ?? []).map((tool) => tool.name).filter((name) => name.startsWith("echo"));
+
+	describe("a tool-use chain", () => {
+		const contexts: Message.Context[] = [];
+		const calls: Array<Record<string, unknown>> = [];
+		let snapshots = 0;
+		const hooks: Hooks.Interface = {
+			prepareNextTurn: (turn, next) =>
+				Effect.sync(() => {
+					calls.push({
+						hook: "prepareNextTurn",
+						completed: turn.reason,
+						tools: next.tools.defs.map((def) => def.name).filter((name) => name.startsWith("echo")),
+					});
+					return next;
+				}),
+			prepareRequest: (request, attempt) =>
+				Effect.sync(() => {
+					calls.push({ hook: "prepareRequest", retry: attempt.retry });
+					return request;
+				}),
+			finishTurn: (turn) =>
+				Effect.sync(() => {
+					calls.push({ hook: "finishTurn", reason: turn.reason });
+					return undefined;
+				}),
+		};
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks,
+				plugins: [
+					...plugins,
+					{
+						id: "test.tool.echo",
+						kind: "tool",
+						setup: (ctx) => {
+							snapshots += 1;
+							ctx.plugin.tools.add(echo);
+							// A tool the plugin only declares from the second snapshot on.
+							if (snapshots > 1) ctx.plugin.tools.add(late);
+						},
+					},
+				],
+			}),
+		);
+
+		it(
+			"snapshots before each turn, so a tool declared mid-chain reaches the next request",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_chain", threadId, delivery: "steer" });
+
+				yield* execution.resume(threadId);
+
+				expect(snapshots).toBe(2);
+				expect(contexts.map(toolNames)).toEqual([["echo"], ["echo", "echo_late"]]);
+				yield* Effect.promise(() =>
+					expect(
+						`${JSON.stringify({ calls, requestTools: contexts.map(toolNames) }, null, "\t")}\n`,
+					).toMatchFileSnapshot("./__artifacts__/runner.hooks.json"),
+				);
+			}),
+		);
+	});
+
+	describe("pending input", () => {
+		const seen: Array<ReadonlyArray<string>> = [];
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording([]),
+				hooks: hooksOf({
+					finishTurn: (turn) =>
+						Effect.sync(() => {
+							seen.push(turn.pending.map((item) => `${item.delivery}:${item.id}`));
+							return undefined;
+						}),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"shows the queued steers, else the oldest follow-up, without promoting them",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
+				yield* admit({ id: "msg_later", threadId, delivery: "followUp" });
+				yield* admit({ id: "msg_next", threadId, delivery: "followUp" });
+
+				yield* execution.resume(threadId);
+
+				// Turn 1 (toolUse), turn 2 (stop), turn 3 (first follow-up), turn 4 (second follow-up).
+				expect(seen).toEqual([["followUp:msg_later"], ["followUp:msg_later"], ["followUp:msg_next"], []]);
+			}),
+		);
+	});
+
+	describe("finishTurn end", () => {
+		const contexts: Message.Context[] = [];
+		let prepared = 0;
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined),
+					prepareNextTurn: (_turn, next) => Effect.sync(() => ((prepared += 1), next)),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"stops the run after the committed turn and leaves queued input for the next run",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
+				yield* admit({ id: "msg_queued", threadId, delivery: "followUp" });
+
+				yield* execution.resume(threadId);
+
+				expect(contexts).toHaveLength(1);
+				expect(prepared).toBe(0);
+				const threads = yield* Thread.Service;
+				const path = yield* threads.line(threadId);
+				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
+					["user", "committed"],
+					["assistant", "committed"],
+				]);
+				const tool = path[1]!.parts.find((part) => part.type === "toolCall");
+				expect(tool).toBeDefined();
+				const rows = yield* delivered(threadId);
+				expect(rows.find((row) => row.id === "msg_queued")?.promotedSeq).toBeNull();
+
+				// The next run answers the tool results first, then picks the queued follow-up up.
+				yield* execution.resume(threadId);
+				expect(contexts).toHaveLength(3);
+				expect(contexts[1]!.messages).toHaveLength(2);
+				expect(contexts[2]!.messages).toHaveLength(4);
+				const next = yield* delivered(threadId);
+				expect(next.find((row) => row.id === "msg_queued")?.promotedSeq).not.toBeNull();
+			}),
+		);
+	});
+
+	describe("a steer landing while a resume loads", () => {
+		const contexts: Message.Context[] = [];
+		const gate: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				beforeSettings: gate,
+				hooks: hooksOf({ finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined) }),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"joins the reply being answered, ahead of the queued follow-up",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
+				yield* admit({ id: "msg_queued", threadId, delivery: "followUp" });
+				yield* execution.resume(threadId);
+
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				gate.run = admit({ id: "msg_late", threadId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							gate.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+				yield* execution.resume(threadId);
+
+				expect(contexts.map(texts)).toEqual([
+					["msg_first"],
+					["msg_first", "msg_late"],
+					["msg_first", "msg_late", "msg_queued"],
+				]);
+			}),
+		);
+	});
+
+	describe("finishTurn continue", () => {
+		const contexts: Message.Context[] = [];
+		const completed: string[] = [];
+		const { effect: it } = testEffect(
+			runtime({
+				contexts,
+				hooks: hooksOf({
+					finishTurn: () => Effect.succeed("continue"),
+					prepareNextTurn: (turn, next) => Effect.sync(() => (completed.push(turn.reason), next)),
+				}),
+			}),
+		);
+
+		it(
+			"sends nothing after a finished reply when nothing was appended",
+			Effect.gen(function* () {
+				contexts.length = 0;
+				completed.length = 0;
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_done", threadId, delivery: "steer" });
+
+				yield* execution.resume(threadId);
+
+				// The decision was honoured (another turn was scheduled) and the leaf guard sent nothing.
+				expect(completed).toEqual(["stop"]);
+				expect(contexts).toHaveLength(1);
+			}),
+		);
+	});
+
+	describe("finishTurn continue after a tool batch", () => {
+		const contexts: Message.Context[] = [];
+		const completed: string[] = [];
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					finishTurn: () => Effect.succeed("continue"),
+					prepareNextTurn: (turn, next) => Effect.sync(() => (completed.push(turn.reason), next)),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"is met by the tool-result request and adds none of its own",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_tool", threadId, delivery: "steer" });
+
+				yield* execution.resume(threadId);
+
+				expect(completed).toEqual(["toolUse", "stop"]);
+				expect(contexts).toHaveLength(2);
+			}),
+		);
+	});
+
+	describe("prepareNextTurn", () => {
+		const contexts: Message.Context[] = [];
+		const during: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					prepareNextTurn: (_turn, next) => during.run.pipe(Effect.as({ ...next, systemPrompt: "replaced" })),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"its snapshot reaches the next request, with a steer queued while it ran",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				during.run = admit({ id: "msg_during", threadId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							during.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+
+				yield* execution.resume(threadId);
+
+				expect(contexts.map((context) => context.systemPrompt === "replaced")).toEqual([false, true]);
+				expect(contexts.map(texts)).toEqual([["msg_first"], ["msg_first", "msg_during"]]);
+			}),
+		);
+	});
+
+	describe("prepareRequest and queued input", () => {
+		const contexts: Message.Context[] = [];
+		const seen: Array<ReadonlyArray<string>> = [];
+		const during: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					prepareRequest: (request) =>
+						Effect.sync(() => seen.push(texts(request.context))).pipe(
+							Effect.andThen(during.run),
+							Effect.as(request),
+						),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"sees promoted input, and a steer queued while it runs waits for the next turn",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				during.run = admit({ id: "msg_during", threadId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							during.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+
+				yield* execution.resume(threadId);
+
+				expect(seen).toEqual([["msg_first"], ["msg_first", "msg_during"]]);
+				expect(contexts.map(texts)).toEqual(seen);
+			}),
+		);
+	});
+
+	describe("prepareRequest on a retry", () => {
+		const models: string[] = [];
+		const attempts: Array<{ readonly retry: number; readonly failed?: string }> = [];
+		const open = scripted([{ failure: { _tag: "Unavailable", retryable: true } }], [], models);
+		const { live: it } = testEffect(
+			runtime({
+				open,
+				settings: settings({ baseDelayMs: 5, maxDelayMs: 8 }),
+				hooks: hooksOf({
+					prepareRequest: (request, attempt) =>
+						Effect.sync(() => {
+							attempts.push(attempt);
+							return attempt.retry > 0 ? { ...request, model: "routed-model" } : request;
+						}),
+				}),
+			}),
+		);
+
+		it(
+			"sees the retry number and failure, and its replacement model reaches the request",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const { threadId } = yield* seedSession();
+				yield* admit({ id: "msg_route", threadId, delivery: "steer" });
+
+				yield* execution.resume(threadId);
+
+				expect(attempts).toMatchObject([
+					{ retry: 0 },
+					{ retry: 1, failed: expect.stringContaining("Unavailable failure") },
+				]);
+				expect(models[1]).toBe("routed-model");
+				expect(models[0]).not.toBe("routed-model");
+			}),
+		);
+	});
+});
+
+describe("runner loop — tool exposure", () => {
+	const tool = (name: string, exposure?: Tool.ToolExposure) =>
+		Tool.register(
+			Tool.make({
+				name,
+				description: `${name} tool`,
+				promptSnippet: `${name} snippet`,
+				promptGuidelines: [`${name} guideline`],
+				...(exposure === undefined ? {} : { exposure }),
+				parameters: Schema.Struct({ value: Schema.String }),
+				success: Schema.String,
+				encodeContent: (value: string) => [{ type: "text", text: value }],
+				handler: ({ value }) => Effect.succeed(value),
+			}),
+		);
+	const contexts: Message.Context[] = [];
+	const next = toolTurn({
+		type: "toolCall",
+		callID: "call_deferred",
+		name: "x_deferred",
+		arguments: { value: "hello" },
+		status: "pending",
+		time: { start: 1, end: 1 },
+	});
+	const { effect: it } = testEffect(
+		runtime({
+			open: (input, signal) => {
+				contexts.push(input.context);
+				return next(input, signal);
+			},
+			plugins: [
+				...plugins,
+				{
+					id: "test.tool.exposure",
+					kind: "tool",
+					setup: (ctx) => {
+						ctx.plugin.tools.add(tool("x_direct"));
+						ctx.plugin.tools.add(tool("x_model", "model"));
+						ctx.plugin.tools.add(tool("x_codemode", "codemode"));
+						ctx.plugin.tools.add(tool("x_deferred", "deferred"));
+						ctx.plugin.tools.add(tool("x_hidden", "hidden"));
+						// Overrides the built-in, so the bash file-ops rule must go with it.
+						ctx.plugin.tools.add(tool("bash", "hidden"));
+					},
+				},
+			],
+		}),
+	);
+
+	it(
+		"declares only direct and model tools, in the request and the prompt, and refuses the rest",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const { threadId } = yield* seedSession();
+			yield* admit({ id: "msg_exposure", threadId, delivery: "steer" });
+
+			yield* execution.resume(threadId);
+
+			expect(contexts).toHaveLength(2);
+			const section = (name: string) =>
+				new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(contexts[0]!.systemPrompt ?? "")?.[1];
+			const reply = contexts[1]!.messages[1]!;
+			const call = reply.role === "assistant" ? reply.parts.find((part) => part.type === "toolCall") : undefined;
+			const result = {
+				requestTools: contexts.map((context) => (context.tools ?? []).map((tool) => tool.name)),
+				tools: section("tools"),
+				rules: section("rules"),
+				deferredCall: call,
+			};
+			expect(result.requestTools[0]).toContain("x_model");
+			expect(result.requestTools[0]).not.toContain("bash");
+			yield* Effect.promise(() =>
+				expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/tools.exposure.json",
+				),
+			);
 		}),
 	);
 });

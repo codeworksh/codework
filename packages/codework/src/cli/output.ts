@@ -1,5 +1,5 @@
 import type { Message } from "@codeworksh/aikit";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 export interface UsageSummary {
 	readonly turns: number;
@@ -79,5 +79,11 @@ export const usage = (summary: UsageSummary, columns?: number): string => {
 };
 
 export const writeOut = (value: string) => Effect.sync(() => void process.stdout.write(value));
+/** A value in its wire form, as indented JSON. */
+export const writeJson = <A, I>(schema: Schema.Codec<A, I>, value: A) =>
+	Schema.encodeEffect(schema)(value).pipe(
+		Effect.orDie,
+		Effect.flatMap((encoded) => writeOut(`${JSON.stringify(encoded, null, "\t")}\n`)),
+	);
 export const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
 export const terminalColumns = () => (process.stderr.isTTY ? (process.stderr.columns ?? 72) : 72);

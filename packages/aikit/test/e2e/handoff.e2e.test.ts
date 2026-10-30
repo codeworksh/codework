@@ -1,5 +1,6 @@
 import Type from "typebox";
 import { expect, it } from "vite-plus/test";
+import { convertMessages } from "../../src/llm/transform.ts";
 import * as Message from "../../src/message/message.ts";
 import { stream } from "../../src/stream.ts";
 import {
@@ -255,6 +256,67 @@ describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter handoff (%s)", (mod
 		async () => {
 			const history = await toolTurn(await openrouter(modelId));
 			await expectContinues(await anthropic("claude-sonnet-4-6"), history);
+		},
+	);
+});
+
+/*
+ * Thinking never crosses models, as reasoning or as text: the wire for the
+ * new model carries the old model's answer only, and the new model still
+ * picks the conversation up from it.
+ */
+async function expectThinkingDropped(source: Target, target: Target, name: string) {
+	const question = user("What is 17 multiplied by 19? Think it through, then give the number.");
+	const first = await stream.complete(source.model, { messages: [question] }, source.options);
+	expect(first.stopReason, first.errorMessage).toBe("stop");
+	const thinking = first.parts.filter((part) => part.type === "thinking");
+	expect(thinking.length, "expected thinking").toBeGreaterThan(0);
+
+	const context = {
+		systemPrompt: "You are a helpful assistant. Answer concisely.",
+		messages: [question, first, user("What was the result? Number only.")],
+	};
+	const wire = convertMessages(context, target.model);
+	const serialized = JSON.stringify(wire);
+	for (const part of thinking) {
+		if (part.thinking.trim()) expect(serialized).not.toContain(JSON.stringify(part.thinking.trim()).slice(1, -1));
+		if (part.thinkingSignature) expect(serialized).not.toContain(part.thinkingSignature);
+	}
+	const shape = wire.map((message) => ({
+		role: message.role,
+		content: typeof message.content === "string" ? "string" : message.content.map((part) => part.type),
+	}));
+	await expect(JSON.stringify(shape, null, "\t")).toMatchFileSnapshot(`./__artifacts__/thinking-handoff.${name}.json`);
+
+	const response = await stream.complete(target.model, context, target.options);
+	expect(response.stopReason, response.errorMessage).toBe("stop");
+	expect(getText(response)).toContain("323");
+}
+
+const THINKING_HANDOFF_ANTHROPIC_MODEL = ANTHROPIC_E2E_MODELS[0];
+
+describeIfAnthropic("Anthropic <-> OpenAI Codex thinking handoff", () => {
+	it.runIf(process.env.OPENAI_CODEX_API_KEY)(
+		"drops Anthropic thinking on OpenAI Codex",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			await expectThinkingDropped(
+				await anthropic(THINKING_HANDOFF_ANTHROPIC_MODEL),
+				await codex(OPENAI_CODEX_E2E_MODELS[0]),
+				"anthropic-to-openai-codex",
+			);
+		},
+	);
+
+	it.runIf(process.env.OPENAI_CODEX_API_KEY)(
+		"drops OpenAI Codex thinking on Anthropic",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			await expectThinkingDropped(
+				await codex(OPENAI_CODEX_E2E_MODELS[0]),
+				await anthropic(THINKING_HANDOFF_ANTHROPIC_MODEL),
+				"openai-codex-to-anthropic",
+			);
 		},
 	);
 });

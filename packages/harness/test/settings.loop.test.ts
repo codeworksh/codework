@@ -48,8 +48,8 @@ const terminal = (input: LLM.Input, index: number, tool = false) => {
 	return stream;
 };
 
-describe("settings at exchange boundaries", () => {
-	it("pins settings through a blocked request, tool continuation and steer; refreshes follow-up and idle prompts", () =>
+describe("settings at turn boundaries", () => {
+	it("pins settings through a blocked request, and applies an edit made during a tool batch at the next turn", () =>
 		withSettings(async ({ root, custom, local }) => {
 			await file(custom, "low");
 			// This belongs to the session directory, not host startup, and must not be loaded.
@@ -85,7 +85,7 @@ describe("settings at exchange boundaries", () => {
 						return terminal(input, index, index === 1);
 					});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(requestEntered);
 						yield* Effect.promise(() => file(custom, "medium"));
@@ -96,15 +96,17 @@ describe("settings at exchange boundaries", () => {
 						yield* handle.prompt({ text: "later", delivery: "followUp" });
 						yield* Deferred.succeed(toolRelease, undefined);
 						yield* handle.wait();
-						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "low", "high"]);
-						expect(inputs.map((input) => input.options?.headers?.revision)).toEqual(["low", "low", "high"]);
+						// The "medium" edit landed while request 1 was blocked; the request already built stays "low".
+						// The "high" edit landed during the tool batch, so the continuation turn reads it.
+						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "high", "high"]);
+						expect(inputs.map((input) => input.options?.headers?.revision)).toEqual(["low", "high", "high"]);
 						expect(inputs[1]?.context.systemPrompt).toBe(inputs[0]?.context.systemPrompt);
 						yield* Effect.promise(() => file(custom, "off"));
 						yield* handle.run("idle steer");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 						// A virtual sandbox uses the same host settings, without any virtual settings file.
 						const sandbox = yield* Sandbox.create({ driver: "memory" });
-						const virtual = yield* Session.create({ sandbox });
+						const { main: virtual } = yield* Session.create({ sandbox });
 						yield* virtual.run("virtual");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 					}).pipe(
@@ -127,7 +129,7 @@ describe("settings at exchange boundaries", () => {
 			);
 		}));
 
-	it("pins matching parallel tool execution through continuations and refreshes it next exchange", () =>
+	it("pins parallel tool execution for the running batch and refreshes it at the next turn", () =>
 		withSettings(async ({ root, custom }) => {
 			const configure = (toolExecution: string) =>
 				writeFile(
@@ -139,7 +141,7 @@ describe("settings at exchange boundaries", () => {
 			await configure("parallel");
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const gates = [yield* Deferred.make<void>(), yield* Deferred.make<void>()];
+					const gates = [yield* Deferred.make<void>()];
 					const starts = [0, 0, 0];
 					const trace: string[] = [];
 					let request = 0;
@@ -157,7 +159,8 @@ describe("settings at exchange boundaries", () => {
 									if (batch === 0 && starts[batch] === 1) yield* Effect.promise(() => configure("sequential"));
 									const gate = gates[batch];
 									if (gate !== undefined) {
-										// A sequential scheduler deadlocks here: both calls must enter before either finishes.
+										// Only the batch that started parallel has a gate: a sequential scheduler would deadlock
+										// here, since both calls must enter before either finishes.
 										if (starts[batch] === 2) yield* Deferred.succeed(gate, undefined);
 										yield* Deferred.await(gate);
 									}
@@ -189,16 +192,20 @@ describe("settings at exchange boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.run("parallel, including continuation");
 						yield* handle.run("fresh sequential");
 						expect(starts).toEqual([2, 2, 2]);
-						expect(trace.filter((item) => item.startsWith("2:"))).toEqual([
-							"2:start",
-							"2:end",
-							"2:start",
-							"2:end",
-						]);
+						// Batch 0 ran parallel through the edit made inside it; the next turn and the next
+						// exchange read the edited file and run sequentially.
+						for (const batch of [1, 2]) {
+							expect(trace.filter((item) => item.startsWith(`${batch}:`))).toEqual([
+								`${batch}:start`,
+								`${batch}:end`,
+								`${batch}:start`,
+								`${batch}:end`,
+							]);
+						}
 					}).pipe(
 						Effect.provide(
 							Harness.layer({
@@ -243,7 +250,7 @@ describe("settings at exchange boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						const events = yield* Event.Service;
 						yield* events.listen((event) =>
 							event.type === "session.llm.started"
@@ -282,7 +289,7 @@ describe("settings at exchange boundaries", () => {
 			const open: LLM.Open = (input) => Effect.sync(() => (inputs.push(input), terminal(input, inputs.length)));
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const handle = yield* Session.create({ directory: root });
+					const { main: handle } = yield* Session.create({ directory: root });
 					const events = yield* Event.Service;
 					yield* events.listen((event) =>
 						Effect.sync(() => {
@@ -322,7 +329,7 @@ describe("settings at exchange boundaries", () => {
 			expect(failures[0]?.data.error.message).toContain("model.options.timeoutMs");
 		}));
 
-	it("applies a session binding change at the next capture, not inside the running exchange", () =>
+	it("applies a session binding change at the next turn, not inside the running one", () =>
 		withSettings(async ({ root, custom }) => {
 			await file(custom, "low");
 			const inputs: LLM.Input[] = [];
@@ -350,16 +357,16 @@ describe("settings at exchange boundaries", () => {
 							return terminal(input, inputs.length, inputs.length === 1);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(toolEntered);
-						// A binding set mid-exchange must not disturb the snapshot already pinned.
-						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+						// A binding set during a tool batch must not disturb the turn already running.
+						yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 						yield* Deferred.succeed(toolRelease, undefined);
 						yield* handle.wait();
-						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "low"]);
+						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "max"]);
 						yield* handle.run("second");
-						// The next capture reads it, and a binding outranks the file.
+						// A binding outranks the file.
 						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
 					}).pipe(
 						Effect.provide(
@@ -396,12 +403,12 @@ describe("settings at exchange boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						// A chosen thinking level is saved with the session; the file is read afresh.
-						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+						yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 						yield* handle.run("first");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
-						return handle.id;
+						return handle.sessionId;
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					yield* Effect.promise(() => file(custom, "medium"));
@@ -432,16 +439,16 @@ describe("settings at exchange boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 						yield* handle.run("first");
 						// Lookup fails before promotion; the admitted prompt remains queued.
-						expect(yield* handle.path()).toEqual([]);
+						expect(yield* handle.history()).toEqual([]);
 						expect(inputs).toHaveLength(0);
 
 						yield* Effect.promise(() => select("openai", "gpt-5.6-luna"));
 						yield* handle.resume();
 						expect(inputs.at(-1)?.model).toBe("gpt-5.6-luna");
-						const answered = yield* handle.path();
+						const answered = yield* handle.history();
 						expect(answered.filter(({ entry }) => entry.type === "user")).toHaveLength(1);
 						expect(answered.at(-1)?.entry.type).toBe("assistant");
 						expect(answered.at(-1)?.entry.state).toBe("committed");
@@ -477,7 +484,7 @@ describe("settings at exchange boundaries", () => {
 							return terminal(input, inputs.length);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root });
+						const { main: handle } = yield* Session.create({ directory: root });
 
 						yield* handle.run("with A");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("low");
@@ -536,12 +543,12 @@ describe("settings at exchange boundaries", () => {
 			];
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const handle = yield* Session.create({ directory: root });
+					const { main: handle } = yield* Session.create({ directory: root });
 					const rows: Array<Record<string, unknown>> = [];
 					for (const [index, item] of cases.entries()) {
 						yield* Effect.promise(() => select(item));
 						yield* handle.run(`turn ${index}`);
-						const persisted = (yield* handle.path()).at(-1)?.entry;
+						const persisted = (yield* handle.history()).at(-1)?.entry;
 						const envelope: { readonly thinkingLevel?: string } = JSON.parse(persisted?.data ?? "{}");
 						rows.push({
 							requested: item.thinkingLevel ?? defaults.model.thinkingLevel,
@@ -555,7 +562,7 @@ describe("settings at exchange boundaries", () => {
 						});
 					}
 					// A session's own choice is clamped the same way, and re-fitted on a model change.
-					yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+					yield* Session.attach({ sessionId: handle.sessionId, thinkingLevel: "max" });
 					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-4o-mini" }));
 					const chosenOff = (yield* Session.configuration(handle.id)).thinkingLevel;
 					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-5.6-luna" }));

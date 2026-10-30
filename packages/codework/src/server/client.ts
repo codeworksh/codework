@@ -1,6 +1,6 @@
 import { EventList, type EventSchema, optional, Session } from "@codeworksh/harness/effect";
 import { NodeSocket } from "@effect/platform-node";
-import { Deferred, Effect, Layer, Predicate, Schema, Stream } from "effect";
+import { Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Contract } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
@@ -24,7 +24,7 @@ export class ExecutionError extends Schema.TaggedError<ExecutionError>()("Client
 /**
  * Runs one prompt against a server and renders its output.
  *
- * Sessions are shared, so the stream carries other clients' work too and every
+ * Threads are shared, so the stream carries other clients' work too and every
  * terminal event has to be attributed before it is believed. A terminal that
  * arrives before our own prompt is promoted belongs to somebody else's drain:
  * it is remembered rather than raised, and forgotten the moment our prompt is
@@ -34,7 +34,7 @@ export class ExecutionError extends Schema.TaggedError<ExecutionError>()("Client
  */
 export const run = Effect.fn("Client.run")(function* <E, R>(
 	rpc: Client,
-	input: { sessionId: Session.SessionSchema.ID; text: string },
+	input: { sessionId: Session.SessionSchema.ID; threadId: Session.ThreadSchema.ID; text: string },
 	render: (event: EventSchema.Payload) => Effect.Effect<void, E, R>,
 ) {
 	const id = Session.SessionMessageSchema.ID.create();
@@ -61,22 +61,17 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 		return undefined;
 	};
 
-	const consume = rpc["event.subscribe"]({}).pipe(
+	const consume = rpc["event.subscribe"]({ threadId: input.threadId }).pipe(
 		Stream.mapEffect(
 			Effect.fnUntraced(function* (envelope) {
 				if (envelope.type === Envelope.Connected.type) {
-					yield* rpc["session.prompt"]({ ...input, id, delivery: "followUp" });
+					yield* rpc["thread.prompt"]({ ...input, id, delivery: "followUp" });
 					return;
 				}
 				const event = yield* Envelope.decode(envelope).pipe(
 					Effect.catchTag("UnknownEventTypeError", () => Effect.void),
 				);
-				if (
-					event === undefined ||
-					!Predicate.hasProperty(event.data, "sessionId") ||
-					event.data.sessionId !== input.sessionId
-				)
-					return;
+				if (event === undefined) return;
 				if (Schema.is(EventList.PromptAdmitted)(event) && event.data.messageId === id) admitted = true;
 				if (Schema.is(EventList.Prompted)(event) && event.data.messageId === id) {
 					promoted = true;
@@ -113,8 +108,8 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 	// finish; only a prompt that never materialized ends the run early.
 	let abandoned = false;
 	const reconcile = Deferred.await(stalled).pipe(
-		Effect.andThen(rpc["session.wait"]({ sessionId: input.sessionId })),
-		Effect.andThen(rpc["session.message"]({ sessionId: input.sessionId, messageId: id })),
+		Effect.andThen(rpc["thread.wait"]({ sessionId: input.sessionId, threadId: input.threadId })),
+		Effect.andThen(rpc["thread.message"]({ sessionId: input.sessionId, threadId: input.threadId, messageId: id })),
 		Effect.andThen(({ found }) =>
 			found
 				? Effect.never

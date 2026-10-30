@@ -50,15 +50,22 @@ describe.each(direct)("parameterless tool against live $name", (live) => {
 			await fs.mkdir(work, { recursive: true });
 
 			const { calls, reply } = await Effect.gen(function* () {
-				const session = yield* Session.create({ directory: work, model: { provider: live.provider, id: live.id } });
+				const { main: session } = yield* Session.create({
+					directory: work,
+					model: { provider: live.provider, id: live.id },
+				});
 				yield* session.run("Call the finite tool, then reply with exactly the token it returned and nothing else.");
-				const path = yield* session.path();
+				const path = yield* session.history();
 				const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-				const parts = messages.flatMap((message) => message.parts);
-				const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
+				const parts = messages.flatMap((message) => ContextCodec.parts(message));
+				const last = messages.findLast((message) =>
+					ContextCodec.parts(message).some((part) => part.type === "text"),
+				);
 				return {
 					calls: parts.flatMap((part) => (part.type === "toolCall" ? [part] : [])),
-					reply: (last?.parts ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+					reply: (last === undefined ? [] : ContextCodec.parts(last))
+						.flatMap((part) => (part.type === "text" ? [part.text] : []))
+						.join(""),
 				};
 			}).pipe(
 				Effect.provide(

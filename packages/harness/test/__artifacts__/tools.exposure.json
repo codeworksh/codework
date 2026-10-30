@@ -1,0 +1,46 @@
+{
+	"requestTools": [
+		[
+			"read",
+			"write",
+			"edit",
+			"x_direct",
+			"x_model"
+		],
+		[
+			"read",
+			"write",
+			"edit",
+			"x_direct",
+			"x_model"
+		]
+	],
+	"tools": "- read: Read file contents\n- write: Create or overwrite files\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- x_direct: x_direct snippet\n- x_model: x_model snippet",
+	"rules": "- Use read to examine files instead of cat or sed.\n- Use write only for new files or complete rewrites.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- x_direct guideline\n- x_model guideline\n- Be concise in your responses\n- Show file paths clearly when working with files",
+	"deferredCall": {
+		"type": "toolCall",
+		"callID": "call_deferred",
+		"name": "x_deferred",
+		"arguments": {
+			"value": "hello"
+		},
+		"status": "error",
+		"time": {
+			"start": 1,
+			"end": 1
+		},
+		"result": {
+			"content": [
+				{
+					"type": "text",
+					"text": "Tool \"x_deferred\" is not available in this thread."
+				}
+			],
+			"details": {
+				"_tag": "ToolUnavailable",
+				"name": "x_deferred"
+			},
+			"isError": true
+		}
+	}
+}

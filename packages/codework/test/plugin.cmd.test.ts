@@ -121,9 +121,9 @@ const exchanges = async (
 			for (const hostDir of hostDirs) {
 				const session = sessions.get(hostDir) ?? (yield* Session.create({ hostDir }));
 				sessions.set(hostDir, session);
-				yield* session.prompt({ text: "go", delivery: "followUp" });
-				yield* session.resume();
-				yield* session.wait();
+				yield* session.main.prompt({ text: "go", delivery: "followUp" });
+				yield* session.main.resume();
+				yield* session.main.wait();
 			}
 		}).pipe(
 			Effect.provide(

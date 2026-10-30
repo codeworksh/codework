@@ -83,13 +83,18 @@ function defaultMethodForModel(model: Model.Info): Model.APIMethodEnum {
 	return Model.APIMethodEnum.languageModel;
 }
 
+/** The endpoint method a model is called through: the request's override, the catalog's, or the default. */
+export function resolveMethod(model: Model.Info, methodOverride?: Model.APIMethodEnum): Model.APIMethodEnum {
+	return methodOverride ?? model.api?.method ?? defaultMethodForModel(model);
+}
+
 export function resolveLanguageModel(
 	provider: unknown,
 	model: Model.Info,
 	methodOverride?: Model.APIMethodEnum,
 ): LanguageModel {
 	const modelId = model.api?.id ?? model.id;
-	const method = methodOverride ?? model.api?.method ?? defaultMethodForModel(model);
+	const method = resolveMethod(model, methodOverride);
 	const callable = provider as ProviderWithMethods;
 
 	if (method === Model.APIMethodEnum.responses && callable.responses) return callable.responses(modelId);

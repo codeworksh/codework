@@ -75,18 +75,18 @@ describe.each(LIVE)("settings against live $name", (live) => {
 				await write(A);
 				await Effect.runPromise(
 					Effect.gen(function* () {
-						const handle = yield* Session.create({
+						const { main: handle } = yield* Session.create({
 							directory: root,
 							// Selection and matching controls come from the host file.
 						});
 						const runtime = yield* SessionRuntime.Service;
-						yield* runtime.update(handle.id, { onPayload });
+						yield* runtime.update(handle.sessionId, { onPayload });
 						yield* handle.run("Reply with the single word: one");
 						yield* Effect.promise(() => write(B));
 						yield* handle.run("Reply with the single word: two");
 						yield* Effect.promise(() => write(A));
 						yield* handle.run("Reply with the single word: three");
-						for (const hydrated of yield* handle.path()) {
+						for (const hydrated of yield* handle.history()) {
 							if (hydrated.entry.type !== "assistant") continue;
 							expect(hydrated.entry.state).toBe("committed");
 							replies.push(

@@ -15,6 +15,7 @@ import { PluginStore } from "../plugin/store.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { Mcp } from "../mcp/mcp.ts";
 import { LLM } from "../runner/llm.ts";
+import { Hooks } from "../runner/hooks.ts";
 import { Loop } from "../runner/loop.ts";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
@@ -91,11 +92,11 @@ export const layer = (options: Options = {}) =>
 			// has none. Boot reads the user layer and the explicit override only -- a server can
 			// start anywhere, so it must never walk ancestors of the directory it happened to
 			// launch in for a `.codework/`, which would hand it a stranger's project settings.
-			// A project's plugins still load: lazily, at the session's first exchange, through
+			// A project's plugins still load: lazily, at the session's first turn, through
 			// `follow`.
 			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
 			/*
-			 * Which entries this process configures from, per exchange.
+			 * Which entries this process configures from, per turn.
 			 *
 			 * Settings entries extend the built-in selection rather than standing in for it, so
 			 * naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
@@ -123,7 +124,7 @@ export const layer = (options: Options = {}) =>
 			/*
 			 * What the store already holds for a reference, and nothing else.
 			 *
-			 * Resolve-only by construction: `Store.resolve` never opens a socket, so an exchange
+			 * Resolve-only by construction: `Store.resolve` never opens a socket, so a turn
 			 * asking this question cannot block on a registry, and `plugin install` stays the only
 			 * verb that puts bytes on disk. A reference that does not parse, or names a local
 			 * path, is simply not filed.
@@ -159,7 +160,7 @@ export const layer = (options: Options = {}) =>
 			const resolveOnly = { ...catalogOptions, install: PluginStore.required };
 
 			// The load pass, once, at boot: a store lookup and an ESM import per module, never a
-			// fetch. Every later exchange runs only the config pass over what this produced.
+			// fetch. Every later turn runs only the config pass over what this produced.
 			const pool = yield* Ref.make<Pool>(
 				yield* load(references(config), { ...resolveOnly, declared: declaredIn(config) }),
 			);
@@ -250,7 +251,7 @@ export const layer = (options: Options = {}) =>
 			);
 			const authFile = Global.authFile(options.home === undefined ? undefined : paths.home);
 			const open = options.llm ?? LLM.openWith(authFile === undefined ? {} : { authFile });
-			const loop = Loop.layer({ request: LLM.make(open) });
+			const loop = Loop.layer({ request: LLM.make(open) }).pipe(Layer.provide(Hooks.layer));
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),

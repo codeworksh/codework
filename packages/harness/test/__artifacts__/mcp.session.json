@@ -62,9 +62,85 @@
 					"badheader",
 					true
 				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				]
 			]
 		],
 		"toolDomain": [
+			"mcp registry is closed: servers are settled before the tool domain runs",
+			"mcp registry is closed: servers are settled before the tool domain runs",
+			"mcp registry is closed: servers are settled before the tool domain runs",
+			"mcp registry is closed: servers are settled before the tool domain runs",
 			"mcp registry is closed: servers are settled before the tool domain runs",
 			"mcp registry is closed: servers are settled before the tool domain runs"
 		]
@@ -123,21 +199,21 @@
 			"status": "error",
 			"isError": true,
 			"content": [
-				"Invalid arguments for mcp__e2e__echo: Missing key\n  at [\"text\"]"
+				"Invalid Arguments for mcp__e2e__echo: Missing key\n  at [\"text\"]"
 			]
 		},
 		"pattern": {
 			"status": "error",
 			"isError": true,
 			"content": [
-				"Invalid arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
+				"Invalid Arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
 			]
 		},
 		"excess": {
 			"status": "error",
 			"isError": true,
 			"content": [
-				"Invalid arguments for mcp__e2e__args: Expected no excess property\n  at [\"extra\"]"
+				"Invalid Arguments for mcp__e2e__args: Expected no excess property\n  at [\"extra\"]"
 			]
 		}
 	},
@@ -159,7 +235,7 @@
 		},
 		{
 			"server": "badheader",
-			"state": "failed",
+			"state": "connecting",
 			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
 			"tools": 0
 		}

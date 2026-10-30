@@ -25,9 +25,9 @@ const example = (name: string) => fileURLToPath(new URL(`../../../extras/${name}
 const run = (root: string, plugins: ReadonlyArray<PluginRef>, llm = immediateOpen()) => {
 	const contexts: Message.Context[] = [];
 	return Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root });
+		const { main: session } = yield* Session.create({ directory: root });
 		yield* session.run("hello");
-		return { contexts, path: yield* session.path() } as const;
+		return { contexts, path: yield* session.history() } as const;
 	}).pipe(
 		Effect.provide(
 			Harness.layer({

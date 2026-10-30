@@ -179,7 +179,7 @@ describe.each([
 		const { dir, layer } = await mount();
 		await using _ = dir;
 		const result = await run(layer, BASH_SYNTAX);
-		await expect({ status: result.status, text: result.text }).toMatchFileSnapshot(
+		await expect(`${JSON.stringify({ status: result.status, text: result.text }, null, "\t")}\n`).toMatchFileSnapshot(
 			"./__artifacts__/tools.bash.syntax.json",
 		);
 	});
