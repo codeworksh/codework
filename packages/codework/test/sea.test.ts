@@ -145,7 +145,7 @@ describe.skipIf(!existsSync(binary))("the standalone binary", () => {
 				);
 				const db = new DatabaseSync(database);
 				const completed = db
-					.prepare("SELECT tool_name FROM session_entry_part WHERE type = 'toolCall' AND status = 'completed'")
+					.prepare("SELECT tool_name FROM part WHERE type = 'toolCall' AND status = 'completed'")
 					.all()
 					.map((row) => String(row["tool_name"]));
 				db.close();
@@ -220,7 +220,7 @@ describe.skipIf(!existsSync(binary))("the standalone binary", () => {
 			);
 			const db = new DatabaseSync(database);
 			const completed = db
-				.prepare("SELECT tool_name FROM session_entry_part WHERE type = 'toolCall' AND status = 'completed'")
+				.prepare("SELECT tool_name FROM part WHERE type = 'toolCall' AND status = 'completed'")
 				.all()
 				.map((row) => String(row["tool_name"]));
 			db.close();

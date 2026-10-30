@@ -18,30 +18,57 @@ This file is the canonical source for unreleased changes and published release n
 #### Added
 
 - Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
-- A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the session is parked instead of resumed: `Session.Info.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
+- Tools declare an `exposure`. Only `"direct"` and `"model"` tools reach the request, the `<tools>` list and the tool rules, and only they run; a call to any other tool gets `Unknown tool: <name>`. The bash file-ops rule and the skills hint name only declared tools, and `<skills>` is left out when neither `read` nor `bash` is declared. A plugin registering an unknown exposure fails in its `setup`.
+- `read` tells a model without image input that the image it read is left out of the request: `[Current model does not support images. The image will be omitted from this request.]` is added to its note.
+- A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the thread is parked instead of resumed: `Session.ThreadInfo.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
+
+- `Session.ThreadInfo.usage`: the billed cost and tokens of the thread's own entries, without what it inherits from the thread it was forked from.
+
+#### Breaking Changes
+
+- A session is a container of threads: one event log and one default place to run, holding a `main` thread created with it and the threads forked from it. A thread is a linear transcript; `fork` at or before a committed entry is the only way to branch. Branch, clone, leaf and `parentId` are gone.
+- `Session.create` returns a session handle with `main`, `thread(id | "main")` and `threads`. Prompting, running, waiting, resuming, interrupting, configuring, forking, events and history (was `path()`) are on thread handles. `Session.attach` returns a thread handle, `main` when `threadId` is absent. `Session.relink` with `threadId` moves only that thread.
+- Title, model, thinking level, usage, execution and `parked` belong to a thread (`Session.ThreadInfo`). `Session.Info` has none of them and gains `mainThreadId`. A thread is titled by its first own prompt; a fork has no title until then.
+- `Control` addresses threads: `prompt` and `run` take an optional `threadId` (absent = `main`); `wait`, `resume`, `interrupt`, `pending`, `cancel` and `update` take a thread id. `interruptSession` stops every thread of a session.
+- Events: every thread-scoped event carries `threadId`. `session.created`, `session.thread.forked` and `session.thread.configured` are new; `session.thread.configured` replaces `session.config.changed`, and `session.next.forked` is removed. Entry types `configChange` and `branchSummary` are removed.
+- Storage starts over with a single new migration; databases from earlier versions are not carried forward.
 
 #### Fixed
 
 - A turn started for a prompt that was cancelled just before it joined the conversation no longer asks the model anything.
 - A prompt changed, cancelled or sent again while it was being taken in no longer fails the run; the run takes in the prompt as it now stands.
+- GitHub Copilot lists only the models its login can reach, by the `availableModelIds` recorded at login. A settings model that aliases another is matched by its API id.
 
 #### Internal
 
 - Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
+- Stored context messages are user and assistant messages only; a stored system message fails to decode with "system messages are not stored as entries".
 - Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
 
 ### @codeworksh/cli
 
 #### Added
 
-- Added the `session.queue` RPC (`{ sessionId }`): the prompts sent while the agent works and not yet taken in, steers and follow-ups, in the order they were sent.
-- Added the `session.cancel` RPC (`{ sessionId, messageId }`), which withdraws a queued prompt. `cancelled` is `false` when the prompt was already taken in.
-- Added the `session.update` RPC (`{ sessionId, messageId, delivery?, text? }`), which moves a queued prompt to the other lane or rewrites its text, keeping its place. `delivery: "steer"` also wakes the session. `updated` is `false` when the prompt was already taken in.
-- `codework serve` resumes the sessions a crash or a shutdown cut off when it starts. Session info carries `parked: true` for a session that restarted too often to resume on its own; its next prompt runs it again.
+- Added the `thread.queue` RPC (`{ sessionId, threadId? }`): the prompts sent while the agent works and not yet taken in, steers and follow-ups, in the order they were sent.
+- Added the `thread.cancel` RPC (`{ sessionId, threadId?, messageId }`), which withdraws a queued prompt. `cancelled` is `false` when the prompt was already taken in.
+- Added the `thread.update` RPC (`{ sessionId, threadId?, messageId, delivery?, text? }`), which moves a queued prompt to the other lane or rewrites its text, keeping its place. `delivery: "steer"` also wakes the thread. `updated` is `false` when the prompt was already taken in.
+- `codework serve` resumes the sessions a crash or a shutdown cut off when it starts. Thread info carries `parked: true` for a thread that restarted too often to resume on its own; its next prompt runs it again.
+
+- `codework run --thread <id|main>` continues one thread of `--session`.
+- `codework thread list <session>` lists a session's threads with their model, usage and title. `codework thread fork <session> --at <entry>` or `--before <entry>` starts a new thread and prints its id, then for `--before` the text of the prompt it left out. `codework session relink <session> --thread <id|main>` moves one thread to another checkout. All three take `--json`.
+- `ThreadInfo.usage` reports a thread's own cost and tokens. `event.subscribe` and `session.log` take `threadId` to keep only that thread's events.
+- ACP: every thread of a session is an ACP session of its own, so forks can be listed, loaded and prompted; the main thread keeps the session's id. `session/fork` starts a new thread from the last committed entry.
+
+#### Breaking Changes
+
+- The RPC is split by what it addresses. `session.*` keeps `create`, `link`, `relink`, `delete`, `interrupt` (every thread) and `log`. `list`, `info`, `history`, `queue`, `configure`, `prompt`, `cancel`, `update`, `interrupt`, `message` and `wait` move to `thread.*`, with `fork` new there; they take `{ sessionId, threadId? }`, and an absent `threadId` means the session's `main` thread.
+- `session.create` and `session.relink` return the addressed thread's `ThreadInfo`, with its session embedded. `SessionInfo` has no title, model, thinking level or `parked`, and gains `mainThreadId`.
+- ACP `session/cancel` stops only the thread its session names, not every thread of the CodeWork session.
 
 #### Fixed
 
 - Ctrl+C on `codework run` without `--server` stops the run as a user stop, so `codework serve` does not resume it later.
+- `model.list` lists only the GitHub Copilot models the login can reach.
 
 #### Internal
 
@@ -49,13 +76,47 @@ This file is the canonical source for unreleased changes and published release n
 
 ### @codeworksh/aikit
 
+#### Added
+
+- Transcript system messages change the tools mid-conversation: `Message.createSystemMessage({ toolsAdded?, toolsRemoved?, metadata? })`. `Context.tools` is the initial set. OpenAI Codex and GitHub Copilot Responses models that support it declare every tool in place, in `additional_tools` items, and announce removals as text, so the cached prompt prefix holds across tool changes; models with tool search only get later additions as a tool search result; every other model gets the current tools top-level.
+- `Transcript` helpers: `getCurrentTools`, `getDeclaredTools`, `getToolStateChanges`, `declarationsEqual`, `toToolDeclaration` and `resolveTranscriptTools`.
+- `filterGitHubCopilotModels` keeps the catalog models a Copilot login can reach.
+- GitHub Copilot GPT models turn reasoning off with `reasoning.effort: "none"` where OpenAI accepts it, such as gpt-5.3-codex, gpt-5.6-luna and gpt-6-luna.
+
+#### Changed
+
+- GitHub Copilot Responses requests go through aikit's own Responses model, shared with OpenAI Codex. They carry `prompt_cache_key` from the session id, put the system prompt in a developer message, and send `max_output_tokens` of at least 16.
+- Copilot's 1M-token context list now holds claude-fable-5, claude-opus-4.8, claude-opus-5, claude-opus-5.5, claude-sonnet-4.6, claude-sonnet-5, gpt-5.3-codex, gpt-6-astra, gpt-6-luna and gpt-6-sol.
+
+#### Removed
+
+- `ToolCall.addedToolNames`. A system message's `toolsAdded` takes its place, and token estimates count it.
+
 #### Fixed
 
+- GitHub Copilot Claude models that cannot disable thinking (Opus 5.5, Sonnet 5.5, Fable 5) no longer fail with thinking off; the request leaves thinking out.
+- A GitHub Copilot Responses tool call no longer splits into an empty call and a call with the arguments; Copilot changes the item id on every stream event.
+- GitHub Copilot Grok models no longer fail on a request without tools: `tool_choice` and `parallel_tool_calls` are sent only when the call names a tool choice. OpenAI Codex still sends both on every request.
+- A provider error the adapter cannot parse keeps its message and code, read from the response body. Copilot's Claude route reported "bad Request" for a model the account cannot use.
+- A grammar tool's earlier calls replay as grammar calls after the tool is removed.
+- A request limited by `activeTools` sends no tools outside that list.
+
 - `modelgen` leaves out providers with no models instead of writing them as empty entries.
+- Images in a failed tool result reach the model instead of being dropped. On the Anthropic wire the result is sent as text with `(image attached after the tool results)`, and the images follow the turn's tool results under `Images from the error result of tool call <id> (<name>):`. Other wires keep the images in the result; there the AI SDK sends it without an error flag.
+- On Chat Completions wires (OpenAI-compatible, Copilot chat, OpenAI with `method: chat`) and Gemini before 3, tool result images are sent in a user message after the tool results. Chat Completions sent them as JSON text, and Gemini before 3 lost the function response of a result with only images.
+- Thinking from another provider, protocol or model is dropped from the request instead of being sent as text. Text and tool calls from other models are kept.
 
 #### Internal
 
 - `gpt-5.5` is out of the live OpenAI test models; tests use `gpt-6-luna`.
+
+### @codeworksh/plugin
+
+#### Added
+
+- `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
+- `ThreadID` in `@codeworksh/plugin/ids`, and `threadId` next to `sessionId` on the plugin context and the tool hooks: the thread the call belongs to.
+- `exposure` on tool definitions: `"direct"` (default), `"model"`, `"codemode"`, `"deferred"` or `"hidden"`, as the `ToolExposure` schema. `declared(def)` is true for `"direct"` and `"model"`, the tools declared to the model.
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 

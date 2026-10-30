@@ -13,7 +13,7 @@ import { testEffect } from "./utils/effect.ts";
 
 /**
  * The output half on its own: publish the terminal aikit events and assert what
- * reaches `session_entry`. No loop, no publisher, no provider — the whole point
+ * reaches `entry`. No loop, no publisher, no provider — the whole point
  * of splitting the phases is that this side is provable without them.
  */
 const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
@@ -22,13 +22,13 @@ const { effect: it } = testEffect(layer);
 const setup = Effect.gen(function* () {
 	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
-	const session = yield* sessions.create({
+	const { session, thread } = yield* sessions.create({
 		spaceId,
 		directory: location,
 		title: "T",
 		tag: "test",
 	});
-	return { sessions, events: yield* Event.Service, sessionId: session.id };
+	return { events: yield* Event.Service, sessionId: session.id, threadId: thread.id };
 });
 
 const messageId = SessionMessageSchema.ID.create();
@@ -72,24 +72,26 @@ const usageTotals = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 	// The client is configured with `transformResultNames: snakeToCamel`, so the
 	// columns come back camelCased even from a raw query.
-	const rows = yield* sql`SELECT cost, tokens_input, tokens_output, tokens_cache_read FROM session`;
+	const rows = yield* sql`SELECT cost, tokens_input, tokens_output, tokens_cache_read FROM thread`;
 	return rows[0] as { cost: number; tokensInput: number; tokensOutput: number; tokensCacheRead: number };
 });
 
 describe("LLM terminal projection", () => {
 	it("charges usage once, from the terminal message", () =>
 		Effect.gen(function* () {
-			const { events, sessionId } = yield* setup;
+			const { events, sessionId, threadId } = yield* setup;
 			expect((yield* usageTotals).tokensInput).toBe(0);
 
 			yield* events.publish(EventList.LLMStarted, {
 				sessionId,
+				threadId,
 				messageId,
 				timestamp: DateTime.makeUnsafe(0),
 				message: draft(),
 			});
 			yield* events.publish(EventList.LLMEnded, {
 				sessionId,
+				threadId,
 				messageId,
 				timestamp: DateTime.makeUnsafe(0),
 				reason: "stop",

@@ -11,7 +11,8 @@
 				"image": true
 			},
 			"sessionCapabilities": {
-				"list": {}
+				"list": {},
+				"fork": {}
 			}
 		}
 	},

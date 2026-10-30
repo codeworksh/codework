@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	fetchGitHubCopilotModels,
+	filterGitHubCopilotModels,
 	getGitHubCopilotApiKey,
 	GitHubCopilotOAuthClient,
 	GITHUB_COPILOT_PROVIDER_ID,
@@ -246,5 +247,17 @@ describe("GitHubCopilotOAuthClient", () => {
 		const client = new GitHubCopilotOAuthClient({ storage: new JsonGitHubCopilotAuthStorage({ path }) });
 		await expect(client.login({ onAuth: () => {}, fetch: send })).rejects.toThrow("does not have");
 		expect(await new JsonGitHubCopilotAuthStorage({ path }).get()).toBeUndefined();
+	});
+});
+
+describe("filterGitHubCopilotModels", () => {
+	it("checks the API id, so an aliased model follows the model it calls", () => {
+		const models = {
+			fast: { id: "fast", api: { id: "gpt-6-luna" } },
+			slow: { id: "slow", api: { id: "gpt-6-sol" } },
+			"gpt-6-sol": { id: "gpt-6-sol" },
+		};
+		expect(Object.keys(filterGitHubCopilotModels(models, { availableModelIds: ["gpt-6-luna"] }))).toEqual(["fast"]);
+		expect(Object.keys(filterGitHubCopilotModels(models, {}))).toEqual(["fast", "slow", "gpt-6-sol"]);
 	});
 });

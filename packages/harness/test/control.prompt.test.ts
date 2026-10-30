@@ -7,12 +7,15 @@ import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
+import { Inbox } from "../src/inbox/inbox.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
-import { SessionInput } from "../src/session/input/input.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
+import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
+import { Thread } from "../src/thread/thread.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -36,18 +39,19 @@ const text = "Fix the failing tests";
 const setup = Effect.gen(function* () {
 	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
-	const session = yield* sessions.create({
-		spaceId,
-		directory: location,
-		title: "T",
-		tag: "test",
-	});
-	return { sessions, control: yield* Control.Service, sessionId: session.id };
+	const { session, thread } = yield* sessions.create({ spaceId, directory: location, title: "T", tag: "test" });
+	return {
+		sessions,
+		threads: yield* Thread.Service,
+		control: yield* Control.Service,
+		sessionId: SessionSchema.ID.make(session.id),
+		threadId: ThreadSchema.ID.make(thread.id),
+	};
 });
 
 const admittedCount = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	return (yield* sql`SELECT id FROM session_input`).length;
+	return (yield* sql`SELECT id FROM inbox`).length;
 });
 
 const eventCount = (type: string) =>
@@ -61,7 +65,7 @@ const prompt = (text: string) => PromptSchema.Prompt.fromText(text);
 describe("Control.prompt", () => {
 	it("returns the original record when the id is retried", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { threads, control, sessionId, threadId } = yield* setup;
 			const input = { sessionId, id: messageId, prompt: prompt(text) };
 
 			const first = yield* control.prompt(input);
@@ -69,7 +73,7 @@ describe("Control.prompt", () => {
 
 			expect(retried).toEqual(first);
 			expect(yield* admittedCount).toBe(1);
-			expect(yield* sessions.path(sessionId)).toEqual([]);
+			expect(yield* threads.line(threadId)).toEqual([]);
 		}));
 
 	it("rejects reuse of one id with a different prompt", () =>
@@ -103,14 +107,14 @@ describe("Control.prompt", () => {
 
 	it("promotes once under concurrent promotion attempts", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, id: messageId, prompt: prompt("Promote once") });
 
 			const counts = yield* Effect.all(
 				[
-					inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER),
-					inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER),
+					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
+					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -124,10 +128,10 @@ describe("Control.prompt", () => {
 
 			// Promotion is what puts the prompt in the conversation, and the entry
 			// carries the promoting event's position.
-			const path = yield* sessions.path(sessionId);
-			expect(path.map((h) => h.entry.id)).toEqual([messageId]);
-			expect(path[0]!.entry.seq).toBe(promoted.promotedSeq);
-			expect((yield* ContextCodec.decodeMessage(path[0]!)).parts[0]).toMatchObject({
+			const line = yield* threads.line(threadId);
+			expect(line.map((h) => h.entry.id)).toEqual([messageId]);
+			expect(line[0]!.entry.seq).toBe(promoted.promotedSeq);
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 				type: "text",
 				text: "Promote once",
 			});
@@ -135,108 +139,163 @@ describe("Control.prompt", () => {
 
 	it("reports the follow-up to whichever caller won it", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 
-			const won = yield* Effect.all([inputs.promoteFollowUp(sessionId), inputs.promoteFollowUp(sessionId)], {
+			const won = yield* Effect.all([inputs.promoteFollowUp(threadId), inputs.promoteFollowUp(threadId)], {
 				concurrency: "unbounded",
 			});
 
 			expect(won.filter(Boolean).length).toBe(1);
 			expect(yield* eventCount("session.prompt.promoted.1")).toBe(1);
-			expect(yield* inputs.hasPending(sessionId, "followUp")).toBe(false);
+			expect(yield* inputs.hasPending(threadId, "followUp")).toBe(false);
 		}));
 
 	it("promotes steers only through the captured cutoff", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("Before cutoff") });
 			const cutoff = first.admittedSeq;
 			const second = yield* control.prompt({ sessionId, prompt: prompt("After cutoff") });
 
-			yield* inputs.promoteSteers(sessionId, cutoff);
+			yield* inputs.promoteSteers(threadId, cutoff);
 
 			expect(some(yield* inputs.find(first.id)).promotedSeq).toBeDefined();
 			expect(some(yield* inputs.find(second.id)).promotedSeq).toBeUndefined();
-			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual([first.id]);
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual([first.id]);
+		}));
+});
+
+describe("Control threads", () => {
+	it("addresses main when no thread is named, and keeps each thread's queue its own", () =>
+		Effect.gen(function* () {
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
+			const first = yield* control.prompt({ sessionId, prompt: prompt("On main") });
+			expect(first.threadId).toBe(threadId);
+			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+
+			const forked = yield* threads.fork({ threadId, entryId: first.id });
+			const fork = ThreadSchema.ID.make(forked.thread.id);
+			const onFork = yield* control.prompt({ sessionId, threadId: fork, prompt: prompt("On the fork") });
+			const onMain = yield* control.prompt({ sessionId, prompt: prompt("Main again") });
+
+			expect((yield* control.pending(fork)).map((input) => input.id)).toEqual([onFork.id]);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([onMain.id]);
+			expect(yield* control.cancel(threadId, onFork.id)).toBe(false);
+			expect(yield* control.update(threadId, onFork.id, { delivery: "followUp" })).toBe(false);
+		}));
+
+	it("refuses a thread of another session, and an unknown session", () =>
+		Effect.gen(function* () {
+			const { sessions, control, sessionId } = yield* setup;
+			const { spaceId, location } = yield* seedSpace();
+			const { thread: other } = yield* sessions.create({ spaceId, directory: location });
+
+			const foreign = yield* control
+				.prompt({ sessionId, threadId: ThreadSchema.ID.make(other.id), prompt: prompt(text) })
+				.pipe(Effect.flip);
+			expect(foreign._tag).toBe("ThreadNotFoundError");
+			const unknown = yield* control
+				.prompt({ sessionId: SessionSchema.ID.make("ses_missing"), prompt: prompt(text) })
+				.pipe(Effect.flip);
+			expect(unknown._tag).toBe("SessionNotFoundError");
+			expect(yield* admittedCount).toBe(0);
+		}));
+
+	it("deletes a session with its pending prompts; an idle session has nothing to interrupt", () =>
+		Effect.gen(function* () {
+			const { sessions, control, sessionId } = yield* setup;
+			yield* control.prompt({ sessionId, prompt: prompt(text) });
+
+			expect(yield* control.interruptSession(sessionId)).toBe(false);
+			expect(yield* control.deleteSession(sessionId)).toBe(true);
+			expect(Option.isNone(yield* sessions.get(sessionId))).toBe(true);
+			expect(yield* admittedCount).toBe(0);
+			expect(yield* control.deleteSession(sessionId)).toBe(false);
 		}));
 });
 
 describe("Control.cancel", () => {
 	it("lists pending prompts of both lanes in admission order, without promoted or cancelled ones", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("First steer") });
 			const later = yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 			const second = yield* control.prompt({ sessionId, prompt: prompt("Second steer") });
 			const dropped = yield* control.prompt({ sessionId, prompt: prompt("Dropped") });
 
-			expect((yield* control.pending(sessionId)).map((input) => [input.id, input.delivery])).toEqual([
+			expect((yield* control.pending(threadId)).map((input) => [input.id, input.delivery])).toEqual([
 				[first.id, "steer"],
 				[later.id, "followUp"],
 				[second.id, "steer"],
 				[dropped.id, "steer"],
 			]);
 
-			yield* control.cancel(sessionId, dropped.id);
-			yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
-			expect((yield* control.pending(sessionId)).map((input) => input.id)).toEqual([later.id]);
+			yield* control.cancel(threadId, dropped.id);
+			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([later.id]);
 		}));
 
 	it("cancels a pending prompt once and refuses a second cancel", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
 
-			expect(yield* control.cancel(sessionId, admitted.id)).toBe(true);
-			expect(yield* control.cancel(sessionId, admitted.id)).toBe(false);
+			expect(yield* control.cancel(threadId, admitted.id)).toBe(true);
+			expect(yield* control.cancel(threadId, admitted.id)).toBe(false);
 
 			expect(yield* eventCount("session.prompt.cancelled.1")).toBe(1);
-			expect(yield* control.pending(sessionId)).toEqual([]);
-			expect(yield* inputs.hasPending(sessionId, "steer")).toBe(false);
+			expect(yield* control.pending(threadId)).toEqual([]);
+			expect(yield* inputs.hasPending(threadId, "steer")).toBe(false);
 			expect(some(yield* inputs.find(admitted.id)).cancelledSeq).toBeDefined();
 			// Nothing is left to promote, and nothing reaches the conversation.
-			expect(yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)).toBe(0);
-			expect(yield* sessions.path(sessionId)).toEqual([]);
+			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(0);
+			expect(yield* threads.line(threadId)).toEqual([]);
 		}));
 
 	it("refuses to cancel another session's prompt, or an unknown id", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { sessions, control, sessionId, threadId } = yield* setup;
 			const { spaceId, location } = yield* seedSpace();
-			const other = yield* sessions.create({ spaceId, directory: location, title: "Other", tag: "test" });
+			const { thread: other } = yield* sessions.create({
+				spaceId,
+				directory: location,
+				title: "Other",
+				tag: "test",
+			});
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
 
-			expect(yield* control.cancel(other.id, admitted.id)).toBe(false);
-			expect(yield* control.cancel(sessionId, SessionMessageSchema.ID.make("msg_unknown"))).toBe(false);
+			expect(yield* control.cancel(ThreadSchema.ID.make(other.id), admitted.id)).toBe(false);
+			expect(yield* control.cancel(threadId, SessionMessageSchema.ID.make("msg_unknown"))).toBe(false);
 
 			expect(yield* eventCount("session.prompt.cancelled.1")).toBe(0);
-			expect((yield* control.pending(sessionId)).map((input) => input.id)).toEqual([admitted.id]);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([admitted.id]);
 		}));
 
 	it("refuses to cancel a promoted prompt, which stays in the conversation", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
-			yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
 
-			expect(yield* control.cancel(sessionId, admitted.id)).toBe(false);
+			expect(yield* control.cancel(threadId, admitted.id)).toBe(false);
 
 			expect(yield* eventCount("session.prompt.cancelled.1")).toBe(0);
-			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual([admitted.id]);
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual([admitted.id]);
 		}));
 
 	it("admits a cancelled id again, as a fresh pending prompt", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const first = yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
-			yield* control.cancel(sessionId, messageId);
+			yield* control.cancel(threadId, messageId);
 
 			const retried = yield* control.prompt({
 				sessionId,
@@ -247,7 +306,7 @@ describe("Control.cancel", () => {
 
 			expect(retried.cancelledSeq).toBeUndefined();
 			expect(retried.admittedSeq).toBeGreaterThan(first.admittedSeq);
-			expect(yield* control.pending(sessionId)).toMatchObject([{ id: messageId, delivery: "followUp" }]);
+			expect(yield* control.pending(threadId)).toMatchObject([{ id: messageId, delivery: "followUp" }]);
 			expect(
 				yield* control.prompt({
 					sessionId,
@@ -257,24 +316,27 @@ describe("Control.cancel", () => {
 				}),
 			).toEqual(retried);
 
-			expect(yield* inputs.promoteFollowUp(sessionId)).toBe(true);
-			const path = yield* sessions.path(sessionId);
-			expect(path.map((h) => h.entry.id)).toEqual([messageId]);
-			expect((yield* ContextCodec.decodeMessage(path[0]!)).parts[0]).toMatchObject({ text: "Fix it another way" });
+			expect(yield* inputs.promoteFollowUp(threadId)).toBe(true);
+			const line = yield* threads.line(threadId);
+			expect(line.map((h) => h.entry.id)).toEqual([messageId]);
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
+				text: "Fix it another way",
+			});
 		}));
 
 	// The promotion the runner had already read for a row that is then cancelled: it must lose,
 	// not read the cancelled row as a replay onto an empty projection and append it anyway.
 	it("rolls back a promotion that commits after the cancel", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { threads, control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
-			yield* control.cancel(sessionId, admitted.id);
+			yield* control.cancel(threadId, admitted.id);
 
 			const late = yield* events
 				.publish(EventList.Prompted, {
 					sessionId,
+					threadId,
 					timestamp: admitted.timeCreated,
 					messageId: admitted.id,
 					prompt: admitted.prompt,
@@ -284,39 +346,39 @@ describe("Control.cancel", () => {
 
 			expect(Exit.isFailure(late)).toBe(true);
 			expect(yield* eventCount("session.prompt.promoted.1")).toBe(0);
-			expect(yield* sessions.path(sessionId)).toEqual([]);
+			expect(yield* threads.line(threadId)).toEqual([]);
 		}));
 
 	it("lets exactly one of a cancel and a promotion win the same prompt", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
 
 			const [cancelled, promoted] = yield* Effect.all(
-				[control.cancel(sessionId, admitted.id), inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)],
+				[control.cancel(threadId, admitted.id), inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)],
 				{ concurrency: "unbounded" },
 			);
 
 			expect(cancelled !== (promoted === 1)).toBe(true);
-			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual(cancelled ? [] : [admitted.id]);
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual(cancelled ? [] : [admitted.id]);
 			expect(yield* eventCount("session.prompt.cancelled.1")).toBe(cancelled ? 1 : 0);
 			expect(yield* eventCount("session.prompt.promoted.1")).toBe(cancelled ? 0 : 1);
 		}));
 
 	it("does not turn an unrelated projector defect into a lost cancel", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
 			const defect = new Error("projector failed");
 			yield* events.project(EventList.PromptCancelled, () => Effect.die(defect));
 
-			const exit = yield* control.cancel(sessionId, admitted.id).pipe(Effect.exit);
+			const exit = yield* control.cancel(threadId, admitted.id).pipe(Effect.exit);
 
 			expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toBe(defect);
 			expect(yield* eventCount("session.prompt.cancelled.1")).toBe(0);
-			expect((yield* control.pending(sessionId)).map((input) => input.id)).toEqual([admitted.id]);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([admitted.id]);
 		}));
 });
 
@@ -330,7 +392,7 @@ const watched = Control.layer.pipe(
 				active: Effect.succeed(new Set()),
 				resume: () => Effect.void,
 				recover: () => Effect.void,
-				wake: (sessionId) => Effect.sync(() => wakes.push(sessionId)),
+				wake: (threadId) => Effect.sync(() => wakes.push(threadId)),
 				interrupt: () => Effect.succeed(false),
 				awaitIdle: () => Effect.void,
 			}),
@@ -345,21 +407,21 @@ const { effect: itWatched } = testEffect(watched);
 describe("Control.update", () => {
 	itWatched("moves a pending prompt between lanes in place, waking only for the steer lane", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const later = yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 			const steer = yield* control.prompt({ sessionId, prompt: prompt("Now") });
 			wakes.length = 0;
 
-			expect(yield* control.update(sessionId, later.id, { delivery: "steer" })).toBe(true);
-			expect((yield* control.pending(sessionId)).map((input) => [input.id, input.delivery])).toEqual([
+			expect(yield* control.update(threadId, later.id, { delivery: "steer" })).toBe(true);
+			expect((yield* control.pending(threadId)).map((input) => [input.id, input.delivery])).toEqual([
 				[later.id, "steer"],
 				[steer.id, "steer"],
 			]);
-			expect(wakes).toEqual([sessionId]);
+			expect(wakes).toEqual([threadId]);
 
 			wakes.length = 0;
-			expect(yield* control.update(sessionId, steer.id, { delivery: "followUp" })).toBe(true);
-			expect((yield* control.pending(sessionId)).map((input) => [input.id, input.delivery])).toEqual([
+			expect(yield* control.update(threadId, steer.id, { delivery: "followUp" })).toBe(true);
+			expect((yield* control.pending(threadId)).map((input) => [input.id, input.delivery])).toEqual([
 				[later.id, "steer"],
 				[steer.id, "followUp"],
 			]);
@@ -371,67 +433,72 @@ describe("Control.update", () => {
 	// "Send now" on a steer left waiting by a stop: nothing to change, but the session must wake.
 	itWatched("wakes for a steer already in the steer lane without recording a change", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const steer = yield* control.prompt({ sessionId, prompt: prompt("Parked") });
 			wakes.length = 0;
 
-			expect(yield* control.update(sessionId, steer.id, { delivery: "steer" })).toBe(true);
+			expect(yield* control.update(threadId, steer.id, { delivery: "steer" })).toBe(true);
 
-			expect(wakes).toEqual([sessionId]);
+			expect(wakes).toEqual([threadId]);
 			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
 		}),
 	);
 
 	it("rewrites a pending prompt in place, and the promotion carries the new text", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("Fix the tests") });
 			const second = yield* control.prompt({ sessionId, prompt: prompt("Then lint") });
 
-			expect(yield* control.update(sessionId, first.id, { prompt: prompt("Fix the flaky test only") })).toBe(true);
-			expect((yield* control.pending(sessionId)).map((input) => input.id)).toEqual([first.id, second.id]);
+			expect(yield* control.update(threadId, first.id, { prompt: prompt("Fix the flaky test only") })).toBe(true);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([first.id, second.id]);
 
-			yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
-			const path = yield* sessions.path(sessionId);
-			expect(path.map((h) => h.entry.id)).toEqual([first.id, second.id]);
-			expect((yield* ContextCodec.decodeMessage(path[0]!)).parts[0]).toMatchObject({
+			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			const line = yield* threads.line(threadId);
+			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 				text: "Fix the flaky test only",
 			});
 		}));
 
 	it("refuses to update a promoted, cancelled, unknown or another session's prompt", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { sessions, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const { spaceId, location } = yield* seedSpace();
-			const other = yield* sessions.create({ spaceId, directory: location, title: "Other", tag: "test" });
+			const { thread: other } = yield* sessions.create({
+				spaceId,
+				directory: location,
+				title: "Other",
+				tag: "test",
+			});
 			const promoted = yield* control.prompt({ sessionId, prompt: prompt("Promoted") });
-			yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
 			const cancelled = yield* control.prompt({ sessionId, prompt: prompt("Cancelled") });
-			yield* control.cancel(sessionId, cancelled.id);
+			yield* control.cancel(threadId, cancelled.id);
 			const pending = yield* control.prompt({ sessionId, prompt: prompt("Pending"), delivery: "followUp" });
 
 			const refused = { delivery: "steer" as const, prompt: prompt("Changed") };
-			expect(yield* control.update(sessionId, promoted.id, refused)).toBe(false);
-			expect(yield* control.update(sessionId, cancelled.id, refused)).toBe(false);
-			expect(yield* control.update(sessionId, SessionMessageSchema.ID.make("msg_unknown"), refused)).toBe(false);
-			expect(yield* control.update(other.id, pending.id, refused)).toBe(false);
+			expect(yield* control.update(threadId, promoted.id, refused)).toBe(false);
+			expect(yield* control.update(threadId, cancelled.id, refused)).toBe(false);
+			expect(yield* control.update(threadId, SessionMessageSchema.ID.make("msg_unknown"), refused)).toBe(false);
+			expect(yield* control.update(ThreadSchema.ID.make(other.id), pending.id, refused)).toBe(false);
 
 			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
-			expect(yield* control.pending(sessionId)).toMatchObject([{ id: pending.id, delivery: "followUp" }]);
+			expect(yield* control.pending(threadId)).toMatchObject([{ id: pending.id, delivery: "followUp" }]);
 		}));
 
 	it("settles an update racing a promotion in one of its valid orders", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt("Original") });
 
 			const [updated, promoted] = yield* Effect.all(
 				[
-					control.update(sessionId, admitted.id, { prompt: prompt("Rewritten") }),
-					inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER),
+					control.update(threadId, admitted.id, { prompt: prompt("Rewritten") }),
+					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -439,13 +506,13 @@ describe("Control.update", () => {
 			// Three orders are valid: the rewrite commits first and is promoted; the promotion commits
 			// first and the rewrite is refused; or the promotion selected the prompt before the rewrite
 			// committed, then steps back and leaves the rewritten prompt pending.
-			const path = yield* sessions.path(sessionId);
+			const line = yield* threads.line(threadId);
 			if (promoted === 0) {
 				expect(updated).toBe(true);
-				expect(path).toEqual([]);
-				expect(PromptSchema.Prompt.text((yield* control.pending(sessionId))[0]!.prompt)).toBe("Rewritten");
+				expect(line).toEqual([]);
+				expect(PromptSchema.Prompt.text((yield* control.pending(threadId))[0]!.prompt)).toBe("Rewritten");
 			} else {
-				expect((yield* ContextCodec.decodeMessage(path[0]!)).parts[0]).toMatchObject({
+				expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 					text: updated ? "Rewritten" : "Original",
 				});
 			}
@@ -456,29 +523,29 @@ describe("Control.update", () => {
 describe("Control queue order", () => {
 	it("keeps the others in order when a middle prompt is cancelled", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("First") });
 			const middle = yield* control.prompt({ sessionId, prompt: prompt("Middle"), delivery: "followUp" });
 			const last = yield* control.prompt({ sessionId, prompt: prompt("Last") });
 
-			yield* control.cancel(sessionId, middle.id);
+			yield* control.cancel(threadId, middle.id);
 
-			expect((yield* control.pending(sessionId)).map((input) => input.id)).toEqual([first.id, last.id]);
+			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([first.id, last.id]);
 		}));
 
 	it("does not turn an unrelated projector defect into a lost update", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text), delivery: "followUp" });
 			const defect = new Error("projector failed");
 			yield* events.project(EventList.PromptUpdated, () => Effect.die(defect));
 
-			const exit = yield* control.update(sessionId, admitted.id, { delivery: "steer" }).pipe(Effect.exit);
+			const exit = yield* control.update(threadId, admitted.id, { delivery: "steer" }).pipe(Effect.exit);
 
 			expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toBe(defect);
 			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
-			expect(yield* control.pending(sessionId)).toMatchObject([{ id: admitted.id, delivery: "followUp" }]);
+			expect(yield* control.pending(threadId)).toMatchObject([{ id: admitted.id, delivery: "followUp" }]);
 		}));
 });
 
@@ -487,8 +554,8 @@ describe("Control queue races", () => {
 	// promotion must step back, not fail the drain, and the next one carries the new content.
 	it("steps a promotion back when its prompt was updated after selection", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const events = yield* Event.Service;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("First") });
 			const second = yield* control.prompt({ sessionId, prompt: prompt("Second") });
@@ -497,27 +564,29 @@ describe("Control queue races", () => {
 				!rewritten && Schema.is(EventList.Prompted)(event) && event.data.messageId === first.id
 					? Effect.gen(function* () {
 							rewritten = true;
-							yield* control.update(sessionId, second.id, { prompt: prompt("Second, rewritten") });
+							yield* control.update(threadId, second.id, { prompt: prompt("Second, rewritten") });
 						})
 					: Effect.void,
 			);
 
-			expect(yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
 			expect(rewritten).toBe(true);
-			expect(yield* control.pending(sessionId)).toMatchObject([{ id: second.id }]);
+			expect(yield* control.pending(threadId)).toMatchObject([{ id: second.id }]);
 
-			expect(yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)).toBe(1);
-			const path = yield* sessions.path(sessionId);
-			expect(path.map((h) => h.entry.id)).toEqual([first.id, second.id]);
-			expect((yield* ContextCodec.decodeMessage(path[1]!)).parts[0]).toMatchObject({ text: "Second, rewritten" });
+			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			const line = yield* threads.line(threadId);
+			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[1]!))[0]).toMatchObject({
+				text: "Second, rewritten",
+			});
 		}));
 
 	// The prompt was cancelled and sent again, unchanged, after the promotion selected it: the stale
 	// promotion steps back and the next one promotes the new admission.
 	it("steps a promotion back when its prompt was cancelled and re-admitted after selection", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-			const inputs = yield* SessionInput.make;
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const inputs = yield* Inbox.make;
 			const events = yield* Event.Service;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("First") });
 			const second = { sessionId, id: SessionMessageSchema.ID.make("msg_second"), prompt: prompt("Second") };
@@ -527,7 +596,7 @@ describe("Control queue races", () => {
 				!resent && Schema.is(EventList.Prompted)(event) && event.data.messageId === first.id
 					? Effect.gen(function* () {
 							resent = true;
-							yield* control.cancel(sessionId, second.id);
+							yield* control.cancel(threadId, second.id);
 							// Sent again later, as a person would: the new admission's time differs.
 							yield* TestClock.adjust("1 second");
 							yield* control.prompt(second);
@@ -535,103 +604,104 @@ describe("Control queue races", () => {
 					: Effect.void,
 			);
 
-			expect(yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
 			expect(resent).toBe(true);
-			const [pending] = yield* control.pending(sessionId);
+			const [pending] = yield* control.pending(threadId);
 			expect(pending?.id).toBe(second.id);
 			expect(pending!.admittedSeq).toBeGreaterThan(before.admittedSeq);
 
-			expect(yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER)).toBe(1);
-			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual([first.id, second.id]);
+			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual([first.id, second.id]);
 		}));
 
 	// Two updates of different fields, the second computed before the first committed: each event
 	// carries only its own field, so the first one's change survives.
 	it("applies only the field an update changes", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt("Original") });
-			yield* control.update(sessionId, admitted.id, { prompt: prompt("Rewritten") });
+			yield* control.update(threadId, admitted.id, { prompt: prompt("Rewritten") });
 
 			yield* events.publish(EventList.PromptUpdated, {
 				sessionId,
+				threadId,
 				messageId: admitted.id,
 				timestamp: admitted.timeCreated,
 				delivery: "followUp",
 			});
 
-			const [pending] = yield* control.pending(sessionId);
+			const [pending] = yield* control.pending(threadId);
 			expect(pending?.delivery).toBe("followUp");
 			expect(PromptSchema.Prompt.text(pending!.prompt)).toBe("Rewritten");
 		}));
 
 	it("does not report a re-admission as accepted when its projector fails", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
+			const { control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			const input = { sessionId, id: messageId, prompt: prompt(text) };
 			yield* control.prompt(input);
-			yield* control.cancel(sessionId, messageId);
+			yield* control.cancel(threadId, messageId);
 			yield* events.project(EventList.PromptAdmitted, () => Effect.die(new Error("projector failed")));
 
 			const exit = yield* control.prompt(input).pipe(Effect.exit);
 
 			expect(Exit.isFailure(exit)).toBe(true);
-			expect(yield* control.pending(sessionId)).toEqual([]);
+			expect(yield* control.pending(threadId)).toEqual([]);
 		}));
 });
 
 describe("Control unfinished runs", () => {
-	const executionOf = (sessionId: string) =>
+	const executionOf = (threadId: string) =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
-			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM session WHERE id = ${sessionId}`;
+			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM thread WHERE id = ${threadId}`;
 			return row?.execution;
 		});
 
 	// Marked before the wake: a crash between accepting the prompt and its run starting must not lose it.
-	it("marks a session running as soon as a prompt is accepted", () =>
+	it("marks a thread running as soon as a prompt is accepted", () =>
 		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
-			expect(yield* executionOf(sessionId)).toBeNull();
+			const { control, sessionId, threadId } = yield* setup;
+			expect(yield* executionOf(threadId)).toBeNull();
 
 			yield* control.prompt({ sessionId, prompt: prompt(text) });
 
-			expect(yield* executionOf(sessionId)).toBe("running");
+			expect(yield* executionOf(threadId)).toBe("running");
 		}));
 
 	it("keeps a finished run marked while accepted prompts are still pending", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { threads, control, sessionId, threadId } = yield* setup;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
 
-			yield* sessions.endExecution(sessionId, "finished");
-			expect(yield* executionOf(sessionId)).toBe("running");
+			yield* threads.endExecution(threadId, "finished");
+			expect(yield* executionOf(threadId)).toBe("running");
 
 			// Cancelling leaves the mark alone; the run that next ends with nothing pending clears it.
-			yield* control.cancel(sessionId, admitted.id);
-			expect(yield* executionOf(sessionId)).toBe("running");
-			yield* sessions.endExecution(sessionId, "finished");
-			expect(yield* executionOf(sessionId)).toBeNull();
+			yield* control.cancel(threadId, admitted.id);
+			expect(yield* executionOf(threadId)).toBe("running");
+			yield* threads.endExecution(threadId, "finished");
+			expect(yield* executionOf(threadId)).toBeNull();
 		}));
 
 	it("keeps a closed run, and clears a stopped one unless a prompt came after the stop", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { threads, control, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
 			yield* control.prompt({ sessionId, prompt: prompt("Parked by the stop") });
 
-			yield* sessions.endExecution(sessionId, "closed");
-			expect(yield* executionOf(sessionId)).toBe("closed");
+			yield* threads.endExecution(threadId, "closed");
+			expect(yield* executionOf(threadId)).toBe("closed");
 
 			// Sent while the stop was being cleaned up: its wake survives, so the mark must too.
 			const stop = yield* events.latestSequence(sessionId);
 			yield* control.prompt({ sessionId, prompt: prompt("Sent after the stop") });
-			yield* sessions.endExecution(sessionId, "stopped", stop);
-			expect(yield* executionOf(sessionId)).toBe("running");
+			yield* threads.endExecution(threadId, "stopped", stop);
+			expect(yield* executionOf(threadId)).toBe("running");
 
-			yield* sessions.endExecution(sessionId, "stopped", yield* events.latestSequence(sessionId));
-			expect(yield* executionOf(sessionId)).toBeNull();
+			yield* threads.endExecution(threadId, "stopped", yield* events.latestSequence(sessionId));
+			expect(yield* executionOf(threadId)).toBeNull();
 		}));
 });

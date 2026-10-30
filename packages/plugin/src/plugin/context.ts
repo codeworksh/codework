@@ -1,7 +1,7 @@
 import type { Model } from "@codeworksh/aikit";
 import type { Effect } from "effect";
 import type { Data, Definition, Payload, PublishOptions } from "../event.ts";
-import type { SessionID } from "../ids.ts";
+import type { SessionID, ThreadID } from "../ids.ts";
 import type { Info as LocationInfo } from "../location.ts";
 import type { SandboxIO } from "../sandbox/io.ts";
 import type { Info as SettingsInfo } from "../settings.ts";
@@ -41,9 +41,11 @@ export interface Paths {
 	readonly log: string;
 }
 
-/** One object, shared by every plugin in one exchange. */
+/** One object, shared by every plugin in one turn. */
 export interface SharedPluginContext {
 	readonly sessionId: SessionID;
+	/** The thread whose turn this is. `sandbox` and `location` are its placement, else the session's. */
+	readonly threadId: ThreadID;
 	readonly sandbox: SandboxIO.Identity;
 	readonly paths: Paths;
 	readonly location: LocationInfo;

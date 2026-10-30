@@ -1,0 +1,31 @@
+[
+	{
+		"role": "user",
+		"parts": [
+			{
+				"functionResponse": {
+					"id": "<call-id-0>",
+					"name": "check_screenshot",
+					"response": {
+						"name": "check_screenshot",
+						"error": "Screenshot assertion failed: the page did not match."
+					}
+				}
+			}
+		]
+	},
+	{
+		"role": "user",
+		"parts": [
+			{
+				"text": "Tool result image:"
+			},
+			{
+				"inlineData": {
+					"mimeType": "image/png",
+					"data": "<red-circle.png>"
+				}
+			}
+		]
+	}
+]

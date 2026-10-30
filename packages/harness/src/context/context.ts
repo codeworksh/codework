@@ -1,13 +1,13 @@
 import { Context, Effect, Layer, Option } from "effect";
-import { SessionSchema } from "../session/schema.ts";
-import { Session } from "../session/session.ts";
-import { assemblePath, type Snapshot } from "./assemble.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
+import { assembleLine, type Snapshot } from "./assemble.ts";
 import type { ContextDecodeError } from "./errors.ts";
 
-export type ContextReadError = Session.SessionNotFoundError | ContextDecodeError;
+export type ContextReadError = Thread.ThreadNotFoundError | ContextDecodeError;
 
 export interface Interface {
-	readonly assemble: (sessionId: SessionSchema.ID) => Effect.Effect<Snapshot, ContextReadError>;
+	readonly assemble: (threadId: ThreadSchema.ID) => Effect.Effect<Snapshot, ContextReadError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/context/context/Service") {}
@@ -15,11 +15,11 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const sessions = yield* Session.Service;
-		const assemble = Effect.fn("Context.assemble")(function* (sessionId: SessionSchema.ID) {
-			const found = yield* sessions.get(sessionId);
-			if (Option.isNone(found)) return yield* new Session.SessionNotFoundError({ sessionId });
-			return yield* assemblePath(sessionId, yield* sessions.path(sessionId));
+		const threads = yield* Thread.Service;
+		const assemble = Effect.fn("Context.assemble")(function* (threadId: ThreadSchema.ID) {
+			const found = yield* threads.get(threadId);
+			if (Option.isNone(found)) return yield* new Thread.ThreadNotFoundError({ threadId });
+			return yield* assembleLine(threadId, yield* threads.line(threadId));
 		});
 		return Service.of({ assemble });
 	}),

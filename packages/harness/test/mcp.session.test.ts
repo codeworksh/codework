@@ -40,6 +40,12 @@ const scripted =
 			return stream;
 		});
 
+/** The user and assistant entries of a thread's line, the ones the model reads back. */
+const messageEntries = (thread: Session.ThreadHandle) =>
+	thread
+		.history()
+		.pipe(Effect.map((line) => line.filter(({ entry }) => entry.type === "user" || entry.type === "assistant")));
+
 const write = async (file: string, value: unknown) => {
 	await fs.mkdir(join(file, ".."), { recursive: true });
 	await fs.writeFile(file, JSON.stringify(value, null, 2));
@@ -155,11 +161,10 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 			hostDir: project,
 			model: { provider: "openai", id: "gpt-5.6-luna" },
 		});
-		yield* session.run("Use the fixture.");
-		yield* session.run("Once more.");
-		yield* session.run("Resources.");
-		const path = yield* session.path();
-		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
+		yield* session.main.run("Use the fixture.");
+		yield* session.main.run("Once more.");
+		yield* session.main.run("Resources.");
+		const messages = yield* Effect.forEach(yield* messageEntries(session.main), ContextCodec.decodeMessage);
 		const status = yield* Mcp.Service.use((mcp) => mcp.status(session.id));
 		const settings = yield* Settings.Service.use((loader) => loader.load(project));
 		return { messages, status, errors: settings.mcp.errors };
@@ -179,7 +184,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 
 	const calls = new Map(
 		result.messages
-			.flatMap((message) => message.parts)
+			.flatMap((message) => (message.role === "system" ? [] : message.parts))
 			.flatMap((part) => (part.type === "toolCall" && "result" in part ? [[part.callID, part] as const] : [])),
 	);
 	const outcome = (id: string) => {
@@ -323,23 +328,23 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 		const state = (server: string) =>
 			status.pipe(Effect.map((all) => all.find((one) => one.server === server)?.state));
 
-		yield* session.run("one");
+		yield* session.main.run("one");
 		expire = 1;
-		yield* session.run("two");
+		yield* session.main.run("two");
 		// Wait for the idle exit to be noticed, so the next call meets a dropped connection.
 		for (let tries = 0; tries < 250 && (yield* state("e2e")) !== "disconnected"; tries++)
 			yield* Effect.sleep("20 millis");
 		const afterBye = yield* state("e2e");
-		yield* session.run("three");
+		yield* session.main.run("three");
 		yield* Effect.promise(() => configure(url, { toolExposure: { bye: "hidden" } }));
 		expire = 2;
-		yield* session.run("four");
+		yield* session.main.run("four");
 		yield* Effect.promise(() =>
 			configure(url, { toolExposure: { bye: "hidden" }, env: { E2E_GREETING: "changed" } }),
 		);
-		yield* session.run("five");
+		yield* session.main.run("five");
 
-		const messages = yield* Effect.forEach(yield* session.path(), ContextCodec.decodeMessage);
+		const messages = yield* Effect.forEach(yield* messageEntries(session.main), ContextCodec.decodeMessage);
 		return { messages, afterBye, status: yield* status };
 	}).pipe(
 		Effect.provide(
@@ -351,7 +356,7 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 
 	const texts = new Map(
 		result.messages
-			.flatMap((message) => message.parts)
+			.flatMap((message) => (message.role === "system" ? [] : message.parts))
 			.flatMap((part) =>
 				part.type === "toolCall" && "result" in part
 					? [
@@ -424,9 +429,9 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 		// instances between them; the short timeout only matters once it is released.
 		yield* Effect.gen(function* () {
 			yield* Mcp.Service.use((mcp) => mcp.lease(a.id));
-			yield* a.run("a");
-			yield* b.run("b");
-			yield* c.run("c");
+			yield* a.main.run("a");
+			yield* b.main.run("b");
+			yield* c.main.run("c");
 		}).pipe(Effect.scoped);
 		// No drain holds any server now, so every instance closes once the idle timeout passes.
 		const status = Mcp.Service.use((mcp) =>
@@ -436,9 +441,9 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 			yield* Effect.sleep("40 millis");
 		const idle = yield* status;
 		// A closed instance is started again by the next exchange that needs it.
-		yield* a.run("again");
+		yield* a.main.run("again");
 		const messages = yield* Effect.forEach([a, b, c], (session) =>
-			session.path().pipe(Effect.flatMap((path) => Effect.forEach(path, ContextCodec.decodeMessage))),
+			messageEntries(session.main).pipe(Effect.flatMap((line) => Effect.forEach(line, ContextCodec.decodeMessage))),
 		);
 		return { messages: messages.flat(), idle };
 	}).pipe(
@@ -459,7 +464,7 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 
 	const pids = new Map(
 		result.messages
-			.flatMap((message) => message.parts)
+			.flatMap((message) => (message.role === "system" ? [] : message.parts))
 			.flatMap((part) =>
 				part.type === "toolCall" && "result" in part
 					? [[part.callID, (part.result.content[0] as { readonly text: string }).text] as const]

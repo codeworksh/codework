@@ -1,4 +1,10 @@
-import type { LanguageModelV3FunctionTool, LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type {
+	LanguageModelV3FunctionTool,
+	LanguageModelV3Prompt,
+	LanguageModelV3StreamPart,
+	SharedV3ProviderOptions,
+} from "@ai-sdk/provider";
+import type { ResponsesToolChange } from "../../src/providers/responses/tools.ts";
 import { zstdDecompressSync } from "node:zlib";
 import { buildCatalog } from "../../src/cli/modelgen.ts";
 import type * as Model from "../../src/model/model.ts";
@@ -111,28 +117,52 @@ export const openAICodexUserPrompt: LanguageModelV3Prompt = [
 	{ role: "user", content: [{ type: "text", text: "Hello" }] },
 ];
 
-export const openAICodexDeferredToolsPrompt: LanguageModelV3Prompt = [
-	{ role: "user", content: [{ type: "text", text: "Use the tools" }] },
-	{
-		role: "assistant",
-		content: [{ type: "tool-call", toolCallId: "call_1|fc_1", toolName: "base_tool", input: {} }],
-	},
-	{
-		role: "tool",
-		content: [
-			{
-				type: "tool-result",
-				toolCallId: "call_1|fc_1",
-				toolName: "base_tool",
-				output: { type: "text", value: "done" },
-				providerOptions: { "openai-codex": { addedToolNames: ["late_tool"] } },
-			},
-		],
-	},
-	{ role: "user", content: [{ type: "text", text: "Continue" }] },
-];
+function toolChangeMessage(
+	mode: "changes" | "additions",
+	tools: LanguageModelV3FunctionTool[],
+	removed: string[] = [],
+): LanguageModelV3Prompt[number] {
+	const toolChange: ResponsesToolChange = { mode, tools, removed };
+	// Function tools are plain JSON, as aikit builds them.
+	return {
+		role: "system",
+		content: "",
+		providerOptions: { "openai-codex": { toolChange } } as unknown as SharedV3ProviderOptions,
+	};
+}
 
-export const openAICodexDeferredTools: LanguageModelV3FunctionTool[] = [
+/**
+ * A transcript where `late_tool` is added after the first tool result. `changes` also declares
+ * the initial `base_tool` in place at the head, as aikit does for that mode.
+ */
+export function openAICodexToolChangePrompt(
+	mode: "changes" | "additions",
+	lateTool: LanguageModelV3FunctionTool = openAICodexLoadableTools[1]!,
+): LanguageModelV3Prompt {
+	return [
+		...(mode === "changes" ? [toolChangeMessage(mode, [openAICodexLoadableTools[0]!])] : []),
+		{ role: "user", content: [{ type: "text", text: "Use the tools" }] },
+		{
+			role: "assistant",
+			content: [{ type: "tool-call", toolCallId: "call_1|fc_1", toolName: "base_tool", input: {} }],
+		},
+		{
+			role: "tool",
+			content: [
+				{
+					type: "tool-result",
+					toolCallId: "call_1|fc_1",
+					toolName: "base_tool",
+					output: { type: "text", value: "done" },
+				},
+			],
+		},
+		toolChangeMessage(mode, [lateTool]),
+		{ role: "user", content: [{ type: "text", text: "Continue" }] },
+	];
+}
+
+export const openAICodexLoadableTools: LanguageModelV3FunctionTool[] = [
 	{
 		type: "function",
 		name: "base_tool",
@@ -145,6 +175,16 @@ export const openAICodexDeferredTools: LanguageModelV3FunctionTool[] = [
 		description: "Late tool",
 		inputSchema: { type: "object", properties: { value: { type: "string" } } },
 	},
+];
+
+/** A `changes` transcript that removes `base_tool` and then adds `late_tool`. */
+export const openAICodexToolRemovalPrompt: LanguageModelV3Prompt = [
+	toolChangeMessage("changes", [openAICodexLoadableTools[0]!]),
+	{ role: "user", content: [{ type: "text", text: "Use the tools" }] },
+	toolChangeMessage("changes", [], ["base_tool"]),
+	{ role: "user", content: [{ type: "text", text: "Next" }] },
+	toolChangeMessage("changes", [openAICodexLoadableTools[1]!]),
+	{ role: "user", content: [{ type: "text", text: "Continue" }] },
 ];
 
 export const openAICodexTextEvents: Array<Record<string, unknown>> = [

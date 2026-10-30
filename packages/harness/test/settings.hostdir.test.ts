@@ -100,12 +100,12 @@ describe("a session's host directory decides its settings", () => {
 			await run(
 				dirs,
 				Effect.gen(function* () {
-					const session = yield* Session.create({});
+					const { main: session } = yield* Session.create({});
 					yield* session.run("one");
 					// Not "low" (the process's own directory) and not "max" (its parent project).
 					// Absent skips the walk; it does not pick a plausible starting point.
 					expect(lastLevel()).toBe("off");
-					expect((yield* session.info).hostDir).toBeUndefined();
+					expect((yield* session.info).session.hostDir).toBeUndefined();
 				}),
 			);
 		}));
@@ -119,7 +119,7 @@ describe("a session's host directory decides its settings", () => {
 					// `directory` names a place inside the session's space. Here it collides with a
 					// real host project — the case that makes the bug silent, because the walk
 					// succeeds and returns a stranger's settings.
-					const session = yield* Session.create({ directory: dirs.beta });
+					const { main: session } = yield* Session.create({ directory: dirs.beta });
 					yield* session.run("one");
 					expect(lastLevel()).toBe("off");
 				}),
@@ -132,17 +132,17 @@ describe("a session's host directory decides its settings", () => {
 			await run(
 				dirs,
 				Effect.gen(function* () {
-					const session = yield* Session.create({});
+					const { main: session } = yield* Session.create({});
 					yield* session.run("one");
 					expect(lastLevel()).toBe("off");
 
-					yield* Session.link({ sessionId: session.id, hostDir: dirs.beta });
+					yield* Session.link({ sessionId: session.sessionId, hostDir: dirs.beta });
 					yield* session.run("two");
 					expect(lastLevel()).toBe("medium");
-					expect((yield* session.info).hostDir).toBe(dirs.beta);
+					expect((yield* session.info).session.hostDir).toBe(dirs.beta);
 
 					// And back off again: clearing returns the session to the user layer.
-					yield* Session.link({ sessionId: session.id, hostDir: null });
+					yield* Session.link({ sessionId: session.sessionId, hostDir: null });
 					yield* session.run("three");
 					expect(lastLevel()).toBe("off");
 				}),
@@ -157,8 +157,8 @@ describe("a session's host directory decides its settings", () => {
 			await run(
 				dirs,
 				Effect.gen(function* () {
-					const session = yield* Session.create({ hostDir: dirs.beta });
-					sessionId = session.id;
+					const { main: session } = yield* Session.create({ hostDir: dirs.beta });
+					sessionId = session.sessionId;
 				}),
 				{ database },
 			);
@@ -168,7 +168,7 @@ describe("a session's host directory decides its settings", () => {
 				dirs,
 				Effect.gen(function* () {
 					const session = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(sessionId) });
-					expect((yield* session.info).hostDir).toBe(dirs.beta);
+					expect((yield* session.info).session.hostDir).toBe(dirs.beta);
 					yield* session.run("one");
 					expect(lastLevel()).toBe("medium");
 				}),

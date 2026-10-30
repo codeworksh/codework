@@ -1,50 +1,44 @@
 import { Effect, Exit, Layer, Option } from "effect";
-import { beforeEach, describe, expect } from "vite-plus/test";
+import { SqlClient } from "effect/sql";
+import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { Document } from "../src/document/document.ts";
 import { Event } from "../src/event/event.ts";
 import { AbsolutePath } from "../src/schema.ts";
+import { SessionLive } from "../src/session/live.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
+import { Thread } from "../src/thread/thread.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
-const layer = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
+const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const it = testEffect(layer);
 
-// In production an entry's seq is the sequence of the event that produced it.
-// These tests exercise the tree directly, with no event log behind them, so a
-// per-session counter stands in. Dense here; sparse in production.
-const seqCounters = new Map<string, number>();
-const nextSeq = (sessionId: string) => {
-	const next = (seqCounters.get(sessionId) ?? 0) + 1;
-	seqCounters.set(sessionId, next);
-	return next;
-};
-// A fork copies entry positions verbatim and seeds the new aggregate above
-// them, so the stand-in counter has to continue from the source's position.
-const inheritSeq = (sourceId: string, forkId: string) => {
-	seqCounters.set(forkId, seqCounters.get(sourceId) ?? 0);
-};
-beforeEach(() => seqCounters.clear());
-
-const createSession = () =>
+const createSession = (location?: string) =>
 	Effect.gen(function* () {
-		// session.space_id references space(id)
-		const { spaceId, location } = yield* seedSpace();
-		const session = yield* Session.Service;
-		return yield* session.create({
-			spaceId,
-			directory: location,
-			title: "Test session",
-			tag: "test",
-		});
+		const { spaceId, location: directory } = yield* seedSpace(location === undefined ? {} : { location });
+		const sessions = yield* Session.Service;
+		const { session, thread } = yield* sessions.create({ spaceId, directory, title: "Test session", tag: "test" });
+		return { sessionId: SessionSchema.ID.make(session.id), threadId: ThreadSchema.ID.make(thread.id) };
 	});
 
-const userEntry = (sessionId: SessionSchema.ID, id: string, text: string): Session.AppendEntry => ({
+// An entry's seq is the sequence of the event that produced it. These tests append directly, so
+// each reserves its own position on the session's log, as an event would.
+const nextSeq = (sessionId: SessionSchema.ID) =>
+	Effect.gen(function* () {
+		const events = yield* Event.Service;
+		const seq = (yield* events.latestSequence(sessionId)) + 1;
+		yield* events.advance(sessionId, seq);
+		return seq;
+	});
+
+const userEntry = (threadId: ThreadSchema.ID, seq: number, id: string, text: string): Thread.AppendEntry => ({
 	id,
-	sessionId,
-	seq: nextSeq(sessionId),
+	threadId,
+	seq,
 	type: "user",
 	data: JSON.stringify({ messageId: id, role: "user", time: { created: 1 } }),
 	parts: [{ type: "text", data: JSON.stringify({ type: "text", text }) }],
@@ -64,134 +58,93 @@ const usage = (
 	return {
 		...tokens,
 		totalTokens: tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite,
-		cost: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			total: input.costTotal ?? 0,
-		},
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: input.costTotal ?? 0 },
 	};
 };
 
 const assistantEntry = (
-	sessionId: SessionSchema.ID,
+	threadId: ThreadSchema.ID,
+	seq: number,
 	id: string,
-	options?: { usage?: SessionSchema.Usage; toolCall?: { callId: string; toolName: string } },
-): Session.AppendEntry => ({
+	options?: { usage?: SessionSchema.Usage },
+): Thread.AppendEntry => ({
 	id,
-	sessionId,
-	seq: nextSeq(sessionId),
+	threadId,
+	seq,
 	type: "assistant",
-	state: options?.toolCall === undefined ? "committed" : "draft",
 	data: JSON.stringify({
 		messageId: id,
 		role: "assistant",
 		stopReason: "stop",
 		usage: options?.usage ?? usage(),
 	}),
-	parts: [
-		{ type: "text", data: JSON.stringify({ type: "text", text: "ok" }) },
-		...(options?.toolCall
-			? [
-					{
-						type: "toolCall" as const,
-						status: "pending" as const,
-						callId: options.toolCall.callId,
-						toolName: options.toolCall.toolName,
-						data: JSON.stringify({
-							type: "toolCall",
-							callID: options.toolCall.callId,
-							name: options.toolCall.toolName,
-							status: "pending",
-						}),
-					},
-				]
-			: []),
-	],
+	parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "ok" }) }],
 });
 
 describe("session", () => {
-	it.effect("assistant appends bump the session usage aggregates", () =>
+	it.effect("assistant appends bump the thread usage aggregates", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const created = yield* createSession();
+			const threads = yield* Thread.Service;
+			const { sessionId, threadId } = yield* createSession();
 
-			yield* session.append(userEntry(created.id, "e1", "hi"));
-			yield* session.append(
-				assistantEntry(created.id, "e2", {
+			yield* threads.append(userEntry(threadId, yield* nextSeq(sessionId), "e1", "hi"));
+			yield* threads.append(
+				assistantEntry(threadId, yield* nextSeq(sessionId), "e2", {
 					usage: usage({ input: 100, output: 20, cacheRead: 40, cacheWrite: 10, costTotal: 0.5 }),
 				}),
 			);
-			yield* session.append(userEntry(created.id, "e3", "again"));
-			yield* session.append(
-				assistantEntry(created.id, "e4", {
+			yield* threads.append(userEntry(threadId, yield* nextSeq(sessionId), "e3", "again"));
+			yield* threads.append(
+				assistantEntry(threadId, yield* nextSeq(sessionId), "e4", {
 					usage: usage({ input: 150, output: 30, cacheRead: 90, cacheWrite: 0, costTotal: 0.25 }),
 				}),
 			);
 
-			const row = Option.getOrElse(yield* session.get(created.id), () => created);
+			const row = Option.getOrThrow(yield* threads.get(threadId));
 			expect(row.tokensInput).toBe(250);
 			expect(row.tokensOutput).toBe(50);
 			expect(row.tokensCacheRead).toBe(130);
 			expect(row.tokensCacheWrite).toBe(10);
 			expect(row.cost).toBeCloseTo(0.75);
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual(["e1", "e2", "e3", "e4"]);
 		}),
 	);
 
-	it.effect("path walks root→leaf across a branch point", () =>
+	it.effect("append rejects an unknown thread, a seq that does not advance, and a mismatched envelope", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const created = yield* createSession();
+			const threads = yield* Thread.Service;
+			const { sessionId, threadId } = yield* createSession();
+			const seq = yield* nextSeq(sessionId);
+			yield* threads.append(userEntry(threadId, seq, "e1", "first"));
 
-			yield* session.append(userEntry(created.id, "e1", "start"));
-			yield* session.append(assistantEntry(created.id, "e2"));
-			yield* session.append(userEntry(created.id, "e3", "approach A"));
-			yield* session.append(assistantEntry(created.id, "e4"));
-
-			// abandon A: move the leaf back to e2 and take approach B
-			yield* session.branch({ sessionId: created.id, entryId: "e2" });
-			yield* session.append(userEntry(created.id, "e5", "approach B"));
-
-			const path = yield* session.path(created.id);
-			expect(path.map((h) => h.entry.id)).toEqual(["e1", "e2", "e5"]);
-
-			// abandoned branch stays queryable on the full timeline
-			const timeline = yield* session.timeline({ sessionId: created.id });
-			expect(timeline.map((h) => h.entry.id)).toEqual(["e5", "e4", "e3", "e2", "e1"]);
-
-			// e5 is a sibling of e3 (both children of e2)
-			const e5 = timeline.find((h) => h.entry.id === "e5")!;
-			expect(Option.getOrElse(e5.entry.parentId, () => "")).toBe("e2");
-		}),
-	);
-
-	it.effect("append validates an explicit parentId against the session", () =>
-		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const a = yield* createSession();
-			const b = yield* createSession();
-			yield* session.append(userEntry(a.id, "ea1", "in session a"));
-			yield* session.append(userEntry(b.id, "eb1", "in session b"));
-
-			// cross-session parent is rejected typed
-			const result = yield* session
-				.append({ ...userEntry(b.id, "eb2", "bad parent"), parentId: "ea1" })
+			const unknown = yield* threads
+				.append(userEntry(ThreadSchema.ID.make("thr_missing"), seq + 1, "e2", "nowhere"))
 				.pipe(Effect.flip);
-			expect(result._tag).toBe("EntryNotFoundError");
+			expect(unknown._tag).toBe("ThreadNotFoundError");
 
-			// same-session explicit parent works (sibling branch append)
-			const sibling = yield* session.append({ ...userEntry(b.id, "eb3", "good parent"), parentId: "eb1" });
-			expect(Option.getOrElse(sibling.parentId, () => "")).toBe("eb1");
+			const stale = yield* threads.append(userEntry(threadId, seq, "e3", "same seq")).pipe(Effect.flip);
+			expect(stale._tag).toBe("InvalidEntryDataError");
+
+			const mismatched = yield* threads
+				.append({ ...userEntry(threadId, yield* nextSeq(sessionId), "e4", "x"), id: "e4-other" })
+				.pipe(Effect.flip);
+			expect(mismatched._tag).toBe("InvalidEntryDataError");
+
+			const draftUser = yield* threads
+				.append({ ...userEntry(threadId, yield* nextSeq(sessionId), "e5", "x"), state: "draft" })
+				.pipe(Effect.flip);
+			expect(draftUser._tag).toBe("InvalidEntryDataError");
+
+			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual(["e1"]);
 		}),
 	);
 
 	it.effect("duplicate call ids within an entry are rejected by the schema", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const created = yield* createSession();
+			const threads = yield* Thread.Service;
+			const { sessionId, threadId } = yield* createSession();
 
-			const toolPart = (callId: string): Session.AppendPart => ({
+			const toolPart = (callId: string): Thread.AppendPart => ({
 				type: "toolCall",
 				status: "pending",
 				callId,
@@ -199,241 +152,134 @@ describe("session", () => {
 				data: JSON.stringify({ type: "toolCall", callID: callId, name: "read", status: "pending" }),
 			});
 
-			const exit = yield* session
+			const exit = yield* threads
 				.append({
-					...assistantEntry(created.id, "e1"),
+					...assistantEntry(threadId, yield* nextSeq(sessionId), "e1"),
+					state: "draft",
 					parts: [toolPart("call_dup"), toolPart("call_dup")],
 				})
 				.pipe(Effect.exit);
 			expect(Exit.isFailure(exit)).toBe(true);
 
 			// the failed transaction rolled back whole — no partial entry
-			expect(Option.isNone(yield* session.entry("e1"))).toBe(true);
+			expect(Option.isNone(yield* threads.entry("e1"))).toBe(true);
 		}),
 	);
 
-	it.effect("append validates compaction shape and boundary against its actual parent path", () =>
+	it.effect("append validates compaction shape and boundary against the thread's line", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const source = yield* createSession();
-			const other = yield* createSession();
-			yield* session.append(userEntry(source.id, "e1", "root"));
-			yield* session.append(assistantEntry(source.id, "e2"));
-			yield* session.branch({ sessionId: source.id, entryId: "e1" });
-			yield* session.append(userEntry(source.id, "e3", "active sibling"));
-			yield* session.append(userEntry(other.id, "other-e1", "foreign"));
+			const threads = yield* Thread.Service;
+			const source = yield* createSession("/source");
+			const other = yield* createSession("/other");
+			yield* threads.append(userEntry(source.threadId, yield* nextSeq(source.sessionId), "e1", "root"));
+			yield* threads.append(assistantEntry(source.threadId, yield* nextSeq(source.sessionId), "e2"));
+			yield* threads.append(userEntry(other.threadId, yield* nextSeq(other.sessionId), "other-e1", "foreign"));
 
-			const invalidCompactions: ReadonlyArray<Session.AppendEntry> = [
-				{
-					id: "c-missing-boundary",
-					sessionId: source.id,
-					seq: nextSeq(source.id),
+			const compaction = (id: string, data: object) =>
+				Effect.map(nextSeq(source.sessionId), (seq): Thread.AppendEntry => ({
+					id,
+					threadId: source.threadId,
+					seq,
 					type: "compaction",
-					data: JSON.stringify({ summary: "missing", tokensBefore: 10 }),
-				},
-				{
-					id: "c-negative-tokens",
-					sessionId: source.id,
-					seq: nextSeq(source.id),
-					type: "compaction",
-					data: JSON.stringify({ summary: "negative", firstKeptEntryId: null, tokensBefore: -1 }),
-				},
-				{
-					id: "c-abandoned-boundary",
-					sessionId: source.id,
-					seq: nextSeq(source.id),
-					type: "compaction",
-					data: JSON.stringify({ summary: "abandoned", firstKeptEntryId: "e2", tokensBefore: 10 }),
-				},
-				{
-					id: "c-foreign-boundary",
-					sessionId: source.id,
-					seq: nextSeq(source.id),
-					type: "compaction",
-					data: JSON.stringify({ summary: "foreign", firstKeptEntryId: "other-e1", tokensBefore: 10 }),
-				},
+					data: JSON.stringify(data),
+				}));
+			const invalid = [
+				yield* compaction("c-missing-boundary", { summary: "missing", tokensBefore: 10 }),
+				yield* compaction("c-negative-tokens", { summary: "negative", firstKeptEntryId: null, tokensBefore: -1 }),
+				yield* compaction("c-foreign-boundary", {
+					summary: "foreign",
+					firstKeptEntryId: "other-e1",
+					tokensBefore: 10,
+				}),
 			];
-
-			for (const input of invalidCompactions) {
-				const error = yield* session.append(input).pipe(Effect.flip);
+			for (const input of invalid) {
+				const error = yield* threads.append(input).pipe(Effect.flip);
 				expect(error._tag).toBe("InvalidEntryDataError");
-				expect(Option.isNone(yield* session.entry(input.id))).toBe(true);
+				expect(Option.isNone(yield* threads.entry(input.id))).toBe(true);
 			}
-			const afterInvalid = Option.getOrElse(yield* session.get(source.id), () => source);
-			expect(Option.getOrElse(afterInvalid.leafEntryId, () => "")).toBe("e3");
-			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(3);
+			expect(yield* threads.line(source.threadId)).toHaveLength(2);
 
-			// The explicit parent, not the current leaf, defines the compaction path.
-			const anchored = yield* session.append({
-				id: "c-anchored",
-				sessionId: source.id,
-				seq: nextSeq(source.id),
-				parentId: "e2",
-				type: "compaction",
-				data: JSON.stringify({ summary: "root work", firstKeptEntryId: "e1", tokensBefore: 10 }),
-			});
-			expect(Option.getOrElse(anchored.parentId, () => "")).toBe("e2");
+			const anchored = yield* threads.append(
+				yield* compaction("c-anchored", { summary: "root work", firstKeptEntryId: "e1", tokensBefore: 10 }),
+			);
+			expect(JSON.parse(anchored.data).firstKeptEntryId).toBe("e1");
 
-			const wrongAnchor = yield* session
-				.append({
-					id: "c-wrong-anchor",
-					sessionId: source.id,
-					seq: nextSeq(source.id),
-					parentId: "e2",
-					type: "compaction",
-					data: JSON.stringify({ summary: "wrong path", firstKeptEntryId: "e3", tokensBefore: 10 }),
-				})
-				.pipe(Effect.flip);
-			expect(wrongAnchor._tag).toBe("InvalidEntryDataError");
-			expect(Option.isNone(yield* session.entry("c-wrong-anchor"))).toBe(true);
-			const afterWrongAnchor = Option.getOrElse(yield* session.get(source.id), () => source);
-			expect(Option.getOrElse(afterWrongAnchor.leafEntryId, () => "")).toBe("c-anchored");
-
-			const summaryOnly = yield* session.append({
-				id: "c-summary-only",
-				sessionId: source.id,
-				seq: nextSeq(source.id),
-				type: "compaction",
-				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 10 }),
-			});
+			const summaryOnly = yield* threads.append(
+				yield* compaction("c-summary-only", {
+					summary: "all prior work",
+					firstKeptEntryId: null,
+					tokensBefore: 10,
+				}),
+			);
 			expect(JSON.parse(summaryOnly.data).firstKeptEntryId).toBeNull();
 		}),
 	);
 
-	it.effect("clone (fork at leaf) copies the path with fresh identity", () =>
+	it.effect("labels an entry, clears it, and rejects an entry of another thread", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const source = yield* createSession();
-			yield* session.append(userEntry(source.id, "e1", "hello"));
-			yield* session.append(assistantEntry(source.id, "e2", { toolCall: { callId: "call_1", toolName: "read" } }));
-			yield* session.setLabel({ sessionId: source.id, entryId: "e1", label: "start" });
+			const threads = yield* Thread.Service;
+			const { sessionId, threadId } = yield* createSession("/labels");
+			const other = yield* createSession("/elsewhere");
+			yield* threads.append(userEntry(threadId, yield* nextSeq(sessionId), "e1", "mark me"));
 
-			const fork = yield* session.fork({ sessionId: source.id });
+			yield* threads.setLabel({ threadId, entryId: "e1", label: "start" });
+			const labelled = Option.getOrThrow(yield* threads.entry("e1"));
+			expect(Option.getOrUndefined(labelled.entry.label)).toBe("start");
 
-			// lineage + fresh session state
-			expect(Option.getOrElse(fork.parentId, () => "")).toBe(source.id);
-			expect(fork.cost).toBe(0);
-			expect(fork.title).toBe(source.title);
+			yield* threads.setLabel({ threadId, entryId: "e1", label: null });
+			const cleared = Option.getOrThrow(yield* threads.entry("e1"));
+			expect(Option.isNone(cleared.entry.label)).toBe(true);
 
-			const forkPath = yield* session.path(fork.id);
-			const sourcePath = yield* session.path(source.id);
-			expect(forkPath.map((h) => h.entry.type)).toEqual(sourcePath.map((h) => h.entry.type));
-			// all new entry ids, dense seq, envelope messageId rewritten to the new id
-			for (const [i, hydrated] of forkPath.entries()) {
-				expect(hydrated.entry.id).not.toBe(sourcePath[i]!.entry.id);
-				expect(hydrated.entry.seq).toBe(i + 1);
-				expect(JSON.parse(hydrated.entry.data).messageId).toBe(hydrated.entry.id);
-			}
-			// parts copied verbatim with preserved partIndex; label rode along
-			const forkAssistant = forkPath[1]!;
-			expect(forkAssistant.parts.map((p) => p.partIndex)).toEqual([0, 1]);
-			expect(Option.getOrElse(forkAssistant.parts[1]!.callId, () => "")).toBe("call_1");
-			expect(Option.getOrElse(forkPath[0]!.entry.label, () => "")).toBe("start");
-			// pending toolCall copied as pending → fork inherits recovery
-			expect(yield* session.unsettled(fork.id)).toHaveLength(1);
-
-			// source untouched
-			const sourceAfter = Option.getOrElse(yield* session.get(source.id), () => source);
-			expect(Option.getOrElse(sourceAfter.leafEntryId, () => "")).toBe("e2");
-			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(2);
+			const missing = yield* threads
+				.setLabel({ threadId: other.threadId, entryId: "e1", label: "x" })
+				.pipe(Effect.flip);
+			expect(missing._tag).toBe("EntryNotFoundError");
 		}),
 	);
 
-	it.effect("fork copies only the active path, not abandoned branches", () =>
+	it.effect("links a session to a host directory and clears it", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const source = yield* createSession();
-			yield* session.append(userEntry(source.id, "e1", "start"));
-			yield* session.append(assistantEntry(source.id, "e2"));
-			yield* session.append(userEntry(source.id, "e3", "approach A"));
-			yield* session.branch({ sessionId: source.id, entryId: "e2" });
-			yield* session.append(userEntry(source.id, "e5", "approach B"));
+			const sessions = yield* Session.Service;
+			const { sessionId } = yield* createSession();
 
-			const fork = yield* session.fork({ sessionId: source.id });
+			const linked = yield* sessions.link({ sessionId, hostDir: AbsolutePath.make("/host/app") });
+			expect(Option.getOrUndefined(linked.hostDir)).toBe("/host/app");
 
-			// source has 4 entries; fork has only the active path e1→e2→e5
-			const forkTimeline = yield* session.timeline({ sessionId: fork.id });
-			expect(forkTimeline).toHaveLength(3);
-			const forkPath = yield* session.path(fork.id);
-			expect(forkPath.map((h) => JSON.parse(h.entry.data).messageId ?? h.entry.id)).toEqual(
-				forkPath.map((h) => h.entry.id),
-			);
-			// fork diverges independently of the source
-			inheritSeq(source.id, fork.id);
-			yield* session.append(userEntry(fork.id, "f6", "fork continues"));
-			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(4);
-			expect((yield* session.timeline({ sessionId: fork.id })).length).toBe(4);
+			const cleared = yield* sessions.link({ sessionId, hostDir: null });
+			expect(Option.isNone(cleared.hostDir)).toBe(true);
+
+			const unknown = yield* sessions
+				.link({ sessionId: SessionSchema.ID.make("ses_missing"), hostDir: null })
+				.pipe(Effect.flip);
+			expect(unknown._tag).toBe("SessionNotFoundError");
 		}),
 	);
 
-	it.effect("fork remaps compaction firstKeptEntryId into the new session", () =>
+	it.effect("delete removes the session with its threads, entries and log", () =>
 		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const source = yield* createSession();
-			yield* session.append(userEntry(source.id, "e1", "old"));
-			yield* session.append(assistantEntry(source.id, "e2"));
-			yield* session.append({
-				id: "c3",
-				sessionId: source.id,
-				seq: nextSeq(source.id),
-				type: "compaction",
-				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e2", tokensBefore: 1000 }),
-			});
-			yield* session.append(userEntry(source.id, "e4", "after compaction"));
-			yield* session.append({
-				id: "c5",
-				sessionId: source.id,
-				seq: nextSeq(source.id),
-				type: "compaction",
-				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 500 }),
-			});
+			const sql = yield* SqlClient.SqlClient;
+			const sessions = yield* Session.Service;
+			const threads = yield* Thread.Service;
+			const events = yield* Event.Service;
+			const { sessionId, threadId } = yield* createSession("/doomed");
+			const kept = yield* createSession("/kept");
+			yield* threads.append(userEntry(threadId, yield* nextSeq(sessionId), "e1", "bye"));
 
-			const fork = yield* session.fork({ sessionId: source.id });
-			const forkPath = yield* session.path(fork.id);
+			expect(yield* sessions.delete(sessionId)).toBe(true);
 
-			const forkE2 = forkPath[1]!.entry; // copy of e2
-			const forkCompaction = forkPath[2]!.entry;
-			const forkSummaryOnly = forkPath[4]!.entry;
-			expect(forkCompaction.type).toBe("compaction");
-			const payload = JSON.parse(forkCompaction.data);
-			// window pointer follows the copy — not the old session's id
-			expect(payload.firstKeptEntryId).toBe(forkE2.id);
-			expect(payload.firstKeptEntryId).not.toBe("e2");
-			expect(payload.summary).toBe("earlier work");
-			expect(JSON.parse(forkSummaryOnly.data).firstKeptEntryId).toBeNull();
-		}),
-	);
-
-	it.effect("forkBefore a user entry lands at its parent; validates entry type", () =>
-		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const source = yield* createSession();
-			yield* session.append(userEntry(source.id, "e1", "keep me"));
-			yield* session.append(assistantEntry(source.id, "e2"));
-			yield* session.append(userEntry(source.id, "e3", "redo this prompt"));
-
-			// before e3 → fork contains e1, e2; leaf = copy of e2
-			const fork = yield* session.fork({
-				sessionId: source.id,
-				entryId: "e3",
-				mode: "before",
-			});
-			const forkPath = yield* session.path(fork.id);
-			expect(forkPath).toHaveLength(2);
-			expect(forkPath.map((h) => h.entry.type)).toEqual(["user", "assistant"]);
-
-			// before a non-user entry is a typed structural rejection
-			const invalid = yield* session.fork({ sessionId: source.id, entryId: "e2", mode: "before" }).pipe(Effect.flip);
-			expect(invalid._tag).toBe("InvalidEntryDataError");
-
-			// before the root user entry → empty fork
-			const empty = yield* session.fork({
-				sessionId: source.id,
-				entryId: "e1",
-				mode: "before",
-			});
-			expect(Option.isNone(empty.leafEntryId)).toBe(true);
-			expect(yield* session.path(empty.id)).toHaveLength(0);
+			const [left] = yield* sql<Record<string, number>>`
+				SELECT
+					(SELECT count(*) FROM session WHERE id = ${sessionId}) AS session,
+					(SELECT count(*) FROM thread WHERE session_id = ${sessionId}) AS thread,
+					(SELECT count(*) FROM entry WHERE session_id = ${sessionId}) AS entry,
+					(SELECT count(*) FROM document WHERE session_id = ${sessionId}) AS document,
+					(SELECT count(*) FROM event WHERE aggregate_id = ${sessionId}) AS event,
+					(SELECT count(*) FROM sequence WHERE aggregate_id = ${sessionId}) AS sequence
+			`;
+			expect(left).toEqual({ session: 0, thread: 0, entry: 0, document: 0, event: 0, sequence: 0 });
+			expect(yield* events.latestSequence(sessionId)).toBe(0);
+			expect(Option.isSome(yield* sessions.get(kept.sessionId))).toBe(true);
+			expect(yield* sessions.delete(sessionId)).toBe(false);
 		}),
 	);
 
@@ -448,24 +294,19 @@ describe("session", () => {
 		it.effect("keeps the session's position under the new root", () =>
 			Effect.gen(function* () {
 				const { from, to } = yield* seedPair();
-				const session = yield* Session.Service;
-				const created = yield* session.create({
+				const sessions = yield* Session.Service;
+				const { session: created } = yield* sessions.create({
 					spaceId: from.spaceId,
 					directory: AbsolutePath.make("/old/app/packages/x"),
-					title: "t",
 				});
 
-				const moved = yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				const moved = yield* sessions.relink({ sessionId: created.id, spaceId: to.spaceId });
 				expect(moved.spaceId).toBe(to.spaceId);
 				expect(moved.directory).toBe("/new/app/packages/x");
 
 				// Sitting at the old root lands on the new root.
-				const atRoot = yield* session.create({
-					spaceId: from.spaceId,
-					directory: from.location,
-					title: "t",
-				});
-				const movedRoot = yield* session.relink({ sessionId: atRoot.id, spaceId: to.spaceId });
+				const { session: atRoot } = yield* sessions.create({ spaceId: from.spaceId, directory: from.location });
+				const movedRoot = yield* sessions.relink({ sessionId: atRoot.id, spaceId: to.spaceId });
 				expect(movedRoot.directory).toBe("/new/app");
 			}),
 		);
@@ -473,21 +314,20 @@ describe("session", () => {
 		it.effect("an explicit directory under the target wins; outside it is rejected", () =>
 			Effect.gen(function* () {
 				const { from, to } = yield* seedPair();
-				const session = yield* Session.Service;
-				const created = yield* session.create({
+				const sessions = yield* Session.Service;
+				const { session: created } = yield* sessions.create({
 					spaceId: from.spaceId,
 					directory: AbsolutePath.make("/old/app/pkg"),
-					title: "t",
 				});
 
-				const explicit = yield* session.relink({
+				const explicit = yield* sessions.relink({
 					sessionId: created.id,
 					spaceId: to.spaceId,
 					directory: AbsolutePath.make("/new/app/other"),
 				});
 				expect(explicit.directory).toBe("/new/app/other");
 
-				const rejected = yield* session
+				const rejected = yield* sessions
 					.relink({ sessionId: created.id, spaceId: to.spaceId, directory: AbsolutePath.make("/nope") })
 					.pipe(Effect.flip);
 				expect(rejected).toMatchObject({ _tag: "RelinkError", reason: "directory_outside_space" });
@@ -498,17 +338,44 @@ describe("session", () => {
 			Effect.gen(function* () {
 				const { from } = yield* seedPair();
 				const other = yield* seedSpace({ location: "/other", projectId: "q", kind: "primary" });
-				const session = yield* Session.Service;
-				const created = yield* session.create({
-					spaceId: from.spaceId,
-					directory: from.location,
-					title: "t",
-				});
+				const sessions = yield* Session.Service;
+				const { session: created } = yield* sessions.create({ spaceId: from.spaceId, directory: from.location });
 
-				const error = yield* session.relink({ sessionId: created.id, spaceId: other.spaceId }).pipe(Effect.flip);
+				const error = yield* sessions.relink({ sessionId: created.id, spaceId: other.spaceId }).pipe(Effect.flip);
 				expect(error).toMatchObject({ _tag: "RelinkError", reason: "project_scope_mismatch" });
-				const row = Option.getOrThrow(yield* session.get(created.id));
+				const row = Option.getOrThrow(yield* sessions.get(created.id));
 				expect(row.spaceId).toBe(from.spaceId);
+			}),
+		);
+
+		it.effect("with a thread, places that thread and leaves the session where it was", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const sessions = yield* Session.Service;
+				const documents = yield* Document.Service;
+				const { session: created, thread } = yield* sessions.create({
+					spaceId: from.spaceId,
+					directory: AbsolutePath.make("/old/app/packages/x"),
+				});
+				const threadId = ThreadSchema.ID.make(thread.id);
+
+				const row = yield* sessions.relink({ sessionId: created.id, threadId, spaceId: to.spaceId });
+				expect(row.spaceId).toBe(from.spaceId);
+				expect(row.directory).toBe("/old/app/packages/x");
+				expect((yield* documents.agent(threadId)).placement).toEqual({
+					spaceId: to.spaceId,
+					directory: "/new/app/packages/x",
+				});
+				const placed = Option.getOrThrow(yield* sessions.placement(threadId));
+				expect(placed.space.id).toBe(to.spaceId);
+				expect(placed.directory).toBe("/new/app/packages/x");
+
+				// A thread of another session is not this session's to place.
+				const { thread: foreign } = yield* sessions.create({ spaceId: from.spaceId, directory: from.location });
+				const error = yield* sessions
+					.relink({ sessionId: created.id, threadId: ThreadSchema.ID.make(foreign.id), spaceId: to.spaceId })
+					.pipe(Effect.flip);
+				expect(error._tag).toBe("ThreadNotFoundError");
 			}),
 		);
 	});

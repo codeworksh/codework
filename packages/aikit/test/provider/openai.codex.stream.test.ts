@@ -1,7 +1,9 @@
 /** Streaming, SSE decoding, usage, and error mapping for the OpenAI Codex provider. */
 import { APICallError } from "@ai-sdk/provider";
 import { describe, expect, it } from "vite-plus/test";
-import { convertOpenAICodexUsage, createOpenAICodex, joinToolCallId } from "../../src/providers/openai-codex/index.ts";
+import { createOpenAICodex } from "../../src/providers/openai-codex/index.ts";
+import { joinToolCallId } from "../../src/providers/responses/prompt.ts";
+import { convertResponsesUsage } from "../../src/providers/responses/usage.ts";
 import {
 	createOpenAICodexMockFetch,
 	OPENAI_CODEX_TEST_API_KEY,
@@ -18,7 +20,7 @@ describe("usage and finish-reason mapping", () => {
 			input_tokens_details: { cached_tokens: 25, cache_write_tokens: 10 },
 			output_tokens_details: { reasoning_tokens: 7 },
 		};
-		expect(convertOpenAICodexUsage(usage)).toEqual({
+		expect(convertResponsesUsage(usage)).toEqual({
 			inputTokens: { total: 100, noCache: 65, cacheRead: 25, cacheWrite: 10 },
 			outputTokens: { total: 30, text: 23, reasoning: 7 },
 			raw: usage,

@@ -41,12 +41,12 @@ const seedProject = (id: string) =>
 			sql`INSERT INTO project (id, name, status, created_at, updated_at) VALUES (${id}, ${id}, 'active', 0, 0)`,
 	);
 
-// The host is NULL; anything else must exist in sandbox_instance first.
+// The host is NULL; anything else must exist in sandbox first.
 const seedEnv = (id: SandboxInstance.ID) =>
 	Effect.flatMap(
 		SqlClient.SqlClient,
 		(sql) => sql`
-			INSERT INTO sandbox_instance (id, driver, kind, ownership, status, state_observed_at, created_at, updated_at)
+			INSERT INTO sandbox (id, driver, kind, ownership, status, state_observed_at, created_at, updated_at)
 			VALUES (${id}, 'memory', 'virtual', 'managed', 'online', 0, 0, 0)
 		`,
 	);

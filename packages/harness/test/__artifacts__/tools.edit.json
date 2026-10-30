@@ -560,11 +560,11 @@
 		"content": [
 			{
 				"type": "text",
-				"text": "Invalid arguments for edit: Expected array\n  at [\"edits\"]"
+				"text": "Invalid Arguments for edit: Expected array\n  at [\"edits\"]"
 			}
 		],
 		"details": {
-			"error": "invalid_arguments",
+			"error": "invalid-arguments",
 			"name": "edit"
 		}
 	}
