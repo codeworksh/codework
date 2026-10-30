@@ -379,8 +379,8 @@ describe("transcript prompt changes on the Anthropic wire", () => {
 			{
 				systemPrompt: "base prompt",
 				messages: [
-					system({ sections: { codeword: "<codeword>alpha</codeword>" } }),
 					makeUserMessage("first"),
+					system({ sections: { codeword: "<codeword>alpha</codeword>" } }),
 					makeAssistantMessage(model, { stopReason: "toolUse", parts: [makeCompletedToolCall("call-1")] }),
 					system({ sections: { codeword: "<codeword>bravo</codeword>" } }),
 					makeUserMessage("second"),
@@ -398,7 +398,7 @@ describe("transcript prompt changes on the Anthropic wire", () => {
 		};
 	};
 
-	it("joins the first declaration to the leading prompt and holds a later change past the tool result and prompt", async () => {
+	it("joins a declaration before the first reply to the leading prompt and holds a later one past the tool result and prompt", async () => {
 		expect(await wire(claude(true))).toEqual({
 			system: ["base prompt", 'Updated system prompt section "codeword":\n\n<codeword>alpha</codeword>'],
 			messages: [

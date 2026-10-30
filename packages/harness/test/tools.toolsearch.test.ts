@@ -463,8 +463,8 @@ describe("toolsearch", () => {
 			const { sessionId, main } = yield* createSession;
 			yield* run(sessionId, main, "Load the forecast tool", [call(search("weather forecast", 1)), reply]);
 			const line = yield* threads.line(main);
-			expect(line.map(({ entry }) => entry.type)).toEqual(["system", "user", "assistant", "system", "assistant"]);
-			const [, asked, searched] = line;
+			expect(line.map(({ entry }) => entry.type)).toEqual(["user", "system", "assistant", "system", "assistant"]);
+			const [asked, , searched] = line;
 
 			const before = ThreadSchema.ID.make(
 				(yield* threads.fork({ threadId: main, entryId: asked!.entry.id })).thread.id,

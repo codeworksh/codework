@@ -278,7 +278,7 @@ export const layer = (options: Options = {}) =>
 			 * The request keeps the foundation as `systemPrompt` and the declared tools as `tools`. The
 			 * prompt sections, and what the thread offers beyond those tools (or withholds), are declared
 			 * by a `system` entry, published when the transcript's state differs from the snapshot's: the
-			 * first request declares every section. Returns its message, for a request not reassembled after it.
+			 * first request declares every section. Returns its message, for the request at hand.
 			 */
 			const declareSystemChanges = Effect.fn("Loop.declareSystemChanges")(function* (
 				snapshot: State.Snapshot,
@@ -314,10 +314,6 @@ export const layer = (options: Options = {}) =>
 				continuing: boolean,
 			) {
 				const { sessionId, threadId } = snapshot;
-				// Declared ahead of the input it comes with, so the model reads the setup, then the prompt.
-				// With no input to promote it goes last, once a request is sure to follow.
-				const declaredFirst = promotion !== undefined && (yield* inputs.hasPending(threadId, promotion));
-				if (declaredFirst) yield* declareSystemChanges(snapshot, (yield* context.assemble(threadId)).messages);
 				if (promotion !== undefined) {
 					const cutoff = yield* events.latestSequence(sessionId);
 					const followUp = promotion === "followUp" && (yield* inputs.promoteFollowUp(threadId));
@@ -333,9 +329,7 @@ export const layer = (options: Options = {}) =>
 				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
 					return undefined;
 				}
-				const messages = declaredFirst
-					? assembled.messages
-					: [...assembled.messages, ...(yield* declareSystemChanges(snapshot, assembled.messages))];
+				const messages = [...assembled.messages, ...(yield* declareSystemChanges(snapshot, assembled.messages))];
 
 				// The latest attempt's publisher; a retried turn has one per provider request.
 				let publisher: LLMEventPublisher.Publisher | undefined;

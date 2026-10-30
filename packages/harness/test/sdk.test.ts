@@ -88,8 +88,8 @@ describe("Harness Effect SDK", () => {
 						yield* session.run("second");
 						// The restarted runtime finds the prompt the first run declared, so declares nothing again.
 						expect((yield* session.history()).map(({ entry }) => entry.type)).toEqual([
-							"system",
 							"user",
+							"system",
 							"assistant",
 							"user",
 							"assistant",

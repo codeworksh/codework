@@ -87,7 +87,13 @@
 		"entries": [
 			{
 				"id": "E1",
-				"seq": 25,
+				"seq": 26,
+				"type": "user",
+				"state": "committed"
+			},
+			{
+				"id": "E2",
+				"seq": 27,
 				"type": "system",
 				"state": "committed",
 				"data": {
@@ -126,20 +132,14 @@
 				}
 			},
 			{
-				"id": "E2",
-				"seq": 26,
-				"type": "user",
-				"state": "committed"
-			},
-			{
 				"id": "E3",
-				"seq": 27,
+				"seq": 28,
 				"type": "assistant",
 				"state": "committed"
 			},
 			{
 				"id": "E4",
-				"seq": 31,
+				"seq": 32,
 				"type": "assistant",
 				"state": "committed"
 			}

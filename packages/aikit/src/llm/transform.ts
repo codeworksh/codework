@@ -570,14 +570,15 @@ export function convertMessages(
 	}
 
 	// Every system message goes as an update, the first declaration too: a section a model read
-	// whole does not yield to a later update of it, one it read as an update does. Anthropic takes
-	// a later system message only after a user message, and never between a tool call and its
-	// result: each is held for the next assistant message, or the end. One ahead of the
-	// conversation joins the leading prompt there, where it caches; a trailing system message's
-	// cache entry is never read once a reply follows it.
+	// whole does not yield to a later update of it, one it read as an update does. On Anthropic,
+	// one before the first reply joins the leading prompt, where it caches: a trailing system
+	// message's cache entry is never read once a reply follows it. Anthropic takes a later one
+	// only after a user message, and never between a tool call and its result: each is held for
+	// the next assistant message, or the end.
 	const anthropic = isAnthropicWire(model, method);
+	const leading: ModelMessage[] = [];
 	const held: ModelMessage[] = [];
-	let started = false;
+	let replied = false;
 	let systemIndex = 0;
 	for (const msg of transformedMessages) {
 		if (msg.role === "system") {
@@ -592,20 +593,22 @@ export function convertMessages(
 				model,
 				method,
 			);
-			if (change) (anthropic && started ? held : messages).push(change);
+			if (change) (!anthropic ? messages : replied ? held : leading).push(change);
 			continue;
 		}
-		started = true;
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts));
 			continue;
 		}
 		const converted = assistantMessages(msg, model, method);
-		if (converted.length > 0) messages.push(...held.splice(0));
+		if (converted.length > 0) {
+			replied = true;
+			messages.push(...held.splice(0));
+		}
 		messages.push(...converted);
 	}
 
-	return [...messages, ...held];
+	return [...leading, ...messages, ...held];
 }
 
 /**

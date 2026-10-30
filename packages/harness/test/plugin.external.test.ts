@@ -125,7 +125,7 @@ describe("third-party plugins", () => {
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["acme_echo"]);
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
 
-			expect(path.map((item) => item.entry.type)).toEqual(["system", "user", "assistant", "assistant"]);
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant", "assistant"]);
 			const settled = JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({
 				status: "completed",

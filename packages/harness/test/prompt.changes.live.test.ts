@@ -14,8 +14,7 @@ import "./utils/live.ts";
 /**
  * A prompt section changed between two prompts reaches a real model. These models take system
  * messages in place, so the second request still carries the first codeword and adds the change
- * after it: ahead of the prompt it came with, or on Anthropic, which takes one only after a user
- * message, right after that prompt. Where caching is explicit (Anthropic), the second request
+ * after it, right after the prompt it came with. Where caching is explicit (Anthropic), the second request
  * reads the first one's sections from the cache; OpenAI's is best effort, so it is not checked there.
  */
 
@@ -27,8 +26,8 @@ const reference = Array.from({ length: 300 }, (_, i) => `Reference line ${i}: th
 );
 process.env.CODEWORK_CACHE_RETENTION ??= "short";
 const CASES = [
-	{ name: "openai-codex", provider: "openai-codex", id: "gpt-6-luna", env: "OPENAI_CODEX_API_KEY", change: "before" },
-	{ name: "openai", provider: "openai", id: "gpt-6-luna", env: "OPENAI_API_KEY", change: "before" },
+	{ name: "openai-codex", provider: "openai-codex", id: "gpt-6-luna", env: "OPENAI_CODEX_API_KEY", change: "after" },
+	{ name: "openai", provider: "openai", id: "gpt-6-luna", env: "OPENAI_API_KEY", change: "after" },
 	{
 		name: "anthropic",
 		provider: "anthropic",

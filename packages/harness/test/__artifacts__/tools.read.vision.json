@@ -3,13 +3,13 @@
 		"model": "text-only",
 		"messages": [
 			{
-				"role": "system"
-			},
-			{
 				"role": "user",
 				"content": [
 					"read the image"
 				]
+			},
+			{
+				"role": "system"
 			}
 		]
 	},
@@ -17,13 +17,13 @@
 		"model": "text-only",
 		"messages": [
 			{
-				"role": "system"
-			},
-			{
 				"role": "user",
 				"content": [
 					"read the image"
 				]
+			},
+			{
+				"role": "system"
 			},
 			{
 				"role": "assistant",
@@ -49,13 +49,13 @@
 		"model": "vision",
 		"messages": [
 			{
-				"role": "system"
-			},
-			{
 				"role": "user",
 				"content": [
 					"read the image"
 				]
+			},
+			{
+				"role": "system"
 			},
 			{
 				"role": "assistant",

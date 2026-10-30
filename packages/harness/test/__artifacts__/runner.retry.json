@@ -66,16 +66,16 @@
 	],
 	"path": [
 		{
-			"id": "system",
-			"type": "system",
-			"state": "committed",
-			"parts": 0
-		},
-		{
 			"id": "msg_retry",
 			"type": "user",
 			"state": "committed",
 			"parts": 1
+		},
+		{
+			"id": "system",
+			"type": "system",
+			"state": "committed",
+			"parts": 0
 		},
 		{
 			"id": "assistant_1",

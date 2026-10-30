@@ -7,12 +7,13 @@ import "./env.ts";
 /**
  * A login's current access token, for its key variable. The login file itself is never used by a
  * test: a refresh would rotate the refresh token and sign the developer out. An expired token
- * skips the provider's cases rather than refreshing.
+ * skips the provider's cases rather than refreshing; `expires: 0` never expires (GitHub Copilot).
  */
 const loginToken = (provider: string): string | undefined => {
 	try {
 		const login = JSON.parse(readFileSync(join(homedir(), ".codework", "aikit", "auth.json"), "utf8"))[provider];
-		return typeof login?.access === "string" && login.expires > Date.now() + 10 * 60_000 ? login.access : undefined;
+		const fresh = login?.expires === 0 || login?.expires > Date.now() + 10 * 60_000;
+		return typeof login?.access === "string" && fresh ? login.access : undefined;
 	} catch {
 		return undefined;
 	}

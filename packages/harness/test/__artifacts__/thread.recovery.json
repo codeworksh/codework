@@ -2,8 +2,8 @@
 	"events": [
 		"1 session.created.1 T1",
 		"2 session.prompt.admitted.1 T1",
-		"3 session.thread.system.changed.1 T1",
-		"4 session.prompt.promoted.1 T1",
+		"3 session.prompt.promoted.1 T1",
+		"4 session.thread.system.changed.1 T1",
 		"5 session.llm.started.1 T1",
 		"6 session.llm.ended.1 T1",
 		"7 session.turn.ended.1 T1",
@@ -12,9 +12,10 @@
 		"10 session.prompt.promoted.1 T2",
 		"11 session.llm.started.1 T2",
 		"12 session.llm.failed.1 T2",
-		"13 session.llm.started.1 T2",
-		"14 session.llm.ended.1 T2",
-		"15 session.turn.ended.1 T2"
+		"13 session.thread.system.changed.1 T2",
+		"14 session.llm.started.1 T2",
+		"15 session.llm.ended.1 T2",
+		"16 session.turn.ended.1 T2"
 	],
 	"threads": [
 		{
@@ -25,18 +26,19 @@
 		},
 		{
 			"thread": "T2",
-			"origin": "fork T1 at E2",
+			"origin": "fork T1 at E1",
 			"createdSeq": 8,
 			"title": "cut off"
 		}
 	],
 	"entries": [
-		"E1 T1 system seq=3 committed=3 committed",
-		"E2 T1 user seq=4 committed=4 committed",
+		"E1 T1 user seq=3 committed=3 committed",
+		"E2 T1 system seq=4 committed=4 committed",
 		"E3 T1 assistant seq=5 committed=7 committed",
 		"E4 T2 user seq=10 committed=10 committed",
 		"E5 T2 assistant seq=11 committed=12 aborted",
-		"E6 T2 assistant seq=13 committed=15 committed"
+		"E6 T2 system seq=13 committed=13 committed",
+		"E7 T2 assistant seq=14 committed=16 committed"
 	],
 	"documents": [
 		{
