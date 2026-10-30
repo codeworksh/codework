@@ -44,7 +44,6 @@ import {
 	Fiber,
 	FiberSet,
 	Layer,
-	Option,
 	Schema,
 	Scope,
 	Semaphore,
@@ -290,8 +289,7 @@ export const layer = (options: {
 		Service,
 		Effect.gen(function* () {
 			const root = yield* Effect.scope;
-			// `check` runs servers apart from any session, without the event service: nobody listens then.
-			const events = yield* Effect.serviceOption(Event.Service);
+			const events = yield* Event.Service;
 			// Connections close in parallel on shutdown, so one slow server's stop grace does not hold up
 			// the rest. Made before the fibers below, so connect attempts are interrupted before it closes.
 			const servers = yield* Scope.fork(root, "parallel");
@@ -313,11 +311,6 @@ export const layer = (options: {
 
 			/** Publish a status to each of these threads. */
 			const publishTo = (users: Iterable<ThreadId>, status: EventList.McpServerState) =>
-				Option.match(events, {
-					onNone: () => Effect.void,
-					onSome: (events) => publishWith(events, users, status),
-				});
-			const publishWith = (events: Event.Interface, users: Iterable<ThreadId>, status: EventList.McpServerState) =>
 				Effect.flatMap(DateTime.now, (timestamp) =>
 					Effect.forEach(
 						[...users].flatMap((threadId) => {

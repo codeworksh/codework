@@ -1,6 +1,6 @@
 /* @effect-diagnostics preferSchemaOverJson:off -- `--json` prints the report as it is built. */
-import { Mcp } from "@codeworksh/harness/effect";
-import { Effect, References } from "effect";
+import { Database, Event, Mcp } from "@codeworksh/harness/effect";
+import { Effect, Layer, References } from "effect";
 import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
@@ -54,7 +54,12 @@ export default Runtime.handler(
 				directory: hostCwd,
 				hostDir: root ?? hostCwd,
 			}).pipe(
-				Effect.provide(Mcp.layer({ hostCwd, home, authFile })),
+				// Status events need an event service; nothing reads them here, so it keeps them in memory.
+				Effect.provide(
+					Mcp.layer({ hostCwd, home, authFile }).pipe(
+						Layer.provide(Event.layer.pipe(Layer.provide(Database.layer(":memory:")))),
+					),
+				),
 				Effect.provideService(References.MinimumLogLevel, "None"),
 			);
 			const reports = servers.map((server): Report => {
