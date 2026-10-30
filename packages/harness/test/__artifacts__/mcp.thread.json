@@ -368,7 +368,8 @@
 				"name": "big",
 				"exposure": "hidden"
 			}
-		]
+		],
+		"resources": true
 	},
 	"declaredAfterConnect": [
 		"mcp__e2e__echo",
@@ -433,7 +434,8 @@
 				"name": "big",
 				"exposure": "hidden"
 			}
-		]
+		],
+		"resources": true
 	},
 	"declaredAfterDisconnect": [
 		"mcp__e2e__echo",
@@ -546,7 +548,8 @@
 				"name": "big",
 				"exposure": "direct"
 			}
-		]
+		],
+		"resources": true
 	},
 	"connectThenDisconnect": {
 		"finished": [

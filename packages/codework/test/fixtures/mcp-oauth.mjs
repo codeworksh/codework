@@ -14,6 +14,8 @@
  * - `iss`: sent with the authorization response; `"self"` is the real issuer.
  * - `rejectCode`: the token endpoint refuses every authorization code.
  * - `requireScope`: a tool call needs this scope too, or gets a 403 `insufficient_scope`.
+ * - `deny`: `/authorize` refuses with `access_denied` and this description.
+ * - `beforeToken`: awaited before the token endpoint answers.
  */
 
 import { createHash } from "node:crypto";
@@ -46,6 +48,8 @@ export const start = async (options = {}) => {
 		 * works), or `revoke` them and the refresh token (it does not).
 		 */
 		afterList: undefined,
+		/** Every bearer token presented to `/mcp` or `/keyed`, accepted or not. */
+		presented: new Set(),
 	};
 	let base = "";
 	const scopes = (scope) => (scope ?? "").split(" ").filter(Boolean);
@@ -83,6 +87,7 @@ export const start = async (options = {}) => {
 		const header = request.headers.authorization ?? "";
 		const token = header.startsWith("Bearer ") ? header.slice(7) : undefined;
 		const body = request.method === "POST" ? JSON.parse(await read(request)) : undefined;
+		if (token !== undefined) state.presented.add(token);
 		// Not logged: which request meets a refused token first depends on the background stream.
 		if (token === undefined || !accepted(token))
 			return void response
@@ -180,6 +185,14 @@ export const start = async (options = {}) => {
 					params.get("code_challenge_method") !== "S256"
 				)
 					return void response.writeHead(400).end("bad authorization request");
+				if (options.deny !== undefined) {
+					const back = new URL(redirect);
+					back.searchParams.set("error", "access_denied");
+					back.searchParams.set("error_description", options.deny);
+					back.searchParams.set("state", params.get("state"));
+					state.log.push({ authorize: "denied" });
+					return void response.writeHead(302, { location: back.href }).end();
+				}
 				const code = `code-${state.pending.size + 1}`;
 				state.pending.set(code, { challenge: params.get("code_challenge"), redirect, scope: params.get("scope") });
 				state.log.push({ authorize: { scope: params.get("scope"), resource: params.get("resource") } });
@@ -191,6 +204,7 @@ export const start = async (options = {}) => {
 			}
 			case "/token": {
 				const form = new URLSearchParams(await read(request));
+				await options.beforeToken?.();
 				const grant = form.get("grant_type");
 				if (grant === "authorization_code") {
 					const pending = state.pending.get(form.get("code"));

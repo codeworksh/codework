@@ -1,6 +1,14 @@
 // A minimal stdio MCP server, written against the wire protocol rather than an SDK: one JSON-RPC
-// message per line in, one per line out. It offers one tool, `echo`.
+// message per line in, one per line out. It offers one tool, `echo`. While the file `E2E_GATE` names
+// exists, it exits at once. With `E2E_SKIPPED` set it also lists two entries the SDK rejects: `broken`,
+// without an input schema, and one without a name.
+import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
+
+if (process.env.E2E_GATE && existsSync(process.env.E2E_GATE)) {
+	process.stderr.write("gate closed\n");
+	process.exit(1);
+}
 
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 
@@ -20,6 +28,7 @@ const answer = (method, params) => {
 						description: "Echo text back, with the directory the server runs in.",
 						inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
 					},
+					...(process.env.E2E_SKIPPED ? [{ name: "broken" }, { inputSchema: { type: "object" } }] : []),
 				],
 			};
 		case "tools/call":

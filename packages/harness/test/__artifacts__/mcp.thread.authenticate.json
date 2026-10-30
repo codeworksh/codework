@@ -5,7 +5,8 @@
 				"server": "remote",
 				"state": "authenticate",
 				"error": "MCP server \"remote\" requires sign-in. Run \"codework mcp login remote\".",
-				"tools": []
+				"tools": [],
+				"resources": false
 			}
 		],
 		"attempts": 1

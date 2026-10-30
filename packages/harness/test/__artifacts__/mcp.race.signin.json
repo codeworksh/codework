@@ -1,0 +1,28 @@
+{
+	"disconnected": "disconnected",
+	"after": "disconnected",
+	"calls": {
+		"held": "MCP server \"remote\" refused the credential of provider \"openai\". Sign in to it with \"codework auth login\", or set its API key."
+	},
+	"events": {
+		"main": {
+			"remote": [
+				{
+					"server": "remote",
+					"state": "connecting"
+				},
+				{
+					"server": "remote",
+					"state": "connected",
+					"tools": [
+						"echo"
+					]
+				},
+				{
+					"server": "remote",
+					"state": "disconnected"
+				}
+			]
+		}
+	}
+}

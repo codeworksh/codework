@@ -45,9 +45,20 @@ const ServerAddress = {
 
 /** For commands that only talk to a server that is already running. */
 const RunningServer = Flag.String("server").pipe(
-	Flag.withDescription("Base URL of the running codework server"),
-	Flag.withDefault("http://127.0.0.1:7433"),
+	Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
+	Flag.withDefault("ws://127.0.0.1:7433/rpc/v1"),
 );
+
+/** A thread's MCP server in a running server: every thread sharing its instance is affected. */
+const McpControlParams = {
+	name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
+	session: Flag.String("session").pipe(Flag.withAlias("s"), Flag.withDescription("The session")),
+	thread: Flag.String("thread").pipe(
+		Flag.withDescription("Thread of --session whose server it is: a thread ID, or main (default)"),
+		Flag.optional,
+	),
+	server: RunningServer,
+};
 
 const JsonFlag = Flag.Boolean("json").pipe(
 	Flag.withDescription("Print machine-readable output"),
@@ -126,6 +137,99 @@ export const Cmd = Spec.make("codework", {
 		Spec.make("mcp", {
 			description: "Manage MCP servers",
 			commands: [
+				Spec.make("add", {
+					description: "Add or replace a server in mcp.json",
+					params: {
+						name: Argument.String("name").pipe(Argument.withDescription("Server name")),
+						command: Argument.String("command").pipe(
+							Argument.withDescription("Command and arguments of a stdio server, after --"),
+							Argument.variadic({ min: 0 }),
+						),
+						url: Flag.String("url").pipe(
+							Flag.withDescription("Streamable HTTP server URL (instead of a command)"),
+							Flag.optional,
+						),
+						env: Flag.KeyValuePair("env").pipe(
+							Flag.withDescription("Environment variable of a stdio server, as KEY=VALUE"),
+							Flag.optional,
+						),
+						cwd: Flag.String("cwd").pipe(
+							Flag.withDescription("Working directory of a stdio server"),
+							Flag.optional,
+						),
+						header: Flag.KeyValuePair("header").pipe(
+							Flag.withDescription("HTTP header, as KEY=VALUE"),
+							Flag.optional,
+						),
+						bearerTokenEnvVar: Flag.String("bearer-token-env-var").pipe(
+							Flag.withDescription('Send "Authorization: Bearer ${NAME}"'),
+							Flag.optional,
+						),
+						oauthClientId: Flag.String("oauth-client-id").pipe(
+							Flag.withDescription("Pre-registered OAuth client id"),
+							Flag.optional,
+						),
+						oauthClientSecret: Flag.String("oauth-client-secret").pipe(
+							Flag.withDescription("OAuth client secret (may be ${NAME} or !command)"),
+							Flag.optional,
+						),
+						oauthCallbackPort: Flag.Int("oauth-callback-port").pipe(
+							Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
+							Flag.withDescription("Fixed OAuth callback port"),
+							Flag.optional,
+						),
+						oauthClientName: Flag.String("oauth-client-name").pipe(
+							Flag.withDescription("Client name sent when registering with the OAuth server"),
+							Flag.optional,
+						),
+						exposure: Flag.Literals("exposure", ["direct", "hidden", "codemode", "deferred"]).pipe(
+							Flag.withDescription("How the model reaches the server's tools (default: direct)"),
+							Flag.optional,
+						),
+						description: Flag.String("description").pipe(
+							Flag.withDescription("What the server offers"),
+							Flag.optional,
+						),
+						local: Flag.Boolean("local").pipe(
+							Flag.withAlias("l"),
+							Flag.withDescription("Write the project's .codework/mcp.json instead of the user one"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{
+							command: "codework mcp add fs -- npx -y @modelcontextprotocol/server-filesystem .",
+							description: "Add a stdio server",
+						},
+						{
+							command: "codework mcp add linear --url https://mcp.linear.app/mcp",
+							description: "Add an HTTP server; sign in with codework mcp login linear",
+						},
+						{
+							command: "codework mcp add tools -l --url http://127.0.0.1:8080/mcp",
+							description: "Add a server to this project only",
+						},
+					],
+				}),
+				Spec.make("remove", {
+					description: "Remove a server from mcp.json",
+					params: {
+						name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
+						local: Flag.Boolean("local").pipe(
+							Flag.withAlias("l"),
+							Flag.withDescription("Remove it from the project's .codework/mcp.json instead of the user one"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [{ command: "codework mcp remove linear", description: "Remove the linear server" }],
+				}),
+				Spec.make("list", {
+					description: "Connect to every enabled server and show its state, tools and errors",
+					params: { json: JsonFlag },
+					examples: [
+						{ command: "codework mcp list", description: "Check every configured server; exits 1 on a failure" },
+					],
+				}),
 				Spec.make("login", {
 					description: "Sign in to an MCP server with OAuth",
 					params: {
@@ -154,6 +258,30 @@ export const Cmd = Spec.make("codework", {
 						name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
 					},
 					examples: [{ command: "codework mcp logout linear", description: "Sign out of the linear server" }],
+				}),
+				Spec.make("reconnect", {
+					description: "Connect a thread's MCP server afresh in a running server",
+					params: McpControlParams,
+					examples: [
+						{
+							command: "codework mcp reconnect linear --session ses_01h9",
+							description: "Restart the linear server the main thread uses; its tools return from the next turn",
+						},
+						{
+							command: "codework mcp reconnect linear --session ses_01h9 --thread thr_01ja",
+							description: "Restart the one a thread of the session uses",
+						},
+					],
+				}),
+				Spec.make("disconnect", {
+					description: "Close a thread's MCP server in a running server until it is reconnected",
+					params: McpControlParams,
+					examples: [
+						{
+							command: "codework mcp disconnect linear --session ses_01h9",
+							description: "Close the linear server the main thread uses",
+						},
+					],
 				}),
 			],
 		}),

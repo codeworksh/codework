@@ -1,0 +1,142 @@
+{
+	"first": {
+		"declared": [
+			"mcp__odd__good",
+			"mcp__odd__scalar",
+			"mcp__odd__bare",
+			"mcp__odd__fix"
+		],
+		"status": {
+			"server": "odd",
+			"state": "connected",
+			"tools": [
+				{
+					"name": "good",
+					"exposure": "direct"
+				},
+				{
+					"name": "scalar",
+					"exposure": "direct"
+				},
+				{
+					"name": "bare",
+					"exposure": "direct"
+				},
+				{
+					"name": "fix",
+					"exposure": "direct"
+				}
+			],
+			"resources": false,
+			"skipped": {
+				"names": [
+					"typed",
+					"bad"
+				],
+				"unnamed": 1
+			}
+		}
+	},
+	"refreshed": {
+		"declared": [
+			"mcp__odd__good",
+			"mcp__odd__scalar",
+			"mcp__odd__bare",
+			"mcp__odd__fix",
+			"mcp__odd__bad"
+		],
+		"status": {
+			"server": "odd",
+			"state": "connected",
+			"tools": [
+				{
+					"name": "good",
+					"exposure": "direct"
+				},
+				{
+					"name": "scalar",
+					"exposure": "direct"
+				},
+				{
+					"name": "bare",
+					"exposure": "direct"
+				},
+				{
+					"name": "fix",
+					"exposure": "direct"
+				},
+				{
+					"name": "bad",
+					"exposure": "direct"
+				}
+			],
+			"resources": false,
+			"skipped": {
+				"names": [
+					"typed",
+					"worse"
+				],
+				"unnamed": 1
+			}
+		}
+	},
+	"calls": {
+		"good": "good",
+		"scalar": "MCP tool \"odd/scalar\" failed: Invalid result for tools/call: structuredContent: Invalid input: expected record, received number",
+		"bare": "{\n  \"ok\": true\n}",
+		"fix": "fixed"
+	},
+	"events": {
+		"main": {
+			"odd": [
+				{
+					"server": "odd",
+					"state": "connecting"
+				},
+				{
+					"server": "odd",
+					"state": "connected",
+					"tools": [
+						"good",
+						"scalar",
+						"bare",
+						"fix"
+					],
+					"skipped": {
+						"names": [
+							"typed",
+							"bad"
+						],
+						"unnamed": 1
+					}
+				},
+				{
+					"server": "odd",
+					"state": "connected",
+					"tools": [
+						"good",
+						"scalar",
+						"bare",
+						"fix",
+						"bad"
+					],
+					"skipped": {
+						"names": [
+							"typed",
+							"worse"
+						],
+						"unnamed": 1
+					}
+				}
+			]
+		}
+	},
+	"log": [
+		"[odd] warning codework: skipped tool \"typed\": outputSchema.type: Invalid input: expected \"object\"",
+		"[odd] warning codework: skipped tool \"bad\": inputSchema: Invalid input: expected object, received undefined",
+		"[odd] warning codework: skipped a tool without a name: name: Invalid input: expected string, received undefined",
+		"[odd] warning codework: skipped tool \"typed\": outputSchema.type: Invalid input: expected \"object\"",
+		"[odd] warning codework: skipped tool \"worse\": inputSchema.type: Invalid input: expected \"object\"",
+		"[odd] warning codework: skipped a tool without a name: name: Invalid input: expected string, received undefined"
+	]
+}

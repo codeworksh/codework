@@ -14,7 +14,8 @@ import { writePlugin } from "./builtin/tool/write.ts";
  * Every plugin the harness ships, and the selection a caller who passes no `plugins` gets. Tool
  * contributors come first; within the prompt domain, declaration order is run order. The search
  * tools (grep, find, ls) are `optIn` and ship off: settings turn each on with
- * `{ "plugin": "codework.tool.grep", "enabled": true }`. So is toolsearch, which loads deferred tools.
+ * `{ "plugin": "codework.tool.grep", "enabled": true }`. toolsearch, which loads deferred tools, turns on
+ * by itself in a turn that has some.
  */
 export const builtins = Object.freeze([
 	bashPlugin,

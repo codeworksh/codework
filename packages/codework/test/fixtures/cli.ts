@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Writable } from "node:stream";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { onTestFinished } from "vite-plus/test";
@@ -120,8 +121,8 @@ export const runCli = (
 		readonly cwd: string;
 		readonly env: NodeJS.ProcessEnv;
 		readonly onStderr?: (text: string) => void;
-		/** The child process, for a test that signals it. */
-		readonly onSpawn?: (child: { kill: (signal: NodeJS.Signals) => void }) => void;
+		/** The child process, for a test that signals it or types into it. */
+		readonly onSpawn?: (child: { kill: (signal: NodeJS.Signals) => void; stdin: Writable }) => void;
 	},
 ) =>
 	new Promise<Result>((resolve, reject) => {

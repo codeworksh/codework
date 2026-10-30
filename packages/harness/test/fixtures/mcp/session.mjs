@@ -3,16 +3,16 @@ import { Server } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { appendFileSync, existsSync } from "node:fs";
 
-// E2E_STARTS: a file that gets each start's pid on a line. E2E_GATE: while this file exists, exit at
-// once. E2E_HOLD: while this file exists, wait before answering the handshake. E2E_DELAY: milliseconds
-// to wait before answering it.
+// E2E_STARTS: a file that gets each start's pid on a line. E2E_HOLD: while this file exists, wait before
+// answering the handshake. E2E_GATE: if this file exists once the hold is over, exit. E2E_DELAY:
+// milliseconds to wait before answering the handshake.
 if (process.env.E2E_STARTS) appendFileSync(process.env.E2E_STARTS, `${process.pid}\n`);
+while (process.env.E2E_HOLD && existsSync(process.env.E2E_HOLD))
+	await new Promise((resolve) => setTimeout(resolve, 20));
 if (process.env.E2E_GATE && existsSync(process.env.E2E_GATE)) {
 	process.stderr.write("gate closed\n");
 	process.exit(1);
 }
-while (process.env.E2E_HOLD && existsSync(process.env.E2E_HOLD))
-	await new Promise((resolve) => setTimeout(resolve, 20));
 if (process.env.E2E_DELAY) await new Promise((resolve) => setTimeout(resolve, Number(process.env.E2E_DELAY)));
 
 const object = (properties = {}, required = []) => ({ type: "object", properties, required });

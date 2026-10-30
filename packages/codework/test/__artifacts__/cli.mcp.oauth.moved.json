@@ -1,0 +1,24 @@
+{
+	"moved": {
+		"state": "authenticate",
+		"error": "MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\"."
+	},
+	"asked": {
+		"declared": [],
+		"answer": "Tool said: Unknown Tool: mcp__secure__whoami"
+	},
+	"presented": {
+		"first": [
+			"access-1"
+		],
+		"moved": []
+	},
+	"stored": {
+		"mcp__secure|<fixture>/mcp": {
+			"access": "access-1"
+		},
+		"mcp__secure|<moved>/mcp": {
+			"challenge": "invalid_token"
+		}
+	}
+}

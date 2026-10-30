@@ -2,7 +2,7 @@ import type { PluginOptions, PluginPatch, PluginRef } from "@codeworksh/plugin/p
 import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
-import { type Plugin, rank } from "./plugin.ts";
+import { type Plugin, rank, whenDeferred } from "./plugin.ts";
 import { PluginSource } from "./source.ts";
 
 /**
@@ -13,6 +13,8 @@ export type { PluginOptions, PluginPatch, PluginRef, PluginSpec } from "@codewor
 export interface Prepared {
 	readonly plugin: Plugin;
 	readonly options: PluginOptions;
+	/** Set up only in a turn that has deferred tools: a `whenDeferred` built-in no entry turned on or off. */
+	readonly whenDeferred?: true;
 }
 export interface Options extends Loader.Options {
 	readonly builtins: ReadonlyArray<Plugin>;
@@ -200,14 +202,16 @@ export interface Selected {
  * `enabled` flip or a reordering applies at the next turn without importing anything.
  */
 export const select = Effect.fn("PluginCatalog.select")(function* (references: ReadonlyArray<PluginRef>, pool: Pool) {
-	const operations = new Map<string, { enabled: boolean; index: number; options: PluginOptions }>();
+	const operations = new Map<string, { enabled: boolean | "deferred"; index: number; options: PluginOptions }>();
 	const missing: string[] = [];
-	// An `optIn` plugin is selected off; only a configuration entry's `enabled` turns it on, and
-	// naming its module again moves it without undoing that.
+	// An `optIn` plugin is selected off, or `"deferred"` for a `whenDeferred` built-in; only a
+	// configuration entry's `enabled` settles it, and naming its module again moves it without undoing that.
 	const choose = (id: string, index: number) => {
 		const previous = operations.get(id);
+		const plugin = pool.plugins.get(id);
+		const initial = plugin?.optIn !== true ? undefined : whenDeferred(plugin) ? ("deferred" as const) : false;
 		operations.set(id, {
-			enabled: pool.plugins.get(id)?.optIn === true ? (previous?.enabled ?? false) : true,
+			enabled: initial === undefined ? true : (previous?.enabled ?? initial),
 			index,
 			options: previous?.options ?? {},
 		});
@@ -267,10 +271,15 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 
 	const selection: Array<Prepared & { readonly index: number }> = [];
 	for (const [id, operation] of operations) {
-		if (!operation.enabled) continue;
+		if (operation.enabled === false) continue;
 		const plugin = pool.plugins.get(id);
 		if (plugin !== undefined) {
-			selection.push({ plugin, options: Object.freeze(operation.options), index: operation.index });
+			selection.push({
+				plugin,
+				options: Object.freeze(operation.options),
+				...(operation.enabled === "deferred" ? { whenDeferred: true as const } : {}),
+				index: operation.index,
+			});
 		}
 	}
 	// Domain first, then where the entry was written. Comparing the index explicitly rather than
@@ -279,7 +288,7 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 	// depends on the order those entries were written in.
 	selection.sort((a, b) => rank(a.plugin.kind) - rank(b.plugin.kind) || a.index - b.index);
 	return {
-		selection: Object.freeze(selection.map(({ plugin, options }) => ({ plugin, options }) satisfies Prepared)),
+		selection: Object.freeze(selection.map(({ index: _index, ...prepared }) => prepared satisfies Prepared)),
 		missing,
 	} satisfies Selected;
 });

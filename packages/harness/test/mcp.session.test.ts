@@ -15,6 +15,7 @@ import type { LLM } from "../src/runner/llm.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { listen, raw } from "./fixtures/mcp/http.ts";
+import { results } from "./fixtures/mcp/turns.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
@@ -399,6 +400,92 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 	);
 	await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/mcp.session.lifecycle.json",
+	);
+}, 60_000);
+
+it("mcp: concurrent calls that meet an expired HTTP session share one new session", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+
+	// Calls are told apart by the session they carry, never by the order they arrive in. Each original call
+	// is held until both have arrived, so the two meet the same session.
+	const expired = { status: 404, body: "session not found" } as const;
+	const barrier = () => {
+		let open = () => {};
+		const opened = new Promise<void>((resolve) => (open = resolve));
+		let arrived = 0;
+		return { opened, arrive: () => (++arrived === 2 ? open() : undefined), open: () => open() };
+	};
+	const both = barrier();
+	const one = barrier();
+	// The call left on the old session of the second turn answers only once the retry reached the new one.
+	const reconnected = barrier();
+	// Retries of the first turn land on the second session too; only the second turn's calls are scripted there.
+	let turn = 1;
+	let second = 0;
+	const remote = raw({
+		script: (request, session) => {
+			if (request !== "POST tools/call") return undefined;
+			if (session === "raw-session-1") {
+				both.arrive();
+				return { after: both.opened.then(() => expired) };
+			}
+			if (turn === 2 && session === "raw-session-2" && second < 2) {
+				one.arrive();
+				return ++second === 1
+					? { after: one.opened.then(() => expired) }
+					: { after: Promise.all([one.opened, reconnected.opened]).then(() => undefined) };
+			}
+			if (turn === 2 && session === "raw-session-3") reconnected.open();
+			return undefined;
+		},
+	});
+	const echo = (id: string) => pendingCall("mcp__remote__echo", {}, id);
+	const requests: LLM.Input[] = [];
+	const llm = scripted([[echo("both-a"), echo("both-b")], [], [echo("one-a"), echo("one-b")], []], requests);
+
+	const result = await Effect.gen(function* () {
+		const url = yield* listen(remote.handler);
+		yield* Effect.promise(() => write(join(home, "mcp.json"), { mcpServers: { remote: { url: url.href } } }));
+		const session = yield* Session.create({
+			directory: work,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+			tools: { execution: "parallel" },
+		});
+		const initializes = () => remote.seen.filter((request) => request === "POST initialize").length;
+
+		// Both calls meet the expired session.
+		yield* session.main.run("one");
+		const afterBoth = initializes();
+		turn = 2;
+		// One meets it while the other is still running on the old session, which stays open until it answers.
+		yield* session.main.run("two");
+		return {
+			initializes: { first: 1, afterBoth, afterOne: initializes() },
+			// A forgotten session is never ended with a DELETE. The standalone SSE stream (`GET`) opens in the
+			// background, at no fixed point among the requests.
+			remote: remote.seen.filter((request) => request !== "POST notifications/initialized" && request !== "GET"),
+			calls: yield* results(session.main),
+			status: (yield* Mcp.Service.use((mcp) => mcp.status(session.main.id))).map(({ server, state }) => ({
+				server,
+				state,
+			})),
+		};
+	}).pipe(
+		Effect.provide(
+			Harness.layer({ home, hostCwd: dir.path, database: ":memory:", plugins: [defaultPromptPlugin], llm }),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.initializes).toEqual({ first: 1, afterBoth: 2, afterOne: 3 });
+	expect(result.calls).toEqual({ "both-a": "called", "both-b": "called", "one-a": "called", "one-b": "called" });
+	expect(result.status).toEqual([{ server: "remote", state: "connected" }]);
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.session.expired.json",
 	);
 }, 60_000);
 

@@ -44,7 +44,6 @@ const scenarios = [
 	"httpHappy",
 	"httpRetries",
 	"initializedTimeout",
-	"invalidEntry",
 	"logFile",
 	"logRotation",
 	"missingCwd",
@@ -60,6 +59,7 @@ const scenarios = [
 	"retryCloseReason",
 	"roots",
 	"sessionExpired",
+	"skipped",
 	"spawnFailure",
 	"stderrGrandchild",
 	"stdioHappy",
@@ -739,19 +739,23 @@ describe("mcp client", () => {
 	);
 
 	it(
-		"tools/list: an invalid entry fails with RequestError",
+		"tools/list: entries the SDK rejects are skipped and the rest kept; call results are checked as before",
 		Effect.gen(function* () {
 			const connection = yield* McpClient.connect({
 				server: "malformed",
-				endpoint: stdio("malformed.mjs", { MCP_MALFORMED: "invalid" }),
+				endpoint: stdio("malformed.mjs", { MCP_MALFORMED: "skipped" }),
 			});
-			const error = yield* connection.tools().pipe(Effect.flip);
-			summary.invalidEntry = failure(error);
-			expect(failure(error)).toEqual({
-				tag: "Mcp.RequestError",
-				message:
-					"Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
-			});
+			const listing = yield* connection.listing();
+			const tools = listing.tools.map((tool) => tool.name);
+			const skipped = listing.skipped;
+			// Structured content must be an object; a result without content gets an empty one.
+			const scalar = failure(yield* connection.callTool({ name: "scalar" }).pipe(Effect.flip));
+			const bare = yield* connection.callTool({ name: "bare" });
+			summary.skipped = { tools, skipped, scalar, bare };
+			expect(tools).toEqual(["good", "scalar", "bare", "fix"]);
+			expect(skipped.map((tool) => tool.name)).toEqual(["typed", "bad", undefined]);
+			expect(scalar.tag).toBe("Mcp.RequestError");
+			expect(bare).toEqual({ content: [], structuredContent: { ok: true } });
 		}),
 	);
 

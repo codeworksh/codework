@@ -339,15 +339,38 @@ export const PluginUpdated = EventSchema.define({
 });
 export type PluginUpdated = typeof PluginUpdated.Type;
 
+/** Every state an MCP server can be in. */
+export const McpState = Schema.Literals([
+	"connecting",
+	"connected",
+	"failed",
+	"authenticate",
+	"disconnected",
+	"disabled",
+]);
+
+/**
+ * The tools a server listed that were left out because the MCP SDK rejects them: their names, and how
+ * many had no usable name.
+ */
+export const McpSkipped = Schema.Struct({ names: Schema.Array(Schema.String), unnamed: NonNegativeInt });
+export type McpSkipped = typeof McpSkipped.Type;
+
 /**
  * One MCP server's state as a thread runs it. `tools` names every tool the server offered, as the
- * server names them, whatever their exposure.
+ * server names them, whatever their exposure; `skipped`, present only when some were left out, the
+ * ones it offered that cannot be used.
  */
 export const McpServerState = Schema.Union([
-	Schema.Struct({ server: Schema.String, state: Schema.Literal("connected"), tools: Schema.Array(Schema.String) }),
-	Schema.Struct({ server: Schema.String, state: Schema.Literals(["failed", "authenticate"]), error: Schema.String }),
-	Schema.Struct({ server: Schema.String, state: Schema.Literal("disconnected"), error: optional(Schema.String) }),
-	Schema.Struct({ server: Schema.String, state: Schema.Literals(["connecting", "disabled"]) }),
+	Schema.Struct({
+		server: Schema.String,
+		state: McpState.pick(["connected"]),
+		tools: Schema.Array(Schema.String),
+		skipped: optional(McpSkipped),
+	}),
+	Schema.Struct({ server: Schema.String, state: McpState.pick(["failed", "authenticate"]), error: Schema.String }),
+	Schema.Struct({ server: Schema.String, state: McpState.pick(["disconnected"]), error: optional(Schema.String) }),
+	Schema.Struct({ server: Schema.String, state: McpState.pick(["connecting", "disabled"]) }),
 ]);
 export type McpServerState = typeof McpServerState.Type;
 

@@ -5,6 +5,7 @@ import {
 	EventList,
 	EventRegistry,
 	EventSchema,
+	Mcp,
 	ModelCatalog,
 	Project,
 	PromptSchema,
@@ -111,6 +112,11 @@ export const layer = Contract.Api.toLayer(
 		const identity = yield* Identity.Service;
 		const events = yield* Event.Service;
 		const registry = yield* EventRegistry.Service;
+		const mcp = yield* Mcp.Service;
+		const mcpControl = (operation: "connect" | "disconnect") =>
+			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
+				return yield* mcp[operation](yield* resolve(ref), server);
+			});
 
 		return Contract.Api.of({
 			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
@@ -320,6 +326,8 @@ export const layer = Contract.Api.toLayer(
 			"thread.wait": Effect.fnUntraced(function* (ref) {
 				yield* control.wait(yield* resolve(ref));
 			}),
+			"mcp.connect": mcpControl("connect"),
+			"mcp.disconnect": mcpControl("disconnect"),
 			"sandbox.drivers": Effect.fnUntraced(function* () {
 				const drivers = yield* Sandbox.drivers();
 				return drivers.map(({ name, kind }) => ({ name, kind }));

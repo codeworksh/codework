@@ -1,0 +1,40 @@
+{
+	"states": [
+		"connecting",
+		"failed",
+		"disconnected"
+	],
+	"requests": [
+		[
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch"
+		],
+		[
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch"
+		],
+		[
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch"
+		],
+		[
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch"
+		]
+	],
+	"calls": {
+		"search": "No matching tools found."
+	}
+}

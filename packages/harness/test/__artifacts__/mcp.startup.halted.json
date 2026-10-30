@@ -1,0 +1,55 @@
+{
+	"disconnect": {
+		"stateWhileHeld": "connecting",
+		"disconnected": {
+			"server": "held",
+			"state": "disconnected",
+			"tools": [],
+			"resources": false
+		},
+		"exited": true,
+		"starts": 1,
+		"turnEndedEarly": true,
+		"later": {
+			"status": [
+				{
+					"server": "held",
+					"state": "disconnected",
+					"tools": [],
+					"resources": false
+				}
+			],
+			"starts": 1,
+			"declared": []
+		}
+	},
+	"remove": {
+		"stateWhileHeld": "connecting",
+		"exited": true,
+		"starts": 2,
+		"turnEndedEarly": true,
+		"status": []
+	},
+	"events": {
+		"disconnected": {
+			"held": [
+				{
+					"server": "held",
+					"state": "connecting"
+				},
+				{
+					"server": "held",
+					"state": "disconnected"
+				}
+			]
+		},
+		"removed": {
+			"held": [
+				{
+					"server": "held",
+					"state": "connecting"
+				}
+			]
+		}
+	}
+}

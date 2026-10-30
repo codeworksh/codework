@@ -419,23 +419,27 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "off",
 			"state": "disabled",
-			"tools": []
+			"tools": [],
+			"resources": false
 		},
 		{
 			"server": "my-srv",
 			"state": "disabled",
-			"tools": []
+			"tools": [],
+			"resources": false
 		},
 		{
 			"server": "badheader",
 			"state": "failed",
 			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
-			"tools": []
+			"tools": [],
+			"resources": false
 		},
 		{
 			"server": "later",
@@ -485,7 +489,8 @@
 					"name": "big",
 					"exposure": "codemode"
 				}
-			]
+			],
+			"resources": true
 		}
 	],
 	"configErrors": [

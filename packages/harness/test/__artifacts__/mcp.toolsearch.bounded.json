@@ -1,0 +1,10 @@
+{
+	"interrupted": true,
+	"interruptedQuickly": true,
+	"boundedWaited": true,
+	"calls": {
+		"interrupted": "Tool Execution Interrupted",
+		"bounded": "No matching tools found."
+	},
+	"stillConnecting": "connecting"
+}

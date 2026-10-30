@@ -1,0 +1,29 @@
+{
+	"stateWhenReleased": "connecting",
+	"firstDeclared": [
+		"bash",
+		"read",
+		"write",
+		"edit",
+		"toolsearch"
+	],
+	"secondChanges": [
+		{
+			"added": [
+				"mcp__slow__echo",
+				"mcp__slow__big"
+			],
+			"removed": []
+		}
+	],
+	"calls": {
+		"search": "Loaded 2 tools. They are available from your next call:\n- mcp__slow__echo: Echo text back, prefixed with the configured greeting.\n- mcp__slow__big: More text than the model is shown.",
+		"echo": "hello: found"
+	},
+	"loaded": {
+		"add": [
+			"mcp__slow__echo",
+			"mcp__slow__big"
+		]
+	}
+}

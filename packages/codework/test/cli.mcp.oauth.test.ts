@@ -1,6 +1,6 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite writes its home and settings with node:fs. */
 /* @effect-diagnostics globalFetch:off -- the suite plays the browser with plain fetch. */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vite-plus/test";
@@ -10,7 +10,13 @@ import { start } from "./fixtures/mcp-oauth.mjs";
 
 interface Fixture {
 	readonly url: string;
-	readonly state: { log: unknown[]; access: Map<string, unknown>; afterList: "expire" | "revoke" | undefined };
+	readonly state: {
+		log: unknown[];
+		access: Map<string, unknown>;
+		refresh: string | undefined;
+		afterList: "expire" | "revoke" | undefined;
+		presented: Set<string>;
+	};
 	readonly close: () => Promise<void>;
 }
 
@@ -20,6 +26,7 @@ type Stored = Record<
 >;
 
 const AUTHORIZE = /http:\/\/127\.0\.0\.1:\d+\/authorize\S+/;
+const PROMPT = "Or paste the URL the browser was redirected to:";
 
 /** A home with `mcp.json` built from the fixture's URL, and the CLI commands a case runs in it. */
 const setup = async (options: object, servers: (url: string) => Record<string, object>) => {
@@ -34,7 +41,10 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 	let calls: ReadonlyArray<ToolCall> = [];
 	const fake = await provider(() => calls);
 	writeSettings(settings, fake.url);
-	writeFileSync(join(settings, "mcp.json"), JSON.stringify({ mcpServers: servers(server.url) }));
+	const configure = (next: Record<string, object>) =>
+		writeFileSync(join(settings, "mcp.json"), JSON.stringify({ mcpServers: next }));
+	configure(servers(server.url));
+	// Read by each command as it starts, so a case may change it between commands.
 	const env = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models, OPENAI_API_KEY: "provider-key" };
 	const shared = ["--home", home, "--database", ":memory:", "--user-config-dir", settings];
 	const port = new URL(server.url).port;
@@ -60,29 +70,46 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 
 	/**
 	 * `codework mcp login`, playing the browser: follow the authorization URL to the loopback
-	 * callback. `cancel` interrupts the CLI instead, once it shows the URL.
+	 * callback, with `before` and `after` sent the callback URL around that request. `cancel`
+	 * interrupts the CLI instead, once it shows the URL. `paste` writes the callback URL to its
+	 * standard input instead of requesting it; `closeStdin` closes that input as the CLI starts.
 	 */
-	const login = async (name: string, options: { readonly cancel?: boolean } = {}) => {
+	const login = async (
+		name: string,
+		options: {
+			readonly cancel?: boolean;
+			readonly paste?: boolean;
+			readonly closeStdin?: boolean;
+			readonly before?: (callback: string) => Promise<void>;
+			readonly after?: (callback: string) => Promise<void>;
+		} = {},
+	) => {
 		let page: number | undefined;
 		let callback: string | undefined;
 		let browsing: Promise<void> | undefined;
-		let child: { kill: (signal: NodeJS.Signals) => void } | undefined;
+		let child: { kill: (signal: NodeJS.Signals) => void; stdin: NodeJS.WritableStream } | undefined;
+		const browse = (text: string) => {
+			const url = AUTHORIZE.exec(text)?.[0];
+			if (url === undefined || browsing !== undefined) return;
+			browsing = (async () => {
+				const approved = await fetch(url, { redirect: "manual" });
+				callback = approved.headers.get("location") ?? undefined;
+				if (options.cancel) return child?.kill("SIGINT");
+				if (callback === undefined) return;
+				if (options.paste) return void child?.stdin.write(`${callback}\n`);
+				await options.before?.(callback);
+				page = (await fetch(callback)).status;
+				await options.after?.(callback);
+			})();
+		};
 		const result = await runCli([...shared, "mcp", "login", name, "--browser=false"], {
 			cwd: project,
 			env,
 			onSpawn: (spawned) => {
 				child = spawned;
+				if (options.closeStdin) spawned.stdin.end();
 			},
-			onStderr: (text) => {
-				const url = AUTHORIZE.exec(text)?.[0];
-				if (url === undefined || browsing !== undefined) return;
-				browsing = (async () => {
-					const approved = await fetch(url, { redirect: "manual" });
-					callback = approved.headers.get("location") ?? undefined;
-					if (options.cancel) return child?.kill("SIGINT");
-					if (callback !== undefined) page = (await fetch(callback)).status;
-				})();
-			},
+			onStderr: browse,
 		});
 		await browsing;
 		const lines = result.stderr.trim().split("\n");
@@ -90,8 +117,8 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 			status: result.status,
 			stdout: result.stdout,
 			// The last line says why a sign-in failed. An interrupted one says nothing, and leaves the
-			// authorization URL as its last line.
-			error: result.status === 0 || AUTHORIZE.test(lines.at(-1) ?? "") ? undefined : normalise(lines.at(-1) ?? ""),
+			// paste prompt as its last line.
+			error: result.status === 0 || lines.at(-1) === PROMPT ? undefined : normalise(lines.at(-1) ?? ""),
 			page,
 			callback,
 		};
@@ -99,6 +126,8 @@ const setup = async (options: object, servers: (url: string) => Record<string, o
 
 	return {
 		server,
+		env,
+		configure,
 		run,
 		login,
 		stored,
@@ -219,6 +248,60 @@ it("a call needing more scope asks for sign-in, and the next login requests that
 	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.scope.json");
 }, 120_000);
 
+it("a refresh refused because another process signed in meanwhile keeps that process's tokens", async () => {
+	let beforeToken: (() => void) | undefined;
+	const { server, run, login, stored, file, normalise } = await setup(
+		{ beforeToken: async () => beforeToken?.() },
+		(url) => ({ secure: { url: `${url}/mcp` } }),
+	);
+	const signedIn = await login("secure");
+	expect(signedIn.status, signedIn.error).toBe(0);
+	const id = `mcp__secure|${server.url}/mcp`;
+
+	// While the run's refresh waits for the token endpoint, another process signs in again: it stores
+	// new tokens under the file's lock, and the server revokes the refresh token the run presented.
+	const signInElsewhere = (access: string, refresh: string) => {
+		beforeToken = () => {
+			beforeToken = undefined;
+			const lock = `${file}.lock`;
+			mkdirSync(lock);
+			const all = stored();
+			const tokens = { access_token: access, token_type: "Bearer", expires_in: 3600, refresh_token: refresh };
+			all[id] = { ...all[id], tokens };
+			writeFileSync(`${file}.other.tmp`, JSON.stringify(all), { mode: 0o600 });
+			renameSync(`${file}.other.tmp`, file);
+			rmdirSync(lock);
+			server.state.refresh = refresh;
+		};
+		server.state.access.clear();
+	};
+
+	signInElsewhere("access-other", "refresh-other");
+	const replaced = await run("Signed in elsewhere.", [whoami("secure")]);
+	// The refused refresh drops nothing it did not present, so the run carries on with those tokens.
+	expect(replaced.answer).toBe("Tool said: called with access-2");
+	expect(stored()[id]?.tokens?.access_token).toBe("access-2");
+
+	// The other process got the same access token back with a new refresh token.
+	signInElsewhere("access-2", "refresh-other-2");
+	const rotated = await run("Refresh token rotated elsewhere.", [whoami("secure")]);
+	expect(rotated.answer).toBe("Tool said: called with access-3");
+	expect(stored()[id]?.tokens?.access_token).toBe("access-3");
+
+	await expect(
+		`${JSON.stringify(
+			{
+				replaced,
+				rotated,
+				stored: JSON.parse(normalise(JSON.stringify(stored()[id]?.tokens))),
+				server: JSON.parse(normalise(JSON.stringify(server.state.log))),
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.invalidate.json");
+}, 120_000);
+
 it("codework mcp login accepts what a sign-in may trust and refuses the rest", async () => {
 	const cases: Record<string, unknown> = {};
 	const attempt = async (
@@ -294,4 +377,167 @@ it("codework mcp login and logout refuse servers that do not sign in with OAuth"
 	await expect(`${JSON.stringify(outcomes, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/cli.mcp.oauth.refused.json",
 	);
+}, 120_000);
+
+it("a provider-keyed server that refuses the key asks for the provider's sign-in, and connects with the right key", async () => {
+	const { server, env, cli, run } = await setup({}, (url) => ({
+		keyed: { url: `${url}/keyed`, auth: { provider: "openai" } },
+	}));
+	const status = async () => {
+		const listed = await cli(["mcp", "list", "--json"]);
+		const [report] = (JSON.parse(listed.stdout) as { servers: Array<{ state: string; error?: string }> }).servers;
+		return { exit: listed.status, state: report?.state, error: report?.error };
+	};
+
+	env.OPENAI_API_KEY = "wrong-key";
+	const refused = await status();
+	expect(refused).toEqual({
+		exit: 1,
+		state: "authenticate",
+		error: 'MCP server "keyed" refused the credential of provider "openai". Sign in to it with "codework auth login", or set its API key.',
+	});
+	const asked = await run("Wrong key.", [whoami("keyed")]);
+	expect(asked.declared).toEqual([]);
+
+	env.OPENAI_API_KEY = "provider-key";
+	const accepted = await status();
+	expect(accepted).toEqual({ exit: 0, state: "connected", error: undefined });
+	const called = await run("Right key.", [whoami("keyed")]);
+	expect(called.answer).toBe("Tool said: called with provider-key");
+	expect([...server.state.presented]).toEqual(["wrong-key", "provider-key"]);
+
+	await expect(
+		`${JSON.stringify({ refused, asked, accepted, called, presented: [...server.state.presented] }, null, "\t")}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.provider.json");
+}, 120_000);
+
+it("the sign-in callback ignores stray and replayed requests, and a denied authorization fails the login", async () => {
+	let release = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	// The token exchange waits until the replay is sent, so the callback is still listening for it.
+	const { server, login, stored, normalise } = await setup({ beforeToken: () => held }, (url) => ({
+		secure: { url: `${url}/mcp` },
+	}));
+	const stray: Record<string, number> = {};
+	const send = async (label: string, url: string) => {
+		stray[label] = (await fetch(url)).status;
+	};
+	const signedIn = await login("secure", {
+		before: async (callback) => {
+			const real = new URL(callback);
+			const at = (path: string, query: string) => `${real.origin}${path}${query}`;
+			const code = real.searchParams.get("code");
+			await send("wrong path", at("/elsewhere", real.search));
+			await send("missing state", at(real.pathname, `?code=${code}`));
+			await send("wrong state", at(real.pathname, `?code=${code}&state=wrong`));
+			await send("error with a wrong state", at(real.pathname, "?error=access_denied&state=wrong"));
+			await send("no OAuth parameters", at(real.pathname, ""));
+		},
+		after: async (callback) => {
+			await send("replay", callback);
+			release();
+		},
+	});
+	expect(signedIn.status, signedIn.error).toBe(0);
+	expect(signedIn.page).toBe(200);
+	expect(stray).toEqual({
+		"wrong path": 404,
+		"missing state": 400,
+		"wrong state": 400,
+		"error with a wrong state": 400,
+		"no OAuth parameters": 400,
+		replay: 400,
+	});
+	expect(stored()[`mcp__secure|${server.url}/mcp`]?.tokens?.access_token).toBe("access-1");
+
+	const denied = await setup({ deny: "The user refused access" }, (url) => ({ secure: { url: `${url}/mcp` } }));
+	const refused = await denied.login("secure");
+	expect(refused.status).not.toBe(0);
+	expect(refused.error).toContain("The user refused access");
+	expect(denied.server.state.log).not.toContainEqual(expect.objectContaining({ token: "authorization_code" }));
+
+	await expect(
+		`${JSON.stringify(
+			{
+				stray,
+				signedIn: { stdout: signedIn.stdout, page: signedIn.page },
+				server: JSON.parse(normalise(JSON.stringify(server.state.log))),
+				denied: { error: denied.normalise(refused.error ?? ""), page: refused.page },
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.callback.json");
+}, 120_000);
+
+it("codework mcp login signs in with the redirect URL piped to it, and with the browser once its input is closed", async () => {
+	const { server, login, stored, normalise } = await setup({}, (url) => ({ secure: { url: `${url}/mcp` } }));
+	const pasted = await login("secure", { paste: true });
+	expect(pasted.status, pasted.error).toBe(0);
+	expect(pasted.page).toBeUndefined();
+	expect(pasted.stdout).toBe('Signed in to MCP server "secure" (1 tool).\n');
+	const access = stored()[`mcp__secure|${server.url}/mcp`]?.tokens?.access_token;
+	expect(access).toBe("access-1");
+
+	// Input that ends without a URL is not a cancel: the callback still completes the sign-in.
+	const closed = await setup({}, (url) => ({ secure: { url: `${url}/mcp` } }));
+	const browsed = await closed.login("secure", { closeStdin: true });
+	expect(browsed.status, browsed.error).toBe(0);
+	expect(browsed.page).toBe(200);
+	expect(closed.stored()[`mcp__secure|${closed.server.url}/mcp`]?.tokens?.access_token).toBe("access-1");
+
+	await expect(
+		`${JSON.stringify(
+			{
+				pasted: { stdout: pasted.stdout, access, server: JSON.parse(normalise(JSON.stringify(server.state.log))) },
+				closed: { stdout: browsed.stdout, page: browsed.page },
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.paste.json");
+}, 120_000);
+
+it("tokens stay with the server URL they were issued for when the server moves", async () => {
+	const { server, login, configure, cli, run, stored, normalise } = await setup({}, (url) => ({
+		secure: { url: `${url}/mcp` },
+	}));
+	const signedIn = await login("secure");
+	expect(signedIn.status, signedIn.error).toBe(0);
+
+	const moved = (await start({})) as Fixture;
+	onTestFinished(() => moved.close());
+	configure({ secure: { url: `${moved.url}/mcp` } });
+	const listed = await cli(["mcp", "list", "--json"]);
+	const [report] = (JSON.parse(listed.stdout) as { servers: Array<{ state: string; error?: string }> }).servers;
+	expect(report).toMatchObject({
+		state: "authenticate",
+		error: 'MCP server "secure" requires sign-in. Run "codework mcp login secure".',
+	});
+	const asked = await run("Moved.", [whoami("secure")]);
+	expect(asked.declared).toEqual([]);
+	expect([...moved.state.presented]).toEqual([]);
+	// The moved server's challenge is remembered under its own URL, with no tokens.
+	expect(stored()[`mcp__secure|${moved.url}/mcp`]?.tokens).toBeUndefined();
+	const entries = Object.fromEntries(
+		Object.entries(stored()).map(([key, entry]) => [
+			normalise(key.replace(moved.url, "<moved>")),
+			{ access: entry?.tokens?.access_token, challenge: entry?.challenge?.error },
+		]),
+	);
+
+	await expect(
+		`${JSON.stringify(
+			{
+				moved: { state: report?.state, error: report?.error },
+				asked,
+				presented: { first: [...server.state.presented], moved: [...moved.state.presented] },
+				stored: entries,
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.moved.json");
 }, 120_000);

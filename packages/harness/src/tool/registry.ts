@@ -1,6 +1,6 @@
 import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
-import { Context, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import * as Executor from "./executor.ts";
 import { type AnyToolDef, declared, type RegisteredTool, toAikitTool } from "./tool.ts";
 
@@ -39,8 +39,6 @@ export interface Resolved {
 	readonly wire: ReadonlyArray<Message.Tool>;
 	/** The offered tools' wire view: the tool state the transcript's system messages bring `wire` to. */
 	readonly offered: ReadonlyArray<Message.Tool>;
-	/** Deferred tools not offered, in registry order: what `toolsearch` searches. */
-	readonly deferred: ReadonlyArray<Message.Tool>;
 	/**
 	 * Transform one complete pending tool-call part into a complete terminal part. The **only**
 	 * execution entry point — the
@@ -58,8 +56,12 @@ export interface Registry {
 	readonly names: ReadonlyArray<string>;
 	/** Metadata lookup only — never exposes the executable impl. */
 	readonly getDef: (name: string) => AnyToolDef | undefined;
-	/** Resolve a frozen snapshot of the tools offered to the model under `selection`. */
-	readonly resolve: (selection?: Selection) => Resolved;
+	/**
+	 * Resolve a frozen snapshot of the tools offered to the model under `selection`. `live` returns
+	 * deferred tools registered after this catalog, as MCP servers connect: what a search finds
+	 * beside `deferred`, and the next snapshot registers.
+	 */
+	readonly resolve: (selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>) => Resolved;
 }
 
 /**
@@ -85,7 +87,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 	const names = Object.freeze(effective.map((entry) => entry.tool.definition.name));
 	const isDeferred = (entry: ToolRegistration) => entry.tool.definition.exposure === "deferred";
 
-	const resolve = (selection?: Selection): Resolved => {
+	const resolve = (selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>): Resolved => {
 		const removed = new Set(selection?.remove);
 		const declaredSet = effective.filter((entry) => declared(entry.tool.definition));
 		const kept = declaredSet.filter((entry) => !removed.has(entry.tool.definition.name));
@@ -99,13 +101,18 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 				.filter((entry) => isDeferred(entry) && !offered.includes(entry))
 				.map((entry) => toAikitTool(entry.tool.definition)),
 		);
+		// Loaded names stay out even when not registered this turn: their server is away, not unloaded.
+		const known = new Set([...names, ...(selection?.add ?? [])]);
+		const search =
+			live === undefined
+				? Effect.succeed(deferred)
+				: Effect.map(live, (current) => [...deferred, ...current.filter((tool) => !known.has(tool.name))]);
 		// Only offered tools run: a call to another registered one gets `ToolUnavailable`.
-		const executor = Executor.make(offered, { registered: names, deferred });
+		const executor = Executor.make(offered, { registered: names, deferred: search });
 		return Object.freeze({
 			defs: Object.freeze(offered.map((entry) => entry.tool.definition)),
 			wire: Object.freeze(declaredSet.map((entry) => toAikitTool(entry.tool.definition))),
 			offered: Object.freeze([...executor.wire]),
-			deferred,
 			handle: executor.handle,
 		});
 	};

@@ -74,7 +74,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
@@ -124,7 +125,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
@@ -174,7 +176,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
@@ -224,7 +227,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "mine",
@@ -274,7 +278,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
@@ -324,7 +329,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
@@ -374,7 +380,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
@@ -424,7 +431,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "mine",
@@ -474,7 +482,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
@@ -524,7 +533,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
@@ -574,7 +584,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
@@ -624,7 +635,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		}
 	]
 }

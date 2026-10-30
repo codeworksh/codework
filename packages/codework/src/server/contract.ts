@@ -2,7 +2,9 @@ import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
+	EventList,
 	Location,
+	McpError,
 	optional,
 	Project,
 	PromptSchema,
@@ -101,6 +103,9 @@ const ThreadRef = {
 	sessionId: Session.SessionSchema.ID,
 	threadId: optional(ThreadSchema.ID),
 };
+
+/** A thread's MCP server, by the name its `mcp.json` gives it. */
+const McpServerRef = { ...ThreadRef, server: Schema.String };
 
 /** One message in a thread's line (inherited ones first), oldest first. */
 export const HistoryEntry = Schema.Struct({
@@ -237,6 +242,23 @@ const SandboxErrors = Schema.Union([
 ]);
 
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
+
+/** One of a thread's MCP servers as that thread sees it. */
+export const McpStatus = Schema.Struct({
+	server: Schema.String,
+	state: EventList.McpState,
+	error: optional(Schema.String),
+	/** Tools the server offered when last listed, each with its exposure in the thread. */
+	tools: Schema.Array(
+		Schema.Struct({ name: Schema.String, exposure: Schema.Literals(["direct", "codemode", "deferred", "hidden"]) }),
+	),
+	resources: Schema.Boolean,
+	/** Tools it listed last that were left out because the MCP SDK rejects them; absent when none were. */
+	skipped: optional(EventList.McpSkipped),
+});
+export type McpStatus = typeof McpStatus.Type;
+
+const McpErrors = Schema.Union([ThreadErrors, McpError.UnknownServerError]);
 
 export const Api = RpcGroup.make(
 	/**
@@ -499,6 +521,21 @@ export const Api = RpcGroup.make(
 		// No error channel: a reload that fails keeps the previous set and reports why, because a
 		// server that empties its tool registry over a typo is worse than one that says so.
 		success: Schema.Struct({ plugins: Schema.Int, failure: optional(Schema.String) }),
+	}),
+	/**
+	 * Close the instance behind a thread's MCP server, or its attempt, and connect it afresh, for
+	 * every thread sharing it. Answers once that attempt finished, with the server's state then.
+	 */
+	Rpc.make("mcp.connect", {
+		payload: McpServerRef,
+		success: McpStatus,
+		error: McpErrors,
+	}),
+	/** Close it, for every thread sharing it, and keep it closed until `mcp.connect` or a config change. */
+	Rpc.make("mcp.disconnect", {
+		payload: McpServerRef,
+		success: McpStatus,
+		error: McpErrors,
 	}),
 	Rpc.make("sandbox.drivers", {
 		payload: {},

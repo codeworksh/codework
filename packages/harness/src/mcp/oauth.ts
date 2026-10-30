@@ -311,6 +311,18 @@ const provider = (input: {
 	const id = key(server);
 	const save = (change: (state: State | undefined) => State | undefined) =>
 		toPromise(store.update(server.name, id, change));
+	// The credentials this run read or saved. Another process may store newer ones while the server
+	// refuses ours; those are not ours to drop. A server may keep the access token and rotate only the
+	// refresh token, so both are compared.
+	const presented: { access?: string | undefined; refresh?: string | undefined; client?: string | undefined } = {};
+	const presents = (tokens: OAuthTokens | undefined) => {
+		presented.access = tokens?.access_token;
+		presented.refresh = tokens?.refresh_token;
+	};
+	const isPresented = (state: State | undefined, scope: "all" | "client" | "tokens") =>
+		state?.tokens?.access_token === presented.access &&
+		state?.tokens?.refresh_token === presented.refresh &&
+		(scope === "tokens" || state?.clientInformation?.client_id === presented.client);
 	let verifier: string | undefined;
 	let discovery: OAuthDiscoveryState | undefined;
 	const clientMetadata: OAuthClientMetadata = {
@@ -327,17 +339,28 @@ const provider = (input: {
 		redirectUrl: input.redirectUrl,
 		clientMetadata,
 		...(input.state === undefined ? {} : { state: () => input.state! }),
-		clientInformation: async () =>
-			oauth.clientId === undefined
-				? (await toPromise(store.load(id)))?.clientInformation
-				: {
-						client_id: oauth.clientId,
-						...(oauth.clientSecret === undefined ? {} : { client_secret: oauth.clientSecret }),
-					},
-		saveClientInformation: (clientInformation) => save((state) => ({ ...state, clientInformation })),
-		tokens: async () => (await toPromise(store.load(id)))?.tokens,
-		saveTokens: (tokens) =>
-			save((state) => {
+		clientInformation: async () => {
+			if (oauth.clientId !== undefined)
+				return {
+					client_id: oauth.clientId,
+					...(oauth.clientSecret === undefined ? {} : { client_secret: oauth.clientSecret }),
+				};
+			const clientInformation = (await toPromise(store.load(id)))?.clientInformation;
+			presented.client = clientInformation?.client_id;
+			return clientInformation;
+		},
+		saveClientInformation: (clientInformation) => {
+			presented.client = clientInformation.client_id;
+			return save((state) => ({ ...state, clientInformation }));
+		},
+		tokens: async () => {
+			const tokens = (await toPromise(store.load(id)))?.tokens;
+			presents(tokens);
+			return tokens;
+		},
+		saveTokens: (tokens) => {
+			presents(tokens);
+			return save((state) => {
 				const { tokensExpireAt: _expired, ...rest } = state ?? {};
 				return {
 					...rest,
@@ -345,7 +368,8 @@ const provider = (input: {
 					// @effect-diagnostics-next-line globalDate:off
 					...(tokens.expires_in === undefined ? {} : { tokensExpireAt: Date.now() + tokens.expires_in * 1000 }),
 				};
-			}),
+			});
+		},
 		redirectToAuthorization: (url) => {
 			if (!isHttp(url)) throw new Error(`Refusing to open ${url.protocol} authorization URL`);
 			if (input.onRedirect === undefined)
@@ -371,7 +395,9 @@ const provider = (input: {
 			if (scope === "verifier") verifier = undefined;
 			else if (scope === "discovery") discovery = undefined;
 			else
+				// Compared under the file's lock, which every writer of the file takes.
 				await save((state) => {
+					if (!isPresented(state, scope)) return state;
 					if (state === undefined || scope === "all") return undefined;
 					if (scope === "client") {
 						const { clientInformation: _client, ...rest } = state;

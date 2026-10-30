@@ -1,4 +1,6 @@
+import type { Message } from "@codeworksh/aikit";
 import type { PluginRegistry } from "@codeworksh/plugin/plugin";
+import type { Effect } from "effect";
 import type { McpServer } from "@codeworksh/plugin/settings";
 import { make as makeCatalog, type Selection } from "../tool/registry.ts";
 import { declared } from "../tool/tool.ts";
@@ -25,9 +27,10 @@ export const make = (servers: ReadonlyArray<McpServer>) => {
 		/** Close the MCP bucket and return the servers the `mcp` domain settled on. */
 		settle: mcp.settle,
 		close,
-		freeze: (directory: string, selection?: Selection) => {
+		/** `live` is the MCP servers' deferred tools as they stand when searched; see `Registry.resolve`. */
+		freeze: (directory: string, selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>) => {
 			close();
-			const resolved = makeCatalog(tools.entries()).resolve(selection);
+			const resolved = makeCatalog(tools.entries()).resolve(selection, live);
 			return {
 				tools: resolved,
 				// Only declared tools: loading a deferred one must not change the prompt.

@@ -64,7 +64,9 @@ export const sdk = async (): Promise<Handler> => {
 };
 
 /** A scripted answer: a status with a text body, or no answer at all. */
-export type Reply = { readonly status: number; readonly body: string } | "hang";
+export type Answer = { readonly status: number; readonly body: string } | "hang";
+/** An answer, or one decided once `after` settles: `undefined` then answers normally. */
+export type Reply = Answer | { readonly after: Promise<Answer | undefined> };
 
 /** Requests a hand-written server saw, as `METHOD rpc-method`. */
 export interface Raw {
@@ -81,11 +83,15 @@ export const raw = (
 		readonly unauthorized?: boolean;
 		/** Protocol version to answer initialize with, instead of echoing the client's. */
 		readonly protocolVersion?: string;
-		/** Overrides the answer to a request, keyed as in `seen`; `undefined` answers normally. */
-		readonly script?: (request: string) => Reply | undefined;
+		/**
+		 * Overrides the answer to a request, keyed as in `seen`, given the session it carries; `undefined`
+		 * answers normally. Each initialize mints a new session, `raw-session-<n>`.
+		 */
+		readonly script?: (request: string, session: string | undefined) => Reply | undefined;
 	} = {},
 ): Raw => {
 	let failures = options.failInitialize ?? 0;
+	let sessions = 0;
 	const state: Raw = {
 		seen: [],
 		forget: false,
@@ -101,7 +107,11 @@ export const raw = (
 			const body = request.method === "POST" ? (JSON.parse((await readBody(request)).toString()) as Rpc) : undefined;
 			const key = body?.method ? `${request.method} ${body.method}` : `${request.method}`;
 			state.seen.push(key);
-			const scripted = options.script?.(key);
+			const carried = request.headers["mcp-session-id"];
+			const session = typeof carried === "string" ? carried : undefined;
+			const reply = options.script?.(key, session);
+			const scripted =
+				reply !== undefined && typeof reply === "object" && "after" in reply ? await reply.after : reply;
 			if (scripted === "hang") return;
 			if (scripted !== undefined)
 				return void response.writeHead(scripted.status, { "content-type": "text/plain" }).end(scripted.body);
@@ -128,7 +138,11 @@ export const raw = (
 						: body.method === "tools/call"
 							? { content: [{ type: "text", text: "called" }] }
 							: {};
-			response.writeHead(200, { "content-type": "application/json", "mcp-session-id": "raw-session" });
+			const minted = body.method === "initialize" ? `raw-session-${++sessions}` : session;
+			response.writeHead(200, {
+				"content-type": "application/json",
+				...(minted === undefined ? {} : { "mcp-session-id": minted }),
+			});
 			response.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
 		},
 	};

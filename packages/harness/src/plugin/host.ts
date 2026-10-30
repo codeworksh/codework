@@ -1,9 +1,10 @@
 import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import { Cause, Effect, Schema } from "effect";
-import type { RegisteredTool } from "../tool/tool.ts";
+import type { Mcp } from "../mcp/mcp.ts";
 import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
 import type { Selection } from "../tool/registry.ts";
+import { rank } from "./plugin.ts";
 import { make } from "./registry.ts";
 
 export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupError", {
@@ -15,21 +16,35 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 export const run = Effect.fn("PluginHost.run")(function* (
 	selection: ReadonlyArray<Prepared>,
 	input: Omit<SharedPluginContext, "plugin">,
-	/** The tools of the MCP servers the `mcp` domain settled on, added before the `tool` domain runs. */
-	mcp: (servers: ReadonlyArray<readonly [string, ServerConfig]>) => Effect.Effect<ReadonlyArray<RegisteredTool>>,
+	/** The MCP servers the `mcp` domain settled on; their tools are added before the `tool` domain runs. */
+	mcp: (servers: ReadonlyArray<readonly [string, ServerConfig]>) => Effect.Effect<Mcp.Reconciled>,
 	tools?: Selection,
 ) {
 	const buckets = make(input.settings.mcp.servers);
 	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
-	let settled = false;
+	let reconciled: Mcp.Reconciled | undefined;
 	const settle = Effect.gen(function* () {
-		if (settled) return;
-		settled = true;
-		const tools = yield* mcp(buckets.settle());
-		for (const tool of tools) buckets.registry.tools.add(tool);
+		if (reconciled !== undefined) return reconciled;
+		reconciled = yield* mcp(buckets.settle());
+		for (const tool of reconciled.tools) buckets.registry.tools.add(tool);
+		return reconciled;
 	});
-	const setup = Effect.gen(function* () {
-		for (const { plugin, options } of selection) {
+	/**
+	 * `whenDeferred` plugins wait for the end of their domain, when every tool of it is registered,
+	 * and run only if one of those is deferred or an MCP server of the thread is configured to add some.
+	 */
+	let waiting = selection.filter((prepared) => prepared.whenDeferred === true);
+	const flush = (before: number) =>
+		Effect.gen(function* () {
+			const due = waiting.filter(({ plugin }) => rank(plugin.kind) < before);
+			if (due.length === 0) return;
+			waiting = waiting.filter((prepared) => !due.includes(prepared));
+			const { defers } = yield* settle;
+			if (defers || buckets.registry.tools.list().some((def) => def.exposure === "deferred"))
+				for (const prepared of due) yield* apply(prepared);
+		});
+	const apply = ({ plugin, options }: Prepared) =>
+		Effect.gen(function* () {
 			if (plugin.kind !== "mcp") yield* settle;
 			yield* Effect.suspend(() => {
 				const result = plugin.setup(ctx, options);
@@ -69,10 +84,17 @@ export const run = Effect.fn("PluginHost.run")(function* (
 					);
 				}),
 			);
+		});
+	const setup = Effect.gen(function* () {
+		for (const prepared of selection) {
+			if (prepared.whenDeferred) continue;
+			yield* flush(rank(prepared.plugin.kind));
+			yield* apply(prepared);
 		}
-		yield* settle;
+		yield* flush(Infinity);
+		const { deferred } = yield* settle;
 		return yield* Effect.try({
-			try: () => buckets.freeze(input.location.directory, tools),
+			try: () => buckets.freeze(input.location.directory, tools, deferred),
 			catch: (cause) =>
 				new SetupError({
 					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,

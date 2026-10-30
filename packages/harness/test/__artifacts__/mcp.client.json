@@ -116,10 +116,6 @@
       "tag": "Mcp.ConnectError",
     },
   },
-  "invalidEntry": {
-    "message": "Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
-    "tag": "Mcp.RequestError",
-  },
   "listChangedWhileListing": {
     "toolsChanged": true,
   },
@@ -278,6 +274,38 @@ second line",
     ],
     "reported": 1,
     "terminated": false,
+  },
+  "skipped": {
+    "bare": {
+      "content": [],
+      "structuredContent": {
+        "ok": true,
+      },
+    },
+    "scalar": {
+      "message": "Invalid result for tools/call: structuredContent: Invalid input: expected record, received number",
+      "tag": "Mcp.RequestError",
+    },
+    "skipped": [
+      {
+        "name": "typed",
+        "reason": "outputSchema.type: Invalid input: expected "object"",
+      },
+      {
+        "name": "bad",
+        "reason": "inputSchema: Invalid input: expected object, received undefined",
+      },
+      {
+        "name": undefined,
+        "reason": "name: Invalid input: expected string, received undefined",
+      },
+    ],
+    "tools": [
+      "good",
+      "scalar",
+      "bare",
+      "fix",
+    ],
   },
   "spawnFailure": {
     "message": "command not found: codework-mcp-missing-binary",

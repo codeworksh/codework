@@ -46,6 +46,19 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 
 A broken file or entry is reported and skipped. The other servers still connect.
 
+## Add and Check Servers
+
+`codework mcp add` writes an entry for you, and leaves the rest of the file as it is:
+
+```bash
+codework mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
+codework mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
+```
+
+It writes the user file; `-l` writes the project's. `codework mcp remove <name>` removes an entry.
+
+`codework mcp list` connects to every enabled server and shows its state, tools and errors. It exits with 1 if an entry is broken or an enabled server does not connect.
+
 ## Signing In
 
 An HTTP server without an `Authorization` header signs in with OAuth when it asks for it. Sign in from a terminal:
@@ -54,7 +67,7 @@ An HTTP server without an `Authorization` header signs in with OAuth when it ask
 codework mcp login linear
 ```
 
-CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
+CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to, or pipe it to the command. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
 
 Sign-ins are stored in `~/.codework/mcpauth.json`, by server name and URL, and refreshed when they expire. Servers that don't support client registration take an `oauth` object:
 
@@ -100,9 +113,15 @@ Share a server only when it keeps no per-session state. Sessions whose settings 
 | Exposure   | The model                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------ |
 | `direct`   | Sees the tools like any other tool.                                                        |
-| `deferred` | Finds them with `toolsearch` (turn on `codework.tool.toolsearch`), then sees them.         |
+| `deferred` | Finds them with `toolsearch`, then sees them.                                              |
 | `hidden`   | Never sees them.                                                                           |
 | `codemode` | Can't reach them yet: they need codemode, which is coming. CodeWork warns once per thread. |
+
+`toolsearch` is on whenever a thread has deferred tools or an enabled server with `deferred` exposure, connected or not. A search waits up to 10 seconds for such servers still connecting. To turn it off, or on with nothing deferred, add an entry to `settings.jsonc`:
+
+```json title="settings.jsonc"
+{ "plugins": [{ "plugin": "codework.tool.toolsearch", "enabled": false }] }
+```
 
 `toolExposure` sets single tools, by name or with `*` patterns:
 
@@ -115,7 +134,18 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 ## Connections
 
 - Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees or has found: all of them at first, then new or changed ones.
-- If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings.
+- If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings or reconnect it.
 - Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
 - A server no running session needs closes after 10 minutes, and starts again when one does.
+- A tool the server lists in a shape the MCP SDK rejects is skipped; the server's other tools still work. `codework mcp list` names the skipped tools, and `~/.codework/mcp.log` says why.
 - Server log messages go to `~/.codework/mcp.log`.
+
+## Reconnecting
+
+Restart a session's server in a running CodeWork server, for example once a failed one can start:
+
+```bash
+codework mcp reconnect linear --session ses_01h9
+```
+
+It acts on the session's main thread; `--thread <id>` picks another of its threads. It prints the server's state, like `codework mcp list`, and exits with 1 if it did not connect. Every thread sharing that server is reconnected, and its tools are back from their next message. `codework mcp disconnect linear --session ses_01h9` closes it until you reconnect it or change its settings.

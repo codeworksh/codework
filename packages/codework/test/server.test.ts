@@ -1,6 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- fixtures only need temp dirs. */
 /* @effect-diagnostics globalFetch:off -- the integration suite calls its local test server. */
 /* @effect-diagnostics globalFetchInEffect:off -- the integration suite calls its local test server. */
+import type { Message } from "@codeworksh/aikit";
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
@@ -27,6 +28,7 @@ import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
+const mcpEcho = fileURLToPath(new URL("./fixtures/mcp-echo.mjs", import.meta.url));
 
 const execCli = async (args: ReadonlyArray<string>, cwd?: string) => {
 	try {
@@ -632,12 +634,12 @@ describe("server", () => {
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 });
 
-const websocket = (options: Harness.Options = {}) => {
+const websocket = (options: Harness.Options = {}, port = 0) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-ws-"));
 	homes.push(home);
 	return Server.layer({
 		host: "127.0.0.1",
-		port: 0,
+		port,
 		harness: { home, hostCwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
 	});
 };
@@ -862,6 +864,22 @@ describe("WebSocket client", () => {
 			Effect.provide(websocket({ plugins: [module] })),
 			Effect.timeout("20 seconds"),
 			Effect.runPromise,
+		);
+	});
+
+	it("reaches a server on the default port without --server", async (context) => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-default-")));
+		homes.push(root);
+		const result = await Effect.gen(function* () {
+			// A server already on the default port, such as a running service, is never talked to.
+			const built = yield* Effect.exit(Layer.build(websocket({}, 7433)));
+			if (Exit.isFailure(built)) return undefined;
+			return yield* Effect.promise(() => execCli(["plugin", "reload"], root));
+		}).pipe(Effect.scoped, Effect.timeout("20 seconds"), Effect.runPromise);
+		if (result === undefined) return context.skip("port 7433 is in use");
+		expect(result.status, result.stderr).toBe(0);
+		await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+			"./__artifacts__/server.default-url.json",
 		);
 	});
 
@@ -1260,6 +1278,109 @@ describe("WebSocket client", () => {
 				),
 			);
 	});
+
+	it(
+		"reconnects a thread's failed MCP server through the CLI, and the next turn declares its tool",
+		{
+			timeout: 60_000,
+		},
+		() => {
+			const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-mcp-")));
+			homes.push(home);
+			const gate = join(home, "gate");
+			writeFileSync(gate, "closed");
+			writeFileSync(
+				join(home, "mcp.json"),
+				JSON.stringify({
+					mcpServers: { gated: { command: process.execPath, args: [mcpEcho], env: { E2E_GATE: gate } } },
+				}),
+			);
+			const contexts: Array<Message.Context> = [];
+			return Effect.gen(function* () {
+				const server = yield* HttpServer.HttpServer;
+				if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+				const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
+				const rpc = yield* connectedClient;
+				const main = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
+				// A thread that never ran has no MCP servers started yet.
+				const idle = yield* rpc["session.create"]({});
+				const sessionId = main.session.id;
+				const scrub = (text: string) =>
+					text
+						.replaceAll(main.id, "<main>")
+						.replaceAll(sessionId, "<session>")
+						.replaceAll(idle.id, "<idle>")
+						.replaceAll(idle.session.id, "<idle session>");
+				const quiet = () => Effect.void;
+				const turn = (text: string) =>
+					Client.run(rpc, { sessionId: main.session.id, threadId: main.id, text }, quiet).pipe(
+						Effect.andThen(Effect.sync(() => (contexts.at(-1)?.tools ?? []).map((tool) => tool.name))),
+					);
+				const cli = (...args: string[]) =>
+					Effect.promise(() => execCli([...args, "--server", url], home)).pipe(
+						Effect.map((run) => ({
+							status: run.status,
+							stdout: scrub(run.stdout),
+							...(run.stderr === "" ? {} : { stderr: scrub(run.stderr) }),
+						})),
+					);
+
+				// The gate fails the first connect, and turns never retry a failed server.
+				const failed = yield* turn("one");
+				rmSync(gate);
+				const stillFailed = yield* turn("two");
+				// Without --thread, the session's main thread.
+				const reconnected = yield* cli("mcp", "reconnect", "gated", "--session", sessionId);
+				const declared = yield* turn("three");
+				const disconnected = yield* cli("mcp", "disconnect", "gated", "--session", sessionId, "--thread", main.id);
+				const afterDisconnect = yield* turn("four");
+				const errors = {
+					notStarted: yield* cli("mcp", "reconnect", "gated", "--session", idle.session.id),
+					unknownServer: yield* cli("mcp", "reconnect", "nope", "--session", sessionId),
+					missingSession: yield* cli("mcp", "reconnect", "gated", "--thread", main.id),
+					unknownSession: yield* cli("mcp", "reconnect", "gated", "--session", "ses_missing"),
+					otherSessionThread: yield* cli(
+						"mcp",
+						"reconnect",
+						"gated",
+						"--session",
+						idle.session.id,
+						"--thread",
+						main.id,
+					),
+					unknownThread: yield* cli(
+						"mcp",
+						"reconnect",
+						"gated",
+						"--session",
+						sessionId,
+						"--thread",
+						"thr_missing",
+					),
+					notAThread: yield* cli("mcp", "reconnect", "gated", "--session", sessionId, "--thread", "nope"),
+				};
+				return { failed, stillFailed, reconnected, declared, disconnected, afterDisconnect, errors };
+			})
+				.pipe(
+					Effect.scoped,
+					Effect.provide(websocket({ home, hostCwd: home, llm: immediateOpen(contexts) })),
+					Effect.timeout("40 seconds"),
+					Effect.runPromise,
+				)
+				.then((artifact) => {
+					expect(artifact.failed).not.toContain("mcp__gated__echo");
+					expect(artifact.stillFailed).not.toContain("mcp__gated__echo");
+					expect(artifact.reconnected).toEqual({ status: 0, stdout: "✓ gated  connected, 1 tool\n" });
+					expect(artifact.disconnected).toEqual({ status: 0, stdout: "○ gated  disconnected\n" });
+					expect(artifact.declared).toContain("mcp__gated__echo");
+					expect(artifact.afterDisconnect).not.toContain("mcp__gated__echo");
+					for (const error of Object.values(artifact.errors)) expect(error.status).not.toBe(0);
+					return expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+						"./__artifacts__/server.mcp-reconnect.json",
+					);
+				});
+		},
+	);
 
 	it("runs the CLI against the server without booting a local harness", () =>
 		Effect.gen(function* () {

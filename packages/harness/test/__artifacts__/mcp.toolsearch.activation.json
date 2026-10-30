@@ -1,0 +1,10 @@
+{
+	"nothingDeferred": false,
+	"whileConnecting": true,
+	"disabledWhileConnecting": false,
+	"connectingState": "connecting",
+	"deferredRegistered": true,
+	"disabled": false,
+	"enabledWithNothingDeferred": true,
+	"entryRemoved": false
+}

@@ -202,7 +202,8 @@
 					"name": "big",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": true
 		},
 		{
 			"server": "remote",
@@ -212,7 +213,8 @@
 					"name": "echo",
 					"exposure": "direct"
 				}
-			]
+			],
+			"resources": false
 		}
 	]
 }

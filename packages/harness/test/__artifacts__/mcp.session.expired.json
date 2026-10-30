@@ -1,0 +1,34 @@
+{
+	"initializes": {
+		"first": 1,
+		"afterBoth": 2,
+		"afterOne": 3
+	},
+	"remote": [
+		"POST initialize",
+		"POST tools/list",
+		"POST tools/call",
+		"POST tools/call",
+		"POST initialize",
+		"POST tools/list",
+		"POST tools/call",
+		"POST tools/call",
+		"POST tools/call",
+		"POST tools/call",
+		"POST initialize",
+		"POST tools/list",
+		"POST tools/call"
+	],
+	"calls": {
+		"both-a": "called",
+		"both-b": "called",
+		"one-a": "called",
+		"one-b": "called"
+	},
+	"status": [
+		{
+			"server": "remote",
+			"state": "connected"
+		}
+	]
+}
