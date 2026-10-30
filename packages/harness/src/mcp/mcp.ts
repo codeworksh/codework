@@ -805,8 +805,10 @@ export const layer = (options: {
 				const loaded = input.loaded ?? [];
 				const pending = started.filter(([name, entry]) => hasDirectTools(entry.config) || loadsFrom(name, loaded));
 				if (pending.length > 0) {
-					const finished = yield* Effect.forEach(pending, ([, , server]) =>
-						server.ready === undefined ? Effect.void : Deferred.await(server.ready),
+					const finished = yield* Effect.forEach(
+						pending,
+						([, , server]) => (server.ready === undefined ? Effect.void : Deferred.await(server.ready)),
+						{ concurrency: "unbounded", discard: true },
 					).pipe(Effect.timeoutOption(STARTUP_WAIT));
 					if (finished._tag === "None")
 						yield* Effect.logInfo("mcp servers are still connecting; their tools appear once connected");
