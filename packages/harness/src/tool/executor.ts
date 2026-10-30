@@ -338,7 +338,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 			);
 			if (Result.isFailure(prepared)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-				return errored(call, [text(`Invalid arguments for ${call.name}: ${prepared.failure}`)], now, {
+				return errored(call, [text(`Invalid Arguments for ${call.name}: ${prepared.failure}`)], now, {
 					error: "invalid-arguments",
 					name: call.name,
 				});
@@ -346,7 +346,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 			const decoded = yield* Effect.result(decoders.get(call.name)!(prepared.success));
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {
+				return errored(call, [text(`Invalid Arguments for ${call.name}: ${decoded.failure.message}`)], now, {
 					error: "invalid-arguments",
 					name: call.name,
 				});

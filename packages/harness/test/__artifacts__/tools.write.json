@@ -94,7 +94,7 @@
 			"content": [
 				{
 					"type": "text",
-					"text": "Invalid arguments for write: Missing key\n  at [\"content\"]"
+					"text": "Invalid Arguments for write: Missing key\n  at [\"content\"]"
 				}
 			],
 			"details": {
