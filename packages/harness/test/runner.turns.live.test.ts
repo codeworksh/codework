@@ -101,12 +101,16 @@ describe.each(LIVE)("turn snapshots against live $name", (live) => {
 							"the tools returned, separated by one space, and nothing else.",
 					);
 					const messages = yield* Effect.forEach(yield* handle.main.history(), ContextCodec.decodeMessage);
-					const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
+					const last = messages.findLast((message) =>
+						ContextCodec.parts(message).some((part) => part.type === "text"),
+					);
 					return {
 						calls: messages
-							.flatMap((message) => message.parts)
+							.flatMap((message) => ContextCodec.parts(message))
 							.flatMap((part) => (part.type === "toolCall" ? [`${part.name}:${part.status}`] : [])),
-						reply: (last?.parts ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+						reply: (last === undefined ? [] : ContextCodec.parts(last))
+							.flatMap((part) => (part.type === "text" ? [part.text] : []))
+							.join(""),
 					};
 				}).pipe(
 					Effect.provide(

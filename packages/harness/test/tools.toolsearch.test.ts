@@ -255,7 +255,7 @@ const results = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
 		ContextCodec.decodeMessage,
 	);
 	return messages.flatMap((message) =>
-		message.parts.flatMap((part) =>
+		ContextCodec.parts(message).flatMap((part) =>
 			part.type === "toolCall" && part.status !== "pending" && part.status !== "running"
 				? [
 						{

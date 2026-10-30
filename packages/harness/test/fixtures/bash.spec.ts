@@ -46,7 +46,9 @@ export const bashPluginSpec = (options: {
 			const path = yield* session.history();
 			const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 			expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
-			const calls = messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
+			const calls = messages.flatMap((message) =>
+				ContextCodec.parts(message).filter((part) => part.type === "toolCall"),
+			);
 			expect(calls).toHaveLength(1);
 			const call = calls[0];
 			if (call === undefined || call.type !== "toolCall" || (call.status !== "completed" && call.status !== "error"))
@@ -213,7 +215,9 @@ export const bashPluginSpec = (options: {
 							const final = messages.at(-1);
 							expect(final?.role).toBe("assistant");
 							expect(
-								final?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+								(final === undefined ? [] : ContextCodec.parts(final))
+									.flatMap((part) => (part.type === "text" ? [part.text] : []))
+									.join(""),
 							).toContain(marker);
 						}),
 					180_000,

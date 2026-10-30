@@ -131,7 +131,7 @@ describe("Control.prompt", () => {
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([messageId]);
 			expect(line[0]!.entry.seq).toBe(promoted.promotedSeq);
-			expect((yield* ContextCodec.decodeMessage(line[0]!)).parts[0]).toMatchObject({
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 				type: "text",
 				text: "Promote once",
 			});
@@ -319,7 +319,9 @@ describe("Control.cancel", () => {
 			expect(yield* inputs.promoteFollowUp(threadId)).toBe(true);
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([messageId]);
-			expect((yield* ContextCodec.decodeMessage(line[0]!)).parts[0]).toMatchObject({ text: "Fix it another way" });
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
+				text: "Fix it another way",
+			});
 		}));
 
 	// The promotion the runner had already read for a row that is then cancelled: it must lose,
@@ -455,7 +457,7 @@ describe("Control.update", () => {
 			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
-			expect((yield* ContextCodec.decodeMessage(line[0]!)).parts[0]).toMatchObject({
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 				text: "Fix the flaky test only",
 			});
 		}));
@@ -510,7 +512,7 @@ describe("Control.update", () => {
 				expect(line).toEqual([]);
 				expect(PromptSchema.Prompt.text((yield* control.pending(threadId))[0]!.prompt)).toBe("Rewritten");
 			} else {
-				expect((yield* ContextCodec.decodeMessage(line[0]!)).parts[0]).toMatchObject({
+				expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
 					text: updated ? "Rewritten" : "Original",
 				});
 			}
@@ -574,7 +576,9 @@ describe("Control queue races", () => {
 			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
-			expect((yield* ContextCodec.decodeMessage(line[1]!)).parts[0]).toMatchObject({ text: "Second, rewritten" });
+			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[1]!))[0]).toMatchObject({
+				text: "Second, rewritten",
+			});
 		}));
 
 	// The prompt was cancelled and sent again, unchanged, after the promotion selected it: the stale

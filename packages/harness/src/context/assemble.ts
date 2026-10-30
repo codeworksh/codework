@@ -3,7 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import type { Thread } from "../thread/thread.ts";
-import { decodeMessage, decodeSyntheticMessage, decodeSystemMessage } from "./codec.ts";
+import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
 export interface Snapshot {
@@ -127,7 +127,7 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 				break;
 			}
 			case "system": {
-				messagesByEntry.set(entry.id, yield* decodeSystemMessage(hydrated));
+				messagesByEntry.set(entry.id, yield* decodeMessage(hydrated));
 				break;
 			}
 			case "custom": {

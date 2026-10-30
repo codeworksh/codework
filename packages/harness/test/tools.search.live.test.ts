@@ -60,11 +60,15 @@ describe.each(direct)("search tools against live $name", (live) => {
 				yield* session.run(PROMPT);
 				const path = yield* session.history();
 				const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-				const parts = messages.flatMap((message) => message.parts);
-				const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
+				const parts = messages.flatMap((message) => ContextCodec.parts(message));
+				const last = messages.findLast((message) =>
+					ContextCodec.parts(message).some((part) => part.type === "text"),
+				);
 				return {
 					calls: parts.flatMap((part) => (part.type === "toolCall" ? [part] : [])),
-					reply: (last?.parts ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+					reply: (last === undefined ? [] : ContextCodec.parts(last))
+						.flatMap((part) => (part.type === "text" ? [part.text] : []))
+						.join(""),
 				};
 			}).pipe(
 				Effect.provide(

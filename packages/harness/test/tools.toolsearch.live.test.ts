@@ -71,16 +71,17 @@ describe("toolsearch against live openai-codex", () => {
 					"Find the tool that reads the deployment access token from the secrets vault, call it, " +
 						"and reply with exactly the token it returns and nothing else.",
 				);
-				const messages = yield* Effect.forEach(
-					(yield* handle.main.history()).filter(({ entry }) => entry.type !== "system"),
-					ContextCodec.decodeMessage,
+				const messages = yield* Effect.forEach(yield* handle.main.history(), ContextCodec.decodeMessage);
+				const last = messages.findLast((message) =>
+					ContextCodec.parts(message).some((part) => part.type === "text"),
 				);
-				const last = messages.findLast((message) => message.parts.some((part) => part.type === "text"));
 				return {
 					calls: messages
-						.flatMap((message) => message.parts)
+						.flatMap((message) => ContextCodec.parts(message))
 						.flatMap((part) => (part.type === "toolCall" ? [`${part.name}:${part.status}`] : [])),
-					reply: (last?.parts ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+					reply: (last === undefined ? [] : ContextCodec.parts(last))
+						.flatMap((part) => (part.type === "text" ? [part.text] : []))
+						.join(""),
 				};
 			}).pipe(
 				Effect.provide(

@@ -48,7 +48,7 @@ const writeAll = (root: string, custom: string) =>
 		const path = yield* session.history();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
+		return messages.flatMap((message) => ContextCodec.parts(message).filter((part) => part.type === "toolCall"));
 	}).pipe(
 		Effect.provide(
 			Harness.layer({

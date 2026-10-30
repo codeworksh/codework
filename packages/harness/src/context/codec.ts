@@ -240,15 +240,20 @@ export const decodeSystemMessage = Effect.fn("Context.decodeSystemMessage")(func
 	return message;
 });
 
+/** A message's parts; a system message has none. */
+export const parts = (message: Message.Message) => (message.role === "system" ? [] : message.parts);
+
+/** The aikit message a `user`, `assistant` or `system` entry stores. */
 export const decodeMessage = Effect.fn("Context.decodeMessage")(function* (
 	hydrated: Thread.HydratedEntry,
-): Effect.fn.Return<ContextMessage, ContextDecodeError> {
+): Effect.fn.Return<Message.Message, ContextDecodeError> {
 	const { entry } = hydrated;
+	if (entry.type === "system") return yield* decodeSystemMessage(hydrated);
 	if (entry.type !== "user" && entry.type !== "assistant") {
 		return yield* new ContextDecodeError({
 			entryId: entry.id,
 			type: entry.type,
-			reason: "only user and assistant entries contain complete aikit messages",
+			reason: "only user, assistant and system entries contain complete aikit messages",
 		});
 	}
 
