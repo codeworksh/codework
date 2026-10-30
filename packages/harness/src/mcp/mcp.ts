@@ -18,7 +18,8 @@
  *
  * - A connection that drops fails the calls running on it, and the next call reconnects.
  * - Reconcile never restarts a failed server; only a config change or {@link Interface.connect}
- *   does. A server whose tools were declared still reconnects on its next call.
+ *   does. A server whose tools were declared still reconnects on its next call, and one waiting for
+ *   sign-in reconnects on a turn once its stored credential changed.
  * - A Streamable HTTP session the server forgot is replaced, and calls that hit it run once more on
  *   the new one. The old connection closes when its last call finishes, never under one.
  * - A tool call is never retried after the server may have run it.
