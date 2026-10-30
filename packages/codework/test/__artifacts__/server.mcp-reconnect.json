@@ -1,0 +1,33 @@
+{
+	"failed": [],
+	"stillFailed": [],
+	"reconnected": {
+		"status": 0,
+		"stdout": "✓ gated  connected, 1 tool\n"
+	},
+	"declared": [
+		"mcp__gated__echo"
+	],
+	"disconnected": {
+		"status": 0,
+		"stdout": "○ gated  disconnected\n"
+	},
+	"afterDisconnect": [],
+	"errors": {
+		"unknownServer": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: unknown MCP server \"nope\"\n"
+		},
+		"unknownThread": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: thread thr_missing not found\n"
+		},
+		"notAThread": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: --threadId takes a thread ID (thr_…)\n"
+		}
+	}
+}

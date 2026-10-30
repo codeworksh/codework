@@ -3,6 +3,7 @@ import {
 	Control,
 	Event,
 	Location,
+	McpError,
 	optional,
 	Project,
 	PromptSchema,
@@ -237,6 +238,23 @@ const SandboxErrors = Schema.Union([
 ]);
 
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
+
+/** One of a thread's MCP servers as that thread sees it. */
+export const McpStatus = Schema.Struct({
+	server: Schema.String,
+	state: Schema.Literals(["connecting", "connected", "failed", "authenticate", "disconnected", "disabled"]),
+	error: optional(Schema.String),
+	/** Tools the server offered when last listed, each with its exposure in the thread. */
+	tools: Schema.Array(
+		Schema.Struct({ name: Schema.String, exposure: Schema.Literals(["direct", "codemode", "deferred", "hidden"]) }),
+	),
+	resources: Schema.Boolean,
+});
+export type McpStatus = typeof McpStatus.Type;
+
+/** A thread's MCP server, by the name its `mcp.json` gives it. */
+const McpServerRef = { threadId: ThreadSchema.ID, server: Schema.String };
+const McpErrors = Schema.Union([ThreadStore.ThreadNotFoundError, McpError.UnknownServerError]);
 
 export const Api = RpcGroup.make(
 	/**
@@ -499,6 +517,21 @@ export const Api = RpcGroup.make(
 		// No error channel: a reload that fails keeps the previous set and reports why, because a
 		// server that empties its tool registry over a typo is worse than one that says so.
 		success: Schema.Struct({ plugins: Schema.Int, failure: optional(Schema.String) }),
+	}),
+	/**
+	 * Close the instance behind a thread's MCP server, or its attempt, and connect it afresh, for
+	 * every thread sharing it. Answers once that attempt finished, with the server's state then.
+	 */
+	Rpc.make("mcp.connect", {
+		payload: McpServerRef,
+		success: McpStatus,
+		error: McpErrors,
+	}),
+	/** Close it, for every thread sharing it, and keep it closed until `mcp.connect` or a config change. */
+	Rpc.make("mcp.disconnect", {
+		payload: McpServerRef,
+		success: McpStatus,
+		error: McpErrors,
 	}),
 	Rpc.make("sandbox.drivers", {
 		payload: {},

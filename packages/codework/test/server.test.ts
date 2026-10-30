@@ -1,6 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- fixtures only need temp dirs. */
 /* @effect-diagnostics globalFetch:off -- the integration suite calls its local test server. */
 /* @effect-diagnostics globalFetchInEffect:off -- the integration suite calls its local test server. */
+import type { Message } from "@codeworksh/aikit";
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
@@ -27,6 +28,7 @@ import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
+const mcpEcho = fileURLToPath(new URL("./fixtures/mcp-echo.mjs", import.meta.url));
 
 const execCli = async (args: ReadonlyArray<string>, cwd?: string) => {
 	try {
@@ -1260,6 +1262,78 @@ describe("WebSocket client", () => {
 				),
 			);
 	});
+
+	it(
+		"reconnects a thread's failed MCP server through the CLI, and the next turn declares its tool",
+		{
+			timeout: 60_000,
+		},
+		() => {
+			const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-mcp-")));
+			homes.push(home);
+			const gate = join(home, "gate");
+			writeFileSync(gate, "closed");
+			writeFileSync(
+				join(home, "mcp.json"),
+				JSON.stringify({
+					mcpServers: { gated: { command: process.execPath, args: [mcpEcho], env: { E2E_GATE: gate } } },
+				}),
+			);
+			const contexts: Array<Message.Context> = [];
+			return Effect.gen(function* () {
+				const server = yield* HttpServer.HttpServer;
+				if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+				const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
+				const rpc = yield* connectedClient;
+				const main = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
+				const quiet = () => Effect.void;
+				const turn = (text: string) =>
+					Client.run(rpc, { sessionId: main.session.id, threadId: main.id, text }, quiet).pipe(
+						Effect.andThen(Effect.sync(() => (contexts.at(-1)?.tools ?? []).map((tool) => tool.name))),
+					);
+				const cli = (...args: string[]) =>
+					Effect.promise(() => execCli([...args, "--server", url], home)).pipe(
+						Effect.map((run) => ({
+							status: run.status,
+							stdout: run.stdout.replaceAll(main.id, "<main>"),
+							...(run.stderr === "" ? {} : { stderr: run.stderr.replaceAll(main.id, "<main>") }),
+						})),
+					);
+
+				// The gate fails the first connect, and turns never retry a failed server.
+				const failed = yield* turn("one");
+				rmSync(gate);
+				const stillFailed = yield* turn("two");
+				const reconnected = yield* cli("mcp", "reconnect", "gated", "--threadId", main.id);
+				const declared = yield* turn("three");
+				const disconnected = yield* cli("mcp", "disconnect", "gated", "--threadId", main.id);
+				const afterDisconnect = yield* turn("four");
+				const errors = {
+					unknownServer: yield* cli("mcp", "reconnect", "nope", "--threadId", main.id),
+					unknownThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "thr_missing"),
+					notAThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "nope"),
+				};
+				return { failed, stillFailed, reconnected, declared, disconnected, afterDisconnect, errors };
+			})
+				.pipe(
+					Effect.scoped,
+					Effect.provide(websocket({ home, hostCwd: home, llm: immediateOpen(contexts) })),
+					Effect.timeout("40 seconds"),
+					Effect.runPromise,
+				)
+				.then((artifact) => {
+					expect(artifact.failed).not.toContain("mcp__gated__echo");
+					expect(artifact.stillFailed).not.toContain("mcp__gated__echo");
+					expect(artifact.reconnected).toEqual({ status: 0, stdout: "✓ gated  connected, 1 tool\n" });
+					expect(artifact.declared).toContain("mcp__gated__echo");
+					expect(artifact.afterDisconnect).not.toContain("mcp__gated__echo");
+					for (const error of Object.values(artifact.errors)) expect(error.status).toBe(1);
+					return expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+						"./__artifacts__/server.mcp-reconnect.json",
+					);
+				});
+		},
+	);
 
 	it("runs the CLI against the server without booting a local harness", () =>
 		Effect.gen(function* () {

@@ -1,4 +1,4 @@
-import { Global, McpConfig, McpOAuth, Settings } from "@codeworksh/harness/effect";
+import { Global, type Mcp, McpConfig, McpOAuth, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option, Path, Predicate } from "effect";
 import { InvalidInputError } from "../../../error.ts";
 import { Jsonc } from "../../../jsonc.ts";
@@ -29,6 +29,19 @@ export const configured = Effect.fn("CLI.mcp.configured")(function* () {
 		...loaded,
 	};
 });
+
+export const MARKS: Record<Mcp.State, string> = {
+	connected: "✓",
+	authenticate: "⚠",
+	failed: "✗",
+	connecting: "○",
+	disconnected: "○",
+	disabled: "○",
+};
+
+/** A server's state as the commands print it. */
+export const describe = (state: Mcp.State, tools: number) =>
+	state === "connected" ? `connected, ${tools} tool${tools === 1 ? "" : "s"}` : state;
 
 /** The `mcpServers` of one `mcp.json`, and the text an edit rewrites. */
 export const readServers = Effect.fn("CLI.mcp.readServers")(function* (path: string) {

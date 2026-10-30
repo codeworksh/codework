@@ -49,6 +49,13 @@ const RunningServer = Flag.String("server").pipe(
 	Flag.withDefault("http://127.0.0.1:7433"),
 );
 
+/** A thread's MCP server in a running server: every thread sharing its instance is affected. */
+const McpControlParams = {
+	name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
+	threadId: Flag.String("threadId").pipe(Flag.withDescription("Thread whose server it is: a thread ID")),
+	server: RunningServer,
+};
+
 const JsonFlag = Flag.Boolean("json").pipe(
 	Flag.withDescription("Print machine-readable output"),
 	Flag.withDefault(false),
@@ -247,6 +254,26 @@ export const Cmd = Spec.make("codework", {
 						name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
 					},
 					examples: [{ command: "codework mcp logout linear", description: "Sign out of the linear server" }],
+				}),
+				Spec.make("reconnect", {
+					description: "Connect a thread's MCP server afresh in a running server",
+					params: McpControlParams,
+					examples: [
+						{
+							command: "codework mcp reconnect linear --threadId thr_01ja",
+							description: "Restart the linear server the thread uses; its tools return from the next turn",
+						},
+					],
+				}),
+				Spec.make("disconnect", {
+					description: "Close a thread's MCP server in a running server until it is reconnected",
+					params: McpControlParams,
+					examples: [
+						{
+							command: "codework mcp disconnect linear --threadId thr_01ja",
+							description: "Close the linear server the thread uses",
+						},
+					],
 				}),
 			],
 		}),

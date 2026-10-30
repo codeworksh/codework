@@ -113,9 +113,15 @@ Share a server only when it keeps no per-session state. Sessions whose settings 
 | Exposure   | The model                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------ |
 | `direct`   | Sees the tools like any other tool.                                                        |
-| `deferred` | Finds them with `toolsearch` (turn on `codework.tool.toolsearch`), then sees them.         |
+| `deferred` | Finds them with `toolsearch`, then sees them.                                              |
 | `hidden`   | Never sees them.                                                                           |
 | `codemode` | Can't reach them yet: they need codemode, which is coming. CodeWork warns once per thread. |
+
+`toolsearch` is on whenever a thread has deferred tools, or a server still connecting may add some. A search waits up to 10 seconds for such servers. To turn it off, or on with nothing deferred, add an entry to `settings.jsonc`:
+
+```json title="settings.jsonc"
+{ "plugins": [{ "plugin": "codework.tool.toolsearch", "enabled": false }] }
+```
 
 `toolExposure` sets single tools, by name or with `*` patterns:
 
@@ -128,7 +134,17 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 ## Connections
 
 - Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees or has found: all of them at first, then new or changed ones.
-- If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings.
+- If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings or reconnect it.
 - Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
 - A server no running session needs closes after 10 minutes, and starts again when one does.
 - Server log messages go to `~/.codework/mcp.log`.
+
+## Reconnecting
+
+Restart a thread's server in a running CodeWork server, for example once a failed one can start:
+
+```bash
+codework mcp reconnect linear --threadId thr_01ja
+```
+
+It prints the server's state, like `codework mcp list`, and exits with 1 if it did not connect. Every thread sharing that server is reconnected, and its tools are back from their next message. `codework mcp disconnect linear --threadId thr_01ja` closes it until you reconnect it or change its settings.

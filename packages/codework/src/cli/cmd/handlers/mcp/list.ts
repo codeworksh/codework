@@ -5,7 +5,7 @@ import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
-import { configured } from "./shared.ts";
+import { configured, describe, MARKS } from "./shared.ts";
 
 interface Report {
 	readonly name: string;
@@ -24,24 +24,6 @@ interface Report {
 	readonly resources?: true;
 	readonly error?: string;
 }
-
-const MARKS: Record<Mcp.State, string> = {
-	connected: "✓",
-	authenticate: "⚠",
-	failed: "✗",
-	connecting: "○",
-	disconnected: "○",
-	disabled: "○",
-};
-
-const describe = (report: Report) => {
-	switch (report.state) {
-		case "connected":
-			return `connected, ${report.tools.length} tool${report.tools.length === 1 ? "" : "s"}`;
-		default:
-			return report.state;
-	}
-};
 
 export default Runtime.handler(
 	Cmd.commands.mcp.commands.list,
@@ -99,7 +81,7 @@ export default Runtime.handler(
 			const width = Math.max(0, ...reports.map((report) => report.name.length));
 			for (const report of reports) {
 				lines.push(
-					`${MARKS[report.state]} ${report.name.padEnd(width)}  ${describe(report)} (${report.exposure}, ${report.level})`,
+					`${MARKS[report.state]} ${report.name.padEnd(width)}  ${describe(report.state, report.tools.length)} (${report.exposure}, ${report.level})`,
 				);
 				const detail = (line: string) => lines.push(`    ${line}`);
 				detail(report.transport);
