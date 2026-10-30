@@ -186,6 +186,7 @@ export const make = (input: {
 			parameters: LIST_PARAMETERS,
 			server: "",
 			tool: LIST_RESOURCES_TOOL,
+			exposure: "direct",
 			run: ({ args }) =>
 				list(
 					"resources",
@@ -204,6 +205,7 @@ export const make = (input: {
 			parameters: LIST_PARAMETERS,
 			server: "",
 			tool: LIST_TEMPLATES_TOOL,
+			exposure: "direct",
 			run: ({ args }) =>
 				list(
 					"resourceTemplates",
@@ -223,6 +225,7 @@ export const make = (input: {
 			parameters: READ_PARAMETERS,
 			server: "",
 			tool: READ_RESOURCE_TOOL,
+			exposure: "direct",
 			run: ({ args }) => read(args),
 		}),
 	];

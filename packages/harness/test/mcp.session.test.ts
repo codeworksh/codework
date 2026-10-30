@@ -26,7 +26,7 @@ const stdio = (extra: Record<string, unknown> = {}) => ({
 	...extra,
 });
 
-/** One reply per model request, in order; an empty one ends the exchange. */
+/** One reply per model request, in order; an empty one ends the turn. */
 const scripted =
 	(replies: ReadonlyArray<ReadonlyArray<Message.ToolCallPendingPart>>, requests: LLM.Input[]): LLM.Open =>
 	(input) =>
@@ -51,7 +51,7 @@ const write = async (file: string, value: unknown) => {
 	await fs.writeFile(file, JSON.stringify(value, null, 2));
 };
 
-it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and the next call reconnecting", async () => {
+it("mcp: config layers, plugin bucket, direct tools, a crash mid-turn and the next call reconnecting", async () => {
 	await using dir = await tmpdir();
 	const home = join(dir.path, "home");
 	const project = join(dir.path, "project");
@@ -124,17 +124,17 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				pendingCall("mcp__e2e__args", { word: "abc", limit: null }, "nulls"),
 			],
 			[pendingCall("mcp__e2e__pid", {}, "pid-before"), pendingCall("mcp__e2e__crash", {}, "crash")],
-			// Same exchange: the server is gone, so this call reconnects first.
+			// Same turn: the server is gone, so this call reconnects first.
 			[pendingCall("mcp__e2e__pid", {}, "pid-after")],
 			[],
-			// Next exchange: arguments the server's schema rejects never reach it.
+			// Next turn: arguments the server's schema rejects never reach it.
 			[
 				pendingCall("mcp__e2e__echo", {}, "invalid"),
 				pendingCall("mcp__e2e__args", { word: "ABC" }, "pattern"),
 				pendingCall("mcp__e2e__args", { word: "abc", extra: true }, "excess"),
 			],
 			[],
-			// Third exchange: where the server runs, what the model is not shown in full, and resources.
+			// Third turn: where the server runs, what the model is not shown in full, and resources.
 			[
 				pendingCall("mcp__e2e__cwd", {}, "cwd"),
 				pendingCall("mcp__e2e__link", {}, "link"),
@@ -165,7 +165,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		yield* session.main.run("Once more.");
 		yield* session.main.run("Resources.");
 		const messages = yield* Effect.forEach(yield* messageEntries(session.main), ContextCodec.decodeMessage);
-		const status = yield* Mcp.Service.use((mcp) => mcp.status(session.id));
+		const status = yield* Mcp.Service.use((mcp) => mcp.status(session.main.id));
 		const settings = yield* Settings.Service.use((loader) => loader.load(project));
 		return { messages, status, errors: settings.mcp.errors };
 	}).pipe(
@@ -207,7 +207,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	expect(firstTools.map((tool) => tool.name)).not.toContain("mcp__e2e__secret");
 	expect(firstTools.some((tool) => tool.name.startsWith("mcp__later__"))).toBe(false);
 	expect(result.errors.some((error) => error.includes("later"))).toBe(false);
-	// The tool set is frozen per exchange and stable across them, so every request declares the same tools.
+	// The tool set is frozen per turn and stable across them, so every request declares the same tools.
 	for (const request of requests) expect(request.context.tools).toEqual(firstTools);
 	// The server's JSON Schema reaches the provider as written.
 	expect(firstTools.find((tool) => tool.name === "mcp__e2e__echo")?.parameters).toEqual({
@@ -324,7 +324,7 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 		const url = yield* listen(remote.handler);
 		yield* Effect.promise(() => configure(url, {}));
 		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
-		const status = Mcp.Service.use((mcp) => mcp.status(session.id));
+		const status = Mcp.Service.use((mcp) => mcp.status(session.main.id));
 		const state = (server: string) =>
 			status.pipe(Effect.map((all) => all.find((one) => one.server === server)?.state));
 
@@ -377,7 +377,7 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 	expect(pid("pid-3")).toBe(pid("pid-2"));
 	expect(pid("pid-4")).not.toBe(pid("pid-3"));
 
-	// The first request of each exchange: exposure changes apply at the next exchange.
+	// The first request of each turn: exposure changes apply at the next turn.
 	const declared = runs.map((_, index) => requests[index * 2]?.context.tools?.map((tool) => tool.name) ?? []);
 	expect(declared[2]).toContain("mcp__e2e__bye");
 	expect(declared[3]).not.toContain("mcp__e2e__bye");
@@ -428,19 +428,19 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 		// A lease on A's servers spans the three runs, so a slow runner cannot idle out the shared
 		// instances between them; the short timeout only matters once it is released.
 		yield* Effect.gen(function* () {
-			yield* Mcp.Service.use((mcp) => mcp.lease(a.id));
+			yield* Mcp.Service.use((mcp) => mcp.lease({ sessionId: a.id, threadId: a.main.id }));
 			yield* a.main.run("a");
 			yield* b.main.run("b");
 			yield* c.main.run("c");
 		}).pipe(Effect.scoped);
 		// No drain holds any server now, so every instance closes once the idle timeout passes.
 		const status = Mcp.Service.use((mcp) =>
-			Effect.forEach([a, b, c], (session) => mcp.status(session.id)).pipe(Effect.map((all) => all.flat())),
+			Effect.forEach([a, b, c], (session) => mcp.status(session.main.id)).pipe(Effect.map((all) => all.flat())),
 		);
 		for (let tries = 0; tries < 250 && (yield* status).some((one) => one.state !== "disconnected"); tries++)
 			yield* Effect.sleep("40 millis");
 		const idle = yield* status;
-		// A closed instance is started again by the next exchange that needs it.
+		// A closed instance is started again by the next turn that needs it.
 		yield* a.main.run("again");
 		const messages = yield* Effect.forEach([a, b, c], (session) =>
 			messageEntries(session.main).pipe(Effect.flatMap((line) => Effect.forEach(line, ContextCodec.decodeMessage))),

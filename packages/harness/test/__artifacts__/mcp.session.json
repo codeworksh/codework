@@ -374,28 +374,118 @@
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "hidden"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			]
 		},
 		{
 			"server": "off",
 			"state": "disabled",
-			"tools": 0
+			"tools": []
 		},
 		{
 			"server": "my-srv",
 			"state": "disabled",
-			"tools": 0
+			"tools": []
 		},
 		{
 			"server": "badheader",
-			"state": "connecting",
+			"state": "failed",
 			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
-			"tools": 0
+			"tools": []
 		},
 		{
 			"server": "later",
 			"state": "connected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "codemode"
+				},
+				{
+					"name": "args",
+					"exposure": "codemode"
+				},
+				{
+					"name": "fail",
+					"exposure": "codemode"
+				},
+				{
+					"name": "pid",
+					"exposure": "codemode"
+				},
+				{
+					"name": "crash",
+					"exposure": "codemode"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "codemode"
+				},
+				{
+					"name": "secret",
+					"exposure": "codemode"
+				},
+				{
+					"name": "bye",
+					"exposure": "codemode"
+				},
+				{
+					"name": "cwd",
+					"exposure": "codemode"
+				},
+				{
+					"name": "link",
+					"exposure": "codemode"
+				},
+				{
+					"name": "big",
+					"exposure": "codemode"
+				}
+			]
 		}
 	],
 	"configErrors": [
