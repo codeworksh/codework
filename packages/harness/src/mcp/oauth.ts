@@ -314,7 +314,7 @@ const provider = (input: {
 	// The credentials this run read or saved. Another process may store newer ones while the server
 	// refuses ours; those are not ours to drop. A server may keep the access token and rotate only the
 	// refresh token, so both are compared.
-	const presented: { access?: string; refresh?: string; client?: string } = {};
+	const presented: { access?: string | undefined; refresh?: string | undefined; client?: string | undefined } = {};
 	const presents = (tokens: OAuthTokens | undefined) => {
 		presented.access = tokens?.access_token;
 		presented.refresh = tokens?.refresh_token;
