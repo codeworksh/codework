@@ -1,0 +1,106 @@
+{
+	"afterUnauthorized": {
+		"interrupted": true,
+		"afterInterrupt": [
+			{
+				"mcp": "notifications/initialized",
+				"token": "access-1"
+			},
+			{
+				"mcp": "tools/call",
+				"token": "access-1",
+				"refused": true
+			},
+			{
+				"token": "refresh_token",
+				"presented": "refresh-1"
+			},
+			{
+				"issued": "access-2"
+			},
+			{
+				"mcp": "notifications/cancelled",
+				"token": "access-2"
+			}
+		],
+		"stored": {
+			"access": "access-2",
+			"refresh": "refresh-2",
+			"mode": "600"
+		},
+		"next": "called with access-2",
+		"log": [
+			{
+				"mcp": "notifications/initialized",
+				"token": "access-1"
+			},
+			{
+				"mcp": "tools/call",
+				"token": "access-1",
+				"refused": true
+			},
+			{
+				"token": "refresh_token",
+				"presented": "refresh-1"
+			},
+			{
+				"issued": "access-2"
+			},
+			{
+				"mcp": "notifications/cancelled",
+				"token": "access-2"
+			},
+			{
+				"mcp": "tools/call",
+				"token": "access-2"
+			}
+		]
+	},
+	"beforeSend": {
+		"interrupted": true,
+		"afterInterrupt": [
+			{
+				"mcp": "notifications/initialized",
+				"token": "access-1"
+			},
+			{
+				"token": "refresh_token",
+				"presented": "refresh-1"
+			},
+			{
+				"issued": "access-2"
+			},
+			{
+				"mcp": "notifications/cancelled",
+				"token": "access-2"
+			}
+		],
+		"stored": {
+			"access": "access-2",
+			"refresh": "refresh-2",
+			"mode": "600"
+		},
+		"next": "called with access-2",
+		"log": [
+			{
+				"mcp": "notifications/initialized",
+				"token": "access-1"
+			},
+			{
+				"token": "refresh_token",
+				"presented": "refresh-1"
+			},
+			{
+				"issued": "access-2"
+			},
+			{
+				"mcp": "notifications/cancelled",
+				"token": "access-2"
+			},
+			{
+				"mcp": "tools/call",
+				"token": "access-2"
+			}
+		]
+	}
+}
