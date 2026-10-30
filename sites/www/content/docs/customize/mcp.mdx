@@ -117,7 +117,7 @@ Share a server only when it keeps no per-session state. Sessions whose settings 
 | `hidden`   | Never sees them.                                                                           |
 | `codemode` | Can't reach them yet: they need codemode, which is coming. CodeWork warns once per thread. |
 
-`toolsearch` is on whenever a thread has deferred tools, or a server still connecting may add some. A search waits up to 10 seconds for such servers. To turn it off, or on with nothing deferred, add an entry to `settings.jsonc`:
+`toolsearch` is on whenever a thread has deferred tools or an enabled server with `deferred` exposure, connected or not. A search waits up to 10 seconds for such servers still connecting. To turn it off, or on with nothing deferred, add an entry to `settings.jsonc`:
 
 ```json title="settings.jsonc"
 { "plugins": [{ "plugin": "codework.tool.toolsearch", "enabled": false }] }

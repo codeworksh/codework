@@ -1286,6 +1286,9 @@ describe("WebSocket client", () => {
 				const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
 				const rpc = yield* connectedClient;
 				const main = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
+				// A thread that never ran has no MCP servers started yet.
+				const idle = yield* rpc["session.create"]({});
+				const scrub = (text: string) => text.replaceAll(main.id, "<main>").replaceAll(idle.id, "<idle>");
 				const quiet = () => Effect.void;
 				const turn = (text: string) =>
 					Client.run(rpc, { sessionId: main.session.id, threadId: main.id, text }, quiet).pipe(
@@ -1295,8 +1298,8 @@ describe("WebSocket client", () => {
 					Effect.promise(() => execCli([...args, "--server", url], home)).pipe(
 						Effect.map((run) => ({
 							status: run.status,
-							stdout: run.stdout.replaceAll(main.id, "<main>"),
-							...(run.stderr === "" ? {} : { stderr: run.stderr.replaceAll(main.id, "<main>") }),
+							stdout: scrub(run.stdout),
+							...(run.stderr === "" ? {} : { stderr: scrub(run.stderr) }),
 						})),
 					);
 
@@ -1309,6 +1312,7 @@ describe("WebSocket client", () => {
 				const disconnected = yield* cli("mcp", "disconnect", "gated", "--threadId", main.id);
 				const afterDisconnect = yield* turn("four");
 				const errors = {
+					notStarted: yield* cli("mcp", "reconnect", "gated", "--threadId", idle.id),
 					unknownServer: yield* cli("mcp", "reconnect", "nope", "--threadId", main.id),
 					unknownThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "thr_missing"),
 					notAThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "nope"),

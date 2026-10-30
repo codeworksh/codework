@@ -14,6 +14,11 @@
 	},
 	"afterDisconnect": [],
 	"errors": {
+		"notStarted": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: thread <idle> has not started MCP server \"gated\" yet; send it a message first\n"
+		},
 		"unknownServer": {
 			"status": 1,
 			"stdout": "",

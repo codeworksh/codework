@@ -95,13 +95,13 @@ codework run "How do we deploy this project?"
 
 ## The Plugin Definition
 
-| Field    | Required | Meaning                                                                                                                                                                  |
-| -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`     | Yes      | A unique ID in the form `vendor.domain.name`: three lowercase segments, like `acme.tool.proc`.                                                                           |
-| `kind`   | Yes      | `"tool"` or `"prompt"`. Decides which pass the plugin runs in. See [Order](/docs/plugins/configuration#order).                                                           |
-| `setup`  | Yes      | `(ctx, options) => void`. May return a `Promise` or an Effect.                                                                                                           |
-| `optIn`  | No       | `true` keeps the plugin off until a settings entry sets `"enabled": true`. `"deferred"` turns it on in a turn with deferred tools; an entry's `"enabled"` still decides. |
-| `events` | No       | Event definitions this plugin publishes. Types must start with `plugin.<id>.`.                                                                                           |
+| Field    | Required | Meaning                                                                                                        |
+| -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `id`     | Yes      | A unique ID in the form `vendor.domain.name`: three lowercase segments, like `acme.tool.proc`.                 |
+| `kind`   | Yes      | `"tool"` or `"prompt"`. Decides which pass the plugin runs in. See [Order](/docs/plugins/configuration#order). |
+| `setup`  | Yes      | `(ctx, options) => void`. May return a `Promise` or an Effect.                                                 |
+| `optIn`  | No       | `true` keeps the plugin off until a settings entry sets `"enabled": true`.                                     |
+| `events` | No       | Event definitions this plugin publishes. Types must start with `plugin.<id>.`.                                 |
 
 The `codework.` prefix is reserved for built-ins, and a third-party plugin that uses it is rejected.
 
