@@ -17,7 +17,7 @@ export interface EncodedMessage {
 
 type AikitPart = Message.AssistantMessage["parts"][number] | Message.UserMessage["parts"][number];
 
-/** A message the session stores as an entry. Transcript system messages are not stored yet. */
+/** A message the session stores as a user or assistant entry. System messages have `system` entries. */
 export type ContextMessage = Message.UserMessage | Message.AssistantMessage;
 
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
@@ -199,15 +199,61 @@ export const decodeSyntheticMessage = Effect.fn("Context.decodeSyntheticMessage"
 	);
 });
 
+/** The transcript system message of a tool change; empty sides are left out. */
+export const systemMessage = <T>(
+	messageId: string,
+	created: number,
+	changes: {
+		readonly toolsAdded: ReadonlyArray<T>;
+		readonly toolsRemoved: ReadonlyArray<Message.ToolReference>;
+	},
+) => ({
+	messageId,
+	role: "system" as const,
+	time: { created },
+	...(changes.toolsAdded.length === 0 ? {} : { toolsAdded: [...changes.toolsAdded] }),
+	...(changes.toolsRemoved.length === 0 ? {} : { toolsRemoved: changes.toolsRemoved.map(({ name }) => ({ name })) }),
+});
+
+const decodeSystemData = Schema.decodeUnknownEffect(SessionSchema.SystemData);
+
+export const decodeSystemMessage = Effect.fn("Context.decodeSystemMessage")(function* (
+	hydrated: Thread.HydratedEntry,
+): Effect.fn.Return<Message.SystemMessage, ContextDecodeError> {
+	const { entry } = hydrated;
+	const data = yield* decodeSystemData(entry.data).pipe(
+		Effect.mapError(
+			(cause) => new ContextDecodeError({ entryId: entry.id, type: entry.type, reason: cause.message }),
+		),
+	);
+	const message = yield* Effect.try({
+		try: () =>
+			validateAikitMessage(
+				systemMessage(entry.id, DateTime.toEpochMillis(entry.createdAt), data),
+				`context entry ${entry.id}`,
+			),
+		catch: (cause) => new ContextDecodeError({ entryId: entry.id, type: entry.type, reason: reasonOf(cause) }),
+	});
+	if (message.role !== "system") {
+		return yield* new ContextDecodeError({ entryId: entry.id, type: entry.type, reason: "not a system message" });
+	}
+	return message;
+});
+
+/** A message's parts; a system message has none. */
+export const parts = (message: Message.Message) => (message.role === "system" ? [] : message.parts);
+
+/** The aikit message a `user`, `assistant` or `system` entry stores. */
 export const decodeMessage = Effect.fn("Context.decodeMessage")(function* (
 	hydrated: Thread.HydratedEntry,
-): Effect.fn.Return<ContextMessage, ContextDecodeError> {
+): Effect.fn.Return<Message.Message, ContextDecodeError> {
 	const { entry } = hydrated;
+	if (entry.type === "system") return yield* decodeSystemMessage(hydrated);
 	if (entry.type !== "user" && entry.type !== "assistant") {
 		return yield* new ContextDecodeError({
 			entryId: entry.id,
 			type: entry.type,
-			reason: "only user and assistant entries contain complete aikit messages",
+			reason: "only user, assistant and system entries contain complete aikit messages",
 		});
 	}
 

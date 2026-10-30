@@ -5,8 +5,8 @@
  * event. LLMStarted owns the speculative draft; TurnEnded is the only commit.
  */
 
-import { type Message } from "@codeworksh/aikit";
-import { Cause, DateTime, Duration, Effect, Exit, Layer, Option } from "effect";
+import { type Message, Transcript } from "@codeworksh/aikit";
+import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
@@ -18,6 +18,7 @@ import { Thread } from "../thread/thread.ts";
 import { State } from "../state/state.ts";
 import { Telemetry } from "../telemetry/telemetry.ts";
 import { errorMessage } from "../util/error.ts";
+import { Hash } from "../util/hash.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Hooks } from "./hooks.ts";
 import { LLM } from "./llm.ts";
@@ -38,6 +39,9 @@ const terminalResult = (text: string) => ({
 	content: [{ type: "text" as const, text }],
 	isError: true as const,
 });
+
+const encodeJson = (value: unknown) =>
+	Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(value).pipe(Effect.orDie);
 
 const endTime = (call: Message.ToolCallPendingPart, now: number) => Math.max(call.time.end, now);
 
@@ -270,6 +274,37 @@ export const layer = (options: Options = {}) =>
 				return interruptedCause;
 			});
 
+			/**
+			 * The request keeps the declared tools as `tools`; what the thread offers beyond them (or
+			 * withholds) is declared by a `system` entry, published when the transcript's tool state
+			 * differs from the offered one. Returns its message, for the request at hand.
+			 */
+			const declareToolChanges = Effect.fn("Loop.declareToolChanges")(function* (
+				snapshot: State.Snapshot,
+				messages: ReadonlyArray<Message.Message>,
+			) {
+				const previous = Transcript.resolveTranscriptTools(
+					{ messages: [...messages], tools: [...snapshot.tools.wire] },
+					"none",
+				).requestTools;
+				const changes = Transcript.getToolStateChanges(previous, snapshot.tools.offered);
+				if (changes.toolsAdded.length === 0 && changes.toolsRemoved.length === 0) return [];
+				const messageId = SessionMessageSchema.ID.create();
+				const timestamp = yield* DateTime.now;
+				const hash = Hash.sha256(yield* encodeJson(snapshot.tools.offered.map(Transcript.toToolDeclaration)));
+				yield* events.publish(EventList.ToolsChanged, {
+					timestamp,
+					sessionId: snapshot.sessionId,
+					threadId: snapshot.threadId,
+					messageId,
+					...changes,
+					hash,
+				});
+				return [
+					ContextCodec.systemMessage(messageId, DateTime.toEpochMillis(timestamp), changes),
+				] satisfies ReadonlyArray<Message.SystemMessage>;
+			});
+
 			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt", { level: "Info" })(function* (
 				promotion: Promotion,
 				snapshot: State.Snapshot,
@@ -291,6 +326,7 @@ export const layer = (options: Options = {}) =>
 				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
 					return undefined;
 				}
+				const messages = [...assembled.messages, ...(yield* declareToolChanges(snapshot, assembled.messages))];
 
 				// The latest attempt's publisher; a retried turn has one per provider request.
 				let publisher: LLMEventPublisher.Publisher | undefined;
@@ -316,7 +352,7 @@ export const layer = (options: Options = {}) =>
 						{
 							context: {
 								systemPrompt: snapshot.systemPrompt,
-								messages: [...assembled.messages],
+								messages: [...messages],
 								tools: [...snapshot.tools.wire],
 							},
 							provider: snapshot.provider,

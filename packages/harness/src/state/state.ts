@@ -378,6 +378,7 @@ export const layer = (
 					sessionId,
 					hostDir,
 					loadedSettings,
+					agent: chosen,
 					configured: { ...composed, resolvedModel, thinkingLevel },
 				};
 			});
@@ -414,7 +415,7 @@ export const layer = (
 					} satisfies Configuration;
 				}),
 				snapshot: Effect.fn("State.snapshot")(function* (threadId: ThreadSchema.ID) {
-					const { sessionId, hostDir, loadedSettings, configured } = yield* configure(threadId);
+					const { sessionId, hostDir, loadedSettings, agent, configured } = yield* configure(threadId);
 					const owner = { sessionId, threadId };
 					const {
 						promptCustom,
@@ -477,20 +478,26 @@ export const layer = (
 						});
 					}
 
-					const contributions = yield* setup(chosen.selection, {
-						sessionId,
-						threadId,
-						sandbox,
-						paths: global,
-						location,
-						settings: loadedSettings,
-						model: resolvedModel,
-						events,
-						config: {
-							...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
-							...(promptSystemAppend === undefined ? {} : { promptSystemAppend: resolver(promptSystemAppend) }),
+					const contributions = yield* setup(
+						chosen.selection,
+						{
+							sessionId,
+							threadId,
+							sandbox,
+							paths: global,
+							location,
+							settings: loadedSettings,
+							model: resolvedModel,
+							events,
+							config: {
+								...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
+								...(promptSystemAppend === undefined
+									? {}
+									: { promptSystemAppend: resolver(promptSystemAppend) }),
+							},
 						},
-					}).pipe(Effect.mapError((cause) => new SnapshotError({ threadId, reason: cause.message, cause })));
+						agent.modelTools,
+					).pipe(Effect.mapError((cause) => new SnapshotError({ threadId, reason: cause.message, cause })));
 
 					return {
 						sessionId,

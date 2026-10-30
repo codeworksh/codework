@@ -1,0 +1,220 @@
+{
+	"requests": [
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch",
+				"notes_read"
+			],
+			"system": []
+		},
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch",
+				"notes_read"
+			],
+			"system": [
+				{
+					"added": [
+						"weather_forecast"
+					],
+					"removed": []
+				}
+			]
+		},
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch",
+				"notes_read"
+			],
+			"system": [
+				{
+					"added": [
+						"weather_forecast"
+					],
+					"removed": []
+				}
+			]
+		}
+	],
+	"results": [
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "weather forecast",
+				"limit": 1
+			},
+			"status": "completed",
+			"text": "Loaded 1 tool. They are available from your next call:\n- weather_forecast: Get the weather forecast for a city.",
+			"details": {
+				"loaded": [
+					"weather_forecast"
+				]
+			}
+		},
+		{
+			"name": "weather_forecast",
+			"arguments": {
+				"city": "Lisbon"
+			},
+			"status": "completed",
+			"text": "weather_forecast ran",
+			"details": "weather_forecast ran"
+		}
+	],
+	"events": [
+		{
+			"seq": 1,
+			"type": "session.created.1"
+		},
+		{
+			"seq": 2,
+			"type": "session.prompt.admitted.1"
+		},
+		{
+			"seq": 3,
+			"type": "session.prompt.promoted.1"
+		},
+		{
+			"seq": 4,
+			"type": "session.llm.started.1"
+		},
+		{
+			"seq": 5,
+			"type": "session.llm.ended.1"
+		},
+		{
+			"seq": 6,
+			"type": "session.tool.settled.1"
+		},
+		{
+			"seq": 7,
+			"type": "session.turn.ended.1"
+		},
+		{
+			"seq": 8,
+			"type": "session.thread.tools.changed.1"
+		},
+		{
+			"seq": 9,
+			"type": "session.llm.started.1"
+		},
+		{
+			"seq": 10,
+			"type": "session.llm.ended.1"
+		},
+		{
+			"seq": 11,
+			"type": "session.tool.settled.1"
+		},
+		{
+			"seq": 12,
+			"type": "session.turn.ended.1"
+		},
+		{
+			"seq": 13,
+			"type": "session.llm.started.1"
+		},
+		{
+			"seq": 14,
+			"type": "session.llm.ended.1"
+		},
+		{
+			"seq": 15,
+			"type": "session.turn.ended.1"
+		}
+	],
+	"entries": [
+		{
+			"id": "E1",
+			"seq": 3,
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "E2",
+			"seq": 4,
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "E3",
+			"seq": 8,
+			"type": "system",
+			"state": "committed",
+			"data": {
+				"toolsAdded": [
+					{
+						"name": "weather_forecast",
+						"description": "Get the weather forecast for a city.\nReturns daily highs and lows.",
+						"parameters": {
+							"type": "object",
+							"properties": {
+								"city": {
+									"type": "string",
+									"description": "City to get the weather forecast for"
+								},
+								"days": {
+									"anyOf": [
+										{
+											"type": "number",
+											"description": "Number of forecast days"
+										},
+										{
+											"type": "null"
+										}
+									]
+								}
+							},
+							"required": [
+								"city"
+							],
+							"additionalProperties": true
+						}
+					}
+				],
+				"toolsRemoved": [],
+				"hash": "ec3094bdf14770d4650a88a2307556654cabf8623185fefb11702ba2e9a9c6e8"
+			}
+		},
+		{
+			"id": "E4",
+			"seq": 9,
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "E5",
+			"seq": 13,
+			"type": "assistant",
+			"state": "committed"
+		}
+	],
+	"agent": [
+		{
+			"seq": 1,
+			"value": {}
+		},
+		{
+			"seq": 6,
+			"value": {
+				"modelTools": {
+					"add": [
+						"weather_forecast"
+					]
+				}
+			}
+		}
+	]
+}

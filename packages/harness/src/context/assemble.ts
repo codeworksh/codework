@@ -3,13 +3,13 @@ import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import type { Thread } from "../thread/thread.ts";
-import { decodeMessage, decodeSyntheticMessage, type ContextMessage } from "./codec.ts";
+import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
 export interface Snapshot {
 	readonly threadId: string;
 	readonly leafEntryId: string | null;
-	readonly messages: ReadonlyArray<ContextMessage>;
+	readonly messages: ReadonlyArray<Message.Message>;
 	readonly lastAssistant?: {
 		readonly entryId: string;
 		readonly message: Message.AssistantMessage;
@@ -64,7 +64,7 @@ const wrapperMessage = (entry: Thread.HydratedEntry, text: string): Message.User
 /**
  * Builds a thread's LLM context from its line (own entries, then inherited ones, in seq order).
  * Only committed entries count, and the context starts at the newest `reset` or `compaction`.
- * Entries that are not messages (system, custom) stay in the transcript, out of the context.
+ * `system` entries become transcript system messages; `custom` entries stay out of the context.
  */
 export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 	threadId: string,
@@ -78,7 +78,7 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 		| { readonly index: number; readonly handoff: string | undefined }
 		| undefined;
 
-	const messagesByEntry = new Map<string, ContextMessage>();
+	const messagesByEntry = new Map<string, Message.Message>();
 	const compactions = new Map<string, SessionSchema.CompactionData>();
 	const handoffs = new Map<string, string>();
 
@@ -126,8 +126,10 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 				latestStart = { index, handoff: data.handoff };
 				break;
 			}
-			case "system":
+			case "system": {
+				messagesByEntry.set(entry.id, yield* decodeMessage(hydrated));
 				break;
+			}
 			case "custom": {
 				yield* decodeCustomData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
 				break;
@@ -156,7 +158,7 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 		effectivePath = [committedPath[index]!, ...kept, ...committedPath.slice(index + 1)];
 	}
 
-	const messages: ContextMessage[] = [];
+	const messages: Message.Message[] = [];
 	for (const hydrated of effectivePath) {
 		const { entry } = hydrated;
 		const message = messagesByEntry.get(entry.id);

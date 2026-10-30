@@ -170,11 +170,15 @@ describe("context assembly", () => {
 			expect(snapshot.leafEntryId).toBe("a2");
 			expect(snapshot.lastAssistant).toMatchObject({ entryId: "a2", message: { messageId: "a2" } });
 			expect(snapshot.messages.map((message) => message.messageId)).toEqual(["compact1", "u2", "synthetic1", "a2"]);
-			expect(snapshot.messages[0]?.parts[0]).toEqual({
+			const firstPart = (index: number) => {
+				const message = snapshot.messages[index];
+				return message?.role === "system" ? undefined : message?.parts[0];
+			};
+			expect(firstPart(0)).toEqual({
 				type: "text",
 				text: "The conversation history before this point was compacted into the following summary:\n\n<summary>\nEarlier work was summarized.\n</summary>",
 			});
-			expect(snapshot.messages[2]?.parts[0]).toEqual({ type: "text", text: "file contents" });
+			expect(firstPart(2)).toEqual({ type: "text", text: "file contents" });
 
 			const line = yield* threads.line(thread.id);
 			const compacted = line.find((item) => item.entry.id === "compact1");

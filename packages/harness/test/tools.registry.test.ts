@@ -45,7 +45,7 @@ describe("ToolRegistry — execution through the snapshot", () => {
 		const outcome = await Effect.runPromise(resolved.handle(pendingCall("ghost")));
 
 		expect(outcome.status).toBe("error");
-		expect(outcome.result.details).toMatchObject({ error: "unknown_tool", name: "ghost" });
+		expect(outcome.result.details).toMatchObject({ error: "unknown-tool", name: "ghost" });
 	});
 
 	it("maps an interrupted handler to an aborted outcome carrying the last reported partial", async () => {
