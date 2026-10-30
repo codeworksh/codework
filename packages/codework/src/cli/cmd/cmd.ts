@@ -45,8 +45,8 @@ const ServerAddress = {
 
 /** For commands that only talk to a server that is already running. */
 const RunningServer = Flag.String("server").pipe(
-	Flag.withDescription("Base URL of the running codework server"),
-	Flag.withDefault("http://127.0.0.1:7433"),
+	Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
+	Flag.withDefault("ws://127.0.0.1:7433/rpc/v1"),
 );
 
 /** A thread's MCP server in a running server: every thread sharing its instance is affected. */
