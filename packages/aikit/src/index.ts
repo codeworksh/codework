@@ -5,6 +5,7 @@ export * as Protocol from "./llm/protocol.ts";
 export { getEnvApiKey } from "./llm/runtime.ts";
 export { ThinkingBudgets } from "./llm/shared.ts";
 export * as Message from "./message/message.ts";
+export * as Transcript from "./message/transcript.ts";
 export * as Model from "./model/model.ts";
 export { stream } from "./stream.ts";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream.ts";

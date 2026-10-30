@@ -58,7 +58,7 @@ export interface Plugin {
 	 * `options` is this plugin's own configuration block, `{}` when its entry carried none.
 	 * Unvalidated: the harness never looks inside it, so a plugin checks whatever shape it
 	 * documents. It is a second argument rather than a context field so `ctx` stays one object
-	 * shared by every plugin in the exchange.
+	 * shared by every plugin in the turn.
 	 */
 	readonly setup: (
 		ctx: SharedPluginContext,

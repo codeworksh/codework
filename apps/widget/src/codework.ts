@@ -44,7 +44,7 @@ export type ToolCall = typeof ToolCall.Type;
 export const Part = Schema.Union([TextContent, ImageContent, ThinkingContent, ToolCall]);
 export type Part = typeof Part.Type;
 
-/** One message on a session's active branch, oldest first. */
+/** One message in a thread's line, inherited ones first, oldest first. */
 export const HistoryEntry = Schema.Struct({
 	id: Schema.String,
 	seq: Schema.Int,
@@ -65,18 +65,33 @@ export type ThinkingLevel = typeof ThinkingLevel.Type;
 
 export const SessionInfo = Schema.Struct({
 	id: Schema.String,
-	title: Schema.String,
 	directory: Schema.String,
 	hostDir: Schema.optionalKey(Schema.String),
 	/** The sandbox the session runs in; absent for the host itself. */
 	sandbox: Schema.optionalKey(Schema.Struct({ driver: Schema.String })),
 	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
 	updatedAt: Schema.Finite,
-	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-	/** The thinking level chosen for this session; absent when settings decide. */
-	thinkingLevel: Schema.optionalKey(ThinkingLevel),
+	/** Where unaddressed prompts go. */
+	mainThreadId: Schema.String,
 });
 export type SessionInfo = typeof SessionInfo.Type;
+
+/** One linear transcript of a session, with the session embedded. */
+export const ThreadInfo = Schema.Struct({
+	id: Schema.String,
+	origin: Schema.Struct({ kind: Schema.Literals(["main", "fork", "subagent"]) }),
+	/** Absent until its first prompt. */
+	title: Schema.optionalKey(Schema.String),
+	updatedAt: Schema.Finite,
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** The thinking level chosen for this thread; absent when settings decide. */
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
+	session: SessionInfo,
+});
+export type ThreadInfo = typeof ThreadInfo.Type;
+
+/** What a client calls a thread its first prompt has not named yet. */
+export const UNTITLED = "Session";
 
 /** A harness event as the server sends it; `data` stays encoded, decoded per `type` by its reader. */
 export const EventEnvelope = Schema.Struct({
@@ -116,9 +131,9 @@ export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundErro
 	sessionId: Schema.String,
 }) {}
 
-/** A prompt reused a message id the session already holds for another prompt. */
+/** A prompt reused a message id the thread already holds for another prompt. */
 export class PromptConflictError extends Schema.TaggedError<PromptConflictError>()("PromptConflictError", {
-	sessionId: Schema.String,
+	threadId: Schema.String,
 	messageId: Schema.String,
 }) {}
 
@@ -194,6 +209,7 @@ export type RuntimeConfig = typeof RuntimeConfig.Type;
  */
 export const CreateError = Schema.Union([
 	SessionNotFoundError,
+	Schema.TaggedStruct("ThreadNotFoundError", { threadId: Schema.String }),
 	Schema.TaggedStruct("SessionLinkedSpaceNotFoundError", { sessionId: Schema.String }),
 	Schema.TaggedStruct("RelinkError", { sessionId: Schema.String, reason: Schema.String }),
 	Schema.TaggedStruct("SandboxNotFoundError", { id: Schema.String }),
@@ -209,6 +225,16 @@ export const CreateError = Schema.Union([
 	Schema.TaggedStruct("Location.NotDirectoryError", { directory: Schema.String }),
 ]);
 export type CreateError = typeof CreateError.Type;
+
+/** A thread of a session; the session's main thread when `threadId` is absent. */
+const ThreadRef = { sessionId: Schema.String, threadId: Schema.optionalKey(Schema.String) };
+
+/** The server's "no such thread" (the harness `ThreadNotFoundError`), by its wire tag. */
+export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>()("ThreadNotFoundError", {
+	threadId: Schema.String,
+}) {}
+
+const ThreadError = Schema.Union([SessionNotFoundError, ThreadNotFoundError]);
 
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
@@ -229,7 +255,8 @@ export const Api = RpcGroup.make(
 			/** Names the project if this creates it; an existing project keeps its name. Trimmed, non-empty. */
 			project: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
 		},
-		success: SessionInfo,
+		/** The session's main thread. */
+		success: ThreadInfo,
 		error: CreateError,
 	}),
 	/** The models a session anchored at `hostDir` can use; without it, only the user's settings apply. */
@@ -238,33 +265,34 @@ export const Api = RpcGroup.make(
 		success: ModelList,
 		error: Schema.Union([SettingsError, ModelCatalogError]),
 	}),
-	Rpc.make("session.list", {
-		payload: {},
-		success: Schema.Array(SessionInfo),
+	/** Threads newest first, of one session or all. */
+	Rpc.make("thread.list", {
+		payload: { sessionId: Schema.optionalKey(Schema.String) },
+		success: Schema.Array(ThreadInfo),
 	}),
-	/** Sets the session's model and thinking level over its settings; they apply from its next exchange. */
-	Rpc.make("session.configure", {
-		payload: { sessionId: Schema.String, runtime: RuntimeConfig },
-		success: SessionInfo,
-		error: SessionNotFoundError,
+	/** Sets the thread's model and thinking level over its settings; they apply from its next request. */
+	Rpc.make("thread.configure", {
+		payload: { ...ThreadRef, runtime: RuntimeConfig },
+		success: ThreadInfo,
+		error: ThreadError,
 	}),
-	Rpc.make("session.info", {
-		payload: { sessionId: Schema.String },
-		success: SessionInfo,
-		error: SessionNotFoundError,
+	Rpc.make("thread.info", {
+		payload: ThreadRef,
+		success: ThreadInfo,
+		error: ThreadError,
 	}),
-	Rpc.make("session.history", {
-		payload: { sessionId: Schema.String },
+	Rpc.make("thread.history", {
+		payload: ThreadRef,
 		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
-		error: SessionNotFoundError,
+		error: ThreadError,
 	}),
 	/** Prompts admitted but not yet promoted, in admission order; reread whenever the log moves. */
-	Rpc.make("session.queue", {
-		payload: { sessionId: Schema.String },
+	Rpc.make("thread.queue", {
+		payload: ThreadRef,
 		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
-		error: SessionNotFoundError,
+		error: ThreadError,
 	}),
-	/** Durable events after `after` (exclusive), then `log.synced`; with `follow`, each new one as it commits. */
+	/** Durable events of every thread after `after` (exclusive), then `log.synced`; with `follow`, each new one as it commits. */
 	Rpc.make("session.log", {
 		payload: {
 			sessionId: Schema.String,
@@ -276,33 +304,34 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 	/** `id` names the user message the prompt becomes; it is the prompt's correlation id. */
-	Rpc.make("session.prompt", {
+	Rpc.make("thread.prompt", {
 		payload: {
-			sessionId: Schema.String,
+			...ThreadRef,
 			text: Schema.String,
 			delivery: Schema.optionalKey(Delivery),
 			id: Schema.optionalKey(Schema.String),
 		},
-		success: Schema.Void,
-		error: Schema.Union([SessionNotFoundError, PromptConflictError]),
+		success: Schema.Struct({ threadId: Schema.String }),
+		error: Schema.Union([ThreadError, PromptConflictError]),
 	}),
 	/** Withdraws a queued prompt; `cancelled` is false when it was already promoted or is unknown. */
-	Rpc.make("session.cancel", {
-		payload: { sessionId: Schema.String, messageId: Schema.String },
+	Rpc.make("thread.cancel", {
+		payload: { ...ThreadRef, messageId: Schema.String },
 		success: Schema.Struct({ cancelled: Schema.Boolean }),
-		error: SessionNotFoundError,
+		error: ThreadError,
 	}),
-	/** Moves a queued prompt to the other lane or rewrites it in place; `delivery: "steer"` also wakes the session. */
-	Rpc.make("session.update", {
+	/** Moves a queued prompt to the other lane or rewrites it in place; `delivery: "steer"` also wakes the thread. */
+	Rpc.make("thread.update", {
 		payload: {
-			sessionId: Schema.String,
+			...ThreadRef,
 			messageId: Schema.String,
 			delivery: Schema.optionalKey(Delivery),
 			text: Schema.optionalKey(Schema.String),
 		},
 		success: Schema.Struct({ updated: Schema.Boolean }),
-		error: SessionNotFoundError,
+		error: ThreadError,
 	}),
+	/** Stops every thread of the session. */
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Schema.String },
 		success: Schema.Struct({ interrupted: Schema.Boolean }),

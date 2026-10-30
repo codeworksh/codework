@@ -1,0 +1,13 @@
+{
+	"topLevelTools": [],
+	"input": [
+		"additional_tools: base_tool",
+		"user",
+		"function_call: base_tool",
+		"function_call_output",
+		"developer: This is an incremental tools update. Previously declared tools remain available unless explicitly marked unavailable. A tool declared again here is available again, and its latest definition replaces the earlier one.",
+		"additional_tools: late_tool",
+		"developer: The following tools are no longer available. Do not call them:"
+	],
+	"called": "late_tool"
+}

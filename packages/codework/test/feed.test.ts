@@ -22,7 +22,11 @@ const settled = (): EventSchema.Payload =>
 	({
 		id: EventSchema.ID.create(),
 		type: EventList.ExecutionSucceeded.type,
-		data: { sessionId: Session.SessionSchema.ID.create(), timestamp: DateTime.makeUnsafe(0) },
+		data: {
+			sessionId: Session.SessionSchema.ID.create(),
+			threadId: Session.ThreadSchema.ID.create(),
+			timestamp: DateTime.makeUnsafe(0),
+		},
 	}) as EventSchema.Payload;
 
 describe("EventFeed", () => {

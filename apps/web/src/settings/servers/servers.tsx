@@ -1,23 +1,32 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { Plus, RefreshCw } from "lucide-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { DEFAULT_SERVER_HEALTH } from "@codeworksh/contract";
+import { Minus, Plus, RefreshCw, Undo2 } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Page } from "../blocks";
+import { messageOf } from "@/lib/utils";
+import { Server } from "../../kernel/rpc";
+import { serversAtom } from "../../kernel/servers";
+import { Group, Page, quietField, Row, SavingInput, Section } from "../blocks";
 import { AddServer } from "./add";
-import { LocalDetail, LocalItem, serversAtom } from "./local";
+import { LocalDetail, LocalItem } from "./local";
+
+const checkAtom = Server.mutation("servers.check");
+const healthKey = ["health"];
+const healthAtom = Server.query("servers.health", undefined, { reactivityKeys: healthKey });
+const setHealthAtom = Server.mutation("servers.setHealth");
 
 /** The CodeWork servers the app can work with, listed beside the one selected; the built-in one is always there. */
 export function ServersSettings() {
 	const result = useAtomValue(serversAtom);
-	const refresh = useAtomRefresh(serversAtom);
+	const [check, runCheck] = useAtom(checkAtom);
+	const checking = check.waiting;
 	const servers = AsyncResult.isSuccess(result) ? result.value : undefined;
 	// The status is held from launch (see the root route), so opening the page shows it at once and
 	// checks again behind it.
-	useEffect(() => {
-		if (!result.waiting) refresh();
-	}, []);
+	useEffect(() => runCheck({ payload: undefined }), []);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [adding, setAdding] = useState(false);
 	// The default until one is picked, and again when the picked one is gone.
@@ -34,12 +43,12 @@ export function ServersSettings() {
 				<button
 					type="button"
 					title="Check again"
-					disabled={result.waiting}
+					disabled={checking}
 					className="flex items-center gap-1.5 rounded-md px-2 py-1 text-ink-muted transition-colors hover:bg-muted hover:text-ink disabled:pointer-events-none"
-					onClick={() => refresh()}
+					onClick={() => runCheck({ payload: undefined })}
 				>
-					<RefreshCw className={`size-3.5 ${result.waiting ? "animate-spin" : ""}`} aria-hidden />
-					{result.waiting ? "Checking…" : <Checked at={servers} />}
+					<RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
+					{checking ? "Checking…" : <Checked at={servers} />}
 				</button>
 			}
 		>
@@ -94,7 +103,86 @@ export function ServersSettings() {
 					</div>
 				</div>
 			</div>
+			<Section title="Advanced">
+				<Group>
+					<HealthInterval />
+				</Group>
+			</Section>
 		</Page>
+	);
+}
+
+const STEP = 30;
+
+/** How often the servers are checked again in the background, in seconds; 0 turns it off. */
+function HealthInterval() {
+	const result = useAtomValue(healthAtom);
+	const save = useAtomSet(setHealthAtom, { mode: "promise" });
+	const [error, setError] = useState<string | null>(null);
+	const interval = AsyncResult.isSuccess(result) ? result.value.interval : undefined;
+	const set = (seconds: number) => {
+		setError(null);
+		save({ payload: { interval: seconds }, reactivityKeys: healthKey }).catch((cause: unknown) =>
+			setError(messageOf(cause)),
+		);
+	};
+	const commit = (typed: string) => {
+		const seconds = Number(typed);
+		if (!Number.isInteger(seconds) || seconds < 0) return setError("Use whole seconds, or 0 to turn it off.");
+		set(seconds);
+	};
+	return (
+		<Row
+			title={
+				<span className="inline-flex items-center gap-1.5">
+					Health check interval
+					{/* Always there and only shown off the default, so the row never changes height. */}
+					<Button
+						size="icon-xs"
+						variant="ghost"
+						aria-label="Reset health check interval to default"
+						title="Reset to default"
+						disabled={interval === undefined || interval === DEFAULT_SERVER_HEALTH.interval}
+						className="-my-1 disabled:invisible"
+						onClick={() => set(DEFAULT_SERVER_HEALTH.interval)}
+					>
+						<Undo2 />
+					</Button>
+				</span>
+			}
+			description={error ?? "Refresh provider status and versions in the background. Set to 0 to disable."}
+		>
+			{interval !== undefined && (
+				<div className="flex shrink-0 items-center gap-2">
+					<div className="flex items-center">
+						<Button
+							size="icon-xs"
+							variant="ghost"
+							aria-label="Decrease health check interval"
+							disabled={interval === 0}
+							onClick={() => set(Math.max(0, interval - STEP))}
+						>
+							<Minus />
+						</Button>
+						<SavingInput
+							value={String(interval)}
+							label="Health check interval in seconds"
+							className={`${quietField} h-7 w-16 text-center`}
+							onCommit={commit}
+						/>
+						<Button
+							size="icon-xs"
+							variant="ghost"
+							aria-label="Increase health check interval"
+							onClick={() => set(interval + STEP)}
+						>
+							<Plus />
+						</Button>
+					</div>
+					<span className="text-xs text-ink-muted">seconds</span>
+				</div>
+			)}
+		</Row>
 	);
 }
 

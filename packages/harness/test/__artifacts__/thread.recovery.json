@@ -1,0 +1,55 @@
+{
+	"events": [
+		"1 session.created.1 T1",
+		"2 session.prompt.admitted.1 T1",
+		"3 session.prompt.promoted.1 T1",
+		"4 session.llm.started.1 T1",
+		"5 session.llm.ended.1 T1",
+		"6 session.turn.ended.1 T1",
+		"7 session.thread.forked.1 T2",
+		"8 session.prompt.admitted.1 T2",
+		"9 session.prompt.promoted.1 T2",
+		"10 session.llm.started.1 T2",
+		"11 session.llm.failed.1 T2",
+		"12 session.llm.started.1 T2",
+		"13 session.llm.ended.1 T2",
+		"14 session.turn.ended.1 T2"
+	],
+	"threads": [
+		{
+			"thread": "T1",
+			"origin": "main",
+			"createdSeq": 1,
+			"title": "base"
+		},
+		{
+			"thread": "T2",
+			"origin": "fork T1 at E1",
+			"createdSeq": 7,
+			"title": "cut off"
+		}
+	],
+	"entries": [
+		"E1 T1 user seq=3 committed=3 committed",
+		"E2 T1 assistant seq=4 committed=6 committed",
+		"E3 T2 user seq=9 committed=9 committed",
+		"E4 T2 assistant seq=10 committed=11 aborted",
+		"E5 T2 assistant seq=12 committed=14 committed"
+	],
+	"documents": [
+		{
+			"thread": "T1",
+			"kind": "agent",
+			"revisions": [
+				"1 {}"
+			]
+		},
+		{
+			"thread": "T2",
+			"kind": "agent",
+			"revisions": [
+				"7 {}"
+			]
+		}
+	]
+}

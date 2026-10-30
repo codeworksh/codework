@@ -12,7 +12,9 @@ import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import * as DaytonaDriver from "../src/sandboxes/daytona/index.ts";
 import * as VercelDriver from "../src/sandboxes/vercel/index.ts";
+import { Event } from "../src/event/event.ts";
 import { Session as SessionStore } from "../src/session/session.ts";
+import { Thread } from "../src/thread/thread.ts";
 import { Hash } from "../src/util/hash.ts";
 import { remoteSuite } from "./fixtures/live.ts";
 import { hasLiveOidc } from "./fixtures/vercel.ts";
@@ -40,6 +42,7 @@ suite("Session.relink across remote envs (vercel → daytona)", () => {
 					Effect.gen(function* () {
 						const sandboxes = yield* SandboxController.Controller;
 						const store = yield* SessionStore.Service;
+						const threads = yield* Thread.Service;
 
 						const clone = (sandboxId: Parameters<typeof sandboxes.withMount>[0]) =>
 							sandboxes.withMount(
@@ -76,10 +79,13 @@ suite("Session.relink across remote envs (vercel → daytona)", () => {
 						// The session starts on the Vercel clone; one transcript entry is
 						// enough to prove the log survives the move.
 						const session = yield* Session.create({ sandbox: vercel, directory: repoVercel });
-						yield* store.append({
+						const events = yield* Event.Service;
+						const seq = (yield* events.latestSequence(session.id)) + 1;
+						yield* events.advance(session.id, seq);
+						yield* threads.append({
 							id: "e-before",
-							sessionId: session.id,
-							seq: 1,
+							threadId: session.main.id,
+							seq,
 							type: "user",
 							data: JSON.stringify({ messageId: "e-before", role: "user", time: { created: 1 } }),
 							parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "before the move" }) }],
@@ -101,7 +107,7 @@ suite("Session.relink across remote envs (vercel → daytona)", () => {
 						expect(after.env).toBe(daytona.id);
 						expect(after.projectId).toBe(projectId);
 						expect(info.directory).toBe(after.location);
-						expect((yield* moved.path()).map(({ entry }) => entry.id)).toEqual(["e-before"]);
+						expect((yield* moved.main.history()).map(({ entry }) => entry.id)).toEqual(["e-before"]);
 
 						// The source env going away afterwards archives its space but does
 						// not touch the moved session.

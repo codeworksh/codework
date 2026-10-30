@@ -1,0 +1,74 @@
+{
+	"results": [
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "github issue",
+				"limit": 2
+			},
+			"status": "completed",
+			"text": "Loaded 2 tools. They are available from your next call:\n- github_create_issue: Create an issue in a GitHub repository.\n- jira_search_issues: Search Jira issues with a JQL query.",
+			"details": {
+				"loaded": [
+					"github_create_issue",
+					"jira_search_issues"
+				]
+			}
+		},
+		{
+			"name": "toolsearch",
+			"arguments": {
+				"query": "create send search list get query translate run weather issue message quote event"
+			},
+			"status": "completed",
+			"text": "Loaded 8 tools. They are available from your next call:\n- jira_search_issues: Search Jira issues with a JQL query.\n- calendar_create_event: Create an event in the user's calendar.\n- stock_quote: Get the latest stock quote for a ticker symbol.\n- database_query: Run a read-only SQL query against the analytics database.\n- slack_send_message: Send a message to a Slack channel.\n- weather_forecast: Get the weather forecast for a city.\n- github_create_issue: Create an issue in a GitHub repository.\n- email_send: Send an email message to a recipient.",
+			"details": {
+				"loaded": [
+					"jira_search_issues",
+					"calendar_create_event",
+					"stock_quote",
+					"database_query",
+					"slack_send_message",
+					"weather_forecast",
+					"github_create_issue",
+					"email_send"
+				]
+			}
+		}
+	],
+	"agentAdd": [
+		"github_create_issue",
+		"jira_search_issues",
+		"calendar_create_event",
+		"stock_quote",
+		"database_query",
+		"slack_send_message",
+		"weather_forecast",
+		"email_send"
+	],
+	"nextRequest": {
+		"tools": [
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch",
+			"notes_read"
+		],
+		"system": [
+			{
+				"added": [
+					"github_create_issue",
+					"jira_search_issues",
+					"calendar_create_event",
+					"stock_quote",
+					"database_query",
+					"slack_send_message",
+					"weather_forecast",
+					"email_send"
+				],
+				"removed": []
+			}
+		]
+	}
+}

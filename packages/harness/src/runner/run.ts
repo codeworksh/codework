@@ -12,14 +12,15 @@ import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { optional } from "../schema.ts";
 import type { Settings } from "../settings/settings.ts";
-import type { ID as SessionId } from "../session/schema.ts";
 import type { SessionLinkedSpaceNotFoundError, SessionNotFoundError } from "../session/session.ts";
+import type { ThreadSchema } from "../thread/schema.ts";
+import type { ThreadNotFoundError } from "../thread/thread.ts";
 import type { State } from "../state/state.ts";
 
 export class SandboxDirectoryNotFoundError extends Schema.TaggedError<SandboxDirectoryNotFoundError>()(
 	"Runner.SandboxDirectoryNotFoundError",
 	{
-		sessionId: Schema.String,
+		threadId: Schema.String,
 		sandboxInstanceId: SandboxInstance.ID,
 		directory: Schema.String,
 	},
@@ -160,7 +161,7 @@ export class ModelNotFoundError extends Schema.TaggedError<ModelNotFoundError>()
 }
 
 export class LLMStreamError extends Schema.TaggedError<LLMStreamError>()("Runner.LLMStreamError", {
-	sessionId: Schema.String,
+	threadId: Schema.String,
 	reason: Schema.String,
 }) {
 	override get message(): string {
@@ -176,6 +177,7 @@ export type RunError =
 	| ContextDecodeError
 	| ContextEncodeError
 	| SessionNotFoundError
+	| ThreadNotFoundError
 	| SessionLinkedSpaceNotFoundError
 	| Settings.SettingsError
 	| State.SnapshotError
@@ -186,7 +188,7 @@ export type RunError =
 export interface Interface {
 	/** Drains eligible durable work. Explicit runs perform one provider attempt even when no work is eligible. */
 	readonly run: (input: {
-		readonly sessionId: SessionId;
+		readonly threadId: ThreadSchema.ID;
 		readonly force: boolean;
 		/** Resuming a run a previous process left unfinished: its cut-off reply is answered first. */
 		readonly recovered?: boolean;

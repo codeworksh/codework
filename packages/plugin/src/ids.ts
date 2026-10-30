@@ -5,7 +5,7 @@ import { withStatics } from "./schema.ts";
 /**
  * The identifiers that cross the plugin boundary.
  *
- * A plugin reads a session id off its context and a message id off every tool call, so both
+ * A plugin reads a session and thread id off its context and a message id off every tool call, so both
  * brands have to be the ones the harness itself mints -- a structurally identical brand declared
  * twice is two types, and a plugin would have to cast to hand either back. They live here, in the
  * package both sides depend on, rather than being re-declared on each side.
@@ -31,6 +31,18 @@ export const SessionID = Schema.String.check(Schema.isStartingWith("ses")).pipe(
 	})),
 );
 export type SessionID = typeof SessionID.Type;
+
+/**
+ * Thread identity: one linear transcript inside a session. Every session has a `main` thread;
+ * forks add more. Also the provider session and prompt-cache key, so it is fresh per thread.
+ */
+export const ThreadID = Schema.String.check(Schema.isStartingWith("thr")).pipe(
+	Schema.brand("Thread.ID"),
+	withStatics((schema) => ({
+		create: () => schema.make("thr_" + uuidv7()),
+	})),
+);
+export type ThreadID = typeof ThreadID.Type;
 
 /**
  * A conversation message id.

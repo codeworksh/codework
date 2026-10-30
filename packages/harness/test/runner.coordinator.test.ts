@@ -22,11 +22,11 @@ describe("RunCoordinator", () => {
 			const coordinator = yield* RunCoordinator.make<string, never>({
 				drain: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
 			});
-			const joined = yield* coordinator.run("session").pipe(Effect.forkChild);
+			const joined = yield* coordinator.run("thread").pipe(Effect.forkChild);
 			yield* Deferred.await(entered);
 			yield* coordinator
-				.interrupt("session")
-				.pipe(Effect.andThen(coordinator.awaitIdle("session")), Effect.uninterruptible);
+				.interrupt("thread")
+				.pipe(Effect.andThen(coordinator.awaitIdle("thread")), Effect.uninterruptible);
 			expect(Array.from(yield* coordinator.active)).toEqual([]);
 			const exit = yield* Fiber.await(joined);
 			expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
@@ -49,9 +49,9 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const first = yield* Effect.forkChild(coordinator.run("session"));
+			const first = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			const second = yield* Effect.forkChild(coordinator.run("session"));
+			const second = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* settle;
 
 			// The second caller attached to the drain already in flight.
@@ -80,8 +80,8 @@ describe("RunCoordinator", () => {
 					),
 			});
 
-			yield* coordinator.wake("session");
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			yield* coordinator.wake("thread");
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			yield* Deferred.await(started);
 			expect(forces).toEqual([false]);
 			expect(idle.pollUnsafe()).toBeUndefined();
@@ -109,10 +109,10 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const running = yield* Effect.forkChild(coordinator.run("session"));
+			const running = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(firstStarted);
-			yield* coordinator.wake("session");
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			yield* coordinator.wake("thread");
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			yield* Deferred.succeed(firstGate, undefined);
 			yield* Deferred.await(secondStarted);
 			expect(running.pollUnsafe()).toBeUndefined();
@@ -143,11 +143,11 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const fiber = yield* Effect.forkChild(coordinator.run("session"));
+			const fiber = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			yield* coordinator.wake("session");
-			yield* coordinator.wake("session");
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
+			yield* coordinator.wake("thread");
+			yield* coordinator.wake("thread");
 			yield* Deferred.succeed(gate, undefined);
 			yield* Fiber.join(fiber);
 			yield* settle;
@@ -176,11 +176,11 @@ describe("RunCoordinator", () => {
 				settled: (_key, exit) => Effect.sync(() => void exits.push(exit)),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(started);
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.succeed(gate, undefined);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			expect(drains).toBe(2);
 			expect(starts).toBe(1);
@@ -240,12 +240,12 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const fiber = yield* Effect.forkChild(coordinator.run("session"));
+			const fiber = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			yield* coordinator.wake("session"); // queue a follow-up...
-			expect(yield* coordinator.interrupt("session")).toBe(true); // ...which the interrupt discards
+			yield* coordinator.wake("thread"); // queue a follow-up...
+			expect(yield* coordinator.interrupt("thread")).toBe(true); // ...which the interrupt discards
 			yield* Fiber.join(fiber).pipe(Effect.exit);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			// Interruption is a stop, not a restart: no successor runs.
 			expect(calls).toBe(1);
@@ -268,9 +268,9 @@ describe("RunCoordinator", () => {
 					),
 			});
 
-			const first = yield* Effect.forkChild(coordinator.run("session"));
+			const first = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			const second = yield* Effect.forkChild(coordinator.run("session"));
+			const second = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* settle;
 
 			yield* Deferred.succeed(gate, undefined);
@@ -298,9 +298,9 @@ describe("RunCoordinator", () => {
 					),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(started);
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			yield* Deferred.succeed(gate, undefined);
 			yield* Fiber.join(idle);
 
@@ -326,12 +326,12 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const running = yield* Effect.forkChild(coordinator.run("session"));
+			const running = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
 
 			// Ask to stop, then immediately ask to run again.
-			expect(yield* coordinator.interrupt("session")).toBe(true);
-			const resumed = yield* Effect.forkChild(coordinator.run("session"));
+			expect(yield* coordinator.interrupt("thread")).toBe(true);
+			const resumed = yield* Effect.forkChild(coordinator.run("thread"));
 
 			yield* Fiber.join(running).pipe(Effect.exit);
 			yield* Fiber.join(resumed);
@@ -360,9 +360,9 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const first = yield* Effect.forkChild(coordinator.run("session"));
+			const first = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			const second = yield* Effect.forkChild(coordinator.run("session"));
+			const second = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* settle;
 			yield* Fiber.interrupt(second);
 
@@ -403,9 +403,9 @@ describe("RunCoordinator", () => {
 					const coordinator = yield* RunCoordinator.make<string, never>({
 						drain: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
 					});
-					yield* coordinator.wake("session");
+					yield* coordinator.wake("thread");
 					yield* Deferred.await(started);
-					expect(Array.from(yield* coordinator.active)).toEqual(["session"]);
+					expect(Array.from(yield* coordinator.active)).toEqual(["thread"]);
 					return coordinator;
 				}),
 			);
@@ -443,14 +443,14 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(firstStarted);
-			expect(yield* coordinator.interrupt("session")).toBe(true);
+			expect(yield* coordinator.interrupt("thread")).toBe(true);
 			yield* Deferred.await(cleanupStarted);
-			yield* coordinator.wake("session"); // admitted mid-cleanup
+			yield* coordinator.wake("thread"); // admitted mid-cleanup
 			yield* Deferred.succeed(cleanupGate, undefined);
 			yield* Deferred.await(secondStarted);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			expect(calls).toBe(2);
 		}),
@@ -474,15 +474,15 @@ describe("RunCoordinator", () => {
 				settled: (_key, _exit, reason) => Effect.sync(() => void reasons.push(reason)),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(started);
-			expect(yield* coordinator.interrupt("session", "user")).toBe(true);
-			expect(yield* coordinator.interrupt("session", "user")).toBe(false);
+			expect(yield* coordinator.interrupt("thread", "user")).toBe(true);
+			expect(yield* coordinator.interrupt("thread", "user")).toBe(false);
 			expect(reasons).toEqual([]);
-			expect(Array.from(yield* coordinator.active)).toEqual(["session"]);
+			expect(Array.from(yield* coordinator.active)).toEqual(["thread"]);
 
 			yield* Deferred.await(cleanupStarted);
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			yield* settle;
 			expect(idle.pollUnsafe()).toBeUndefined();
 			yield* Deferred.succeed(cleanupGate, undefined);
@@ -504,17 +504,17 @@ describe("RunCoordinator", () => {
 				settled: () => Deferred.succeed(settling, undefined).pipe(Effect.andThen(Deferred.await(release))),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(settling);
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			const interrupted = yield* coordinator
-				.interrupt("session", undefined, { awaitSettlement: true })
+				.interrupt("thread", undefined, { awaitSettlement: true })
 				.pipe(Effect.forkChild);
 			yield* settle;
 			expect(interrupted.pollUnsafe()).toBeUndefined();
 			yield* Deferred.succeed(release, undefined);
 			expect(yield* Fiber.join(interrupted)).toBe(false);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			expect(drains).toBe(1);
 			expect(Array.from(yield* coordinator.active)).toEqual([]);
@@ -543,10 +543,10 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const resumed = yield* Effect.forkChild(coordinator.run("session"));
+			const resumed = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(started);
-			yield* coordinator.wake("session");
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			yield* coordinator.wake("thread");
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			yield* Deferred.succeed(gate, undefined);
 
 			// The failure reaches the caller, and the queued work still runs — once.
@@ -580,16 +580,16 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			const fiber = yield* Effect.forkChild(coordinator.run("session"));
+			const fiber = yield* Effect.forkChild(coordinator.run("thread"));
 			yield* Deferred.await(firstStarted);
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.succeed(firstGate, undefined);
 
 			yield* Deferred.await(secondStarted);
-			yield* coordinator.wake("session"); // arrives during the follow-up
+			yield* coordinator.wake("thread"); // arrives during the follow-up
 			yield* Deferred.succeed(secondGate, undefined);
 			yield* Fiber.join(fiber);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			expect(calls).toBe(3);
 		}),
@@ -615,9 +615,9 @@ describe("RunCoordinator", () => {
 			});
 			wake = coordinator.wake;
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(completed);
-			yield* coordinator.awaitIdle("session");
+			yield* coordinator.awaitIdle("thread");
 
 			expect(calls).toBe(limit);
 		}),
@@ -650,23 +650,21 @@ describe("RunCoordinator", () => {
 					}),
 			});
 
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			yield* Deferred.await(started);
-			const settled = yield* Effect.forkChild(
-				coordinator.interrupt("session", undefined, { awaitSettlement: true }),
-			);
+			const settled = yield* Effect.forkChild(coordinator.interrupt("thread", undefined, { awaitSettlement: true }));
 			// Work admitted while the interrupted execution is still cleaning up. The
 			// wake has to land after the interrupt was accepted, since an earlier one
 			// is deliberately claimed by the interrupted intent.
 			yield* Deferred.await(cleanupStarted);
-			yield* coordinator.wake("session");
+			yield* coordinator.wake("thread");
 			expect(settled.pollUnsafe()).toBeUndefined();
 
 			yield* Deferred.succeed(cleanupGate, undefined);
 			// Resolves on the interrupted execution's own settlement; the successor is
 			// still parked on its gate, so `awaitIdle` would still be blocked here.
 			expect(yield* Fiber.join(settled)).toBe(true);
-			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("thread"));
 			expect(idle.pollUnsafe()).toBeUndefined();
 
 			yield* Deferred.succeed(successorGate, undefined);

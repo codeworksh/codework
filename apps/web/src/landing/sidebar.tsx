@@ -1,6 +1,5 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { Plus, Search, SquarePen } from "lucide-react";
 import { type MouseEvent, useState } from "react";
@@ -14,8 +13,9 @@ import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
 import { ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
+import { OpenProviderSettings } from "@/components/offline";
+import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
-import { ServerOffline } from "./offline";
 import { placeAtom, usePickFolder } from "./place";
 
 /**
@@ -24,6 +24,7 @@ import { placeAtom, usePickFolder } from "./place";
  */
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
+	const problem = useAtomValue(problemAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
@@ -88,13 +89,13 @@ export function SessionsSidebar() {
 				</div>
 			</SidebarHeader>
 			<SidebarContent className="px-2 pt-2 pb-2">
-				{AsyncResult.isFailure(result) ? (
-					// The CodeWork server is the usual reason, and the sidebar can say which state it is in and fix it.
-					Option.exists(AsyncResult.error(result), (error) => error._tag === "Server.CodeworkUnavailable") ? (
-						<ServerOffline />
-					) : (
-						<p className="px-2.5 py-2 text-xs text-ink-muted">Could not load sessions.</p>
-					)
+				{problem !== undefined ? (
+					<OpenProviderSettings
+						problem={problem}
+						className="w-full font-normal text-ink-muted hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
+					/>
+				) : AsyncResult.isFailure(result) ? (
+					<p className="px-2.5 py-2 text-xs text-ink-muted">Could not load sessions.</p>
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
 					needle !== "" ? (
 						<p className="px-2.5 py-2 text-xs text-ink-muted">No sessions match “{query}”.</p>

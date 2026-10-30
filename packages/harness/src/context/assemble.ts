@@ -2,12 +2,12 @@ import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
-import type { Session } from "../session/session.ts";
+import type { Thread } from "../thread/thread.ts";
 import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
 export interface Snapshot {
-	readonly sessionId: string;
+	readonly threadId: string;
 	readonly leafEntryId: string | null;
 	readonly messages: ReadonlyArray<Message.Message>;
 	readonly lastAssistant?: {
@@ -25,13 +25,8 @@ const SyntheticData = Schema.fromJsonString(
 	}),
 );
 
-const BranchSummaryData = Schema.fromJsonString(
-	Schema.Struct({
-		fromEntryId: Schema.String,
-		summary: Schema.String,
-		details: optional(Schema.Unknown),
-	}),
-);
+// `handoff`: what the thread carries over the reset, if anything.
+const ResetData = Schema.fromJsonString(Schema.Struct({ handoff: optional(Schema.String) }));
 
 const CustomData = Schema.fromJsonString(
 	Schema.Struct({
@@ -42,26 +37,23 @@ const CustomData = Schema.fromJsonString(
 
 const decodeSyntheticData = Schema.decodeUnknownEffect(SyntheticData);
 const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
-const decodeBranchSummaryData = Schema.decodeUnknownEffect(BranchSummaryData);
+const decodeResetData = Schema.decodeUnknownEffect(ResetData);
 const decodeCustomData = Schema.decodeUnknownEffect(CustomData);
 
-const decodeFailure = (entry: Session.HydratedEntry) => (error: { readonly message: string }) =>
+const decodeFailure = (entry: Thread.HydratedEntry) => (error: { readonly message: string }) =>
 	new ContextDecodeError({
 		entryId: entry.entry.id,
 		type: entry.entry.type,
 		reason: error.message,
 	});
 
-// TODO(sanchitrk):
-// comeback to this when we've decided on compaction, branch summary, etc.
-
 const compactionText = (summary: string) =>
 	`The conversation history before this point was compacted into the following summary:\n\n<summary>\n${summary}\n</summary>`;
 
-const branchSummaryText = (summary: string) =>
-	`The following is a summary of a branch that this conversation came back from:\n\n<summary>\n${summary}\n</summary>`;
+const resetText = (handoff: string) =>
+	`The conversation was started over. Carried over from before:\n\n<handoff>\n${handoff}\n</handoff>`;
 
-const wrapperMessage = (entry: Session.HydratedEntry, text: string): Message.UserMessage =>
+const wrapperMessage = (entry: Thread.HydratedEntry, text: string): Message.UserMessage =>
 	Message.createUserMessage({
 		messageId: entry.entry.id,
 		role: "user",
@@ -69,35 +61,29 @@ const wrapperMessage = (entry: Session.HydratedEntry, text: string): Message.Use
 		parts: [{ type: "text", text }],
 	});
 
-// assembles entries which builds the LLM context.
-// a entry is hybrid data type; with entry types not relevant to the LLMs
-// yet stored into the timeline.
-//
-// NOTE(sanchitrk):
-// remove unnecessary cases. comeback to this when in use.
-export const assemblePath = Effect.fn("Context.assemblePath")(function* (
-	sessionId: string,
-	path: ReadonlyArray<Session.HydratedEntry>,
+/**
+ * Builds a thread's LLM context from its line (own entries, then inherited ones, in seq order).
+ * Only committed entries count, and the context starts at the newest `reset` or `compaction`.
+ * `system` entries become transcript system messages; `custom` entries stay out of the context.
+ */
+export const assembleLine = Effect.fn("Context.assembleLine")(function* (
+	threadId: string,
+	line: ReadonlyArray<Thread.HydratedEntry>,
 ): Effect.fn.Return<Snapshot, ContextDecodeError> {
-	const leafEntryId = path.at(-1)?.entry.id ?? null;
-	const committedPath = path.filter((hydrated) => hydrated.entry.state === "committed");
+	const leafEntryId = line.at(-1)?.entry.id ?? null;
+	const committedPath = line.filter((hydrated) => hydrated.entry.state === "committed");
 	let lastAssistant: Snapshot["lastAssistant"];
-	let latestCompaction: { readonly index: number; readonly data: SessionSchema.CompactionData } | undefined;
+	let latestStart:
+		| { readonly index: number; readonly compaction: SessionSchema.CompactionData }
+		| { readonly index: number; readonly handoff: string | undefined }
+		| undefined;
 
 	const messagesByEntry = new Map<string, Message.Message>();
 	const compactions = new Map<string, SessionSchema.CompactionData>();
-	const branchSummaries = new Map<string, string>();
+	const handoffs = new Map<string, string>();
 
 	for (const [index, hydrated] of committedPath.entries()) {
 		const { entry } = hydrated;
-		if (entry.sessionId !== sessionId) {
-			return yield* new ContextDecodeError({
-				entryId: entry.id,
-				type: entry.type,
-				reason: `entry belongs to session ${entry.sessionId}, not ${sessionId}`,
-			});
-		}
-
 		switch (entry.type) {
 			case "user": {
 				messagesByEntry.set(entry.id, yield* decodeMessage(hydrated));
@@ -131,12 +117,17 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 			case "compaction": {
 				const data = yield* decodeCompactionData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
 				compactions.set(entry.id, data);
-				latestCompaction = { index, data };
+				latestStart = { index, compaction: data };
 				break;
 			}
-			case "branchSummary": {
-				const data = yield* decodeBranchSummaryData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
-				branchSummaries.set(entry.id, data.summary);
+			case "reset": {
+				const data = yield* decodeResetData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
+				if (data.handoff !== undefined) handoffs.set(entry.id, data.handoff);
+				latestStart = { index, handoff: data.handoff };
+				break;
+			}
+			case "system": {
+				messagesByEntry.set(entry.id, yield* decodeMessage(hydrated));
 				break;
 			}
 			case "custom": {
@@ -147,9 +138,11 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 	}
 
 	let effectivePath = committedPath;
-	if (latestCompaction !== undefined) {
-		const { index, data } = latestCompaction;
-		let kept: ReadonlyArray<Session.HydratedEntry> = [];
+	if (latestStart !== undefined && !("compaction" in latestStart)) {
+		effectivePath = committedPath.slice(latestStart.index);
+	} else if (latestStart !== undefined) {
+		const { index, compaction: data } = latestStart;
+		let kept: ReadonlyArray<Thread.HydratedEntry> = [];
 		if (data.firstKeptEntryId !== null) {
 			const firstKeptIndex = committedPath.findIndex((item) => item.entry.id === data.firstKeptEntryId);
 			if (firstKeptIndex < 0 || firstKeptIndex >= index) {
@@ -178,14 +171,14 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 			messages.push(wrapperMessage(hydrated, compactionText(compaction.summary)));
 			continue;
 		}
-		const branchSummary = branchSummaries.get(entry.id);
-		if (branchSummary !== undefined) {
-			messages.push(wrapperMessage(hydrated, branchSummaryText(branchSummary)));
+		const handoff = handoffs.get(entry.id);
+		if (handoff !== undefined) {
+			messages.push(wrapperMessage(hydrated, resetText(handoff)));
 		}
 	}
 
 	return {
-		sessionId,
+		threadId,
 		leafEntryId,
 		messages,
 		...(lastAssistant === undefined ? {} : { lastAssistant }),

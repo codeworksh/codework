@@ -3,17 +3,22 @@
  *
  * Copilot exposes three inference protocols on one host — OpenAI Chat
  * Completions (`/chat/completions`), OpenAI Responses (`/responses`), and
- * Anthropic Messages (`/v1/messages`) — so this provider composes the official
- * AI SDK adapters behind one `ProviderV4` and routes each model through
- * `api.method`. Auth and Copilot request headers are applied inside the shared
- * fetch wrapper, which is why the adapters receive a placeholder key: their
- * headers never reach the wire.
+ * Anthropic Messages (`/v1/messages`) — so this provider routes each model
+ * through `api.method`. Chat and Messages use the official AI SDK adapters;
+ * Responses uses aikit's own Responses model, which declares tools added
+ * mid-conversation in place. Auth and Copilot request headers are applied inside
+ * the shared fetch wrapper, which is why the adapters receive a placeholder key:
+ * their headers never reach the wire.
  */
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { NoSuchModelError, type LanguageModelV4, type ProviderV4 } from "@ai-sdk/provider";
+import { NoSuchModelError, type LanguageModelV3, type LanguageModelV4, type ProviderV4 } from "@ai-sdk/provider";
+import {
+	ResponsesLanguageModel,
+	type ResponsesCompatibility,
+	type ResponsesRequestProfile,
+} from "../responses/model.ts";
 import { createCopilotFetch, type GitHubCopilotApiKey } from "./copilot-fetch.ts";
 import type { GitHubCopilotInteractionType } from "./copilot-headers.ts";
 
@@ -22,6 +27,15 @@ export const GITHUB_COPILOT_PROVIDER_NAME = "github-copilot";
 
 const PLACEHOLDER_API_KEY = "github-copilot";
 
+/** The copilot fetch reads the JSON body for its headers, so it goes uncompressed. */
+const COPILOT_RESPONSES_REQUEST: ResponsesRequestProfile = {
+	systemPrompt: "developer",
+	maxOutputTokens: true,
+	encryptedReasoning: "withEffort",
+	compress: false,
+	toolDefaults: false,
+};
+
 export interface GitHubCopilotProvider extends ProviderV4 {
 	/** Chat Completions — the generic fallback for third-party models. */
 	(modelId: string): LanguageModelV4;
@@ -29,7 +43,7 @@ export interface GitHubCopilotProvider extends ProviderV4 {
 	/** `POST /chat/completions` — Gemini, Kimi, and other third-party models. */
 	chat(modelId: string): LanguageModelV4;
 	/** `POST /responses` — GPT, Grok, OSWE, and MAI models. */
-	responses(modelId: string): LanguageModelV4;
+	responses(modelId: string): LanguageModelV3;
 	/** `POST /v1/messages` — Claude models. */
 	messages(modelId: string): LanguageModelV4;
 }
@@ -54,6 +68,10 @@ export interface GitHubCopilotProviderSettings {
 	interactionType?: GitHubCopilotInteractionType;
 	/** Forwarded to the Chat Completions adapter only. */
 	transformRequestBody?: (body: Record<string, unknown>) => Record<string, unknown>;
+	/** Sent as `prompt_cache_key` on Responses requests. */
+	promptCacheKey?: string;
+	/** Responses model capabilities supplied by aikit; absent flags are disabled. */
+	compat?: ResponsesCompatibility;
 }
 
 export function createGitHubCopilot(options: GitHubCopilotProviderSettings = {}): GitHubCopilotProvider {
@@ -75,13 +93,17 @@ export function createGitHubCopilot(options: GitHubCopilotProviderSettings = {})
 		includeUsage: true,
 		...(options.transformRequestBody !== undefined && { transformRequestBody: options.transformRequestBody }),
 	});
-	const responses = createOpenAI({
-		name: GITHUB_COPILOT_PROVIDER_NAME,
-		baseURL,
-		apiKey: PLACEHOLDER_API_KEY,
-		...headers,
-		fetch,
-	});
+	const responses = (modelId: string) =>
+		new ResponsesLanguageModel(modelId, {
+			provider: GITHUB_COPILOT_PROVIDER_NAME,
+			label: "GitHub Copilot",
+			url: `${baseURL}/responses`,
+			headers: () => ({ ...options.headers, accept: "text/event-stream", "content-type": "application/json" }),
+			fetch,
+			request: COPILOT_RESPONSES_REQUEST,
+			...(options.promptCacheKey !== undefined && { promptCacheKey: options.promptCacheKey }),
+			...(options.compat !== undefined && { compat: options.compat }),
+		});
 	const messages = createAnthropic({
 		name: GITHUB_COPILOT_PROVIDER_NAME,
 		// The Anthropic adapter appends /messages to its baseURL.
@@ -100,7 +122,7 @@ export function createGitHubCopilot(options: GitHubCopilotProviderSettings = {})
 	provider.specificationVersion = "v4" as const;
 	provider.languageModel = (modelId: string) => chat.chatModel(modelId);
 	provider.chat = (modelId: string) => chat.chatModel(modelId);
-	provider.responses = (modelId: string) => responses.responses(modelId);
+	provider.responses = responses;
 	provider.messages = (modelId: string) => messages.messages(modelId);
 	provider.embeddingModel = (modelId: string) => {
 		throw new NoSuchModelError({

@@ -28,9 +28,9 @@ describe("codework.prompt.default", () => {
 		const open = immediateOpen();
 		return Effect.runPromise(
 			Effect.gen(function* () {
-				const handle = yield* Session.create({ directory: root, ...session });
+				const { main: handle } = yield* Session.create({ directory: root, ...session });
 				yield* handle.run("hello");
-				return yield* handle.path();
+				return yield* handle.history();
 			}).pipe(
 				Effect.provide(
 					Harness.layer({

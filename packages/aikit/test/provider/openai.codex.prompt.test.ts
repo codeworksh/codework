@@ -1,10 +1,16 @@
 /** AI SDK prompt conversion for the OpenAI Codex Responses protocol. */
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	appendOpenAICodexGrammarInputJsonDelta,
-	convertToOpenAICodexPrompt,
-} from "../../src/providers/openai-codex/index.ts";
+import { convertToResponsesPrompt, type ResponsesPromptOptions } from "../../src/providers/responses/prompt.ts";
+import { appendGrammarInputJsonDelta } from "../../src/providers/responses/tools.ts";
+
+/** Codex's prompt shape: system text in `instructions`, options under `openai-codex`. */
+function codexPrompt(
+	prompt: Parameters<typeof convertToResponsesPrompt>[0],
+	options: Partial<ResponsesPromptOptions> = {},
+) {
+	return convertToResponsesPrompt(prompt, { provider: "openai-codex", systemPrompt: "instructions", ...options });
+}
 
 describe("prompt conversion", () => {
 	it("replays signed reasoning, assistant message ids, and deferred-tool namespaces", () => {
@@ -14,7 +20,7 @@ describe("prompt conversion", () => {
 			summary: [],
 			encrypted_content: "encrypted",
 		};
-		const { input } = convertToOpenAICodexPrompt([
+		const { input } = codexPrompt([
 			{
 				role: "assistant",
 				content: [
@@ -62,7 +68,7 @@ describe("prompt conversion", () => {
 	});
 
 	it("converts AI SDK V4 image file data to input_image entries", () => {
-		const { input } = convertToOpenAICodexPrompt([
+		const { input } = codexPrompt([
 			{
 				role: "user",
 				content: [
@@ -83,7 +89,7 @@ describe("prompt conversion", () => {
 
 	it("replays native custom tool calls and results from ordinary AI SDK tool parts", () => {
 		const grammarToolInputProperties = new Map([["sample", "payload"]]);
-		const { input } = convertToOpenAICodexPrompt(
+		const { input } = codexPrompt(
 			[
 				{
 					role: "assistant",
@@ -127,13 +133,13 @@ describe("prompt conversion", () => {
 
 	it("produces append-only JSON deltas for raw grammar input", () => {
 		const buffer = { input: "", started: false, closed: false };
-		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"', false)).toBe('{"payload":"a\\"');
-		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBe('\\nb"}');
-		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBeUndefined();
+		expect(appendGrammarInputJsonDelta(buffer, "payload", 'a"', false)).toBe('{"payload":"a\\"');
+		expect(appendGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBe('\\nb"}');
+		expect(appendGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBeUndefined();
 	});
 
 	it("omits Responses item ids for non-composite and cross-model tool calls", () => {
-		const { input } = convertToOpenAICodexPrompt([
+		const { input } = codexPrompt([
 			{
 				role: "assistant",
 				content: [
@@ -176,7 +182,7 @@ describe("prompt conversion", () => {
 			},
 		];
 
-		expect(convertToOpenAICodexPrompt(prompt, { supportsImages: true }).input[0]).toEqual({
+		expect(codexPrompt(prompt, { supportsImages: true }).input[0]).toEqual({
 			type: "function_call_output",
 			call_id: "call_1",
 			output: [
@@ -184,7 +190,7 @@ describe("prompt conversion", () => {
 				{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "auto" },
 			],
 		});
-		expect(convertToOpenAICodexPrompt(prompt, { supportsImages: false }).input[0]).toEqual({
+		expect(codexPrompt(prompt, { supportsImages: false }).input[0]).toEqual({
 			type: "function_call_output",
 			call_id: "call_1",
 			output: "the page",

@@ -43,6 +43,12 @@ const ServerAddress = {
 	),
 };
 
+/** For commands that only talk to a server that is already running. */
+const RunningServer = Flag.String("server").pipe(
+	Flag.withDescription("Base URL of the running codework server"),
+	Flag.withDefault("http://127.0.0.1:7433"),
+);
+
 const JsonFlag = Flag.Boolean("json").pipe(
 	Flag.withDescription("Print machine-readable output"),
 	Flag.withDefault(false),
@@ -164,6 +170,10 @@ export const Cmd = Spec.make("codework", {
 					Flag.withDescription("Continue an existing session"),
 					Flag.optional,
 				),
+				thread: Flag.String("thread").pipe(
+					Flag.withDescription("Thread of --session to continue: a thread ID, or main (default)"),
+					Flag.optional,
+				),
 				cwd: Flag.String("cwd").pipe(
 					Flag.withAlias("C"),
 					Flag.withDescription("Working directory for a new session"),
@@ -205,6 +215,10 @@ export const Cmd = Spec.make("codework", {
 				{
 					command: 'codework run --session <id> --provider openai --model gpt-5.6-luna "Now fix them"',
 					description: "Continue a session with explicit model bindings",
+				},
+				{
+					command: 'codework run --session <id> --thread <thread-id> "Try OAuth instead"',
+					description: "Continue one of the session's threads",
 				},
 			],
 		}),
@@ -280,10 +294,7 @@ export const Cmd = Spec.make("codework", {
 							Flag.withDescription("Clear the anchor, leaving the session with no host directory"),
 							Flag.withDefault(false),
 						),
-						server: Flag.String("server").pipe(
-							Flag.withDescription("Base URL of the running codework server"),
-							Flag.withDefault("http://127.0.0.1:7433"),
-						),
+						server: RunningServer,
 					},
 					examples: [
 						{
@@ -297,6 +308,82 @@ export const Cmd = Spec.make("codework", {
 						{
 							command: "codework session link ses_01h9 --unlink",
 							description: "Clear the anchor",
+						},
+					],
+				}),
+				Spec.make("relink", {
+					description: "Move where a session's work, or one thread's, happens",
+					params: {
+						session: Argument.String("session-id").pipe(Argument.withDescription("The session to move")),
+						thread: Flag.String("thread").pipe(
+							Flag.withDescription(
+								"Move only this thread: a thread ID, or main; omitted moves the session's default",
+							),
+							Flag.optional,
+						),
+						directory: Flag.String("directory").pipe(
+							Flag.withAlias("C"),
+							Flag.withDescription(
+								"Checkout to move into; the work keeps its position under it when that path exists there",
+							),
+							Flag.optional,
+						),
+						sandboxId: Flag.String("sandbox-id").pipe(
+							Flag.withDescription("Sandbox instance to move to (default: local)"),
+							Flag.optional,
+						),
+						json: JsonFlag,
+						server: RunningServer,
+					},
+					examples: [
+						{
+							command: "codework session relink ses_01h9 -C ~/work/api",
+							description: "Move the session to a local checkout",
+						},
+						{
+							command: "codework session relink ses_01h9 --thread thr_01ja --sandbox-id sbx_01k2",
+							description: "Run one thread in a sandbox, leaving the others where they are",
+						},
+					],
+				}),
+			],
+		}),
+		Spec.make("thread", {
+			description: "Manage a session's threads",
+			commands: [
+				Spec.make("list", {
+					description: "List a session's threads, newest first",
+					params: {
+						session: Argument.String("session-id").pipe(Argument.withDescription("The session")),
+						json: JsonFlag,
+						server: RunningServer,
+					},
+					examples: [{ command: "codework thread list ses_01h9", description: "List the session's threads" }],
+				}),
+				Spec.make("fork", {
+					description: "Start a new thread from a committed entry of a thread's history",
+					params: {
+						session: Argument.String("session-id").pipe(Argument.withDescription("The session")),
+						thread: Flag.String("thread").pipe(
+							Flag.withDescription("Thread to fork: a thread ID, or main (default)"),
+							Flag.optional,
+						),
+						at: Flag.String("at").pipe(Flag.withDescription("Keep history through this entry"), Flag.optional),
+						before: Flag.String("before").pipe(
+							Flag.withDescription("Keep history up to this user entry, and print its text to edit"),
+							Flag.optional,
+						),
+						json: JsonFlag,
+						server: RunningServer,
+					},
+					examples: [
+						{
+							command: "codework thread fork ses_01h9 --at 01jb",
+							description: "Continue the main thread's history through an entry in a new thread",
+						},
+						{
+							command: "codework thread fork ses_01h9 --thread thr_01ja --before 01jc",
+							description: "Branch just before a prompt, to send it again differently",
 						},
 					],
 				}),
@@ -397,10 +484,7 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("reload", {
 					description: "Re-import configured plugins in a running server",
 					params: {
-						server: Flag.String("server").pipe(
-							Flag.withDescription("Base URL of the running codework server"),
-							Flag.withDefault("http://127.0.0.1:7433"),
-						),
+						server: RunningServer,
 					},
 					examples: [
 						{

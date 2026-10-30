@@ -40,12 +40,15 @@ const cases: ReadonlyArray<{
 
 const writeAll = (root: string, custom: string) =>
 	Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const { main: session } = yield* Session.create({
+			directory: root,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+		});
 		yield* session.run("Write the files.");
-		const path = yield* session.path();
+		const path = yield* session.history();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
+		return messages.flatMap((message) => ContextCodec.parts(message).filter((part) => part.type === "toolCall"));
 	}).pipe(
 		Effect.provide(
 			Harness.layer({
@@ -75,7 +78,7 @@ const tree = async (dir: string, prefix = ""): Promise<Record<string, string>> =
 };
 
 describe("write plugin through the local harness", () => {
-	it("creates, overwrites and reports failures like Pi", () =>
+	it("creates, overwrites and reports failures", () =>
 		withSettings(async ({ root, custom }) => {
 			const work = join(root, "work");
 			await fs.mkdir(work);

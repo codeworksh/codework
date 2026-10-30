@@ -241,12 +241,15 @@ const cases: ReadonlyArray<{ readonly name: string; readonly before: string | nu
 
 const editAll = (root: string, custom: string) =>
 	Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const { main: session } = yield* Session.create({
+			directory: root,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+		});
 		yield* session.run("Edit the files.");
-		const path = yield* session.path();
+		const path = yield* session.history();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
+		return messages.flatMap((message) => ContextCodec.parts(message).filter((part) => part.type === "toolCall"));
 	}).pipe(
 		Effect.provide(
 			Harness.layer({
@@ -267,7 +270,7 @@ const editAll = (root: string, custom: string) =>
 	);
 
 describe("edit plugin through the local harness", () => {
-	it("replaces, matches fuzzily, keeps line endings and reports failures like Pi", () =>
+	it("replaces, matches fuzzily, keeps line endings and reports failures", () =>
 		withSettings(async ({ root, custom }) => {
 			const work = join(root, "work");
 			await fs.mkdir(work);

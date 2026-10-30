@@ -32,7 +32,7 @@ export const linkedDirectory = Effect.fn("CLI.plugin.linkedDirectory")(function*
 		// Only the session row is read, so this needs the database and the event log the store is
 		// built on -- no sandboxes, no control plane, no plugin machinery.
 		Effect.provide(
-			SessionStore.layer.pipe(
+			SessionStore.storeLayer.pipe(
 				Layer.provide(Event.layer),
 				Layer.provide(Database.layer(yield* Database.path(paths.data))),
 			),

@@ -14,6 +14,7 @@ import {
 	writeError,
 	writeOut,
 } from "../../output.ts";
+import { threadFlag } from "../../thread.ts";
 import { Cmd } from "../cmd.ts";
 
 interface RenderState {
@@ -80,6 +81,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.run", { level: "Info" })(function* ({
 		prompt,
 		session,
+		thread,
 		cwd,
 		sandboxDriver,
 		sandboxProviderId,
@@ -102,6 +104,10 @@ export default Runtime.handler(
 					"--cwd, --sandbox-driver, --sandbox-id, and --sandbox-provider-id can only be used when creating a new session",
 			});
 		}
+		if (Option.isSome(thread) && Option.isNone(session)) {
+			return yield* new InvalidInputError({ message: "--thread continues a thread of --session" });
+		}
+		const threadId = yield* threadFlag(thread);
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
@@ -143,7 +149,11 @@ export default Runtime.handler(
 		const remote = Effect.gen(function* () {
 			const rpc = yield* Client.make;
 			const info = Option.isSome(session)
-				? yield* rpc["session.configure"]({ sessionId: Session.SessionSchema.ID.make(session.value), runtime })
+				? yield* rpc["thread.configure"]({
+						sessionId: Session.SessionSchema.ID.make(session.value),
+						...(threadId === undefined ? {} : { threadId }),
+						runtime,
+					})
 				: yield* rpc["session.create"]({
 						runtime,
 						...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
@@ -154,32 +164,40 @@ export default Runtime.handler(
 			const columns = terminalColumns();
 			yield* writeError(
 				header({
-					sessionId: info.id,
-					sandbox: info.sandbox?.driver ?? "local",
-					directory: info.directory,
+					sessionId: info.session.id,
+					sandbox: info.session.sandbox?.driver ?? "local",
+					directory: info.placement?.directory ?? info.session.directory,
 					columns,
 				}),
 			);
-			if (info.sandbox !== undefined) yield* writeError(`sandbox-id: ${info.sandbox.id}\n`);
-			yield* Client.run(rpc, { sessionId: info.id, text: prompt }, render(state)).pipe(
+			if (info.session.sandbox !== undefined) yield* writeError(`sandbox-id: ${info.session.sandbox.id}\n`);
+			yield* Client.run(rpc, { sessionId: info.session.id, threadId: info.id, text: prompt }, render(state)).pipe(
 				Effect.onInterrupt(() =>
-					rpc["session.interrupt"]({ sessionId: info.id }).pipe(Effect.timeout("5 seconds"), Effect.ignore),
+					rpc["thread.interrupt"]({ sessionId: info.session.id, threadId: info.id }).pipe(
+						Effect.timeout("5 seconds"),
+						Effect.ignore,
+					),
 				),
 			);
 			yield* finish(state, columns);
 		});
 		const program = Effect.gen(function* () {
-			let handle: Session.Handle;
+			let handle: Session.ThreadHandle;
 			if (Option.isSome(session)) {
-				handle = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value), ...runtime });
+				handle = yield* Session.attach({
+					sessionId: Session.SessionSchema.ID.make(session.value),
+					...(threadId === undefined ? {} : { threadId }),
+					...runtime,
+				});
 			} else {
 				const selected = yield* selectSandbox(selection);
-				handle = yield* Session.create({
+				const created = yield* Session.create({
 					...runtime,
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
 					hostDir,
 				});
+				handle = created.main;
 			}
 			const ended = yield* Queue.unbounded<string>();
 			const renderState = yield* Ref.make(initialRenderState);
@@ -191,9 +209,9 @@ export default Runtime.handler(
 			const columns = terminalColumns();
 			yield* writeError(
 				header({
-					sessionId: handle.id,
-					sandbox: info.sandbox?.driver ?? "local",
-					directory: info.directory,
+					sessionId: handle.sessionId,
+					sandbox: info.session.sandbox?.driver ?? "local",
+					directory: info.placement?.directory ?? info.session.directory,
 					columns,
 				}),
 			);
@@ -206,8 +224,7 @@ export default Runtime.handler(
 			);
 			yield* handle.wait();
 			if (Exit.isFailure(execution)) return yield* Effect.failCause(execution.cause);
-			const path = yield* handle.path();
-			const leaf = path.at(-1);
+			const leaf = (yield* handle.history()).at(-1);
 			if (leaf !== undefined) yield* awaitMessage(ended, leaf.entry.id);
 			yield* Fiber.interrupt(printer);
 			yield* finish(renderState, columns);

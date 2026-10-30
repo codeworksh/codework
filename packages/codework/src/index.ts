@@ -31,6 +31,11 @@ const Handlers = Runtime.handlers(Cmd, {
 	},
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),
+		relink: () => import("./cli/cmd/handlers/session/relink.ts"),
+	},
+	thread: {
+		list: () => import("./cli/cmd/handlers/thread/list.ts"),
+		fork: () => import("./cli/cmd/handlers/thread/fork.ts"),
 	},
 	acp: () => import("./cli/cmd/handlers/acp.ts"),
 	plugin: {

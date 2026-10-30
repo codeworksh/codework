@@ -12,7 +12,7 @@ export const topics = {
 	/** Requests: create a session and send its first prompt; answered with its id. */
 	create: "codework/session.create",
 	prompt: "codework/session.prompt",
-	/** Requests: choose a session's model or thinking level; they apply from its next exchange. */
+	/** Requests: choose a session's model or thinking level; they apply from its next turn. */
 	configure: "codework/session.configure",
 	interrupt: "codework/session.interrupt",
 	/** Requests: withdraw a queued prompt before the agent takes it in; answered with `Cancelled`. */

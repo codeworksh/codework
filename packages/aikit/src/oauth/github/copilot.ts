@@ -125,6 +125,21 @@ export function gitHubApiDomain(domain: string): string {
 	return domain === DEFAULT_DOMAIN ? "api.github.com" : `api.${domain}`;
 }
 
+/**
+ * The catalog models a login can reach, by the `availableModelIds` it recorded at login.
+ * A login that recorded none keeps every model.
+ */
+export function filterGitHubCopilotModels<TModel extends { id: string; api?: { id?: string } }>(
+	models: Readonly<Record<string, TModel>>,
+	credentials: Pick<GitHubCopilotOAuthCredentials, "availableModelIds"> | undefined,
+): Record<string, TModel> {
+	const ids = credentials?.availableModelIds;
+	if (ids === undefined) return { ...models };
+	const available = new Set(ids);
+	// A settings entry can alias a model; Copilot is asked for its API id.
+	return Object.fromEntries(Object.entries(models).filter(([, model]) => available.has(model.api?.id ?? model.id)));
+}
+
 /** The Copilot inference host for a credential or enterprise domain. */
 export function gitHubCopilotBaseUrl(options?: {
 	enterpriseUrl?: string | undefined;
