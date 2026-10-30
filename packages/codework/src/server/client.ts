@@ -1,6 +1,6 @@
 import { EventList, type EventSchema, optional, Session } from "@codeworksh/harness/effect";
 import { NodeSocket } from "@effect/platform-node";
-import { Deferred, Effect, Layer, Predicate, Schema, Stream } from "effect";
+import { Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Contract } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
@@ -61,7 +61,7 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 		return undefined;
 	};
 
-	const consume = rpc["event.subscribe"]({}).pipe(
+	const consume = rpc["event.subscribe"]({ threadId: input.threadId }).pipe(
 		Stream.mapEffect(
 			Effect.fnUntraced(function* (envelope) {
 				if (envelope.type === Envelope.Connected.type) {
@@ -71,12 +71,7 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 				const event = yield* Envelope.decode(envelope).pipe(
 					Effect.catchTag("UnknownEventTypeError", () => Effect.void),
 				);
-				if (
-					event === undefined ||
-					!Predicate.hasProperty(event.data, "threadId") ||
-					event.data.threadId !== input.threadId
-				)
-					return;
+				if (event === undefined) return;
 				if (Schema.is(EventList.PromptAdmitted)(event) && event.data.messageId === id) admitted = true;
 				if (Schema.is(EventList.Prompted)(event) && event.data.messageId === id) {
 					promoted = true;

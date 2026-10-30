@@ -1,12 +1,12 @@
 {
 	"events": [
 		"1 session.created.1 T1",
-		"2 thread.configured.1 T1",
+		"2 session.thread.configured.1 T1",
 		"3 session.prompt.admitted.1 T1",
 		"4 session.prompt.promoted.1 T1",
 		"5 session.llm.started.1 T1",
 		"6 session.llm.ended.1 T1",
-		"7 thread.configured.1 T1",
+		"7 session.thread.configured.1 T1",
 		"8 session.tool.settled.1 T1",
 		"9 session.turn.ended.1 T1",
 		"10 session.llm.started.1 T1",
@@ -17,14 +17,14 @@
 		"15 session.llm.started.1 T1",
 		"16 session.llm.ended.1 T1",
 		"17 session.turn.ended.1 T1",
-		"18 thread.forked.1 T2",
+		"18 session.thread.forked.1 T2",
 		"19 session.prompt.admitted.1 T2",
 		"20 session.prompt.promoted.1 T2",
 		"21 session.llm.started.1 T2",
 		"22 session.llm.ended.1 T2",
 		"23 session.turn.ended.1 T2",
-		"24 thread.configured.1 T2",
-		"25 thread.forked.1 T3"
+		"24 session.thread.configured.1 T2",
+		"25 session.thread.forked.1 T3"
 	],
 	"threads": [
 		{

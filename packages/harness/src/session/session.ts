@@ -79,7 +79,7 @@ const directoryWithin = (location: AbsolutePath, directory: AbsolutePath) =>
  * root is kept, so `dir = /old/app/pkg/x` under `from = /old/app` lands on `/new/app/pkg/x` under
  * `to = /new/app`. A directory not under the old root — a broken invariant — lands on the new root.
  */
-export const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory: AbsolutePath): AbsolutePath => {
+const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory: AbsolutePath): AbsolutePath => {
 	if (!directoryWithin(from, directory)) return to;
 	const relative = posix.relative(from, directory);
 	return AbsolutePath.make(relative === "" ? to : posix.join(to, relative));
@@ -140,7 +140,7 @@ export interface RelinkInput {
 	readonly spaceId: SpaceSchema.ID;
 	/**
 	 * Landing directory; must equal or sit under the target space's location.
-	 * Default: `rebaseDirectory` of the current directory onto the new root.
+	 * Default: {@link Interface.rebase} onto the target space's location.
 	 */
 	readonly directory?: AbsolutePath;
 }
@@ -171,6 +171,16 @@ export interface Interface {
 	readonly space: (sessionId: string) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
 	/** Where a thread runs. None when the thread is unknown or its space is gone. */
 	readonly placement: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<Placement>>;
+	/**
+	 * Where the session's directory (or the thread's placement) lands under another root, keeping
+	 * its position relative to its current space's location. None when the session or thread is
+	 * unknown, or its space is gone.
+	 */
+	readonly rebase: (input: {
+		readonly sessionId: SessionSchema.ID;
+		readonly threadId?: ThreadSchema.ID;
+		readonly to: AbsolutePath;
+	}) => Effect.Effect<Option.Option<AbsolutePath>>;
 	/** The project a session belongs to, through its space. None when the session is unknown. */
 	readonly project: (sessionId: string) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
 	/** Sessions newest first, across the whole database when no scope is given. */
@@ -334,6 +344,22 @@ export const layer = Layer.effect(
 			return Option.some({ space: own.value, directory: session.value.directory });
 		});
 
+		const rebase = Effect.fn("Session.rebase")(function* (input: {
+			readonly sessionId: SessionSchema.ID;
+			readonly threadId?: ThreadSchema.ID;
+			readonly to: AbsolutePath;
+		}) {
+			const current: Option.Option<Placement> =
+				input.threadId === undefined
+					? Option.zipWith(
+							yield* findSession(input.sessionId).pipe(Effect.orDie),
+							yield* space(input.sessionId),
+							(row, own) => ({ space: own, directory: row.directory }),
+						)
+					: yield* placement(input.threadId);
+			return Option.map(current, (one) => rebaseDirectory(one.space.location, input.to, one.directory));
+		});
+
 		// A bare lookup has no checkout to ask, so the info carries no `vcs` (as with `Project.get`).
 		const project = Effect.fn("Session.project")(function* (sessionId: string) {
 			return Option.map(
@@ -387,18 +413,16 @@ export const layer = Layer.effect(
 			if (Option.isSome(own) && own.value.projectId !== target.value.projectId) {
 				return yield* reject("project_scope_mismatch");
 			}
-			const current =
-				input.threadId === undefined
-					? Option.map(own, (row) => ({ location: row.location, directory: session.value.directory }))
-					: Option.map(yield* placement(input.threadId), (one) => ({
-							location: one.space.location,
-							directory: one.directory,
-						}));
 			const directory =
 				input.directory ??
-				(Option.isSome(current)
-					? rebaseDirectory(current.value.location, target.value.location, current.value.directory)
-					: target.value.location);
+				Option.getOrElse(
+					yield* rebase({
+						sessionId: input.sessionId,
+						...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+						to: target.value.location,
+					}),
+					() => target.value.location,
+				);
 			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory_outside_space");
 			if (input.threadId === undefined) {
 				const now = yield* epochNow;
@@ -432,7 +456,19 @@ export const layer = Layer.effect(
 				.pipe(Effect.orDie);
 		});
 
-		return Service.of({ create, projectCreated, link, get, space, placement, project, list, relink, delete: remove });
+		return Service.of({
+			create,
+			projectCreated,
+			link,
+			get,
+			space,
+			placement,
+			rebase,
+			project,
+			list,
+			relink,
+			delete: remove,
+		});
 	}),
 );
 

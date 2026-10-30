@@ -76,7 +76,7 @@ const promptParts = Effect.fnUntraced(function* (blocks: ReadonlyArray<Acp.Conte
 	return parts;
 });
 
-const sessionId = (id: string) => Session.SessionSchema.ID.make(id);
+const threadId = (id: string) => Session.ThreadSchema.ID.make(id);
 
 type Services = Layer.Success<ReturnType<typeof Harness.layer>>;
 
@@ -89,10 +89,30 @@ export const make = Effect.gen(function* () {
 
 	const running = new Set<string>();
 
-	const found = Effect.fn("ACP.found")(function* (id: string) {
-		const row = yield* sessions.get(sessionId(id));
-		if (Option.isNone(row)) return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
-		return row.value;
+	// Every thread is an ACP session of its own. The main thread keeps the CodeWork session's id,
+	// so a session an editor knew before it had forks still loads; any other thread goes by its id.
+	const acpId = (thread: { readonly originKind: string; readonly sessionId: string; readonly id: string }) =>
+		thread.originKind === "main" ? thread.sessionId : thread.id;
+
+	/** The CodeWork session and thread an ACP session id names. */
+	const resolve = Effect.fn("ACP.resolve")(function* (id: string) {
+		const session = yield* sessions.get(id);
+		if (Option.isSome(session)) {
+			const main = yield* threads.main(session.value.id);
+			if (Option.isSome(main)) return { session: session.value, threadId: threadId(main.value.id) };
+		}
+		const thread = yield* threads.get(id);
+		if (Option.isSome(thread)) {
+			const owner = yield* sessions.get(thread.value.sessionId);
+			if (Option.isSome(owner)) return { session: owner.value, threadId: threadId(thread.value.id) };
+		}
+		return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
+	});
+
+	const attach = Effect.fn("ACP.attach")(function* (id: string) {
+		const { session, threadId } = yield* resolve(id);
+		const thread = yield* Session.attach({ sessionId: session.id, threadId });
+		return { thread, hostDir: Option.getOrUndefined(session.hostDir) };
 	});
 
 	return (client: Agent.Client): Agent.Handlers => {
@@ -107,7 +127,7 @@ export const make = Effect.gen(function* () {
 					agentCapabilities: {
 						loadSession: true,
 						promptCapabilities: { embeddedContext: true, image: true },
-						sessionCapabilities: { list: {} },
+						sessionCapabilities: { list: {}, fork: {} },
 					},
 				}),
 
@@ -123,12 +143,10 @@ export const make = Effect.gen(function* () {
 			loadSession: ({ sessionId: id }) =>
 				run(
 					Effect.gen(function* () {
-						// An ACP session is a CodeWork session's main thread.
-						const main = yield* Session.attach({ sessionId: sessionId(id) });
-						const row = yield* found(id);
-						const hostDir = Option.getOrUndefined(row.hostDir);
-						const current = yield* Session.configuration(main.id);
-						for (const entry of yield* main.history()) {
+						const { thread, hostDir } = yield* attach(id);
+						const current = yield* Session.configuration(thread.id);
+						// A fork replays its whole line, the part it inherits included.
+						for (const entry of yield* thread.history()) {
 							for (const update of Feed.replay(entry)) {
 								yield* client.sessionUpdate({ sessionId: id, update });
 							}
@@ -140,53 +158,86 @@ export const make = Effect.gen(function* () {
 			listSessions: ({ cwd, cursor }) =>
 				run(
 					Effect.gen(function* () {
-						const rows = (yield* sessions.list())
-							.filter((row) => cwd == null || Option.getOrUndefined(row.hostDir) === cwd)
-							.sort((a, b) => DateTime.Order(b.updatedAt ?? b.createdAt, a.updatedAt ?? a.createdAt));
-						const titles = new Map<string, string>();
-						for (const thread of yield* threads.list()) {
-							if (thread.originKind === "main" && Option.isSome(thread.title))
-								titles.set(thread.sessionId, thread.title.value);
-						}
+						const owners = new Map((yield* sessions.list()).map((row) => [row.id, row]));
+						const all = yield* threads.list();
+						const titles = new Map(all.map((thread) => [thread.id, Option.getOrUndefined(thread.title)]));
+						const rows = all
+							.flatMap((thread) => {
+								const session = owners.get(thread.sessionId);
+								return session === undefined ? [] : [{ thread, session }];
+							})
+							.filter(({ session }) => cwd == null || Option.getOrUndefined(session.hostDir) === cwd)
+							.sort((a, b) =>
+								DateTime.Order(
+									b.thread.updatedAt ?? b.thread.createdAt,
+									a.thread.updatedAt ?? a.thread.createdAt,
+								),
+							);
 						const offset = cursor == null ? 0 : Number(cursor);
 						if (!Number.isSafeInteger(offset) || offset < 0) {
 							return yield* Agent.RequestError.invalidParams(`Invalid cursor: ${cursor}`);
 						}
 						const next = offset + PAGE_SIZE;
 						return {
-							sessions: rows.slice(offset, next).map((row) => ({
-								sessionId: row.id,
-								cwd: Option.getOrElse(row.hostDir, () => row.directory),
-								title: titles.get(row.id) ?? null,
-								updatedAt: DateTime.formatIso(row.updatedAt ?? row.createdAt),
+							sessions: rows.slice(offset, next).map(({ thread, session }) => ({
+								sessionId: acpId(thread),
+								cwd: Option.getOrElse(session.hostDir, () => session.directory),
+								// A fork is untitled until its own first prompt; it reads as its source until then.
+								title:
+									titles.get(thread.id) ??
+									Option.match(thread.originThreadId, {
+										onNone: () => undefined,
+										onSome: (origin) => titles.get(origin),
+									}) ??
+									null,
+								updatedAt: DateTime.formatIso(thread.updatedAt ?? thread.createdAt),
 							})),
 							...(next < rows.length ? { nextCursor: String(next) } : {}),
 						};
 					}),
 				),
 
+			forkSession: ({ sessionId: id }) =>
+				run(
+					Effect.gen(function* () {
+						const { thread, hostDir } = yield* attach(id);
+						// ACP forks the conversation as it stands: at its last committed entry, of any type, so
+						// a trailing tool result or compaction comes along.
+						const last = (yield* thread.history()).findLast(({ entry }) => entry.state === "committed");
+						if (last === undefined) {
+							return yield* Agent.RequestError.invalidRequest(
+								"Nothing to fork yet: the session has no messages",
+							);
+						}
+						const forked = yield* thread.fork({ entryId: last.entry.id });
+						const current = yield* Session.configuration(forked.thread.id);
+						return { sessionId: forked.thread.id, configOptions: yield* Config.options(current, hostDir) };
+					}),
+				),
+
 			setConfigOption: (request) =>
 				run(
 					Effect.gen(function* () {
-						const row = yield* found(request.sessionId);
-						const hostDir = Option.getOrUndefined(row.hostDir);
+						const { session, threadId } = yield* resolve(request.sessionId);
+						const hostDir = Option.getOrUndefined(session.hostDir);
 						const value = String(request.value);
+						let runtime: Session.RuntimeInput;
 						if (request.configId === Config.MODEL) {
 							const model = Option.getOrUndefined(Config.parseModel(value));
 							if (model === undefined || !(yield* Config.known(model, hostDir))) {
 								return yield* Agent.RequestError.invalidParams(`Unknown model: ${value}`);
 							}
-							yield* Session.attach({ sessionId: row.id, model });
+							runtime = { model };
 						} else if (request.configId === Config.THOUGHT_LEVEL) {
 							if (!Config.isThinkingLevel(value)) {
 								return yield* Agent.RequestError.invalidParams(`Unknown thinking level: ${value}`);
 							}
-							yield* Session.attach({ sessionId: row.id, thinkingLevel: value });
+							runtime = { thinkingLevel: value };
 						} else {
 							return yield* Agent.RequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
-						const main = yield* Session.attach({ sessionId: row.id });
-						return { configOptions: yield* Config.options(yield* Session.configuration(main.id), hostDir) };
+						const thread = yield* Session.attach({ sessionId: session.id, threadId, ...runtime });
+						return { configOptions: yield* Config.options(yield* Session.configuration(thread.id), hostDir) };
 					}),
 				),
 
@@ -194,16 +245,13 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const parts = yield* promptParts(prompt);
-						const session = Option.getOrUndefined(yield* Session.get(sessionId(id)));
-						if (session === undefined) {
-							return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
-						}
-						const handle = session.main;
-						if (running.has(id)) {
+						const { thread: handle } = yield* attach(id);
+						// Keyed by thread: main answers to its session id and its own thread id alike.
+						if (running.has(handle.id)) {
 							return yield* Agent.RequestError.invalidRequest("A prompt is already running for this session");
 						}
-						running.add(id);
-						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(id)));
+						running.add(handle.id);
+						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(handle.id)));
 
 						// Forward this execution's updates until it settles; the settling event decides the answer.
 						let reason: EventList.LLMEnded["data"]["reason"] | undefined;
@@ -245,7 +293,12 @@ export const make = Effect.gen(function* () {
 					}).pipe(Effect.scoped),
 				),
 
-			cancel: ({ sessionId: id }) => control.interruptSession(sessionId(id), { reason: "user" }).pipe(Effect.asVoid),
+			cancel: ({ sessionId: id }) =>
+				resolve(id).pipe(
+					Effect.flatMap((found) => control.interrupt(found.threadId, { reason: "user" })),
+					Effect.ignore,
+					Effect.provide(context),
+				),
 		};
 	};
 });

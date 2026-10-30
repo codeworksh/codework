@@ -9,7 +9,7 @@ The initial public surface is the Effect SDK at `@codeworksh/harness/effect`.
 
 ## Features
 
-- **Durable Sessions:** create, attach, resume, interrupt, and inspect agent sessions without rebuilding orchestration around every turn.
+- **Durable Sessions:** create sessions, fork their threads, and attach, resume, interrupt, and inspect each thread without rebuilding orchestration around every turn.
 - **Streaming Agent Loop:** consume durable session events while the loop coordinates model output, tool calls, and continuations.
 - **Tool Execution:** use the built-in Bash tool or register typed tools with sequential or parallel execution.
 - **Model Flexibility:** select any provider and model available in Aikit's generated catalog, including its supported thinking levels.
@@ -240,7 +240,7 @@ cost     $0.014200 · 1 turn
 
 The model catalog lives at `<home>/models.gen.json` and is refreshed once it is older than 15 minutes; `codework models refresh --force` downloads it now. Set `CODEWORK_MODELS_FILE` to pin a catalog you manage yourself.
 
-The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session, so use the same home directory and session ID to continue it:
+The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session's thread, so use the same home directory and session ID to continue it:
 
 ```sh
 pnpm dlx @codeworksh/harness@dev \
@@ -249,7 +249,7 @@ pnpm dlx @codeworksh/harness@dev \
   "Continue with the implementation"
 ```
 
-Persisted settings are the fallback. A new CLI process can explicitly re-bind or change them while attaching; supplied values are recorded as the session's latest configuration:
+Persisted settings are the fallback. A new CLI process can explicitly re-bind or change them while attaching; supplied values are recorded as the thread's latest configuration:
 
 ```sh
 pnpm dlx @codeworksh/harness@dev \
@@ -314,12 +314,12 @@ await program.pipe(
 );
 ```
 
-Creating a session does not contact the provider. Call `session.run(prompt)` to execute a turn, and call `session.events()` directly to obtain its Effect `Stream`.
+Creating a session does not contact the provider. A session runs its prompts in threads: call `session.main.run(prompt)` to execute a turn on its `main` thread, and `session.main.events()` to obtain that thread's Effect `Stream`. `fork({ entryId })` on a thread starts a new one, and `session.thread(id)` reaches it later.
 
 The Effect SDK currently includes:
 
 - `Harness.layer` for process configuration and service wiring
-- `Session` handles for create, attach, prompt, run, resume, interrupt, events, and history
+- `Session.create` and `relink`, which return a session handle, and `attach`, which returns a thread handle; a thread handle prompts, runs, resumes, interrupts, configures, forks, and exposes its events and history
 - `Sandbox` drivers and lifecycle operations for in-memory, SQLite, Vercel, and Daytona environments
 - Local host execution for sessions without a configured sandbox
 - Effect-native errors, layers, streams, and resource scopes

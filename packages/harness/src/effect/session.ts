@@ -129,7 +129,17 @@ export interface ThreadInfo {
 	 * resumes it; the next prompt runs it again.
 	 */
 	readonly parked: boolean;
+	/** Billed usage of its own entries; what it inherits through a fork point counts for its source. */
+	readonly usage: Usage;
 	readonly session: Info;
+}
+
+export interface Usage {
+	readonly cost: number;
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
 }
 
 export interface ForkInput {
@@ -282,6 +292,13 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 		...(agent.thinkingLevel === undefined ? {} : { thinkingLevel: agent.thinkingLevel }),
 		...(agent.placement === undefined ? {} : { placement: agent.placement }),
 		parked,
+		usage: {
+			cost: row.cost,
+			input: row.tokensInput,
+			output: row.tokensOutput,
+			cacheRead: row.tokensCacheRead,
+			cacheWrite: row.tokensCacheWrite,
+		},
 		session: yield* info(SessionSchema.ID.make(row.sessionId)),
 	} satisfies ThreadInfo;
 });
@@ -448,23 +465,15 @@ export const relink = Effect.fn("Session.relink")(function* (input: RelinkInput)
 		sandboxId,
 		Effect.gen(function* () {
 			const location = yield* Location.Service.use(Effect.succeed).pipe(Effect.provide(Location.layerMounted()));
-			const session = yield* sessions.get(input.sessionId);
-			const own = yield* sessions.space(input.sessionId);
-			const current =
-				input.threadId === undefined
-					? Option.flatMap(session, (row) => Option.map(own, (space) => ({ space, directory: row.directory })))
-					: yield* sessions.placement(input.threadId);
-			const rebased = Option.isSome(current)
-				? SessionStore.rebaseDirectory(
-						current.value.space.location,
-						location.space.location,
-						current.value.directory,
-					)
-				: undefined;
+			const rebased = yield* sessions.rebase({
+				sessionId: input.sessionId,
+				...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+				to: location.space.location,
+			});
 			const fs = yield* SandboxIO.FileSystem;
 			const directory =
-				rebased !== undefined && (yield* fs.exists(rebased).pipe(Effect.orElseSucceed(() => false)))
-					? rebased
+				Option.isSome(rebased) && (yield* fs.exists(rebased.value).pipe(Effect.orElseSucceed(() => false)))
+					? rebased.value
 					: location.directory;
 			yield* sessions.relink({
 				sessionId: input.sessionId,
