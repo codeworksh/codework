@@ -1,0 +1,522 @@
+{
+	"firstDeclared": [
+		"mcp__e2e__echo",
+		"mcp__e2e__pid",
+		"mcp__e2e__crash",
+		"mcp__e2e__my_tool_v2",
+		"mcp__e2e__bye",
+		"toolsearch"
+	],
+	"registeredMain": [
+		{
+			"name": "mcp__e2e__echo",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__args",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__e2e__fail",
+			"exposure": "codemode"
+		},
+		{
+			"name": "mcp__e2e__pid",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__crash",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__my_tool_v2",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__secret",
+			"exposure": "hidden"
+		},
+		{
+			"name": "mcp__e2e__bye",
+			"exposure": "direct"
+		}
+	],
+	"forkRegistered": [
+		{
+			"name": "mcp__e2e__echo",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__args",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__e2e__fail",
+			"exposure": "codemode"
+		},
+		{
+			"name": "mcp__e2e__pid",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__crash",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__my_tool_v2",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__secret",
+			"exposure": "hidden"
+		},
+		{
+			"name": "mcp__e2e__bye",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__extra__echo",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__args",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__fail",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__pid",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__crash",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__my_tool_v2",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__secret",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__bye",
+			"exposure": "deferred"
+		}
+	],
+	"mainStatus": {
+		"e2e": {
+			"state": "connected",
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "deferred"
+				},
+				{
+					"name": "fail",
+					"exposure": "codemode"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "hidden"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				}
+			]
+		},
+		"gated": {
+			"state": "failed",
+			"error": "Connection closed: mcp server process exited with code 1: gate closed",
+			"tools": []
+		},
+		"off": {
+			"state": "disabled",
+			"tools": []
+		}
+	},
+	"forkStatus": {
+		"e2e": {
+			"state": "connected",
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "deferred"
+				},
+				{
+					"name": "fail",
+					"exposure": "codemode"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "hidden"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				}
+			]
+		},
+		"gated": {
+			"state": "failed",
+			"error": "Connection closed: mcp server process exited with code 1: gate closed",
+			"tools": []
+		},
+		"off": {
+			"state": "disabled",
+			"tools": []
+		},
+		"extra": {
+			"state": "connected",
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "deferred"
+				},
+				{
+					"name": "args",
+					"exposure": "deferred"
+				},
+				{
+					"name": "fail",
+					"exposure": "deferred"
+				},
+				{
+					"name": "pid",
+					"exposure": "deferred"
+				},
+				{
+					"name": "crash",
+					"exposure": "deferred"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "deferred"
+				},
+				{
+					"name": "secret",
+					"exposure": "deferred"
+				},
+				{
+					"name": "bye",
+					"exposure": "deferred"
+				}
+			]
+		}
+	},
+	"failedAfterTurns": "failed",
+	"startsWhileFailed": 2,
+	"connected": {
+		"server": "gated",
+		"state": "connected",
+		"tools": [
+			{
+				"name": "echo",
+				"exposure": "hidden"
+			},
+			{
+				"name": "args",
+				"exposure": "hidden"
+			},
+			{
+				"name": "fail",
+				"exposure": "hidden"
+			},
+			{
+				"name": "pid",
+				"exposure": "direct"
+			},
+			{
+				"name": "crash",
+				"exposure": "hidden"
+			},
+			{
+				"name": "my-tool.v2",
+				"exposure": "hidden"
+			},
+			{
+				"name": "secret",
+				"exposure": "hidden"
+			},
+			{
+				"name": "bye",
+				"exposure": "hidden"
+			}
+		]
+	},
+	"declaredAfterConnect": [
+		"mcp__e2e__echo",
+		"mcp__e2e__pid",
+		"mcp__e2e__crash",
+		"mcp__e2e__my_tool_v2",
+		"mcp__e2e__bye",
+		"mcp__gated__pid",
+		"toolsearch"
+	],
+	"disconnected": {
+		"server": "gated",
+		"state": "disconnected",
+		"tools": [
+			{
+				"name": "echo",
+				"exposure": "hidden"
+			},
+			{
+				"name": "args",
+				"exposure": "hidden"
+			},
+			{
+				"name": "fail",
+				"exposure": "hidden"
+			},
+			{
+				"name": "pid",
+				"exposure": "direct"
+			},
+			{
+				"name": "crash",
+				"exposure": "hidden"
+			},
+			{
+				"name": "my-tool.v2",
+				"exposure": "hidden"
+			},
+			{
+				"name": "secret",
+				"exposure": "hidden"
+			},
+			{
+				"name": "bye",
+				"exposure": "hidden"
+			}
+		]
+	},
+	"declaredAfterDisconnect": [
+		"mcp__e2e__echo",
+		"mcp__e2e__pid",
+		"mcp__e2e__crash",
+		"mcp__e2e__my_tool_v2",
+		"mcp__e2e__bye",
+		"toolsearch"
+	],
+	"stillDisconnected": "disconnected",
+	"startsAfterDisconnect": 3,
+	"calls": {
+		"main": {
+			"main-pid": "<process-1>",
+			"codemode": "Tool \"mcp__e2e__fail\" is not available in this thread.",
+			"hidden": "Tool \"mcp__e2e__secret\" is not available in this thread.",
+			"deferred-unloaded": "Tool \"mcp__e2e__args\" is not available in this thread.",
+			"search": "Loaded 1 tool. They are available from your next call:\n- mcp__e2e__args: The arguments as received.",
+			"deferred-loaded": "{\"word\":\"abc\"}",
+			"main-pid-2": "<process-1>",
+			"gated-pid": "<process-3>",
+			"bye": "bye",
+			"echo-after-drop": "hello: back"
+		},
+		"fork": {
+			"main-pid": "<process-1>",
+			"codemode": "Tool \"mcp__e2e__fail\" is not available in this thread.",
+			"hidden": "Tool \"mcp__e2e__secret\" is not available in this thread.",
+			"deferred-unloaded": "Tool \"mcp__e2e__args\" is not available in this thread.",
+			"search": "Loaded 1 tool. They are available from your next call:\n- mcp__e2e__args: The arguments as received.",
+			"deferred-loaded": "{\"word\":\"abc\"}",
+			"fork-pid": "<process-2>"
+		}
+	},
+	"changes": [
+		{
+			"added": [
+				"mcp__e2e__args"
+			],
+			"removed": []
+		}
+	],
+	"loaded": {
+		"add": [
+			"mcp__e2e__args"
+		]
+	},
+	"unknown": "Cause([Fail(Mcp.UnknownServerError: unknown MCP server: nope)])",
+	"events": {
+		"main": {
+			"e2e": [
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				},
+				{
+					"server": "e2e",
+					"state": "disconnected",
+					"error": "connection closed: mcp server process exited with code 0"
+				},
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				}
+			],
+			"gated": [
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "failed",
+					"error": "Connection closed: mcp server process exited with code 1: gate closed"
+				},
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				},
+				{
+					"server": "gated",
+					"state": "disconnected"
+				}
+			],
+			"off": [
+				{
+					"server": "off",
+					"state": "disabled"
+				}
+			]
+		},
+		"fork": {
+			"e2e": [
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				}
+			],
+			"gated": [
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "failed",
+					"error": "Connection closed: mcp server process exited with code 1: gate closed"
+				}
+			],
+			"off": [
+				{
+					"server": "off",
+					"state": "disabled"
+				}
+			],
+			"extra": [
+				{
+					"server": "extra",
+					"state": "connecting"
+				},
+				{
+					"server": "extra",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				}
+			]
+		}
+	}
+}

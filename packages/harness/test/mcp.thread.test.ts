@@ -1,0 +1,399 @@
+import "./utils/env.ts";
+import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
+import { Effect, Exit } from "effect";
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { expect, it } from "vite-plus/test";
+import { ContextCodec } from "../src/context/codec.ts";
+import { Document } from "../src/document/document.ts";
+import { Harness } from "../src/effect/harness.ts";
+import { Session } from "../src/effect/session.ts";
+import { Event } from "../src/event/event.ts";
+import { EventList } from "../src/event/list.ts";
+import { Mcp } from "../src/mcp/mcp.ts";
+import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
+import { TOOL_SEARCH_NAME, toolSearchPlugin } from "../src/plugin/builtin/tool/toolsearch.ts";
+import { define } from "../src/plugin/plugin.ts";
+import type { LLM } from "../src/runner/llm.ts";
+import { assistant } from "./fixtures/llm.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
+import { pendingCall } from "./tools.fixture.ts";
+
+const fixture = fileURLToPath(new URL("./fixtures/mcp/session.mjs", import.meta.url));
+const stdio = (extra: Record<string, unknown> = {}, env: Record<string, string> = {}) => ({
+	command: process.execPath,
+	args: [fixture],
+	env: { E2E_GREETING: "hello", ...env },
+	...extra,
+});
+
+const git = (cwd: string, ...args: string[]) =>
+	promisify(execFile)("git", ["-c", "commit.gpgsign=false", ...args], { cwd }).then(() => undefined);
+
+const write = async (file: string, value: unknown) => {
+	await fs.mkdir(join(file, ".."), { recursive: true });
+	await fs.writeFile(file, JSON.stringify(value, null, 2));
+};
+
+/** `toolsearch` ships off; the entry after it turns it on. */
+const toolSearch = [toolSearchPlugin, { plugin: toolSearchPlugin.id, enabled: true }] as const;
+
+/** A scripted model: per thread, one reply per request, in order; an empty one ends the turn. */
+const scripted = () => {
+	const script = new Map<string, Array<ReadonlyArray<Message.ToolCallPendingPart>>>();
+	const requests: Array<LLM.Input> = [];
+	let responses = 0;
+	const open: LLM.Open = (input) =>
+		Effect.sync(() => {
+			requests.push(input);
+			const calls = script.get(input.threadId)?.shift() ?? [];
+			responses += 1;
+			const message = assistant(
+				input,
+				responses,
+				calls.length > 0 ? { stopReason: "toolUse", parts: [...calls] } : {},
+			);
+			const stream = createAssistantMessageEventStream();
+			stream.push({ type: "start", partial: message });
+			stream.push({ type: "done", reason: calls.length > 0 ? "toolUse" : "stop", message });
+			return stream;
+		});
+	/** Queue a turn on a thread: tool calls for each request, then a closing reply. */
+	const turn = (threadId: string, ...requests: ReadonlyArray<ReadonlyArray<Message.ToolCallPendingPart>>) => {
+		const queue = script.get(threadId) ?? [];
+		queue.push(...requests, []);
+		script.set(threadId, queue);
+	};
+	return { open, turn, requests };
+};
+
+/** Every `mcp.server.status` event, by thread label and server, in order. */
+const statusEvents = (label: (threadId: string) => string) =>
+	Effect.gen(function* () {
+		const seen: Record<string, Record<string, Array<EventList.McpServerState>>> = {};
+		const events = yield* Event.Service;
+		yield* events.listen((event) =>
+			Effect.sync(() => {
+				if (event.type !== EventList.McpServerStatus.type) return;
+				const { threadId, status } = (event as unknown as EventList.McpServerStatus).data;
+				const byServer = (seen[label(threadId)] ??= {});
+				(byServer[status.server] ??= []).push(status);
+			}),
+		);
+		return seen;
+	});
+
+/** The text of each settled tool call of a thread, by call id. */
+const results = (thread: Session.ThreadHandle) =>
+	Effect.gen(function* () {
+		const line = yield* thread.history();
+		const out: Record<string, string> = {};
+		for (const hydrated of line) {
+			if (hydrated.entry.type !== "assistant") continue;
+			const message = yield* ContextCodec.decodeMessage(hydrated);
+			if (message.role !== "assistant") continue;
+			for (const part of message.parts)
+				if (part.type === "toolCall" && "result" in part)
+					out[part.callID] = part.result.content
+						.map((block) => (block.type === "text" ? block.text : ""))
+						.join("");
+		}
+		return out;
+	});
+
+/** Tool changes the transcript declared, as names. */
+const changes = (messages: ReadonlyArray<Message.Message>) =>
+	messages.flatMap((message) =>
+		message.role === "system"
+			? [
+					{
+						added: (message.toolsAdded ?? []).map((tool) => tool.name),
+						removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
+					},
+				]
+			: [],
+	);
+
+const waitFor = <A>(read: Effect.Effect<A>, done: (value: A) => boolean) =>
+	Effect.gen(function* () {
+		for (let tries = 0; tries < 250; tries++) {
+			const value = yield* read;
+			if (done(value)) return value;
+			yield* Effect.sleep("20 millis");
+		}
+		return yield* read;
+	});
+
+it("mcp: state per thread, no retry of a failed server, connect and disconnect, every exposure registered", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	const elsewhere = join(work, "sub");
+	await fs.mkdir(work, { recursive: true });
+	await fs.mkdir(elsewhere, { recursive: true });
+	// One project, so a thread can move to another directory of it.
+	await git(work, "init", "-q", "-b", "main");
+	await git(
+		work,
+		"-c",
+		"user.email=test@codework.sh",
+		"-c",
+		"user.name=Test",
+		"commit",
+		"-q",
+		"--allow-empty",
+		"-m",
+		"init",
+	);
+	const gate = join(dir.path, "gate");
+	const starts = join(dir.path, "starts");
+	await fs.writeFile(gate, "closed");
+
+	await write(join(home, "mcp.json"), {
+		mcpServers: {
+			e2e: stdio({ toolExposure: { args: "deferred", fail: "codemode", secret: "hidden" } }),
+			gated: stdio(
+				{ exposure: "direct", toolExposure: { "*": "hidden", pid: "direct" } },
+				{
+					E2E_GATE: gate,
+					E2E_STARTS: starts,
+				},
+			),
+			off: stdio({ enabled: false }),
+		},
+	});
+
+	// Only the forked thread runs `extra`: MCP config may differ per thread.
+	let forkId: string | undefined;
+	const perThread = define({
+		id: "test.mcp.per-thread",
+		kind: "mcp",
+		setup: (ctx) => {
+			if (ctx.threadId === forkId) ctx.plugin.mcp.set("extra", stdio({ exposure: "deferred" }));
+		},
+	});
+	const registered: Record<string, Array<{ readonly name: string; readonly exposure: string }>> = {};
+	const observer = define({
+		id: "test.mcp.registered",
+		kind: "tool",
+		setup: (ctx) => {
+			registered[ctx.threadId] = ctx.plugin.tools
+				.list()
+				.filter((def) => def.name.startsWith("mcp__"))
+				.map((def) => ({ name: def.name, exposure: def.exposure ?? "direct" }));
+		},
+	});
+
+	const model = scripted();
+	const startCount = () => fs.readFile(starts, "utf8").then((text) => text.split("\n").filter(Boolean).length);
+
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const label = (threadId: string) => (threadId === main.id ? "main" : threadId === forkId ? "fork" : threadId);
+		const seen = yield* statusEvents(label);
+		const mcp = yield* Mcp.Service;
+		const status = (threadId: string) =>
+			mcp.status(threadId as typeof main.id).pipe(
+				Effect.map((all) =>
+					Object.fromEntries(
+						all.map((one) => [
+							one.server,
+							{
+								state: one.state,
+								...(one.error === undefined ? {} : { error: one.error }),
+								tools: one.tools,
+							},
+						]),
+					),
+				),
+			);
+		const stateOf = (threadId: string, server: string) =>
+			status(threadId).pipe(Effect.map((all) => all[server]?.state));
+		const declared = () => (model.requests.at(-1)?.context.tools ?? []).map((tool) => tool.name);
+
+		// Turn one: codemode, hidden and unloaded deferred tools are registered but not offered.
+		model.turn(
+			main.id,
+			[
+				pendingCall("mcp__e2e__pid", {}, "main-pid"),
+				pendingCall("mcp__e2e__fail", {}, "codemode"),
+				pendingCall("mcp__e2e__secret", {}, "hidden"),
+				pendingCall("mcp__e2e__args", { word: "abc" }, "deferred-unloaded"),
+			],
+			[pendingCall(TOOL_SEARCH_NAME, { query: "arguments as received" }, "search")],
+			[pendingCall("mcp__e2e__args", { word: "abc" }, "deferred-loaded")],
+		);
+		yield* main.run("one");
+		const firstDeclared = (model.requests[0]?.context.tools ?? []).map((tool) => tool.name);
+
+		// A second thread at another placement, with its own config: its own servers and processes.
+		const line = yield* main.history();
+		const forked = yield* main.fork({ entryId: line.at(-1)!.entry.id });
+		forkId = forked.thread.id;
+		const fork = forked.thread;
+		yield* Session.relink({ sessionId: session.id, threadId: fork.id, directory: elsewhere });
+		model.turn(main.id, [pendingCall("mcp__e2e__pid", {}, "main-pid-2")]);
+		model.turn(fork.id, [pendingCall("mcp__e2e__pid", {}, "fork-pid")]);
+		yield* Effect.all([main.run("two"), fork.run("two, forked")], { concurrency: "unbounded" });
+		const mainStatus = yield* status(main.id);
+		const forkStatus = yield* status(fork.id);
+		const forkRegistered = registered[fork.id];
+
+		// The failed server stays failed across turns, even once it could start: nothing retries it.
+		yield* main.run("three");
+		yield* Effect.promise(() => fs.rm(gate));
+		yield* main.run("four");
+		const failedAfterTurns = yield* stateOf(main.id, "gated");
+		const startsWhileFailed = yield* Effect.promise(startCount);
+
+		// An explicit connect recovers it, and its tools are offered from the next turn.
+		const connected = yield* mcp.connect(main.id, "gated");
+		model.turn(main.id, [pendingCall("mcp__gated__pid", {}, "gated-pid")]);
+		yield* main.run("five");
+		const declaredAfterConnect = declared();
+
+		// Disconnect closes it and keeps it closed: no tools, no restart by later turns.
+		const disconnected = yield* mcp.disconnect(main.id, "gated");
+		yield* main.run("six");
+		const declaredAfterDisconnect = declared();
+		const stillDisconnected = yield* stateOf(main.id, "gated");
+		const startsAfterDisconnect = yield* Effect.promise(startCount);
+
+		// A connection that drops is reported as disconnected, and the next call reconnects.
+		model.turn(main.id, [pendingCall("mcp__e2e__bye", {}, "bye")]);
+		yield* main.run("seven");
+		yield* waitFor(stateOf(main.id, "e2e"), (state) => state === "disconnected");
+		model.turn(main.id, [pendingCall("mcp__e2e__echo", { text: "back" }, "echo-after-drop")]);
+		yield* main.run("eight");
+
+		const unknown = yield* Effect.exit(mcp.connect(main.id, "nope"));
+		return {
+			firstDeclared,
+			registeredMain: registered[main.id],
+			forkRegistered,
+			mainStatus,
+			forkStatus,
+			failedAfterTurns,
+			startsWhileFailed,
+			connected,
+			declaredAfterConnect,
+			disconnected,
+			declaredAfterDisconnect,
+			stillDisconnected,
+			startsAfterDisconnect,
+			calls: { main: yield* results(main), fork: yield* results(fork) },
+			changes: changes(model.requests.at(-1)?.context.messages ?? []),
+			loaded: (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools,
+			unknown: Exit.isFailure(unknown) ? String(unknown.cause) : "succeeded",
+			events: seen,
+		};
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [perThread, observer, defaultPromptPlugin, ...toolSearch],
+				llm: model.open,
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.firstDeclared).toContain("mcp__e2e__pid");
+	for (const name of ["mcp__e2e__args", "mcp__e2e__fail", "mcp__e2e__secret"])
+		expect(result.firstDeclared).not.toContain(name);
+	expect(result.calls.main["main-pid"]).toMatch(/^\d+$/);
+	expect(result.calls.fork["fork-pid"]).toMatch(/^\d+$/);
+	// Each thread runs its own process.
+	expect(result.calls.fork["fork-pid"]).not.toBe(result.calls.main["main-pid-2"]);
+	expect(result.calls.main["main-pid-2"]).toBe(result.calls.main["main-pid"]);
+	expect(result.mainStatus.extra).toBeUndefined();
+	expect(result.forkStatus.extra?.state).toBe("connected");
+	expect(result.failedAfterTurns).toBe("failed");
+	// One start for each thread's first turn; turns three and four never retried.
+	expect(result.startsWhileFailed).toBe(2);
+	expect(result.connected.state).toBe("connected");
+	expect(result.declaredAfterConnect).toContain("mcp__gated__pid");
+	expect(result.declaredAfterDisconnect).not.toContain("mcp__gated__pid");
+	expect(result.stillDisconnected).toBe("disconnected");
+	expect(result.startsAfterDisconnect).toBe(3);
+
+	const pids = [
+		...new Set([result.calls.main["main-pid"], result.calls.fork["fork-pid"], result.calls.main["gated-pid"]]),
+	];
+	let serialized = JSON.stringify(result).replaceAll(dir.path, "<tmp>").replaceAll(process.execPath, "<node>");
+	pids.forEach((pid, index) => {
+		serialized = serialized.replaceAll(`"${pid}"`, `"<process-${index + 1}>"`);
+	});
+	const artifact = JSON.parse(serialized.replaceAll(forkId ?? "\0", "<fork>"));
+	await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.json");
+}, 60_000);
+
+it("mcp: a loaded deferred tool's server is awaited up front, and its name stays loaded while the server is away", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	const configure = (delay: string) =>
+		write(join(home, "mcp.json"), {
+			mcpServers: { slow: stdio({ exposure: "deferred" }, { E2E_DELAY: delay }) },
+		});
+	await configure("300");
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const mcp = yield* Mcp.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "slow")?.state));
+
+		// Nothing loaded: the turn does not wait for a server with only deferred tools.
+		yield* main.run("one");
+		const notAwaited = yield* stateOf;
+		yield* waitFor(stateOf, (state) => state === "connected");
+
+		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "search")]);
+		yield* main.run("two");
+
+		// A config change restarts the server; the loaded tool makes the turn wait for it.
+		yield* Effect.promise(() => configure("500"));
+		model.turn(main.id, [pendingCall("mcp__slow__echo", { text: "awaited" }, "awaited")]);
+		yield* main.run("three");
+		const awaitedChanges = changes(model.requests.at(-1)?.context.messages ?? []);
+
+		// While the server is away its loaded tool is withdrawn, and declared again once it is back.
+		yield* mcp.disconnect(main.id, "slow");
+		yield* main.run("four");
+		const whileAway = changes(model.requests.at(-1)?.context.messages ?? []);
+		const loadedWhileAway = (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools;
+		yield* mcp.connect(main.id, "slow");
+		yield* main.run("five");
+		const back = changes(model.requests.at(-1)?.context.messages ?? []);
+		return { notAwaited, awaitedChanges, whileAway, loadedWhileAway, back, calls: yield* results(main) };
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin, ...toolSearch],
+				llm: model.open,
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.notAwaited).toBe("connecting");
+	expect(result.calls.awaited).toBe("hello: awaited");
+	expect(result.loadedWhileAway?.add).toContain("mcp__slow__echo");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.thread.loaded.json",
+	);
+}, 60_000);

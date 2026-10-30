@@ -1,0 +1,54 @@
+{
+	"notAwaited": "connecting",
+	"awaitedChanges": [
+		{
+			"added": [
+				"mcp__slow__echo"
+			],
+			"removed": []
+		}
+	],
+	"whileAway": [
+		{
+			"added": [
+				"mcp__slow__echo"
+			],
+			"removed": []
+		},
+		{
+			"added": [],
+			"removed": [
+				"mcp__slow__echo"
+			]
+		}
+	],
+	"loadedWhileAway": {
+		"add": [
+			"mcp__slow__echo"
+		]
+	},
+	"back": [
+		{
+			"added": [
+				"mcp__slow__echo"
+			],
+			"removed": []
+		},
+		{
+			"added": [],
+			"removed": [
+				"mcp__slow__echo"
+			]
+		},
+		{
+			"added": [
+				"mcp__slow__echo"
+			],
+			"removed": []
+		}
+	],
+	"calls": {
+		"search": "Loaded 1 tool. They are available from your next call:\n- mcp__slow__echo: Echo text back, prefixed with the configured greeting.",
+		"awaited": "hello: awaited"
+	}
+}

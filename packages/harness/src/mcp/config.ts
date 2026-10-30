@@ -20,7 +20,10 @@ import { fileSystem, hostPath } from "../host.ts";
 import * as Jsonc from "../util/jsonc.ts";
 
 const SERVER_NAME = /^[A-Za-z0-9_-]+$/;
-const EXPOSURES: ReadonlyArray<string> = ["direct", "hidden"];
+const EXPOSURES: ReadonlyArray<string> = ["codemode", "deferred", "direct", "hidden"];
+/** Older exposure names, read as their current one. */
+const EXPOSURE_ALIASES: Readonly<Record<string, string>> = { "codemode-deferred": "codemode" };
+const alias = (value: unknown) => (Predicate.isString(value) ? (EXPOSURE_ALIASES[value] ?? value) : value);
 const OVERRIDE_KEYS: ReadonlyArray<string> = ["enabled", "exposure", "toolExposure"];
 
 /** Names that differ only in `-` and `_` would give their tools the same names. */
@@ -36,9 +39,15 @@ const isOverride = (value: Record<string, unknown>) =>
 	value.command === undefined && value.url === undefined && value.type === undefined;
 
 /** One `mcpServers` entry, checked. Returns the config, or what is wrong with it. */
-export const validate = (name: string, value: unknown): ServerConfig | string => {
+export const validate = (name: string, raw: unknown): ServerConfig | string => {
 	if (!SERVER_NAME.test(name)) return `invalid server name "${name}" (use letters, digits, "_" and "-")`;
-	if (!isRecord(value)) return `server "${name}" must be an object`;
+	if (!isRecord(raw)) return `server "${name}" must be an object`;
+	const value: Record<string, unknown> = { ...raw };
+	if (raw.exposure !== undefined) value.exposure = alias(raw.exposure);
+	if (isRecord(raw.toolExposure))
+		value.toolExposure = Object.fromEntries(
+			Object.entries(raw.toolExposure).map(([tool, one]) => [tool, alias(one)]),
+		);
 	const { type, exposure, enabled, timeout, toolExposure, description } = value;
 	const exposures = EXPOSURES.map((one) => `"${one}"`).join(", ");
 	if (exposure !== undefined && !EXPOSURES.includes(exposure as string))

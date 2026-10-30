@@ -1,6 +1,16 @@
 // Stdio MCP server for the session test; run as `node session.mjs`.
 import { Server } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { appendFileSync, existsSync } from "node:fs";
+
+// E2E_STARTS: a file that gets one line per start. E2E_GATE: while this file exists, exit at once.
+// E2E_DELAY: milliseconds to wait before answering the handshake.
+if (process.env.E2E_STARTS) appendFileSync(process.env.E2E_STARTS, "start\n");
+if (process.env.E2E_GATE && existsSync(process.env.E2E_GATE)) {
+	process.stderr.write("gate closed\n");
+	process.exit(1);
+}
+if (process.env.E2E_DELAY) await new Promise((resolve) => setTimeout(resolve, Number(process.env.E2E_DELAY)));
 
 const object = (properties = {}, required = []) => ({ type: "object", properties, required });
 const text = (value) => ({ content: [{ type: "text", text: String(value) }] });

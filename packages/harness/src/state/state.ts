@@ -501,11 +501,13 @@ export const layer = (
 						(servers) =>
 							mcp.reconcile({
 								sessionId,
+								threadId,
 								servers,
 								// MCP servers run on the host, so only a host sandbox's directory exists for them.
 								directory: sandbox.kind === "local" ? location.directory : undefined,
 								hostDir,
 								errors: loadedSettings.mcp.errors,
+								loaded: agent.modelTools?.add,
 							}),
 						agent.modelTools,
 					).pipe(Effect.mapError((cause) => new SnapshotError({ threadId, reason: cause.message, cause })));

@@ -121,6 +121,7 @@ export const make = (input: {
 	readonly server: string;
 	readonly tool: McpTool;
 	readonly name: string;
+	readonly exposure: Exposure;
 	readonly call: (call: Call) => Effect.Effect<CallToolResult, string>;
 }) => {
 	const { server, tool } = input;
@@ -135,6 +136,7 @@ export const make = (input: {
 		Tool.make({
 			name: input.name,
 			label: `${server}/${tool.name}`,
+			exposure: input.exposure,
 			description: tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`,
 			parameters: Tool.fromJsonSchema(schema),
 			success: Outcome,
