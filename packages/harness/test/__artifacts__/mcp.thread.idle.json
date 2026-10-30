@@ -31,5 +31,9 @@
 				}
 			]
 		}
+	},
+	"connect": {
+		"tag": "Mcp.UnknownServerError",
+		"message": "MCP server \"idle\" was closed while idle; the thread's next message starts it again"
 	}
 }
