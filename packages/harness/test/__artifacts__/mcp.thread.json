@@ -348,7 +348,9 @@
 			"main-pid-2": "<process-1>",
 			"gated-pid": "<process-3>",
 			"bye": "bye",
-			"echo-after-drop": "hello: back"
+			"echo-after-drop": "hello: back",
+			"pid-before-restart": "<process-4>",
+			"pid-after-restart": "<process-5>"
 		},
 		"fork": {
 			"main-pid": "<process-1>",
@@ -373,7 +375,65 @@
 			"mcp__e2e__args"
 		]
 	},
-	"unknown": "Cause([Fail(Mcp.UnknownServerError: unknown MCP server: nope)])",
+	"restarted": {
+		"server": "e2e",
+		"state": "connected",
+		"tools": [
+			{
+				"name": "echo",
+				"exposure": "direct"
+			},
+			{
+				"name": "args",
+				"exposure": "deferred"
+			},
+			{
+				"name": "fail",
+				"exposure": "codemode"
+			},
+			{
+				"name": "pid",
+				"exposure": "direct"
+			},
+			{
+				"name": "crash",
+				"exposure": "direct"
+			},
+			{
+				"name": "my-tool.v2",
+				"exposure": "direct"
+			},
+			{
+				"name": "secret",
+				"exposure": "hidden"
+			},
+			{
+				"name": "bye",
+				"exposure": "direct"
+			}
+		]
+	},
+	"connectThenDisconnect": {
+		"finished": [
+			"connect",
+			"disconnect"
+		],
+		"state": "disconnected",
+		"running": 0
+	},
+	"disconnectThenConnect": {
+		"finished": [
+			"disconnect",
+			"connect"
+		],
+		"state": "connected",
+		"running": 1
+	},
+	"startsAfterRaces": 5,
+	"unknown": {
+		"tag": "Mcp.UnknownServerError",
+		"message": "unknown MCP server: nope"
+	},
 	"events": {
 		"main": {
 			"e2e": [
@@ -399,6 +459,24 @@
 					"server": "e2e",
 					"state": "disconnected",
 					"error": "connection closed: mcp server process exited with code 0"
+				},
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
 				},
 				{
 					"server": "e2e",
@@ -450,6 +528,46 @@
 				{
 					"server": "gated",
 					"state": "disconnected"
+				},
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
+				},
+				{
+					"server": "gated",
+					"state": "disconnected"
+				},
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye"
+					]
 				}
 			],
 			"off": [

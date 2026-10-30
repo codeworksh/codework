@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { join } from "node:path";
@@ -188,7 +188,22 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	});
 
 	const model = scripted();
-	const startCount = () => fs.readFile(starts, "utf8").then((text) => text.split("\n").filter(Boolean).length);
+	const startedPids = () => fs.readFile(starts, "utf8").then((text) => text.split("\n").filter(Boolean).map(Number));
+	const startCount = () => startedPids().then((pids) => pids.length);
+	const alive = (pid: number) => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	/** The gated server's processes still running, once the closed ones had time to exit. */
+	const running = (expected: number) =>
+		waitFor(
+			Effect.promise(startedPids).pipe(Effect.map((pids) => pids.filter(alive))),
+			(pids) => pids.length === expected,
+		);
 
 	const result = await Effect.gen(function* () {
 		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
@@ -267,10 +282,32 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		model.turn(main.id, [pendingCall("mcp__e2e__bye", {}, "bye")]);
 		yield* main.run("seven");
 		yield* waitFor(stateOf(main.id, "e2e"), (state) => state === "disconnected");
-		model.turn(main.id, [pendingCall("mcp__e2e__echo", { text: "back" }, "echo-after-drop")]);
+		model.turn(main.id, [
+			pendingCall("mcp__e2e__echo", { text: "back" }, "echo-after-drop"),
+			pendingCall("mcp__e2e__pid", {}, "pid-before-restart"),
+		]);
 		yield* main.run("eight");
 
-		const unknown = yield* Effect.exit(mcp.connect(main.id, "nope"));
+		// Connect on a connected server restarts it.
+		const restarted = yield* mcp.connect(main.id, "e2e");
+		model.turn(main.id, [pendingCall("mcp__e2e__pid", {}, "pid-after-restart")]);
+		yield* main.run("nine");
+
+		// Concurrent connect and disconnect run one after the other: the last one wins, and no
+		// process outlives a disconnect.
+		const race = Effect.fnUntraced(function* (first: "connect" | "disconnect", second: "connect" | "disconnect") {
+			const finished: string[] = [];
+			const run = (operation: "connect" | "disconnect") =>
+				mcp[operation](main.id, "gated").pipe(Effect.tap(() => Effect.sync(() => finished.push(operation))));
+			yield* Effect.all([run(first), run(second)], { concurrency: "unbounded" });
+			const state = yield* stateOf(main.id, "gated");
+			return { finished, state, running: (yield* running(state === "connected" ? 1 : 0)).length };
+		});
+		const connectThenDisconnect = yield* race("connect", "disconnect");
+		const disconnectThenConnect = yield* race("disconnect", "connect");
+		const startsAfterRaces = yield* Effect.promise(startCount);
+
+		const unknown = yield* Effect.flip(mcp.connect(main.id, "nope"));
 		return {
 			firstDeclared,
 			registeredMain: registered[main.id],
@@ -288,7 +325,11 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			calls: { main: yield* results(main), fork: yield* results(fork) },
 			changes: changes(model.requests.at(-1)?.context.messages ?? []),
 			loaded: (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools,
-			unknown: Exit.isFailure(unknown) ? String(unknown.cause) : "succeeded",
+			restarted,
+			connectThenDisconnect,
+			disconnectThenConnect,
+			startsAfterRaces,
+			unknown: { tag: unknown._tag, message: unknown.message },
 			events: seen,
 		};
 	}).pipe(
@@ -323,9 +364,26 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	expect(result.declaredAfterDisconnect).not.toContain("mcp__gated__pid");
 	expect(result.stillDisconnected).toBe("disconnected");
 	expect(result.startsAfterDisconnect).toBe(3);
+	expect(result.calls.main["pid-after-restart"]).not.toBe(result.calls.main["pid-before-restart"]);
+	expect(result.connectThenDisconnect).toEqual({
+		finished: ["connect", "disconnect"],
+		state: "disconnected",
+		running: 0,
+	});
+	expect(result.disconnectThenConnect).toEqual({
+		finished: ["disconnect", "connect"],
+		state: "connected",
+		running: 1,
+	});
 
 	const pids = [
-		...new Set([result.calls.main["main-pid"], result.calls.fork["fork-pid"], result.calls.main["gated-pid"]]),
+		...new Set([
+			result.calls.main["main-pid"],
+			result.calls.fork["fork-pid"],
+			result.calls.main["gated-pid"],
+			result.calls.main["pid-before-restart"],
+			result.calls.main["pid-after-restart"],
+		]),
 	];
 	let serialized = JSON.stringify(result).replaceAll(dir.path, "<tmp>").replaceAll(process.execPath, "<node>");
 	pids.forEach((pid, index) => {
@@ -340,11 +398,14 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 	const home = join(dir.path, "home");
 	const work = join(dir.path, "work");
 	await fs.mkdir(work, { recursive: true });
+	// The first start waits while `hold` exists, so the first turn finds it still connecting.
+	const hold = join(dir.path, "hold");
+	await fs.writeFile(hold, "held");
 	const configure = (delay: string) =>
 		write(join(home, "mcp.json"), {
-			mcpServers: { slow: stdio({ exposure: "deferred" }, { E2E_DELAY: delay }) },
+			mcpServers: { slow: stdio({ exposure: "deferred" }, { E2E_HOLD: hold, E2E_DELAY: delay }) },
 		});
-	await configure("300");
+	await configure("0");
 
 	const model = scripted();
 	const result = await Effect.gen(function* () {
@@ -356,6 +417,7 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 		// Nothing loaded: the turn does not wait for a server with only deferred tools.
 		yield* main.run("one");
 		const notAwaited = yield* stateOf;
+		yield* Effect.promise(() => fs.rm(hold));
 		yield* waitFor(stateOf, (state) => state === "connected");
 
 		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "search")]);

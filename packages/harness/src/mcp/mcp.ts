@@ -8,8 +8,8 @@
  * tool is looked up when it is called:
  *
  * - A connection that drops fails the calls running on it, and the next call reconnects.
- * - A server that failed to connect stays failed until its config changes or {@link
- *   Interface.connect} runs; turns never retry it.
+ * - Reconcile never restarts a failed server; only a config change or {@link Interface.connect}
+ *   does. A server whose tools were declared still reconnects on its next call.
  * - A Streamable HTTP session the server forgot is replaced, and calls that hit it run once more on
  *   the new one. The old connection closes when its last call finishes, never under one.
  * - A tool call is never retried after the server may have run it.
@@ -63,7 +63,7 @@ export interface Status {
 	readonly server: string;
 	readonly state: State;
 	readonly error?: string;
-	/** Tools the server offered when last listed, each with its exposure. */
+	/** Tools the server offered when last listed, each with its exposure; kept while it is not connected. */
 	readonly tools: ReadonlyArray<{ readonly name: string; readonly exposure: Exposure }>;
 }
 
@@ -128,6 +128,8 @@ interface Server {
 	/** The last status published, so a no-op change publishes nothing. */
 	published: string | undefined;
 	readonly lock: Semaphore.Semaphore;
+	/** Runs `connect` and `disconnect` one at a time. */
+	readonly control: Semaphore.Semaphore;
 }
 
 interface Thread {
@@ -331,9 +333,17 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 						const error = Cause.squash(exit.cause);
 						const message =
 							typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
+						if (server.closed || server.stopped) return yield* Effect.fail(message);
 						yield* setState(server, Schema.is(NeedsAuthError)(error) ? "authenticate" : "failed", message);
 						yield* Effect.logWarning("mcp connect failed", { server: server.name, error: message });
 						return yield* Effect.fail(message);
+					}
+					// Closed or disconnected while connecting: the connection must not outlive that.
+					if (server.closed || server.stopped) {
+						yield* Scope.close(scope, Exit.void);
+						return yield* Effect.fail(
+							`MCP server "${server.name}" is ${server.closed ? "shut down" : "disconnected"}`,
+						);
 					}
 					const live: Live = {
 						connection: exit.value.connection,
@@ -393,10 +403,8 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 				Effect.gen(function* () {
 					const pending = server.attempt;
 					if (pending !== undefined) yield* Fiber.interrupt(pending);
-					yield* Effect.suspend(() =>
-						server.live === undefined ? Effect.void : retire(server, server.live),
-					).pipe(server.lock.withPermits(1));
-				});
+					if (server.live !== undefined) yield* retire(server, server.live);
+				}).pipe(server.lock.withPermits(1));
 
 			/** Stop the server for good: it was removed, or its connection settings changed. */
 			const close = (server: Server) =>
@@ -529,6 +537,7 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 							stopped: false,
 							published: undefined,
 							lock: Semaphore.makeUnsafe(1),
+							control: Semaphore.makeUnsafe(1),
 						};
 						thread.servers.set(name, server);
 						yield* start(server);
@@ -578,23 +587,42 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 				return tools;
 			});
 
-			const connect = Effect.fn("Mcp.connect")(function* (threadId: ThreadId, name: string) {
-				const server = yield* serverOf(threadId, name);
-				if (server.config.enabled === false) return statusOf(server);
-				server.stopped = false;
-				yield* stop(server);
-				yield* open(server).pipe(Effect.ignore);
-				return statusOf(server);
-			});
+			/**
+			 * Run `operation` on the thread's server, one operation per server at a time. A turn that
+			 * replaced or removed the server meanwhile makes it unknown, so a stale status is never returned.
+			 */
+			const control = (threadId: ThreadId, name: string, operation: (server: Server) => Effect.Effect<void>) =>
+				Effect.gen(function* () {
+					const server = yield* serverOf(threadId, name);
+					return yield* Effect.gen(function* () {
+						if (server.config.enabled !== false) yield* operation(server);
+						if (threads.get(threadId)?.servers.get(name) !== server)
+							return yield* new UnknownServerError({ server: name });
+						return statusOf(server);
+					}).pipe(server.control.withPermits(1));
+				});
 
-			const disconnect = Effect.fn("Mcp.disconnect")(function* (threadId: ThreadId, name: string) {
-				const server = yield* serverOf(threadId, name);
-				if (server.config.enabled === false) return statusOf(server);
-				server.stopped = true;
-				yield* stop(server);
-				yield* setState(server, "disconnected");
-				return statusOf(server);
-			});
+			const connect = Effect.fn("Mcp.connect")((threadId: ThreadId, name: string) =>
+				control(threadId, name, (server) =>
+					Effect.gen(function* () {
+						server.stopped = false;
+						yield* stop(server);
+						// An explicit restart is reported even when an interrupted attempt left it `connecting`.
+						server.published = undefined;
+						yield* open(server).pipe(Effect.ignore);
+					}),
+				),
+			);
+
+			const disconnect = Effect.fn("Mcp.disconnect")((threadId: ThreadId, name: string) =>
+				control(threadId, name, (server) =>
+					Effect.gen(function* () {
+						server.stopped = true;
+						yield* stop(server);
+						yield* setState(server, "disconnected");
+					}),
+				),
+			);
 
 			return Service.of({
 				reconcile,
