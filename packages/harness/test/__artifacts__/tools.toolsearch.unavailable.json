@@ -44,9 +44,9 @@
 			"name": "no_such_tool",
 			"arguments": {},
 			"status": "error",
-			"text": "Unknown tool: no_such_tool",
+			"text": "Unknown Tool: no_such_tool",
 			"details": {
-				"error": "unknown_tool",
+				"error": "unknown-tool",
 				"name": "no_such_tool"
 			}
 		}

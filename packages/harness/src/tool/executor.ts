@@ -321,8 +321,8 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 					const details = yield* encodeUnavailable(unavailable).pipe(Effect.orDie);
 					return errored(call, [text(unavailable.message)], now, details);
 				}
-				return errored(call, [text(`Unknown tool: ${call.name}`)], now, {
-					error: "unknown_tool",
+				return errored(call, [text(`Unknown Tool: ${call.name}`)], now, {
+					error: "unknown-tool",
 					name: call.name,
 				});
 			}
@@ -339,7 +339,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 			if (Result.isFailure(prepared)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 				return errored(call, [text(`Invalid arguments for ${call.name}: ${prepared.failure}`)], now, {
-					error: "invalid_arguments",
+					error: "invalid-arguments",
 					name: call.name,
 				});
 			}
@@ -347,7 +347,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {
-					error: "invalid_arguments",
+					error: "invalid-arguments",
 					name: call.name,
 				});
 			}

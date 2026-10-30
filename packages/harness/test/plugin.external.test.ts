@@ -342,7 +342,7 @@ describe("third-party plugins", () => {
 			expect(prompts[0]).toContain("<tools>\n(none)\n</tools>");
 			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({ status: "error", result: { isError: true } });
-			expect(settled.result.content[0].text).toContain("Unknown tool: bash");
+			expect(settled.result.content[0].text).toContain("Unknown Tool: bash");
 		}));
 });
 

@@ -523,7 +523,7 @@ describe("toolsearch", () => {
 					'Tool "stock_quote" is not available in this thread.',
 					{ _tag: "ToolUnavailable", name: "stock_quote" },
 				],
-				["no_such_tool", "error", "Unknown tool: no_such_tool", { error: "unknown_tool", name: "no_such_tool" }],
+				["no_such_tool", "error", "Unknown Tool: no_such_tool", { error: "unknown-tool", name: "no_such_tool" }],
 			]);
 			const [first] = requestsOf(main).map(sent);
 			yield* artifact("tools.toolsearch.unavailable.json", {

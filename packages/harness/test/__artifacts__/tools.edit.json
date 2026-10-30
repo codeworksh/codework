@@ -564,7 +564,7 @@
 			}
 		],
 		"details": {
-			"error": "invalid_arguments",
+			"error": "invalid-arguments",
 			"name": "edit"
 		}
 	}
