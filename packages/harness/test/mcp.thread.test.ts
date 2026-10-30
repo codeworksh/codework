@@ -477,3 +477,47 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 		"./__artifacts__/mcp.thread.loaded.json",
 	);
 }, 60_000);
+
+it("mcp: an instance that idles out tells the threads still using it", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	await write(join(home, "mcp.json"), { mcpServers: { idle: stdio() } });
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const seen = yield* statusEvents((threadId) => (threadId === main.id ? "main" : threadId));
+		const mcp = yield* Mcp.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all[0]?.state));
+		// The turn's drain ends with it; nothing holds the instance after that.
+		yield* main.run("one");
+		const afterTurn = yield* stateOf;
+		const idled = yield* waitFor(stateOf, (state) => state === "disconnected");
+		const events = yield* waitFor(
+			Effect.sync(() => seen.read()),
+			(read) => read.main?.idle?.at(-1)?.state === "disconnected",
+		);
+		return { afterTurn, idled, events };
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin],
+				llm: model.open,
+				mcpIdleTimeout: "500 millis",
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.afterTurn).toBe("connected");
+	expect(result.idled).toBe("disconnected");
+	expect(result.events.main?.idle?.at(-1)?.state).toBe("disconnected");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.idle.json");
+}, 60_000);
