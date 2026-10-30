@@ -38,7 +38,7 @@ const rowsFor = (sql: SqlClient.SqlClient, aggId: string) =>
 	sql`SELECT * FROM event WHERE aggregate_id = ${aggId} ORDER BY seq`;
 
 describe("Event store", () => {
-	it("assigns sequences from 0, independently per aggregate", () =>
+	it("assigns sequences from 1, independently per aggregate", () =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
 			const events = yield* Event.Service;
@@ -47,13 +47,13 @@ describe("Event store", () => {
 			const second = yield* events.publish(Msg, { aggId: A, text: "two" });
 			const other = yield* events.publish(Msg, { aggId: B, text: "elsewhere" });
 
-			expect(first.durable?.seq).toBe(0);
-			expect(second.durable?.seq).toBe(1);
-			expect(other.durable?.seq).toBe(0);
-			expect((yield* rowsFor(sql, A)).map((r) => r.seq)).toEqual([0, 1]);
-			expect(yield* events.latestSequence(A)).toBe(1);
-			expect(yield* events.latestSequence(B)).toBe(0);
-			expect(yield* events.latestSequence("agg_never_written")).toBe(-1);
+			expect(first.durable?.seq).toBe(1);
+			expect(second.durable?.seq).toBe(2);
+			expect(other.durable?.seq).toBe(1);
+			expect((yield* rowsFor(sql, A)).map((r) => r.seq)).toEqual([1, 2]);
+			expect(yield* events.latestSequence(A)).toBe(2);
+			expect(yield* events.latestSequence(B)).toBe(1);
+			expect(yield* events.latestSequence("agg_never_written")).toBe(0);
 		}));
 
 	// An id is unique across the whole store, not per aggregate: reusing one
@@ -70,7 +70,7 @@ describe("Event store", () => {
 			expect(exit._tag).toBe("Failure");
 			expect((yield* rowsFor(sql, B)).length).toBe(0);
 			// The rejected publish consumed no sequence at the other aggregate.
-			expect(yield* events.latestSequence(B)).toBe(-1);
+			expect(yield* events.latestSequence(B)).toBe(0);
 		}));
 
 	// The single most important property of the store: a projector that rejects
@@ -97,9 +97,9 @@ describe("Event store", () => {
 			expect((yield* sql`SELECT value FROM event_probe`).map((r) => r.value)).toEqual(["kept"]);
 			expect((yield* rowsFor(sql, A)).length).toBe(1);
 			// The sequence rolled back too, so the number is handed out again.
-			expect(yield* events.latestSequence(A)).toBe(0);
+			expect(yield* events.latestSequence(A)).toBe(1);
 			reject = false;
-			expect((yield* events.publish(Msg, { aggId: A, text: "next" })).durable?.seq).toBe(1);
+			expect((yield* events.publish(Msg, { aggId: A, text: "next" })).durable?.seq).toBe(2);
 		}));
 
 	it("hands the committed sequence to projectors", () =>
@@ -110,7 +110,7 @@ describe("Event store", () => {
 
 			yield* events.publish(Msg, { aggId: A, text: "one" });
 			yield* events.publish(Msg, { aggId: A, text: "two" });
-			expect(seen).toEqual([0, 1]);
+			expect(seen).toEqual([1, 2]);
 		}));
 
 	describe("advance", () => {
@@ -140,8 +140,8 @@ describe("Event store", () => {
 
 				yield* events.advance(A, 0);
 
-				expect(yield* events.latestSequence(A)).toBe(1);
-				expect((yield* events.publish(Msg, { aggId: A, text: "three" })).durable?.seq).toBe(2);
+				expect(yield* events.latestSequence(A)).toBe(2);
+				expect((yield* events.publish(Msg, { aggId: A, text: "three" })).durable?.seq).toBe(3);
 			}));
 	});
 

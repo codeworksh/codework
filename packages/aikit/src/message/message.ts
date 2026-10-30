@@ -37,8 +37,6 @@ export const ToolCallBaseSchema = Type.Object({
 	arguments: Type.Record(Type.String(), Type.Any()),
 	thoughtSignature: Type.Optional(Type.String()), // Google-specific: opaque signature for reusing thought context
 	namespace: Type.Optional(Type.String()), // OpenAI Responses namespace for dynamically loaded tools
-	/** Names from Context.tools that became available after this tool result. */
-	addedToolNames: Type.Optional(Type.Array(Type.String())),
 	time: Type.Object({
 		start: Type.Number(), // Unix timestamp in milliseconds
 		end: Type.Number(), // Unix timestamp in milliseconds, last known lifecycle update
@@ -198,9 +196,6 @@ export const AssistantMessageSchema = Type.Object({
 });
 export type AssistantMessage = Static<typeof AssistantMessageSchema>;
 
-export const MessageSchema = Type.Union([UserMessageSchema, AssistantMessageSchema]);
-export type Message = Static<typeof MessageSchema>;
-
 type UserMessageInit = Omit<UserMessage, "messageId"> & {
 	messageId?: string;
 };
@@ -285,6 +280,46 @@ export function defineTool<TParameters extends TSchema>(tool: Tool<TParameters>)
 	return tool;
 }
 
+export const ToolReferenceSchema = Type.Object({
+	name: Type.String(),
+});
+export type ToolReference = Static<typeof ToolReferenceSchema>;
+
+/**
+ * A change to the tool set at one point in the transcript.
+ *
+ * `Context.tools` holds the tools at the start of the conversation; each system message
+ * changes that set from its position on. Replaying them in order yields the current tools.
+ * A redefinition is a removal plus an addition of the same name.
+ */
+export const SystemMessageSchema = Type.Object({
+	messageId: Type.String(),
+	role: Type.Literal("system"),
+	time: Type.Object({
+		created: Type.Number(),
+	}),
+	/** Complete definitions of tools that become available at this point. */
+	toolsAdded: Type.Optional(Type.Array(ToolSchema)),
+	/** Tools that stop being available at this point. */
+	toolsRemoved: Type.Optional(Type.Array(ToolReferenceSchema)),
+	/** Caller data kept with the message; never sent to a provider. */
+	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type SystemMessage = Static<typeof SystemMessageSchema>;
+
+export const MessageSchema = Type.Union([SystemMessageSchema, UserMessageSchema, AssistantMessageSchema]);
+export type Message = Static<typeof MessageSchema>;
+
+type SystemMessageInit = Omit<SystemMessage, "messageId" | "role" | "time"> & {
+	messageId?: string;
+	time?: SystemMessage["time"];
+};
+
+export function createSystemMessage(message: SystemMessageInit): SystemMessage {
+	const { messageId = createMessageId(), time = { created: Date.now() }, ...rest } = message;
+	return { messageId, role: "system", time, ...rest };
+}
+
 export const ContextSchema = Type.Object({
 	systemPrompt: Type.Optional(Type.String()),
 	messages: Type.Array(MessageSchema),
@@ -323,7 +358,7 @@ const USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 const TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
 
 // Consecutive images collapse into a single placeholder.
-function omitImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+export function omitImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
 	const result: TextContent[] = [];
 	for (const [index, block] of content.entries()) {
 		if (block.type === "text") result.push(block);
@@ -350,6 +385,10 @@ export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 
 	const transformed: Message[] = [];
 	for (const msg of messages) {
+		if (msg.role === "system") {
+			transformed.push(msg);
+			continue;
+		}
 		if (msg.role === "user") {
 			transformed.push(supportsImages ? msg : { ...msg, parts: omitImages(msg.parts, USER_IMAGE_PLACEHOLDER) });
 			continue;
@@ -363,13 +402,13 @@ export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 
 		const transformedParts = assistantMsg.parts.flatMap((block) => {
 			if (block.type === "thinking") {
-				if (isSameModel && block.thinkingSignature) return block;
+				// Signatures only verify on the model that made them, and readable thinking sent as
+				// text makes the new model treat it as part of its visible reply.
+				if (!isSameModel) return [];
+				// Signed or redacted blocks replay even when empty (OpenAI encrypted reasoning).
+				if (block.redacted || block.thinkingSignature) return block;
 				if (!block.thinking || block.thinking.trim() === "") return [];
-				if (isSameModel) return block;
-				return {
-					type: "text" as const,
-					text: block.thinking,
-				};
+				return block;
 			}
 
 			if (block.type === "text") {

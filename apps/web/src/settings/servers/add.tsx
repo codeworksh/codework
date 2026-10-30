@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/utils";
 import { Server } from "../../kernel/rpc";
 import { Code, quietField } from "../blocks";
-import { Badge, Mark, serversKey } from "./local";
+import { Badge, Mark } from "./local";
 
 const addAtom = Server.mutation("servers.add");
 
@@ -52,7 +52,6 @@ export function AddServer({
 		setError(null);
 		add({
 			payload: { name, executable: executable.trim() || null, home, args },
-			reactivityKeys: serversKey,
 		})
 			.then((id) => {
 				onAdded(id);

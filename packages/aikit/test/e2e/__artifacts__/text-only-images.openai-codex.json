@@ -1,5 +1,32 @@
 [
 	{
+		"role": "system",
+		"content": "",
+		"providerOptions": {
+			"openai-codex": {
+				"toolChange": {
+					"mode": "changes",
+					"tools": [
+						{
+							"type": "function",
+							"name": "screenshot",
+							"description": "Takes a screenshot",
+							"inputSchema": {
+								"type": "object",
+								"properties": {}
+							}
+						}
+					],
+					"removed": []
+				}
+			}
+		}
+	},
+	{
+		"role": "system",
+		"content": "You are a helpful assistant."
+	},
+	{
 		"role": "user",
 		"content": [
 			{

@@ -1,0 +1,73 @@
+{
+	"forkAt": {
+		"status": 0,
+		"stdout": "<at>\n"
+	},
+	"forkBefore": {
+		"status": 0,
+		"stdout": "<before>\n\nbranch\n"
+	},
+	"relink": {
+		"status": 0,
+		"stdout": "Moved thread <at> of <session> to <root>/clone-b/packages/x\n"
+	},
+	"list": {
+		"status": 0,
+		"stdout": "<before>  fork of <main>  openai/gpt-6-luna  0 tok $0.0000  (untitled)\n<at>  fork of <main>  openai/gpt-6-luna  2 tok $0.0000  branch\n<main>  main                                              openai/gpt-6-luna  2 tok $0.0000  hello\n"
+	},
+	"listJson": [
+		{
+			"id": "<at>",
+			"origin": "fork",
+			"placement": "<root>/clone-b/packages/x",
+			"usage": {
+				"cost": 0,
+				"input": 1,
+				"output": 1,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			}
+		},
+		{
+			"id": "<before>",
+			"origin": "fork",
+			"placement": null,
+			"usage": {
+				"cost": 0,
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			}
+		},
+		{
+			"id": "<main>",
+			"origin": "main",
+			"placement": null,
+			"usage": {
+				"cost": 0,
+				"input": 1,
+				"output": 1,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			}
+		}
+	],
+	"errors": {
+		"bothPoints": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: Pass exactly one of --at or --before\n"
+		},
+		"badThread": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: --thread takes a thread ID (thr_…) or main\n"
+		},
+		"unknownEntry": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: cannot fork <main> at missing-entry: entry not found\n"
+		}
+	}
+}

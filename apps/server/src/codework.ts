@@ -9,7 +9,10 @@ import path from "node:path";
 import { CodeworkUnavailable } from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
 
-export type SessionInfo = Mirror.SessionInfo;
+export type ThreadInfo = Mirror.ThreadInfo;
+
+/** What an untitled thread is called until its first prompt names it. */
+export const UNTITLED = Mirror.UNTITLED;
 
 /** How a running server advertises itself: `<home>/service.json`, written by `codework serve`. */
 const Registration = Schema.fromJsonString(

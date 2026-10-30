@@ -1,0 +1,93 @@
+{
+	"reasons": [
+		"nothing_before_entry",
+		"not_a_user_entry",
+		"entry_not_found",
+		"entry_not_committed",
+		"entry_not_committed"
+	],
+	"events": [
+		"1 session.created.1 T1",
+		"2 session.prompt.admitted.1 T1",
+		"3 session.prompt.promoted.1 T1",
+		"4 session.llm.started.1 T1",
+		"5 session.llm.ended.1 T1",
+		"6 session.turn.ended.1 T1",
+		"7 session.prompt.admitted.1 T1",
+		"8 session.prompt.promoted.1 T1",
+		"9 session.llm.started.1 T1",
+		"10 session.llm.ended.1 T1",
+		"11 session.turn.ended.1 T1",
+		"12 session.thread.forked.1 T2",
+		"13 session.thread.forked.1 T3",
+		"14 session.thread.forked.1 T4",
+		"15 session.prompt.admitted.1 T1",
+		"16 session.prompt.promoted.1 T1",
+		"17 session.llm.started.1 T1",
+		"18 session.llm.failed.1 T1"
+	],
+	"threads": [
+		{
+			"thread": "T1",
+			"origin": "main",
+			"createdSeq": 1,
+			"title": "first"
+		},
+		{
+			"thread": "T2",
+			"origin": "fork T1 at E4",
+			"createdSeq": 12,
+			"title": null
+		},
+		{
+			"thread": "T3",
+			"origin": "fork T1 at E1",
+			"createdSeq": 13,
+			"title": null
+		},
+		{
+			"thread": "T4",
+			"origin": "fork T1 at E2",
+			"createdSeq": 14,
+			"title": null
+		}
+	],
+	"entries": [
+		"E1 T1 user seq=3 committed=3 committed",
+		"E2 T1 assistant seq=4 committed=6 committed",
+		"E3 T1 user seq=8 committed=8 committed",
+		"E4 T1 assistant seq=9 committed=11 committed",
+		"E5 T1 user seq=16 committed=16 committed",
+		"E6 T1 assistant seq=17 committed=18 aborted"
+	],
+	"documents": [
+		{
+			"thread": "T1",
+			"kind": "agent",
+			"revisions": [
+				"1 {}"
+			]
+		},
+		{
+			"thread": "T2",
+			"kind": "agent",
+			"revisions": [
+				"12 {}"
+			]
+		},
+		{
+			"thread": "T3",
+			"kind": "agent",
+			"revisions": [
+				"13 {}"
+			]
+		},
+		{
+			"thread": "T4",
+			"kind": "agent",
+			"revisions": [
+				"14 {}"
+			]
+		}
+	]
+}

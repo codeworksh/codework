@@ -1,0 +1,37 @@
+{
+	"calls": [
+		{
+			"hook": "prepareRequest",
+			"retry": 0
+		},
+		{
+			"hook": "finishTurn",
+			"reason": "toolUse"
+		},
+		{
+			"hook": "prepareNextTurn",
+			"completed": "toolUse",
+			"tools": [
+				"echo",
+				"echo_late"
+			]
+		},
+		{
+			"hook": "prepareRequest",
+			"retry": 0
+		},
+		{
+			"hook": "finishTurn",
+			"reason": "stop"
+		}
+	],
+	"requestTools": [
+		[
+			"echo"
+		],
+		[
+			"echo",
+			"echo_late"
+		]
+	]
+}

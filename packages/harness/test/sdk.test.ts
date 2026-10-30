@@ -44,7 +44,7 @@ describe("Harness Effect SDK", () => {
 					model: { provider: "openai", id: "gpt-5.6-luna" },
 					thinkingLevel: "max",
 				});
-				yield* created.run("first");
+				yield* created.main.run("first");
 
 				// Bare re-attach in the same runtime: merges nothing, clears nothing.
 				const attached = yield* Session.attach({ sessionId: created.id });
@@ -79,14 +79,14 @@ describe("Harness Effect SDK", () => {
 							model: { provider: "openai", id: "gpt-5.6-luna" },
 							thinkingLevel: "max",
 						});
-						yield* session.run("first");
+						yield* session.main.run("first");
 						return session.id;
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({ sessionId });
 						yield* session.run("second");
-						expect((yield* session.path()).map(({ entry }) => entry.type)).toEqual([
+						expect((yield* session.history()).map(({ entry }) => entry.type)).toEqual([
 							"user",
 							"assistant",
 							"user",
@@ -105,7 +105,7 @@ describe("Harness Effect SDK", () => {
 
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({ sessionId });
-						expect(yield* Session.configuration(sessionId)).toEqual({
+						expect(yield* Session.configuration(session.id)).toEqual({
 							provider: "openai",
 							model: "gpt-5.4",
 							thinkingLevel: "low",

@@ -1,0 +1,115 @@
+{
+	"usage": {
+		"fork": {
+			"cost": 0,
+			"input": 1,
+			"output": 1,
+			"cacheRead": 0,
+			"cacheWrite": 0
+		},
+		"main": {
+			"cost": 0,
+			"input": 2,
+			"output": 2,
+			"cacheRead": 0,
+			"cacheWrite": 0
+		}
+	},
+	"live": [
+		{
+			"type": "server.connected",
+			"thread": "<none>"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.execution.started",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.prompt.promoted",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.turn.started",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.started",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.text.start",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.text.delta",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.text.end",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.ended",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.turn.ended",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.execution.succeeded",
+			"thread": "<fork>"
+		}
+	],
+	"forkLog": [
+		{
+			"type": "session.thread.forked",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.prompt.promoted",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.started",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.llm.ended",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.turn.ended",
+			"thread": "<fork>"
+		},
+		{
+			"type": "log.synced"
+		}
+	],
+	"sessionLogThreads": [
+		"<fork>",
+		"<main>"
+	],
+	"relink": {
+		"thread": {
+			"returned": "<fork>",
+			"placement": "<root>/clone-b/packages/x",
+			"sessionDirectory": "<root>/clone-a/packages/x"
+		},
+		"mainAfterThreadMove": {
+			"directory": "<root>/clone-a/packages/x"
+		},
+		"session": {
+			"returned": "<main>",
+			"directory": "<root>/clone-b/packages/x"
+		}
+	}
+}

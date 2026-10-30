@@ -1,5 +1,5 @@
 import { EventList, EventSchema, optional } from "@codeworksh/harness/effect";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 /**
  * The wire form of an `EventSchema.Payload`. `data` is carried in its encoded
@@ -15,6 +15,12 @@ export const EventEnvelope = Schema.Struct({
 	data: Schema.Unknown,
 });
 export type EventEnvelope = typeof EventEnvelope.Type;
+
+/** Whether an event belongs to a thread: every thread-scoped event names its `threadId`. */
+export const ofThread =
+	(threadId: string) =>
+	(event: { readonly data: unknown }): boolean =>
+		Predicate.hasProperty(event.data, "threadId") && event.data.threadId === threadId;
 
 export class UnknownEventTypeError extends Schema.TaggedError<UnknownEventTypeError>()("UnknownEventTypeError", {
 	type: Schema.String,

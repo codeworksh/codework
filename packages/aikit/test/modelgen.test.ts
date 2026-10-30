@@ -288,18 +288,15 @@ describe("githubCopilotBuiltInModels", () => {
 		}
 	});
 
-	it("marks adaptive Claude and stores reasoning options for Responses models", () => {
+	it("marks adaptive Claude and in-place tool support for Responses models", () => {
 		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
 		const claude = models["claude-opus-4.8"]!;
 		expect(claude.compat?.forceAdaptiveThinking).toBe(true);
 		expect(claude.thinkingLevelMap).toMatchObject({ minimal: "low", xhigh: "xhigh", max: "max" });
 
 		const gpt = models["gpt-5.4"]!;
-		expect(gpt.providerOptions?.["github-copilot"]).toEqual({
-			store: false,
-			include: ["reasoning.encrypted_content"],
-		});
-		expect(gpt.compat?.supportsOpenAIGrammarTools).toBe(true);
-		expect(gpt.thinkingLevelMap).toMatchObject({ off: null, minimal: "low", xhigh: "xhigh", max: null });
+		expect(gpt.providerOptions?.["github-copilot"]).toBeUndefined();
+		expect(gpt.compat).toMatchObject({ supportsOpenAIGrammarTools: true, supportsAdditionalTools: true });
+		expect(gpt.thinkingLevelMap).toMatchObject({ off: "none", minimal: "low", xhigh: "xhigh", max: null });
 	});
 });

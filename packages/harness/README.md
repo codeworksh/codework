@@ -9,7 +9,7 @@ The initial public surface is the Effect SDK at `@codeworksh/harness/effect`.
 
 ## Features
 
-- **Durable Sessions:** create, attach, resume, interrupt, and inspect agent sessions without rebuilding orchestration around every turn.
+- **Durable Sessions:** create sessions, fork their threads, and attach, resume, interrupt, and inspect each thread without rebuilding orchestration around every turn.
 - **Streaming Agent Loop:** consume durable session events while the loop coordinates model output, tool calls, and continuations.
 - **Tool Execution:** use the built-in Bash tool or register typed tools with sequential or parallel execution.
 - **Model Flexibility:** select any provider and model available in Aikit's generated catalog, including its supported thinking levels.
@@ -22,7 +22,7 @@ that owns the plugin, tool and sandbox contract this package consumes — a plug
 on it rather than on the whole harness. The same types are re-exported here as `Plugin` and `Tool`
 for embedders who already hold the harness.
 
-Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
+Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs before every turn, after model resolution; its tools, hooks, and prompt are pinned for that turn.
 
 ```ts
 import { Effect, Schema } from "effect";
@@ -150,7 +150,7 @@ A plugin is installed into its own directory, so its Effect is a separate module
 
 Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. The installer inherits stderr, so a first install prints pnpm's own progress and errors to the terminal — and a `plugins` entry in a settings file means that can happen during `Harness.layer` construction, before any session exists. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. The selection is read once per `Harness.layer`, so an edited `plugins` block applies at the next construction; hot reload and daemon lifecycles are not implemented.
 
-Failures are attributed: a bad reference, unreadable module, or malformed plugin fails `Harness.layer` construction with `PluginPreparationError`, which carries the failing phase (`source`, `install`, `import`, or `definition`) and the index of the offending reference. A failing package install reports `PluginInstallError`; a plugin's `setup` failure becomes `Plugin.SetupError` with the plugin id, surfacing as a `SnapshotError` for that exchange. Plugins are trusted in-process code — local paths and `file:` references import whatever they point at, so only load sources you trust.
+Failures are attributed: a bad reference, unreadable module, or malformed plugin fails `Harness.layer` construction with `PluginPreparationError`, which carries the failing phase (`source`, `install`, `import`, or `definition`) and the index of the offending reference. A failing package install reports `PluginInstallError`; a plugin's `setup` failure becomes `Plugin.SetupError` with the plugin id, surfacing as a `SnapshotError` for that turn. Plugins are trusted in-process code — local paths and `file:` references import whatever they point at, so only load sources you trust.
 
 ## Pluggable Sandboxes
 
@@ -240,7 +240,7 @@ cost     $0.014200 · 1 turn
 
 The model catalog lives at `<home>/models.gen.json` and is refreshed once it is older than 15 minutes; `codework models refresh --force` downloads it now. Set `CODEWORK_MODELS_FILE` to pin a catalog you manage yourself.
 
-The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session, so use the same home directory and session ID to continue it:
+The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session's thread, so use the same home directory and session ID to continue it:
 
 ```sh
 pnpm dlx @codeworksh/harness@dev \
@@ -249,7 +249,7 @@ pnpm dlx @codeworksh/harness@dev \
   "Continue with the implementation"
 ```
 
-Persisted settings are the fallback. A new CLI process can explicitly re-bind or change them while attaching; supplied values are recorded as the session's latest configuration:
+Persisted settings are the fallback. A new CLI process can explicitly re-bind or change them while attaching; supplied values are recorded as the thread's latest configuration:
 
 ```sh
 pnpm dlx @codeworksh/harness@dev \
@@ -314,12 +314,12 @@ await program.pipe(
 );
 ```
 
-Creating a session does not contact the provider. Call `session.run(prompt)` to execute a turn, and call `session.events()` directly to obtain its Effect `Stream`.
+Creating a session does not contact the provider. A session runs its prompts in threads: call `session.main.run(prompt)` to execute a turn on its `main` thread, and `session.main.events()` to obtain that thread's Effect `Stream`. `fork({ entryId })` on a thread starts a new one, and `session.thread(id)` reaches it later.
 
 The Effect SDK currently includes:
 
 - `Harness.layer` for process configuration and service wiring
-- `Session` handles for create, attach, prompt, run, resume, interrupt, events, and history
+- `Session.create` and `relink`, which return a session handle, and `attach`, which returns a thread handle; a thread handle prompts, runs, resumes, interrupts, configures, forks, and exposes its events and history
 - `Sandbox` drivers and lifecycle operations for in-memory, SQLite, Vercel, and Daytona environments
 - Local host execution for sessions without a configured sandbox
 - Effect-native errors, layers, streams, and resource scopes

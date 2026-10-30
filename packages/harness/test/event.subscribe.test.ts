@@ -5,16 +5,19 @@ import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const { live: it } = testEffect(Layer.provideMerge(Event.layer, Database.layer(":memory:")));
 const sessionId = SessionSchema.ID.make("session_a");
+const threadId = ThreadSchema.ID.make("thread_a");
 const publish = (events: Event.Interface, index: number) =>
 	Effect.gen(function* () {
 		const timestamp = yield* DateTime.now;
 		return yield* events.publish(EventList.TurnEnded, {
 			timestamp,
 			sessionId,
+			threadId,
 			messageId: SessionMessageSchema.ID.make(`message_${index}`),
 		});
 	});
@@ -34,6 +37,7 @@ describe("Event.subscribe", () => {
 			const ephemeral = yield* events.publish(EventList.LLMTextDelta, {
 				timestamp,
 				sessionId,
+				threadId,
 				messageId: SessionMessageSchema.ID.make("message_live"),
 				partIndex: 0,
 				delta: "hello",

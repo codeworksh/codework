@@ -67,10 +67,9 @@ describe("estimateContextTokens", () => {
 	it("adds results and discovered tools on the usage-bearing turn only once", () => {
 		const latest = assistant(100, 1_000);
 		latest.parts = [makeCompletedToolCall("read", "read", [{ type: "text", text: "r".repeat(40_000) }])];
-		const call = latest.parts[0]!;
-		if (call.type === "toolCall") call.addedToolNames = ["new_tool"];
 		const tool: Message.Tool = { name: "new_tool", description: "new", parameters: { type: "object" } };
-		const context: Message.Context = { messages: [latest], tools: [tool] };
+		const loaded = Message.createSystemMessage({ toolsAdded: [tool], time: { created: 150 } });
+		const context: Message.Context = { messages: [latest, loaded] };
 		const added = 10_000 + estimateTextTokens(JSON.stringify([tool]));
 		expect(estimateContextTokens(context)).toMatchObject({ tokens: 1_000 + added, trailingTokens: added });
 		expect(clampMaxTokensToContext(makeModel({ contextWindow: 20_000 }), context, 16_000)).toBe(

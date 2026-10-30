@@ -1,9 +1,4 @@
 {
-  "status": "completed",
-  "text": "array b
-1 2 3
-here-string
-source x=1
-shell bash
-",
+	"status": "completed",
+	"text": "array b\n1 2 3\nhere-string\nsource x=1\nshell bash\n"
 }

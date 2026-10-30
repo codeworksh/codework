@@ -42,10 +42,10 @@ const exchange = (input: {
 	return Effect.gen(function* () {
 		// The session is linked to the project under test through `hostDir`, which is where its
 		// settings come from. Its local sandbox works in `root` (`cwd`), which configures nothing.
-		const session = yield* Session.create({ directory: input.root, hostDir: input.hostDir ?? input.root });
+		const { main: session } = yield* Session.create({ directory: input.root, hostDir: input.hostDir ?? input.root });
 		yield* session.run(input.prompt ?? "hello");
 		// Read inside the scope: the memory database closes with the layer.
-		const path = yield* session.path();
+		const path = yield* session.history();
 		return { contexts, prompts, path } as const;
 	}).pipe(
 		Effect.provide(
@@ -138,7 +138,8 @@ describe("third-party plugins", () => {
 				},
 			});
 			// The continuation request carries the terminal part, not a pending one.
-			const continued = contexts[1]?.messages.at(-1)?.parts.find((part) => part.type === "toolCall");
+			const last = contexts[1]?.messages.at(-1);
+			const continued = last?.role === "assistant" ? last.parts.find((part) => part.type === "toolCall") : undefined;
 			expect(continued).toMatchObject({ callID: "call_echo", status: "completed" });
 		}));
 
@@ -192,17 +193,17 @@ describe("third-party plugins", () => {
 				Effect.gen(function* () {
 					const events = yield* Event.Service;
 					yield* events.listen((event) => Effect.sync(() => void seen.push(event.type)));
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.run("hello");
 					// The row lands on the session aggregate; the kernel manifest skips it,
 					// the plugin's own definitions decode it. Read inside the scope: the
 					// memory database closes with the layer.
 					const rows = Array.from(
 						yield* events
-							.log({ aggregateId: session.id, definitions: EventSchema.durable([Marker]) })
+							.log({ aggregateId: session.sessionId, definitions: EventSchema.durable([Marker]) })
 							.pipe(Stream.runCollect),
 					);
-					return { rows, sessionId: session.id };
+					return { rows, sessionId: session.sessionId };
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
@@ -229,7 +230,7 @@ describe("third-party plugins", () => {
 			const contexts: Message.Context[] = [];
 			const failure = await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.prompt("hello");
 					return yield* session.resume().pipe(Effect.flip);
 				}).pipe(
@@ -258,7 +259,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const failure = await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.prompt("hello");
 					return yield* session.resume().pipe(Effect.flip);
 				}).pipe(
@@ -303,7 +304,7 @@ describe("third-party plugins", () => {
 			const contexts: Message.Context[] = [];
 			const exit = await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
+					const { main: session } = yield* Session.create({ directory: root });
 					yield* session.prompt("hello");
 					const running = yield* session.resume().pipe(Effect.forkChild);
 					// Give the drain time to reach setup and block there, then pull the plug.
@@ -341,7 +342,7 @@ describe("third-party plugins", () => {
 			expect(prompts[0]).toContain("<tools>\n(none)\n</tools>");
 			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({ status: "error", result: { isError: true } });
-			expect(settled.result.content[0].text).toContain("Unknown tool: bash");
+			expect(settled.result.content[0].text).toContain("Unknown Tool: bash");
 		}));
 });
 

@@ -229,7 +229,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			if (!lease.mounted) return;
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 			yield* sql`
-				UPDATE sandbox_instance
+				UPDATE sandbox
 				SET last_unmounted_at = ${now}, last_used_at = ${now}, updated_at = ${now}
 				WHERE id = ${id}
 			`.pipe(Effect.orDie);
@@ -340,7 +340,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					? undefined
 					: yield* encodePersistedErrorJson(input.lastError).pipe(Effect.orDie);
 		yield* sql`
-			UPDATE sandbox_instance
+			UPDATE sandbox
 			SET
 				status = ${input.status},
 				provider_status = ${input.providerStatus ?? null},
@@ -415,7 +415,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		message: "sandbox creation was interrupted before provisioning completed",
 	}).pipe(Effect.orDie);
 	yield* sql`
-			UPDATE sandbox_instance
+			UPDATE sandbox
 			SET
 				status = 'faulted',
 				last_error = ${creationInterrupted},
@@ -488,7 +488,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				Object.keys(metadata).length === 0 ? null : yield* encodeMetadataJson(metadata).pipe(Effect.orDie);
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 			yield* sql`
-				UPDATE sandbox_instance
+				UPDATE sandbox
 				SET
 					provider_resource_id = ${provisioned.providerResourceId ?? null},
 					runtime_config = ${runtimeConfig},
@@ -693,7 +693,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				if (id !== SandboxInstance.ID.local) {
 					const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 					yield* sql`
-						UPDATE sandbox_instance
+						UPDATE sandbox
 						SET
 							status = 'online',
 							last_error = NULL,
@@ -917,7 +917,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			.withTransaction(
 				Effect.gen(function* () {
 					yield* sql`
-						UPDATE sandbox_instance
+						UPDATE sandbox
 						SET
 							status = 'removed',
 							removed_at = ${now},

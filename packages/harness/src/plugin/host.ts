@@ -3,6 +3,7 @@ import { Cause, Effect, Schema } from "effect";
 import type { RegisteredTool } from "../tool/tool.ts";
 import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
+import type { Selection } from "../tool/registry.ts";
 import { make } from "./registry.ts";
 
 export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupError", {
@@ -16,6 +17,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 	input: Omit<SharedPluginContext, "plugin">,
 	/** The tools of the MCP servers the `mcp` domain settled on, added before the `tool` domain runs. */
 	mcp: (servers: ReadonlyArray<readonly [string, ServerConfig]>) => Effect.Effect<ReadonlyArray<RegisteredTool>>,
+	tools?: Selection,
 ) {
 	const buckets = make(input.settings.mcp.servers);
 	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
@@ -70,7 +72,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 		}
 		yield* settle;
 		return yield* Effect.try({
-			try: () => buckets.freeze(input.location.directory),
+			try: () => buckets.freeze(input.location.directory, tools),
 			catch: (cause) =>
 				new SetupError({
 					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,

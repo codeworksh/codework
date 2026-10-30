@@ -151,8 +151,8 @@ describe.each(cases)("loop retry against live $name", (live) => {
 								}),
 							);
 							const handle = yield* Session.create({ directory: root });
-							yield* handle.run("Reply with the single word: retried");
-							return { journal, fragments, path: yield* handle.path() };
+							yield* handle.main.run("Reply with the single word: retried");
+							return { journal, fragments, path: yield* handle.main.history() };
 						}).pipe(
 							Effect.provide(
 								Harness.layer({
@@ -190,7 +190,9 @@ describe.each(cases)("loop retry against live $name", (live) => {
 					expect(answer.trim().length).toBeGreaterThan(0);
 
 					// Delays are deterministic: the server's 300ms beats the 200ms base, then 2 × 200ms.
-					await expect(journal).toMatchFileSnapshot(`./__artifacts__/runner.retry.live.${live.provider}.json`);
+					await expect(`${JSON.stringify(journal, null, "\t")}\n`).toMatchFileSnapshot(
+						`./__artifacts__/runner.retry.live.${live.provider}.json`,
+					);
 				} finally {
 					await upstream.close();
 				}

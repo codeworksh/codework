@@ -4,7 +4,7 @@ import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { SandboxInstance } from "./instance.ts";
 
 /**
- * Row-level access to `sandbox_instance`. Deliberately dumb: it persists and
+ * Row-level access to `sandbox`. Deliberately dumb: it persists and
  * reads instance rows and knows nothing about drivers, provisioning, reference
  * counts, or lifecycle rules. `Sandbox.Controller` is added on top of this and
  * owns all of that.
@@ -52,13 +52,13 @@ export const make = Effect.gen(function* () {
 	const findRow = SqlSchema.findOneOption({
 		Request: SandboxInstance.ID,
 		Result: SandboxInstanceRow,
-		execute: (id) => sql`SELECT * FROM sandbox_instance WHERE id = ${id}`,
+		execute: (id) => sql`SELECT * FROM sandbox WHERE id = ${id}`,
 	});
 
 	const listRows = SqlSchema.findAll({
 		Request: Schema.Void,
 		Result: SandboxInstanceRow,
-		execute: () => sql`SELECT * FROM sandbox_instance ORDER BY created_at`,
+		execute: () => sql`SELECT * FROM sandbox ORDER BY created_at`,
 	});
 
 	// ON CONFLICT(id), not OR IGNORE: the ignore must cover exactly the
@@ -67,7 +67,7 @@ export const make = Effect.gen(function* () {
 	// existing namespace — and surface it as an inexplicable missing row.
 	const insertRow = SqlSchema.void({
 		Request: SandboxInstanceRow.insert,
-		execute: (row) => sql`INSERT INTO sandbox_instance ${sql.insert(row)} ON CONFLICT(id) DO NOTHING`,
+		execute: (row) => sql`INSERT INTO sandbox ${sql.insert(row)} ON CONFLICT(id) DO NOTHING`,
 	});
 
 	const find = (id: SandboxInstance.ID) => findRow(id).pipe(Effect.orDie);
@@ -113,7 +113,7 @@ export const make = Effect.gen(function* () {
 		// Re-reading afterwards would answer a different question, since another
 		// writer may have moved the row in between.
 		const moved = yield* sql`
-			UPDATE sandbox_instance
+			UPDATE sandbox
 			SET status = ${input.to}, updated_at = ${now}
 			WHERE id = ${input.id} AND ${sql.in("status", input.from)}
 			RETURNING id

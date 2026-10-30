@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import { Effect, Logger } from "effect";
+import { Effect, Logger, Schema } from "effect";
 import { execFile } from "node:child_process";
 import { mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ import { ProjectSchema } from "../src/project/schema.ts";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { AbsolutePath } from "../src/schema.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
 import { Space } from "../src/space/space.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
@@ -48,7 +49,7 @@ const prompt = async (input: {
 	});
 	await Effect.runPromise(
 		Effect.gen(function* () {
-			const session = yield* Session.create({ directory: input.directory });
+			const { main: session } = yield* Session.create({ directory: input.directory });
 			yield* session.run("hello");
 		}).pipe(
 			Effect.provide(
@@ -305,6 +306,63 @@ describe("codework.prompt.skill", () => {
 			expect(withNoReader).toBeUndefined();
 		}));
 
+	it("names only a reader declared to the model, and omits <skills> when every reader is undeclared", () =>
+		withSettings(async ({ root }) => {
+			const dir = join(root, "repo");
+			await write(
+				join(dir, ".agents", "skills", "daytona", "SKILL.md"),
+				"---\nname: daytona\ndescription: Creates and manages isolated cloud sandboxes on the Daytona platform.\n---\n",
+			);
+			await write(
+				join(dir, ".agents", "skills", "break-ui", "SKILL.md"),
+				"---\nname: break-ui\ndescription: Stress-test a piece of UI with worst-case data.\n---\n",
+			);
+			// Re-registering a built-in reader under the same name overrides its exposure.
+			const expose = (exposures: Readonly<Record<string, Tool.ToolExposure>>) =>
+				define({
+					id: "acme.tool.expose",
+					kind: "tool",
+					setup: (ctx) => {
+						for (const [name, exposure] of Object.entries(exposures)) {
+							ctx.plugin.tools.add(
+								Tool.register(
+									Tool.make({
+										name,
+										description: `${name} tool`,
+										promptSnippet: `${name} snippet`,
+										exposure,
+										parameters: Schema.Struct({}),
+										success: Schema.String,
+										handler: () => Effect.succeed(""),
+									}),
+								),
+							);
+						}
+					},
+				});
+			const run = async (exposures: Readonly<Record<string, Tool.ToolExposure>>) =>
+				skillsSection(
+					await prompt({
+						root,
+						directory: dir,
+						hostCwd: root,
+						plugins: [readPlugin, bashPlugin, expose(exposures), defaultPromptPlugin, skillPlugin],
+					}),
+				) ?? null;
+
+			const cases = {
+				"read hidden": await run({ read: "hidden" }),
+				"read deferred, bash codemode": await run({ read: "deferred", bash: "codemode" }),
+				"read model": await run({ read: "model" }),
+			};
+			expect(cases["read hidden"]).toContain("Use bash to load a skill's file");
+			expect(cases["read deferred, bash codemode"]).toBeNull();
+			expect(cases["read model"]).toContain("Use the read tool to load a skill's file");
+			await expect(`${JSON.stringify(cases, null, "\t")}\n`).toMatchFileSnapshot(
+				"./__artifacts__/prompt.skill.exposure.json",
+			);
+		}));
+
 	it("lazily loads full SKILL.md instructions only when the model reads the advertised location", () =>
 		withSettings(async ({ root }) => {
 			const dir = join(root, "repo");
@@ -318,7 +376,7 @@ describe("codework.prompt.skill", () => {
 			const requests: Array<{ systemPrompt: string; messages: unknown }> = [];
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: dir });
+					const { main: session } = yield* Session.create({ directory: dir });
 					yield* session.run("extract report.pdf");
 				}).pipe(
 					Effect.provide(

@@ -2,6 +2,7 @@
 
 import * as Section from "@codeworksh/plugin/plugin/section";
 import { Effect } from "effect";
+import { declared } from "../../../tool/tool.ts";
 import type { PromptResolver, SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
 
@@ -36,7 +37,12 @@ export const defaultPromptPlugin = define({
 		const append = (yield* slot(ctx, ctx.config.promptSystemAppend))?.trim();
 		const prompt = ctx.plugin.prompt;
 		prompt.foundation.set(custom ?? foundation);
-		const names = new Set(ctx.plugin.tools.list().map((tool) => tool.name));
+		const names = new Set(
+			ctx.plugin.tools
+				.list()
+				.filter(declared)
+				.map((tool) => tool.name),
+		);
 		for (const rule of [...toolRules(names), ...standingRules]) prompt.sections.append(Section.Rules, rule);
 		if (append !== undefined && append.length > 0) prompt.sections.append(Section.Addendum, append);
 	}),

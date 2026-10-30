@@ -6,7 +6,7 @@ import type { PromptRegistry } from "./schema.ts";
  *
  * A selection with no prompt plugin is a legitimate configuration -- an embedder
  * passing `plugins: []`, or a user disabling `codework.prompt.default` before
- * their own plugin is ready -- and failing the exchange over it buys nothing the
+ * their own plugin is ready -- and failing the turn over it buys nothing the
  * assembled prompt would not already tell them. The real foundation lives in
  * `codework.prompt.default`; this is only the floor.
  */
