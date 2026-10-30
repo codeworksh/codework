@@ -1,18 +1,97 @@
 /*
- * @file Tool state carried by a transcript.
+ * @file Prompt and tool state carried by a transcript.
  *
- * `Context.tools` is the tool set at the start of the conversation. Each system message
- * changes it from its position on, so replaying them in order yields the tools available
- * now. Providers either declare those changes in place, which keeps the cached prefix, or
- * fold them into the top-level tool list.
+ * `Context.systemPrompt` and `Context.tools` are the prompt and tool set at the start of the
+ * conversation. Each system message changes them from its position on, so replaying them in
+ * order yields the prompt and tools in effect now. Providers either send those changes in
+ * place, which keeps the cached prefix, or fold them into the leading prompt and the
+ * top-level tool list.
  */
 
 import type { Context, Message, SystemMessage, Tool, ToolReference } from "./message.ts";
 
-type Transcript = Pick<Context, "tools" | "messages">;
+type Transcript = Pick<Context, "systemPrompt" | "tools" | "messages">;
+
+type PromptChange = Pick<SystemMessage, "content" | "sections">;
 
 function isSystemMessage(message: Message): message is SystemMessage {
 	return message.role === "system";
+}
+
+/** Render a system message as a complete prompt: its content followed by its sections. */
+export function renderSystemPrompt(message: PromptChange): string {
+	const parts = [message.content ?? ""];
+	for (const text of Object.values(message.sections ?? {})) {
+		if (text !== null) parts.push(text);
+	}
+	return parts.filter((part) => part.length > 0).join("\n\n");
+}
+
+/**
+ * Render a later system message sent in place. Section changes are framed by name so the
+ * model can relate them to the leading prompt.
+ */
+export function renderSystemPromptUpdate(message: PromptChange): string {
+	const parts: string[] = [];
+	if (message.content) parts.push(message.content);
+	for (const [name, value] of Object.entries(message.sections ?? {})) {
+		parts.push(
+			value === null
+				? `Removed system prompt section "${name}".`
+				: `Updated system prompt section "${name}":\n\n${value}`,
+		);
+	}
+	return parts.join("\n\n");
+}
+
+/**
+ * The prompt after every transcript change in order: content accumulates, sections are
+ * replaced by name, and a removed section added again goes last.
+ */
+export function getCurrentSystemPrompt(context: Pick<Context, "systemPrompt" | "messages">): string {
+	const content: string[] = [];
+	const sections = new Map<string, string>();
+	const changes: PromptChange[] = [
+		{ content: context.systemPrompt ?? "" },
+		...context.messages.filter(isSystemMessage),
+	];
+	for (const message of changes) {
+		if (message.content) content.push(message.content);
+		for (const [name, value] of Object.entries(message.sections ?? {})) {
+			if (value === null) sections.delete(name);
+			else sections.set(name, value);
+		}
+	}
+	return renderSystemPrompt({ content: content.join("\n\n"), sections: Object.fromEntries(sections) });
+}
+
+export interface TranscriptPrompt {
+	/** The prompt sent at the head of the request. */
+	systemPrompt: string;
+	/**
+	 * Number of leading transcript system messages whose prompt changes `systemPrompt` already
+	 * holds. Every later system message sends its changes in place.
+	 */
+	foldedSystemMessages: number;
+}
+
+/**
+ * Split the prompt between the head of the request and in-place updates.
+ *
+ * In place, `Context.systemPrompt` leads; without one (and without initial tools), a leading
+ * system message is the prompt. Every other system message is an update. Otherwise the head
+ * holds the current prompt and no update is sent, which costs the cached prefix on a change.
+ */
+export function resolveTranscriptPrompt(context: Transcript, inPlace: boolean): TranscriptPrompt {
+	const systemMessages = context.messages.filter(isSystemMessage);
+	if (!inPlace) {
+		return { systemPrompt: getCurrentSystemPrompt(context), foldedSystemMessages: systemMessages.length };
+	}
+	const first = context.messages[0];
+	if (!context.systemPrompt && (context.tools ?? []).length === 0 && first && isSystemMessage(first)) {
+		return { systemPrompt: renderSystemPrompt(first), foldedSystemMessages: 1 };
+	}
+	return { systemPrompt: context.systemPrompt ?? "", foldedSystemMessages: 0 };
 }
 
 /** The tool changes in order, led by `Context.tools` as the initial declaration. */

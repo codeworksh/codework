@@ -286,11 +286,12 @@ export const ToolReferenceSchema = Type.Object({
 export type ToolReference = Static<typeof ToolReferenceSchema>;
 
 /**
- * A change to the tool set at one point in the transcript.
+ * A change to the system prompt and tool set at one point in the transcript.
  *
- * `Context.tools` holds the tools at the start of the conversation; each system message
- * changes that set from its position on. Replaying them in order yields the current tools.
- * A redefinition is a removal plus an addition of the same name.
+ * `Context.systemPrompt` and `Context.tools` hold the prompt and tools at the start of the
+ * conversation; each system message changes them from its position on. Replaying them in
+ * order yields the current prompt and tools. A redefinition is a removal plus an addition of
+ * the same name.
  */
 export const SystemMessageSchema = Type.Object({
 	messageId: Type.String(),
@@ -298,6 +299,14 @@ export const SystemMessageSchema = Type.Object({
 	time: Type.Object({
 		created: Type.Number(),
 	}),
+	/** Instructions that apply from this point on, after the earlier ones. */
+	content: Type.Optional(Type.String()),
+	/**
+	 * Named prompt sections rendered after the content. A later message replaces a section by
+	 * name, and `null` removes it. Keep each section self-delimiting (a tag) so the model can
+	 * relate an update to the original, and avoid integer-like names, which JSON reorders.
+	 */
+	sections: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]))),
 	/** Complete definitions of tools that become available at this point. */
 	toolsAdded: Type.Optional(Type.Array(ToolSchema)),
 	/** Tools that stop being available at this point. */

@@ -696,7 +696,9 @@ describe("convertMessages", () => {
 	});
 
 	it("attaches Codex namespace metadata and declares later tools in place", () => {
-		const codexModel = makeCodexModel({ compat: { supportsAdditionalTools: true } });
+		const codexModel = makeCodexModel({
+			compat: { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true },
+		});
 		const toolCall: Message.ToolCallCompletedPart = {
 			...makeCompletedToolCall("call-1|fc-1", "search", [{ type: "text", text: "found" }], { query: "x" }),
 			namespace: "workspace",

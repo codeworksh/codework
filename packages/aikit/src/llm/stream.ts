@@ -21,6 +21,7 @@ import {
 	createAssistantMessage,
 	encodeOpenAIReasoningSignature,
 	grammarToolInputProperties,
+	leadingSystemPrompt,
 	mapFinishReason,
 	mapUsage,
 	toolCallFromPart,
@@ -432,9 +433,9 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
 				model: languageModel,
 				// Our own Responses transport receives the system prompt among the messages.
-				system: isOwnResponses(model, runtimeOptions.method) ? undefined : context.systemPrompt,
+				system: isOwnResponses(model, runtimeOptions.method) ? undefined : leadingSystemPrompt(context),
 				messages,
-				// Tool changes declared in place travel as system messages.
+				// Prompt and tool changes sent in place travel as system messages.
 				allowSystemInMessages: messages.some((message) => message.role === "system") || undefined,
 				tools,
 				toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],

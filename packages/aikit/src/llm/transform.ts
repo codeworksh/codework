@@ -480,8 +480,21 @@ export function transcriptToolSupport(
 	restricted = false,
 ): Transcript.TranscriptToolSupport {
 	if (restricted || !isOwnResponses(model, method)) return "none";
-	if (model.compat?.supportsAdditionalTools) return "changes";
+	if (supportsMidConvoSystemMessages(model, method) && model.compat?.supportsAdditionalTools) return "changes";
 	return model.compat?.supportsToolSearch ? "additions" : "none";
+}
+
+/**
+ * Whether prompt changes go in place as developer messages. Only our own Responses transport
+ * sends them; the AI SDK adapters take the current prompt as the leading system prompt.
+ */
+export function supportsMidConvoSystemMessages(model: Model.Info, method: Model.APIMethodEnum | undefined): boolean {
+	return isOwnResponses(model, method) && model.compat?.supportsMidConvoSystemMessages === true;
+}
+
+/** The prompt the AI SDK adapters take as `system`: the current one, every change folded in. */
+export function leadingSystemPrompt(context: Message.Context): string | undefined {
+	return Transcript.getCurrentSystemPrompt(context) || undefined;
 }
 
 /** A tool as the language model receives it, for declaring it inside the prompt. */
@@ -497,14 +510,18 @@ function functionTool(tool: Message.Tool, model: Model.Info, method: Model.APIMe
 	};
 }
 
-function toolChangeMessage(
+/** A system message sent in place: the prompt update `content`, then the tool change, if any. */
+function systemChangeMessage(
+	content: string,
 	toolsAdded: readonly Message.Tool[],
 	toolsRemoved: readonly Message.ToolReference[],
 	support: Transcript.TranscriptToolSupport,
 	model: Model.Info,
 	method: Model.APIMethodEnum,
 ): ModelMessage | undefined {
-	if (toolsAdded.length === 0 && toolsRemoved.length === 0) return;
+	if (toolsAdded.length === 0 && toolsRemoved.length === 0) {
+		return content.length > 0 ? { role: "system", content: sanitizeSurrogates(content) } : undefined;
+	}
 	const toolChange: ResponsesToolChange = {
 		mode: support === "changes" ? "changes" : "additions",
 		tools: toolsAdded.map((tool) => functionTool(tool, model, method)),
@@ -512,7 +529,7 @@ function toolChangeMessage(
 	};
 	return {
 		role: "system",
-		content: "",
+		content: sanitizeSurrogates(content),
 		// Function tools are plain JSON once their schema went through `functionTool`.
 		providerOptions: { [Model.optionsKey(model)]: { toolChange } } as unknown as SharedV3ProviderOptions,
 	};
@@ -529,21 +546,31 @@ export function convertMessages(
 	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model, method));
 	const support = transcriptToolSupport(model, method, activeTools !== undefined);
 	const transcript = Transcript.resolveTranscriptTools(context, support);
+	const prompt = Transcript.resolveTranscriptPrompt(context, supportsMidConvoSystemMessages(model, method));
 
 	if (transcript.initialToolsInPlace) {
-		const head = toolChangeMessage(context.tools ?? [], [], support, model, method);
+		const head = systemChangeMessage("", context.tools ?? [], [], support, model, method);
 		if (head) messages.push(head);
 	}
-	// Our Responses transport takes the system prompt in place, after the initial tool declaration.
-	if (isOwnResponses(model, method) && context.systemPrompt) {
-		messages.push({ role: "system", content: sanitizeSurrogates(context.systemPrompt) });
+	// Our Responses transport takes the leading prompt in place, after the initial tool declaration.
+	if (isOwnResponses(model, method) && prompt.systemPrompt) {
+		messages.push({ role: "system", content: sanitizeSurrogates(prompt.systemPrompt) });
 	}
 
 	let systemIndex = 0;
 	for (const msg of transformedMessages) {
 		if (msg.role === "system") {
-			if (systemIndex++ < transcript.foldedSystemMessages) continue;
-			const change = toolChangeMessage(msg.toolsAdded ?? [], msg.toolsRemoved ?? [], support, model, method);
+			const index = systemIndex++;
+			const update = index < prompt.foldedSystemMessages ? "" : Transcript.renderSystemPromptUpdate(msg);
+			const folded = index < transcript.foldedSystemMessages;
+			const change = systemChangeMessage(
+				update,
+				folded ? [] : (msg.toolsAdded ?? []),
+				folded ? [] : (msg.toolsRemoved ?? []),
+				support,
+				model,
+				method,
+			);
 			if (change) messages.push(change);
 			continue;
 		}

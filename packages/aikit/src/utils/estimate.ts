@@ -9,6 +9,7 @@
  */
 
 import type * as Message from "../message/message.ts";
+import * as Transcript from "../message/transcript.ts";
 
 /** Rough characters-per-token ratio across the tokenizers in use. */
 const CHARS_PER_TOKEN = 4;
@@ -65,7 +66,9 @@ function toolResultChars(part: Message.ToolCall): number {
 }
 
 export function estimateMessageTokens(message: Message.Message): number {
-	if (message.role === "system") return estimateToolsTokens(message.toolsAdded);
+	if (message.role === "system") {
+		return estimateTextTokens(Transcript.renderSystemPromptUpdate(message)) + estimateToolsTokens(message.toolsAdded);
+	}
 	if (message.role === "user") return estimateContentTokens(message.parts);
 
 	let chars = 0;
@@ -148,8 +151,8 @@ export function estimateContextTokens(context: Message.Context): ContextUsageEst
 
 	/*
 	 * Reported usage already includes the system prompt and the tools that were
-	 * live at the time. Tools added since arrive as system messages after it,
-	 * which the trailing estimate already counts.
+	 * live at the time. Prompt and tool changes since arrive as system messages
+	 * after it, which the trailing estimate already counts.
 	 */
 	if (estimate.lastUsageIndex !== null) return estimate;
 

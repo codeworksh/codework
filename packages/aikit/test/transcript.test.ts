@@ -1,4 +1,4 @@
-/** Tool changes carried by transcript system messages, from the context down to the Responses wire. */
+/** Prompt and tool changes carried by transcript system messages, from the context down to the Responses wire. */
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
 import * as Message from "../src/message/message.ts";
@@ -15,6 +15,7 @@ import {
 } from "./utils/openai-codex.ts";
 
 type ResponsesBody = {
+	instructions?: string;
 	tools?: Array<{ name: string; description?: string }>;
 	input: Array<{
 		type?: string;
@@ -32,7 +33,7 @@ const baseTool = tool("base_tool");
 const dropTool = tool("drop_tool");
 const lateTool = tool("late_tool");
 
-const system = (change: Pick<Message.SystemMessage, "toolsAdded" | "toolsRemoved">) =>
+const system = (change: Omit<Message.SystemMessage, "messageId" | "role" | "time">) =>
 	Message.createSystemMessage(change);
 
 const changesModel = () => openAICodexModels()["gpt-6-luna"]!;
@@ -180,7 +181,122 @@ describe("transcript tool changes on the Responses wire", () => {
 	});
 });
 
+describe("transcript prompt changes on the Responses wire", () => {
+	const update = system({ sections: { codeword: "<codeword>bravo</codeword>" } });
+	const steps = (model: Model.Info) =>
+		Promise.all(
+			[[makeUserMessage("first")], [makeUserMessage("first"), update, makeUserMessage("second")]].map((messages) =>
+				capture(model, {
+					systemPrompt: "base prompt",
+					messages: [system({ sections: { codeword: "<codeword>alpha</codeword>" } }), ...messages],
+				}),
+			),
+		);
+
+	it("keeps the leading prompt and sends a section change in place", async () => {
+		const [before, after] = await steps(changesModel());
+
+		expect(before?.instructions).toBe("base prompt");
+		expect(after?.instructions).toBe("base prompt");
+		expectGrowingPrefix([before?.input ?? [], after?.input ?? []]);
+		expect(after?.input).toMatchObject([
+			{ role: "developer", content: 'Updated system prompt section "codeword":\n\n<codeword>alpha</codeword>' },
+			{ role: "user" },
+			{ role: "developer", content: 'Updated system prompt section "codeword":\n\n<codeword>bravo</codeword>' },
+			{ role: "user" },
+		]);
+	});
+
+	it("folds every change into the leading prompt on a model without mid-conversation system messages", async () => {
+		const [, after] = await steps(openAICodexModels()["gpt-5.3-codex-spark"]!);
+
+		expect(after?.instructions).toBe("base prompt\n\n<codeword>bravo</codeword>");
+		expect(after?.input.map((item) => item.role)).toEqual(["user", "user"]);
+	});
+
+	it("sends a prompt update and a tool removal of one message as one developer message", async () => {
+		const body = await capture(changesModel(), {
+			systemPrompt: "base prompt",
+			tools: [baseTool, dropTool],
+			messages: [
+				makeUserMessage("first"),
+				system({ content: "Be brief.", toolsRemoved: [{ name: "drop_tool" }] }),
+				makeUserMessage("second"),
+			],
+		});
+
+		expect(body.input.slice(-2)).toMatchObject([
+			{
+				role: "developer",
+				content: "Be brief.\n\nThe following tools are no longer available. Do not call them:\n- drop_tool",
+			},
+			{ role: "user" },
+		]);
+	});
+});
+
 describe("Transcript", () => {
+	const context: Message.Context = {
+		systemPrompt: "base",
+		messages: [
+			system({ sections: { a: "<a>1</a>", b: "<b>1</b>" } }),
+			makeUserMessage("hello"),
+			system({ content: "also do this" }),
+			system({ sections: { a: "<a>2</a>", b: null, c: "<c>1</c>" } }),
+		],
+	};
+
+	it("replays content and sections into the current prompt", () => {
+		expect(Transcript.getCurrentSystemPrompt(context)).toBe("base\n\nalso do this\n\n<a>2</a>\n\n<c>1</c>");
+		expect(Transcript.getCurrentSystemPrompt({ messages: [makeUserMessage("hi")] })).toBe("");
+	});
+
+	it("replays a late full patch on a transcript without a prompt as the prompt", () => {
+		const late = { messages: [makeUserMessage("old"), system({ sections: { preamble: "You are pi." } })] };
+		expect(Transcript.getCurrentSystemPrompt(late)).toBe("You are pi.");
+	});
+
+	it("appends a removed section added again", () => {
+		const readded = {
+			messages: [
+				system({ sections: { a: "<a/>", b: "<b/>" } }),
+				system({ sections: { a: null } }),
+				system({ sections: { a: "<a>again</a>" } }),
+			],
+		};
+		expect(Transcript.getCurrentSystemPrompt(readded)).toBe("<b/>\n\n<a>again</a>");
+	});
+
+	it("renders complete prompts and framed updates", () => {
+		expect(Transcript.renderSystemPrompt({ content: "base", sections: { a: "<a>1</a>", b: null } })).toBe(
+			"base\n\n<a>1</a>",
+		);
+		expect(Transcript.renderSystemPromptUpdate({ sections: { a: "<a>2</a>", b: null } })).toBe(
+			'Updated system prompt section "a":\n\n<a>2</a>\n\nRemoved system prompt section "b".',
+		);
+	});
+
+	it("resolves the leading prompt per transport", () => {
+		expect(Transcript.resolveTranscriptPrompt(context, false)).toEqual({
+			systemPrompt: "base\n\nalso do this\n\n<a>2</a>\n\n<c>1</c>",
+			foldedSystemMessages: 3,
+		});
+		expect(Transcript.resolveTranscriptPrompt(context, true)).toEqual({
+			systemPrompt: "base",
+			foldedSystemMessages: 0,
+		});
+		// Without a prompt or initial tools, a leading system message is the prompt.
+		const { systemPrompt: _, ...headless } = context;
+		expect(Transcript.resolveTranscriptPrompt(headless, true)).toEqual({
+			systemPrompt: "<a>1</a>\n\n<b>1</b>",
+			foldedSystemMessages: 1,
+		});
+		expect(Transcript.resolveTranscriptPrompt({ ...headless, tools: [baseTool] }, true)).toEqual({
+			systemPrompt: "",
+			foldedSystemMessages: 0,
+		});
+	});
+
 	it("resolves the top-level tool boundary per transport", () => {
 		const messages = [
 			system({ toolsRemoved: [{ name: "drop_tool" }] }),
