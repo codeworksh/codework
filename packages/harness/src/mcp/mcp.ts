@@ -93,6 +93,8 @@ export interface Interface {
 	readonly connect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
 	/** Close the server and keep it disconnected until {@link connect} or a config change. */
 	readonly disconnect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
+	/** Forget the threads of a deleted session and close their servers. */
+	readonly remove: (sessionId: SessionId) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/mcp/mcp/Service") {}
@@ -341,9 +343,7 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					// Closed or disconnected while connecting: the connection must not outlive that.
 					if (server.closed || server.stopped) {
 						yield* Scope.close(scope, Exit.void);
-						return yield* Effect.fail(
-							`MCP server "${server.name}" is ${server.closed ? "shut down" : "disconnected"}`,
-						);
+						return yield* Effect.fail(halted(server));
 					}
 					const live: Live = {
 						connection: exit.value.connection,
@@ -367,12 +367,15 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					Effect.provide(context),
 				);
 
+			/** Why the server has no connection to offer: closed, disconnected, or between attempts. */
+			const halted = (server: Server) =>
+				`MCP server "${server.name}" is ${server.closed ? "shut down" : server.stopped ? "disconnected" : "reconnecting"}`;
+
 			/** The server's current connection, connecting first when it has none. */
 			const open = (server: Server): Effect.Effect<Live, string> =>
 				Effect.gen(function* () {
 					const next = yield* Effect.gen(function* () {
-						if (server.closed) return yield* Effect.fail(`MCP server "${server.name}" is shut down`);
-						if (server.stopped) return yield* Effect.fail(`MCP server "${server.name}" is disconnected`);
+						if (server.closed || server.stopped) return yield* Effect.fail(halted(server));
 						const current = server.live;
 						// A drop is known here before its `onClose` handler has run.
 						const reason = current?.connection.dropped();
@@ -393,8 +396,9 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					// An interrupted caller leaves the attempt running for whoever needs the server next.
 					const exit = yield* Fiber.await(next);
 					if (Exit.isSuccess(exit)) return exit.value;
+					// Interrupted by `connect`, `disconnect` or closing; the server's state now says which.
 					return yield* Cause.hasInterruptsOnly(exit.cause)
-						? Effect.fail(`MCP server "${server.name}" is shut down`)
+						? Effect.fail(halted(server))
 						: Effect.failCause(exit.cause);
 				});
 
@@ -406,7 +410,7 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					if (server.live !== undefined) yield* retire(server, server.live);
 				}).pipe(server.lock.withPermits(1));
 
-			/** Stop the server for good: it was removed, or its connection settings changed. */
+			/** Stop the server for good: it was removed, its connection settings changed, or its session was deleted. */
 			const close = (server: Server) =>
 				Effect.suspend(() => {
 					server.closed = true;
@@ -420,8 +424,9 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					Effect.gen(function* () {
 						for (let attempt = 1; ; attempt++) {
 							const server = thread.servers.get(name);
-							if (server === undefined || server.closed || server.config.enabled === false)
+							if (server === undefined || server.config.enabled === false)
 								return yield* Effect.fail(`MCP server "${name}" is disabled.`);
+							if (server.closed) return yield* Effect.fail(`MCP server "${name}" is shut down.`);
 							if (
 								McpTool.exposure(server.config, tool) === "hidden" ||
 								(server.live !== undefined && !server.tools.some((offered) => offered.name === tool))
@@ -624,11 +629,26 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 				),
 			);
 
+			const remove = Effect.fn("Mcp.remove")(function* (sessionId: SessionId) {
+				for (const thread of threads.values()) {
+					if (thread.sessionId !== sessionId) continue;
+					const servers = yield* Effect.sync(() => {
+						if (threads.get(thread.threadId) === thread) threads.delete(thread.threadId);
+						const servers = [...thread.servers.values()];
+						thread.servers.clear();
+						return servers;
+					}).pipe(thread.lock.withPermits(1));
+					// Stopping can take seconds; deleting the session does not wait for it.
+					for (const server of servers) fork(close(server));
+				}
+			});
+
 			return Service.of({
 				reconcile,
 				status: (threadId) => Effect.sync(() => [...(threads.get(threadId)?.servers.values() ?? [])].map(statusOf)),
 				connect,
 				disconnect,
+				remove,
 			});
 		}),
 	);
