@@ -23,6 +23,12 @@ This file is the canonical source for unreleased changes and published release n
 - A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the thread is parked instead of resumed: `Session.ThreadInfo.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
 
 - `Session.ThreadInfo.usage`: the billed cost and tokens of the thread's own entries, without what it inherits from the thread it was forked from.
+- MCP servers over stdio and streamable HTTP, configured in `~/.codework/mcp.json` and `.codework/mcp.json` (a project entry replaces or patches a user one) and by `mcp` plugins. Their tools reach the model as `mcp__<server>__<tool>`, each with its exposure (`direct`, `deferred`, `codemode` or `hidden`); servers with resources add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+- MCP state is per thread. `scope` decides who shares a running server: threads of one session in the same folder (`session`, the default), sessions in one space (`space`) or every session (`app`). A server no running session needs closes after 10 minutes.
+- An MCP server that fails to connect stays failed until its settings change or it is reconnected; a dropped connection starts again on the next call. `Mcp.Service` `connect` and `disconnect` restart or close a thread's server for every thread sharing it.
+- MCP OAuth: servers sign in with discovery, client registration and PKCE, tokens stored in `~/.codework/mcpauth.json` by server name and URL and refreshed under a lock shared across processes. A server waiting for sign-in reconnects on the next message once its sign-in changes. `auth: { provider }` sends a model provider's credential instead.
+- The ephemeral `mcp.server.status` event reports each MCP server state change (`connecting`, `connected`, `disconnected`, `failed`, `authenticate`, `disabled`) to every thread using the server. A tool the MCP SDK rejects is skipped instead of failing its server, and listed as `skipped` on the `connected` status.
+- `toolsearch` turns itself on when a thread has deferred tools or an enabled MCP server with `deferred` exposure; a settings entry still turns it off or on. A search waits up to 10 seconds for such servers still connecting.
 
 #### Breaking Changes
 
@@ -58,6 +64,9 @@ This file is the canonical source for unreleased changes and published release n
 - `codework thread list <session>` lists a session's threads with their model, usage and title. `codework thread fork <session> --at <entry>` or `--before <entry>` starts a new thread and prints its id, then for `--before` the text of the prompt it left out. `codework session relink <session> --thread <id|main>` moves one thread to another checkout. All three take `--json`.
 - `ThreadInfo.usage` reports a thread's own cost and tokens. `event.subscribe` and `session.log` take `threadId` to keep only that thread's events.
 - ACP: every thread of a session is an ACP session of its own, so forks can be listed, loaded and prompted; the main thread keeps the session's id. `session/fork` starts a new thread from the last committed entry.
+- `codework mcp add`, `remove` and `list` manage and check MCP servers; `list` exits with 1 when an entry is broken or an enabled server does not connect. `codework mcp login` and `logout` sign in to and out of OAuth servers; login also takes the redirect URL pasted or piped to it.
+- `codework mcp reconnect` and `disconnect <server> --session <id> [--thread <id|main>]` restart or close a thread's MCP server in a running server, over the new `mcp.connect` and `mcp.disconnect` RPCs.
+- Commands that talk to a running server (`mcp reconnect`, `mcp disconnect`, `plugin reload`) default `--server` to `ws://127.0.0.1:7433/rpc/v1`.
 
 #### Breaking Changes
 
@@ -117,6 +126,7 @@ This file is the canonical source for unreleased changes and published release n
 - `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
 - `ThreadID` in `@codeworksh/plugin/ids`, and `threadId` next to `sessionId` on the plugin context and the tool hooks: the thread the call belongs to.
 - `exposure` on tool definitions: `"direct"` (default), `"model"`, `"codemode"`, `"deferred"` or `"hidden"`, as the `ToolExposure` schema. `declared(def)` is true for `"direct"` and `"model"`, the tools declared to the model.
+- `mcp` plugins (`kind: "mcp"`) add, change and remove MCP servers through `ctx.plugin.mcp`, before any tool plugin runs. The `Mcp` module types server configs (`StdioServer`, `HttpServer`, `OAuthConfig`, `Exposure`, `Scope`).
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 
