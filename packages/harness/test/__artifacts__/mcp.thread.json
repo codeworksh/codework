@@ -5,6 +5,12 @@
 		"mcp__e2e__crash",
 		"mcp__e2e__my_tool_v2",
 		"mcp__e2e__bye",
+		"mcp__e2e__cwd",
+		"mcp__e2e__link",
+		"mcp__e2e__big",
+		"list_mcp_resources",
+		"list_mcp_resource_templates",
+		"read_mcp_resource",
 		"toolsearch"
 	],
 	"registeredMain": [
@@ -38,6 +44,18 @@
 		},
 		{
 			"name": "mcp__e2e__bye",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__cwd",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__link",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__big",
 			"exposure": "direct"
 		}
 	],
@@ -75,6 +93,18 @@
 			"exposure": "direct"
 		},
 		{
+			"name": "mcp__e2e__cwd",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__link",
+			"exposure": "direct"
+		},
+		{
+			"name": "mcp__e2e__big",
+			"exposure": "direct"
+		},
+		{
 			"name": "mcp__extra__echo",
 			"exposure": "deferred"
 		},
@@ -104,6 +134,18 @@
 		},
 		{
 			"name": "mcp__extra__bye",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__cwd",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__link",
+			"exposure": "deferred"
+		},
+		{
+			"name": "mcp__extra__big",
 			"exposure": "deferred"
 		}
 	],
@@ -141,6 +183,18 @@
 				},
 				{
 					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
 					"exposure": "direct"
 				}
 			]
@@ -190,6 +244,18 @@
 				{
 					"name": "bye",
 					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
 				}
 			]
 		},
@@ -236,6 +302,18 @@
 				{
 					"name": "bye",
 					"exposure": "deferred"
+				},
+				{
+					"name": "cwd",
+					"exposure": "deferred"
+				},
+				{
+					"name": "link",
+					"exposure": "deferred"
+				},
+				{
+					"name": "big",
+					"exposure": "deferred"
 				}
 			]
 		}
@@ -277,6 +355,18 @@
 			{
 				"name": "bye",
 				"exposure": "hidden"
+			},
+			{
+				"name": "cwd",
+				"exposure": "hidden"
+			},
+			{
+				"name": "link",
+				"exposure": "hidden"
+			},
+			{
+				"name": "big",
+				"exposure": "hidden"
 			}
 		]
 	},
@@ -286,7 +376,13 @@
 		"mcp__e2e__crash",
 		"mcp__e2e__my_tool_v2",
 		"mcp__e2e__bye",
+		"mcp__e2e__cwd",
+		"mcp__e2e__link",
+		"mcp__e2e__big",
 		"mcp__gated__pid",
+		"list_mcp_resources",
+		"list_mcp_resource_templates",
+		"read_mcp_resource",
 		"toolsearch"
 	],
 	"disconnected": {
@@ -324,6 +420,18 @@
 			{
 				"name": "bye",
 				"exposure": "hidden"
+			},
+			{
+				"name": "cwd",
+				"exposure": "hidden"
+			},
+			{
+				"name": "link",
+				"exposure": "hidden"
+			},
+			{
+				"name": "big",
+				"exposure": "hidden"
 			}
 		]
 	},
@@ -333,6 +441,12 @@
 		"mcp__e2e__crash",
 		"mcp__e2e__my_tool_v2",
 		"mcp__e2e__bye",
+		"mcp__e2e__cwd",
+		"mcp__e2e__link",
+		"mcp__e2e__big",
+		"list_mcp_resources",
+		"list_mcp_resource_templates",
+		"read_mcp_resource",
 		"toolsearch"
 	],
 	"stillDisconnected": "disconnected",
@@ -410,6 +524,18 @@
 			{
 				"name": "bye",
 				"exposure": "direct"
+			},
+			{
+				"name": "cwd",
+				"exposure": "direct"
+			},
+			{
+				"name": "link",
+				"exposure": "direct"
+			},
+			{
+				"name": "big",
+				"exposure": "direct"
 			}
 		]
 	},
@@ -452,7 +578,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				},
 				{
@@ -475,7 +604,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				},
 				{
@@ -493,7 +625,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				}
 			],
@@ -522,7 +657,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				},
 				{
@@ -544,7 +682,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				},
 				{
@@ -566,7 +707,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				}
 			],
@@ -594,7 +738,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				}
 			],
@@ -631,7 +778,10 @@
 						"crash",
 						"my-tool.v2",
 						"secret",
-						"bye"
+						"bye",
+						"cwd",
+						"link",
+						"big"
 					]
 				}
 			]

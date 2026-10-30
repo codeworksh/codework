@@ -22,7 +22,7 @@
  */
 
 import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
-import type { CallToolResult, Tool } from "@modelcontextprotocol/client";
+import type { Tool } from "@modelcontextprotocol/client";
 import {
 	Cause,
 	Context,
@@ -48,6 +48,8 @@ import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { namespace } from "./config.ts";
 import { McpLog } from "./log.ts";
+import { McpOutput } from "./output.ts";
+import { McpResources } from "./resources.ts";
 import { McpTool } from "./tool.ts";
 import { McpValue } from "./value.ts";
 import { hostPath } from "../host.ts";
@@ -119,6 +121,8 @@ interface Server {
 	state: State;
 	error: string | undefined;
 	tools: ReadonlyArray<Tool>;
+	/** Whether the server offered resources when it last connected. */
+	resources: boolean;
 	live: Live | undefined;
 	/** The connect attempt in progress. Callers share it; closing the server interrupts it. */
 	attempt: Fiber.Fiber<Live, string> | undefined;
@@ -354,6 +358,7 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					};
 					server.live = live;
 					server.tools = exit.value.tools;
+					server.resources = exit.value.connection.capabilities?.resources !== undefined;
 					yield* setState(server, "connected");
 					watch(server, live);
 					yield* Effect.logInfo("mcp connected", { server: server.name, tools: server.tools.length });
@@ -417,28 +422,32 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					return stop(server);
 				});
 
-			/** One call of one of the server's tools, on whichever connection is current when it runs. */
-			const call =
-				(thread: Thread, name: string, tool: string) =>
-				(input: McpTool.Call): Effect.Effect<CallToolResult, string> =>
-					Effect.gen(function* () {
-						for (let attempt = 1; ; attempt++) {
-							const server = thread.servers.get(name);
-							if (server === undefined || server.config.enabled === false)
-								return yield* Effect.fail(`MCP server "${name}" is disabled.`);
-							if (server.closed) return yield* Effect.fail(`MCP server "${name}" is shut down.`);
-							if (
-								McpTool.exposure(server.config, tool) === "hidden" ||
-								(server.live !== undefined && !server.tools.some((offered) => offered.name === tool))
-							)
-								return yield* Effect.fail(`MCP tool "${name}/${tool}" is no longer available.`);
-							const live = yield* open(server).pipe(
-								Effect.mapError((error) => `MCP server "${name}" is not connected: ${error}`),
-							);
-							live.inflight += 1;
-							const exit = yield* live.connection
-								.callTool({ name: tool, args: input.args, onProgress: input.onProgress })
-								.pipe(
+			/**
+			 * One request on whichever connection of the server is current when it runs. `what` names
+			 * it in a failure. A request the server never saw, because it had forgotten the session,
+			 * runs once more on a new one; nothing else is retried here.
+			 */
+			const request =
+				/** `what` prefixes a failure, naming what failed; without it the server's message is the failure. */
+				(thread: Thread, name: string, what: string | undefined) =>
+					<A>(
+						run: (connection: McpClient.Connection) => Effect.Effect<A, McpClient.Failed>,
+						/** Why the server, as it stands, no longer offers what is asked; checked before every attempt. */
+						unavailable: (server: Server) => string | undefined = () => undefined,
+					): Effect.Effect<A, string> =>
+						Effect.gen(function* () {
+							for (let attempt = 1; ; attempt++) {
+								const server = thread.servers.get(name);
+								if (server === undefined || server.config.enabled === false)
+									return yield* Effect.fail(`MCP server "${name}" is disabled.`);
+								if (server.closed) return yield* Effect.fail(`MCP server "${name}" is shut down.`);
+								const reason = unavailable(server);
+								if (reason !== undefined) return yield* Effect.fail(reason);
+								const live = yield* open(server).pipe(
+									Effect.mapError((error) => `MCP server "${name}" is not connected: ${error}`),
+								);
+								live.inflight += 1;
+								const exit = yield* run(live.connection).pipe(
 									Effect.exit,
 									Effect.ensuring(
 										Effect.suspend(() => {
@@ -447,25 +456,61 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 										}),
 									),
 								);
-							if (Exit.isSuccess(exit)) return exit.value;
-							const error = Cause.findErrorOption(exit.cause);
-							if (error._tag === "None") return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
-							const failure = error.value;
-							// The server no longer knows the session, so it did not run the call.
-							if (failure._tag === "Mcp.SessionExpiredError" && attempt === 1) {
-								yield* retire(server, live).pipe(server.lock.withPermits(1));
-								continue;
+								if (Exit.isSuccess(exit)) return exit.value;
+								const error = Cause.findErrorOption(exit.cause);
+								if (error._tag === "None") return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
+								const failure = error.value;
+								if (failure._tag === "Mcp.SessionExpiredError" && attempt === 1) {
+									yield* retire(server, live).pipe(server.lock.withPermits(1));
+									continue;
+								}
+								if (failure._tag === "Mcp.NeedsAuthError") {
+									yield* Effect.gen(function* () {
+										yield* setState(server, "authenticate", failure.message);
+										yield* retire(server, live);
+									}).pipe(server.lock.withPermits(1));
+									return yield* Effect.fail(`MCP server "${name}" needs sign-in: ${failure.message}`);
+								}
+								return yield* Effect.fail(
+									what === undefined ? failure.message : `${what} failed: ${failure.message}`,
+								);
 							}
-							if (failure._tag === "Mcp.NeedsAuthError") {
-								yield* Effect.gen(function* () {
-									yield* setState(server, "authenticate", failure.message);
-									yield* retire(server, live);
-								}).pipe(server.lock.withPermits(1));
-								return yield* Effect.fail(`MCP server "${name}" needs sign-in: ${failure.message}`);
-							}
-							return yield* Effect.fail(`MCP tool "${name}/${tool}" failed: ${failure.message}`);
-						}
-					});
+						});
+
+			/** One call of one of the server's tools. A tool call is never retried after the server may have run it. */
+			const call = (thread: Thread, name: string, tool: string) => (run: McpTool.Run) =>
+				request(
+					thread,
+					name,
+					`MCP tool "${name}/${tool}"`,
+				)(
+					(connection) => connection.callTool({ name: tool, args: run.args, onProgress: run.onProgress }),
+					(server) =>
+						McpTool.exposure(server.config, tool) === "hidden" ||
+						(server.live !== undefined && !server.tools.some((offered) => offered.name === tool))
+							? `MCP tool "${name}/${tool}" is no longer available.`
+							: undefined,
+				);
+
+			/** Servers the resource tools reach: enabled, connectable, offering resources, and not hidden. */
+			const withResources = (server: Server) =>
+				server.config.enabled !== false &&
+				!server.stopped &&
+				server.resources &&
+				(server.config.exposure ?? "direct") !== "hidden";
+
+			const resourceServer = (thread: Thread, name: string): McpResources.Server => {
+				// Listings name the server beside each failure already.
+				const reach = request(thread, name, undefined);
+				return {
+					name,
+					resources: (cursor) => reach((connection) => connection.resources(cursor)),
+					templates: (cursor) => reach((connection) => connection.resourceTemplates(cursor)),
+					allResources: () => reach((connection) => connection.allResources()),
+					allTemplates: () => reach((connection) => connection.allResourceTemplates()),
+					read: (uri) => reach((connection) => connection.readResource(uri)),
+				};
+			};
 
 			/** Connect in the background; `ready` settles when the attempt does. */
 			const start = (server: Server) =>
@@ -535,6 +580,7 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 							state: "connecting",
 							error: undefined,
 							tools: [],
+							resources: false,
 							live: undefined,
 							attempt: undefined,
 							ready: undefined,
@@ -571,6 +617,8 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 
 				// Every tool is registered with its exposure; the registry decides which ones are offered.
 				const tools: RegisteredTool[] = [];
+				const output = { save: McpOutput.save };
+				const content = (server: Server) => ({ ...output, readable: withResources(server) });
 				for (const server of thread.servers.values()) {
 					if (server.config.enabled === false || server.stopped || server.tools.length === 0) continue;
 					const names = thread.names(
@@ -585,10 +633,31 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 								name: names.get(tool.name)!,
 								exposure: McpTool.exposure(server.config, tool.name),
 								call: call(thread, server.name, tool.name),
+								content: content(server),
 							}),
 						);
 					}
 				}
+				if ([...thread.servers.values()].some(withResources))
+					tools.push(
+						...McpResources.make({
+							servers: () =>
+								[...thread.servers.values()]
+									.filter(withResources)
+									.map((server) => resourceServer(thread, server.name)),
+							// A server still connecting may offer resources once it has.
+							ready: () =>
+								Effect.forEach(
+									[...thread.servers.values()],
+									(server) =>
+										server.config.enabled === false || server.ready === undefined
+											? Effect.void
+											: Deferred.await(server.ready),
+									{ discard: true },
+								),
+							content: output,
+						}),
+					);
 				return tools;
 			});
 
