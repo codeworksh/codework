@@ -70,7 +70,11 @@ const scripted = () => {
 	return { open, turn, requests };
 };
 
-/** Every `mcp.server.status` event, by thread label and server, in order. */
+/** Threads and servers connect concurrently; their keys are sorted so the artifact does not depend on it. */
+const byName = <A>(record: Record<string, A>) =>
+	Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+
+/** Every `mcp.server.status` event, by thread label and server, in order; `read` takes a copy. */
 const statusEvents = (label: (threadId: string) => string) =>
 	Effect.gen(function* () {
 		const seen: Record<string, Record<string, Array<EventList.McpServerState>>> = {};
@@ -83,7 +87,10 @@ const statusEvents = (label: (threadId: string) => string) =>
 				(byServer[status.server] ??= []).push(status);
 			}),
 		);
-		return seen;
+		return {
+			read: () =>
+				byName(Object.fromEntries(Object.entries(seen).map(([thread, servers]) => [thread, byName(servers)]))),
+		};
 	});
 
 /** The text of each settled tool call of a thread, by call id. */
@@ -338,7 +345,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			disconnectThenConnect,
 			startsAfterRaces,
 			unknown: { tag: unknown._tag, message: unknown.message },
-			events: seen,
+			events: seen.read(),
 		};
 	}).pipe(
 		Effect.provide(
