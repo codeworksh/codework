@@ -284,7 +284,7 @@ export interface MakeOptions extends Partial<Offer> {
  */
 export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, options?: MakeOptions): Executor => {
 	const registered = new Set(options?.registered);
-	const offer: Offer = { deferred: options?.deferred ?? [] };
+	const offer: Offer = { deferred: options?.deferred ?? Effect.succeed([]) };
 	const impls = new Map<string, ToolRegistration>();
 	for (const item of tools) {
 		const entry = "tool" in item ? item : { tool: item, hooks: {} };

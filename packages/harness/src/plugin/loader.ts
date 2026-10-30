@@ -28,7 +28,7 @@ const Definition = Schema.Struct({
 			),
 		),
 	),
-	optIn: Schema.optional(Schema.Boolean),
+	optIn: Schema.optional(Schema.Union([Schema.Boolean, Schema.Literal("deferred")])),
 	setup: Schema.declare<Plugin["setup"]>((value): value is Plugin["setup"] => Predicate.isFunction(value)),
 });
 

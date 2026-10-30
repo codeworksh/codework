@@ -57,7 +57,7 @@ export const toolSearchHandler: Tool.Handler<
 	if (query.trim() === "") return yield* fail("query must not be empty");
 	const max = limit ?? DEFAULT_LIMIT;
 	if (!Number.isInteger(max) || max <= 0) return yield* fail("limit must be a positive integer");
-	const { deferred } = yield* ToolOffer;
+	const deferred = yield* (yield* ToolOffer).deferred;
 	const loaded = ToolSearch.rank(
 		query,
 		deferred.map((tool) => ({ name: tool.name, text: ToolSearch.text(tool) })),
@@ -79,7 +79,7 @@ export const toolSearchTool = Tool.implement(toolSearchDef, toolSearchHandler);
 export const toolSearchPlugin = define({
 	id: "codework.tool.toolsearch",
 	kind: "tool",
-	optIn: true,
+	optIn: "deferred",
 	setup: (ctx) => {
 		ctx.plugin.tools.add(Tool.register(toolSearchTool));
 	},

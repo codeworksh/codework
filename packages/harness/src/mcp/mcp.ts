@@ -31,6 +31,7 @@
  * service down, stops the server process and ends the HTTP session.
  */
 
+import type { Message } from "@codeworksh/aikit";
 import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { AuthProvider, Tool } from "@modelcontextprotocol/client";
 import {
@@ -61,7 +62,7 @@ import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { ID as SessionId } from "../session/schema.ts";
 import { ID as ThreadId } from "../thread/schema.ts";
-import type { RegisteredTool } from "../tool/tool.ts";
+import { type RegisteredTool, toAikitTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { namespace } from "./config.ts";
 import { McpLog } from "./log.ts";
@@ -74,7 +75,10 @@ import { hostPath } from "../host.ts";
 import { ModelCatalog } from "../model/catalog.ts";
 import { expandTilde } from "../util/home.ts";
 
-/** A turn waits this long for the servers it started whose tools it declares or has loaded. */
+/**
+ * A turn waits this long for the servers it started whose tools it declares or has loaded, and a
+ * search of deferred tools for the servers still connecting.
+ */
 const STARTUP_WAIT = Duration.seconds(10);
 /** An instance no running drain holds closes after this long. */
 const IDLE_TIMEOUT = Duration.minutes(10);
@@ -112,9 +116,21 @@ export interface Input {
 	readonly loaded?: ReadonlyArray<string> | undefined;
 }
 
+export interface Reconciled {
+	/** Every tool the thread's servers offer, with its exposure. */
+	readonly tools: ReadonlyArray<RegisteredTool>;
+	/** Whether a server that may offer deferred tools is still connecting, so they are not among `tools` yet. */
+	readonly connecting: boolean;
+	/**
+	 * The thread's deferred tools as they stand when it runs, under the names they are registered by.
+	 * Waits first, within {@link STARTUP_WAIT}, for servers still connecting that may offer some.
+	 */
+	readonly deferred: Effect.Effect<ReadonlyArray<Message.Tool>>;
+}
+
 export interface Interface {
-	/** Settle a thread's servers for its next turn, and return every tool they offer, with its exposure. */
-	readonly reconcile: (input: Input) => Effect.Effect<ReadonlyArray<RegisteredTool>>;
+	/** Settle a thread's servers for its next turn. */
+	readonly reconcile: (input: Input) => Effect.Effect<Reconciled>;
 	/** Keep the thread's instances open for as long as the calling scope, a drain, runs. */
 	readonly lease: (thread: {
 		readonly sessionId: SessionId;
@@ -240,9 +256,8 @@ const signInHint = (name: string, config: ServerConfig) =>
 		? `MCP server "${name}" refused the credential of provider "${config.auth.provider}". Sign in to it with "codework auth login", or set its API key.`
 		: `MCP server "${name}" requires sign-in. Run "codework mcp login ${name}".`;
 
-const hasDirectTools = (config: ServerConfig) =>
-	exposureOf(config) === "direct" ||
-	Object.values(config.toolExposure ?? {}).some((exposure) => exposure === "direct");
+const hasTools = (config: ServerConfig, exposure: Exposure) =>
+	exposureOf(config) === exposure || Object.values(config.toolExposure ?? {}).some((one) => one === exposure);
 
 /** Whether a loaded tool name could belong to the server; its tools are not known before it connects. */
 const loadsFrom = (server: string, loaded: ReadonlyArray<string>) =>
@@ -771,6 +786,83 @@ export const layer = (options: {
 				return thread;
 			};
 
+			/** Every tool the thread's servers offer now, each with its exposure in the thread. */
+			const toolsOf = (thread: Thread) => {
+				// Every tool is registered with its exposure; the registry decides which ones are offered.
+				const tools: RegisteredTool[] = [];
+				const output = { save: McpOutput.save };
+				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
+				const resourceTools = [...thread.servers.values()].some(
+					(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
+				);
+				for (const [name, entry] of thread.servers) {
+					const server = entry.server;
+					if (server === undefined || server.stopped || server.tools.length === 0) continue;
+					const names = thread.names(
+						name,
+						server.tools.map((tool) => tool.name),
+					);
+					for (const tool of server.tools) {
+						tools.push(
+							McpTool.make({
+								server: name,
+								tool,
+								name: names.get(tool.name)!,
+								exposure: McpTool.exposure(entry.config, tool.name),
+								call: call(thread, name, tool.name),
+								// A resource link points to `read_mcp_resource` only when the model has it.
+								content: { ...output, readable: resourceTools && withResources(entry) },
+							}),
+						);
+					}
+				}
+				if (resourceTools)
+					tools.push(
+						...McpResources.make({
+							servers: () =>
+								[...thread.servers]
+									.filter(([, entry]) => withResources(entry))
+									.map(([name]) => resourceServer(thread, name)),
+							// A server still connecting may offer resources once it has.
+							ready: () =>
+								Effect.forEach(
+									[...thread.servers.values()],
+									({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
+									{ discard: true },
+								),
+							content: output,
+						}),
+					);
+				return tools;
+			};
+
+			/** The thread's servers still connecting that may offer deferred tools. */
+			const connecting = (thread: Thread) =>
+				[...thread.servers.values()].flatMap(({ config, server }) =>
+					server !== undefined && !server.closed && server.state === "connecting" && hasTools(config, "deferred")
+						? [server]
+						: [],
+				);
+
+			/** Settles when the server's connect attempt in progress, if any, does. */
+			const attempted = (server: Server) =>
+				Effect.andThen(
+					server.ready === undefined ? Effect.void : Deferred.await(server.ready),
+					Effect.suspend(() => (server.attempt === undefined ? Effect.void : Fiber.await(server.attempt))),
+				);
+
+			const deferred = (thread: Thread) =>
+				Effect.gen(function* () {
+					const pending = connecting(thread);
+					if (pending.length > 0)
+						yield* Effect.forEach(pending, attempted, { concurrency: "unbounded", discard: true }).pipe(
+							Effect.timeoutOption(STARTUP_WAIT),
+						);
+					return toolsOf(thread).flatMap((tool) =>
+						tool.definition.exposure === "deferred" ? [toAikitTool(tool.definition)] : [],
+					);
+				});
+
 			const reconcile = Effect.fn("Mcp.reconcile")(function* (input: Input) {
 				const thread = threadOf(input.threadId, input.sessionId);
 				for (const error of input.errors ?? []) {
@@ -901,7 +993,9 @@ export const layer = (options: {
 				// so their tools are offered in its first request, but never indefinitely: one hanging server
 				// must not hold up the prompt.
 				const loaded = input.loaded ?? [];
-				const pending = started.filter(([name, entry]) => hasDirectTools(entry.config) || loadsFrom(name, loaded));
+				const pending = started.filter(
+					([name, entry]) => hasTools(entry.config, "direct") || loadsFrom(name, loaded),
+				);
 				if (pending.length > 0) {
 					const finished = yield* Effect.forEach(pending, ([, , server]) =>
 						server.ready === undefined ? Effect.void : Deferred.await(server.ready),
@@ -924,52 +1018,11 @@ export const layer = (options: {
 						"MCP tools exposed to codemode are only reachable from the codemode tool, which is not active; they cannot be called.",
 					);
 				}
-				// Every tool is registered with its exposure; the registry decides which ones are offered.
-				const tools: RegisteredTool[] = [];
-				const output = { save: McpOutput.save };
-				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
-				const resourceTools = [...thread.servers.values()].some(
-					(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
-				);
-				for (const [name, entry] of thread.servers) {
-					const server = entry.server;
-					if (server === undefined || server.stopped || server.tools.length === 0) continue;
-					const names = thread.names(
-						name,
-						server.tools.map((tool) => tool.name),
-					);
-					for (const tool of server.tools) {
-						tools.push(
-							McpTool.make({
-								server: name,
-								tool,
-								name: names.get(tool.name)!,
-								exposure: McpTool.exposure(entry.config, tool.name),
-								call: call(thread, name, tool.name),
-								// A resource link points to `read_mcp_resource` only when the model has it.
-								content: { ...output, readable: resourceTools && withResources(entry) },
-							}),
-						);
-					}
-				}
-				if (resourceTools)
-					tools.push(
-						...McpResources.make({
-							servers: () =>
-								[...thread.servers]
-									.filter(([, entry]) => withResources(entry))
-									.map(([name]) => resourceServer(thread, name)),
-							// A server still connecting may offer resources once it has.
-							ready: () =>
-								Effect.forEach(
-									[...thread.servers.values()],
-									({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
-									{ discard: true },
-								),
-							content: output,
-						}),
-					);
-				return tools;
+				return {
+					tools: toolsOf(thread),
+					connecting: connecting(thread).length > 0,
+					deferred: deferred(thread),
+				} satisfies Reconciled;
 			});
 
 			const lease = (input: { readonly sessionId: SessionId; readonly threadId: ThreadId }) =>

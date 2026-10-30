@@ -5,14 +5,16 @@
 			"write",
 			"edit",
 			"x_direct",
-			"x_model"
+			"x_model",
+			"toolsearch"
 		],
 		[
 			"read",
 			"write",
 			"edit",
 			"x_direct",
-			"x_model"
+			"x_model",
+			"toolsearch"
 		]
 	],
 	"tools": "- read: Read file contents\n- write: Create or overwrite files\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- x_direct: x_direct snippet\n- x_model: x_model snippet",

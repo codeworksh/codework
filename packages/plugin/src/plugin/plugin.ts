@@ -52,8 +52,11 @@ export interface Plugin {
 	/**
 	 * Off until a user asks for it. An `optIn` plugin is selected like any other but runs only
 	 * when a settings entry turns it on: `{ "plugin": "<id>", "enabled": true }`.
+	 *
+	 * `"deferred"` turns it on by itself in a turn that has deferred tools, or MCP servers still
+	 * connecting that may add some; a settings entry's `enabled` overrides that either way.
 	 */
-	readonly optIn?: boolean;
+	readonly optIn?: boolean | "deferred";
 	/**
 	 * `options` is this plugin's own configuration block, `{}` when its entry carried none.
 	 * Unvalidated: the harness never looks inside it, so a plugin checks whatever shape it

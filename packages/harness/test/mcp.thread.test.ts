@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
-import { Effect } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { join } from "node:path";
@@ -69,7 +69,9 @@ const scripted = () => {
 		queue.push(...requests, []);
 		script.set(threadId, queue);
 	};
-	return { open, turn, requests };
+	/** Drop what is left of a thread's script, as an interrupted turn leaves it. */
+	const clear = (threadId: string) => script.delete(threadId);
+	return { open, turn, clear, requests };
 };
 
 /** Threads and servers connect concurrently; their keys are sorted so the artifact does not depend on it. */
@@ -576,4 +578,209 @@ it("mcp: an instance that idles out tells the threads still using it", async () 
 	expect(result.idled).toBe("disconnected");
 	expect(result.events.main?.idle?.at(-1)?.state).toBe("disconnected");
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.idle.json");
+}, 60_000);
+
+/** The tools the model was declared in its latest request. */
+const declaredIn = (model: ReturnType<typeof scripted>) =>
+	(model.requests.at(-1)?.context.tools ?? []).map((tool) => tool.name);
+
+it("mcp: toolsearch turns itself on while deferred tools exist, unless settings turn it off", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	const hold = join(dir.path, "hold");
+	await fs.writeFile(hold, "held");
+	const settings = (entry?: { readonly enabled: boolean }) =>
+		write(join(home, "settings.jsonc"), {
+			plugins: entry === undefined ? [] : [{ plugin: toolSearchPlugin.id, ...entry }],
+		});
+	const servers = (mcpServers: Record<string, unknown>) => write(join(home, "mcp.json"), { mcpServers });
+	await settings();
+	await servers({});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const mcp = yield* Mcp.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "lazy")?.state));
+		const offered = (prompt: string) =>
+			main.run(prompt).pipe(Effect.map(() => declaredIn(model).includes(TOOL_SEARCH_NAME)));
+
+		const nothingDeferred = yield* offered("one");
+		// A server with only deferred tools is not awaited; it may add some, so toolsearch is on already.
+		yield* Effect.promise(() => servers({ lazy: stdio({ exposure: "deferred" }, { E2E_HOLD: hold }) }));
+		const whileConnecting = yield* offered("two");
+		const connectingState = yield* stateOf;
+		yield* Effect.promise(() => fs.rm(hold));
+		yield* waitFor(stateOf, (state) => state === "connected");
+		const deferredRegistered = yield* offered("three");
+		yield* Effect.promise(() => settings({ enabled: false }));
+		const disabled = yield* offered("four");
+		yield* Effect.promise(() => Promise.all([settings({ enabled: true }), servers({})]));
+		const enabledWithNothingDeferred = yield* offered("five");
+		yield* Effect.promise(() => settings());
+		const entryRemoved = yield* offered("six");
+		return {
+			nothingDeferred,
+			whileConnecting,
+			connectingState,
+			deferredRegistered,
+			disabled,
+			enabledWithNothingDeferred,
+			entryRemoved,
+		};
+	}).pipe(
+		Effect.provide(Harness.layer({ home, hostCwd: dir.path, database: ":memory:", llm: model.open })),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result).toEqual({
+		nothingDeferred: false,
+		whileConnecting: true,
+		connectingState: "connecting",
+		deferredRegistered: true,
+		disabled: false,
+		enabledWithNothingDeferred: true,
+		entryRemoved: false,
+	});
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.toolsearch.activation.json",
+	);
+}, 60_000);
+
+it("mcp: toolsearch waits for a connecting server and finds its deferred tools, which the next request offers", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	const hold = join(dir.path, "hold");
+	await fs.writeFile(hold, "held");
+	await write(join(home, "mcp.json"), {
+		mcpServers: { slow: stdio({ exposure: "deferred" }, { E2E_HOLD: hold }) },
+	});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const mcp = yield* Mcp.Service;
+		const events = yield* Event.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "slow")?.state));
+		const searching = yield* Deferred.make<void>();
+		yield* events.listen((event) =>
+			event.type === EventList.ToolStarted.type &&
+			(event as unknown as EventList.ToolStarted).data.name === TOOL_SEARCH_NAME
+				? Deferred.succeed(searching, undefined)
+				: Effect.void,
+		);
+		// The hold is released only once the search is running, so it is waiting on the server.
+		const released = yield* Deferred.await(searching).pipe(
+			Effect.andThen(Effect.sleep("200 millis")),
+			Effect.andThen(stateOf),
+			Effect.tap(() => Effect.promise(() => fs.rm(hold))),
+			Effect.forkChild,
+		);
+
+		model.turn(
+			main.id,
+			[pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "search")],
+			[pendingCall("mcp__slow__echo", { text: "found" }, "echo")],
+		);
+		yield* main.run("one");
+		const [first, second] = model.requests;
+		return {
+			stateWhenReleased: yield* Fiber.join(released),
+			firstDeclared: (first?.context.tools ?? []).map((tool) => tool.name),
+			secondChanges: changes(second?.context.messages ?? []),
+			calls: yield* results(main),
+			loaded: (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools,
+		};
+	}).pipe(
+		Effect.provide(Harness.layer({ home, hostCwd: dir.path, database: ":memory:", llm: model.open })),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.stateWhenReleased).toBe("connecting");
+	expect(result.firstDeclared).toContain(TOOL_SEARCH_NAME);
+	expect(result.firstDeclared).not.toContain("mcp__slow__echo");
+	expect(result.calls.search).toContain("mcp__slow__echo");
+	expect(result.secondChanges.at(-1)?.added).toContain("mcp__slow__echo");
+	expect(result.calls.echo).toBe("hello: found");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.toolsearch.connecting.json",
+	);
+}, 60_000);
+
+it("mcp: toolsearch stops waiting for a server that never answers, at the startup wait or an interrupt", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	// Never released: the server stays connecting for the whole test.
+	const hold = join(dir.path, "hold");
+	await fs.writeFile(hold, "held");
+	await write(join(home, "mcp.json"), {
+		mcpServers: { stuck: stdio({ exposure: "deferred" }, { E2E_HOLD: hold }) },
+	});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const mcp = yield* Mcp.Service;
+		const events = yield* Event.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "stuck")?.state));
+		const searching = yield* Deferred.make<void>();
+		yield* events.listen((event) =>
+			event.type === EventList.ToolStarted.type &&
+			(event as unknown as EventList.ToolStarted).data.name === TOOL_SEARCH_NAME
+				? Deferred.succeed(searching, undefined)
+				: Effect.void,
+		);
+		const elapsed = <A, E, R>(self: Effect.Effect<A, E, R>) =>
+			Effect.gen(function* () {
+				const start = Date.now();
+				yield* self;
+				return Date.now() - start;
+			});
+
+		// Interrupted while it waits: the call ends with the turn, long before the startup wait.
+		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "interrupted")]);
+		const interrupter = yield* Deferred.await(searching).pipe(
+			Effect.andThen(Effect.sleep("200 millis")),
+			Effect.andThen(main.interrupt()),
+			Effect.forkChild,
+		);
+		const interruptedAfter = yield* elapsed(main.run("one").pipe(Effect.exit));
+		const interrupted = yield* Fiber.join(interrupter);
+
+		// Left alone, the wait gives up after the startup wait and searches what there is.
+		model.clear(main.id);
+		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "bounded")]);
+		const boundedAfter = yield* elapsed(main.run("two"));
+		return {
+			interrupted,
+			interruptedQuickly: interruptedAfter < 5_000,
+			boundedWaited: boundedAfter >= 9_000 && boundedAfter < 20_000,
+			calls: yield* results(main),
+			stillConnecting: yield* stateOf,
+		};
+	}).pipe(
+		Effect.provide(Harness.layer({ home, hostCwd: dir.path, database: ":memory:", llm: model.open })),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.interrupted).toBe(true);
+	expect(result.interruptedQuickly).toBe(true);
+	expect(result.boundedWaited).toBe(true);
+	expect(result.calls.bounded).toBe("No matching tools found.");
+	expect(result.stillConnecting).toBe("connecting");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.toolsearch.bounded.json",
+	);
 }, 60_000);
