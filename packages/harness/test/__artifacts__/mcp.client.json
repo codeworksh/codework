@@ -1,0 +1,443 @@
+{
+  "cancel": {
+    "after": "after cancel",
+    "cancelled": 1,
+  },
+  "crash": {
+    "error": {
+      "message": "Connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
+      "tag": "Mcp.RequestError",
+    },
+    "method": "tools/call",
+    "reason": "connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
+  },
+  "failedConnectSession": {
+    "failedNotification": {
+      "error": {
+        "message": "Error POSTing to endpoint: notification failed (HTTP 500)",
+        "tag": "Mcp.ConnectError",
+      },
+      "seen": [
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+      ],
+    },
+    "unsupported": {
+      "error": {
+        "message": "Server's protocol version is not supported: 1999-01-01",
+        "tag": "Mcp.ConnectError",
+      },
+      "seen": [
+        "POST initialize",
+        "DELETE",
+      ],
+    },
+  },
+  "frameLimit": {
+    "error": {
+      "message": "Connection closed: mcp stdio frame exceeded 16 MiB",
+      "tag": "Mcp.RequestError",
+    },
+    "reason": "connection closed: mcp stdio frame exceeded 16 MiB",
+  },
+  "framing": {
+    "after": "still alive",
+    "framed": "framed",
+    "toolsChanged": true,
+  },
+  "http400": {
+    "notInitialized": {
+      "message": "mcp server session expired: raw",
+      "tag": "Mcp.SessionExpiredError",
+    },
+    "other": {
+      "message": "Error POSTing to endpoint: {"jsonrpc":"2.0","error":{"code":-32000,"message":"Bad Request: something else"},"id":null} (HTTP 400)",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "httpClose": {
+    "deletes": 1,
+    "hangingDeleteBounded": true,
+  },
+  "httpHappy": {
+    "echo": [
+      {
+        "text": "over http",
+        "type": "text",
+      },
+    ],
+    "serverInfo": {
+      "name": "http-fixture",
+      "version": "1.0.0",
+    },
+    "tools": [
+      "echo",
+      "mixed",
+      "structured",
+      "crash",
+      "progress",
+      "slow",
+      "hang",
+      "cancelled",
+      "roots",
+      "capabilities",
+      "spawn",
+      "frame",
+      "exit",
+      "huge",
+      "log",
+      "stderr-child",
+      "typed-missing",
+      "typed-mismatch",
+    ],
+  },
+  "httpRetries": {
+    "call": {
+      "message": "Error POSTing to endpoint: overloaded (HTTP 503)",
+      "tag": "Mcp.RequestError",
+    },
+    "callRequests": 1,
+    "listRequests": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "initializedTimeout": {
+    "deleted": true,
+    "error": {
+      "message": "mcp connect timed out after <ms>",
+      "tag": "Mcp.ConnectError",
+    },
+  },
+  "invalidEntry": {
+    "message": "Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
+    "tag": "Mcp.RequestError",
+  },
+  "listChangedWhileListing": {
+    "toolsChanged": true,
+  },
+  "logFile": [
+    "<iso> [fixture] info first line",
+    "    second line",
+    "<iso> [fixture] warning db: {"query":"select 1","ms":3}",
+    "",
+  ],
+  "logRotation": {
+    "current": "<iso> [fixture] warning db: {"query":"select 1","ms":3}
+",
+    "rotated": true,
+  },
+  "missingCwd": {
+    "message": "working directory not found: <fixtures>/missing-dir",
+    "tag": "Mcp.ConnectError",
+  },
+  "noToolsCapability": {
+    "printed": 0,
+    "tools": [],
+  },
+  "onClose": {
+    "afterDeliberateClose": [],
+    "afterServerExit": "connection closed: mcp server process exited with code 0",
+  },
+  "onLog": [
+    {
+      "data": "ready",
+      "level": "info",
+      "logger": "startup",
+    },
+    {
+      "data": "first line
+second line",
+      "level": "info",
+    },
+    {
+      "data": {
+        "ms": 3,
+        "query": "select 1",
+      },
+      "level": "warning",
+      "logger": "db",
+    },
+  ],
+  "outputSchema": {
+    "declared": [
+      "typed-missing",
+      "typed-mismatch",
+    ],
+    "mismatch": {
+      "message": "Structured content does not match the tool's output schema: data/answer must be number",
+      "tag": "Mcp.RequestError",
+    },
+    "missing": {
+      "message": "Tool typed-missing has an output schema but did not return structured content",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "processGroup": {
+    "killed": true,
+  },
+  "progress": {
+    "progressed": "progress done",
+    "sawProgress": true,
+    "silent": {
+      "message": "Request timed out",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "refused": {
+    "error": {
+      "message": "fetch failed (ECONNREFUSED)",
+      "tag": "Mcp.ConnectError",
+    },
+  },
+  "resources": {
+    "first": {
+      "nextCursor": "page-2",
+      "resources": [
+        {
+          "name": "one",
+          "uri": "fixture://one",
+        },
+      ],
+    },
+    "read": {
+      "contents": [
+        {
+          "mimeType": "text/plain",
+          "text": "contents of fixture://one",
+          "uri": "fixture://one",
+        },
+      ],
+    },
+    "resourcesChanged": true,
+    "second": {
+      "resources": [
+        {
+          "name": "changed",
+          "uri": "fixture://changed",
+        },
+      ],
+    },
+    "templates": {
+      "resourceTemplates": [],
+    },
+  },
+  "retry": {
+    "initializes": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "retryCloseReason": {
+    "afterRegister": [],
+    "afterScope": [],
+    "initializes": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "roots": {
+    "withRoots": {
+      "capabilities": {
+        "roots": {},
+      },
+      "roots": {
+        "roots": [
+          {
+            "name": "project",
+            "uri": "file:///workspace/project",
+          },
+          {
+            "name": "data dir",
+            "uri": "file:///srv/data%20dir",
+          },
+        ],
+      },
+    },
+    "withoutRoots": {
+      "capabilities": {},
+    },
+  },
+  "sessionExpired": {
+    "errors": [
+      {
+        "message": "mcp server session expired: raw",
+        "tag": "Mcp.SessionExpiredError",
+      },
+      {
+        "message": "mcp server session expired: raw",
+        "tag": "Mcp.SessionExpiredError",
+      },
+    ],
+    "reported": 1,
+    "terminated": false,
+  },
+  "spawnFailure": {
+    "message": "command not found: codework-mcp-missing-binary",
+    "tag": "Mcp.ConnectError",
+  },
+  "stderrGrandchild": {
+    "killed": true,
+  },
+  "stdioHappy": {
+    "echo": [
+      {
+        "text": "hi",
+        "type": "text",
+      },
+    ],
+    "instructions": "Use the echo tool.",
+    "mixed": [
+      {
+        "text": "hello",
+        "type": "text",
+      },
+      {
+        "data": "iVBORw0KGgo=",
+        "mimeType": "image/png",
+        "type": "image",
+      },
+      {
+        "text": "embedded notes",
+        "type": "text",
+      },
+      {
+        "data": "iVBORw0KGgo=",
+        "mimeType": "image/png",
+        "type": "image",
+      },
+      {
+        "text": "[binary resource file:///data.bin (unknown type) omitted]",
+        "type": "text",
+      },
+      {
+        "text": "[audio audio/wav omitted]",
+        "type": "text",
+      },
+      {
+        "text": "readme: file:///README.md",
+        "type": "text",
+      },
+    ],
+    "serverInfo": {
+      "name": "stdio-fixture",
+      "version": "1.0.0",
+    },
+    "structured": [
+      {
+        "text": "{
+  "answer": 42,
+  "items": [
+    "a",
+    "b"
+  ]
+}",
+        "type": "text",
+      },
+    ],
+    "tools": [
+      "echo",
+      "mixed",
+      "structured",
+      "crash",
+      "progress",
+      "slow",
+      "hang",
+      "cancelled",
+      "roots",
+      "capabilities",
+      "spawn",
+      "frame",
+      "exit",
+      "huge",
+      "log",
+      "stderr-child",
+      "typed-missing",
+      "typed-mismatch",
+    ],
+  },
+  "strictResources": {
+    "unnamed": {
+      "resources": {
+        "message": "Invalid result for resources/list: resources.0.name: Invalid input: expected string, received undefined",
+        "tag": "Mcp.RequestError",
+      },
+      "templates": {
+        "message": "Invalid result for resources/templates/list: resourceTemplates.0.name: Invalid input: expected string, received undefined",
+        "tag": "Mcp.RequestError",
+      },
+    },
+    "valid": {
+      "resources": {
+        "resources": [
+          {
+            "_meta": {
+              "origin": "fixture",
+            },
+            "description": "A file",
+            "mimeType": "text/plain",
+            "name": "a",
+            "uri": "file:///a.txt",
+          },
+        ],
+      },
+      "templates": {
+        "resourceTemplates": [
+          {
+            "description": "Any file",
+            "name": "files",
+            "uriTemplate": "file:///{path}",
+          },
+        ],
+      },
+    },
+  },
+  "stubborn": {
+    "boundedUnder8s": true,
+    "killed": true,
+  },
+  "toolsPagination": {
+    "duplicate": {
+      "tools": [
+        "t-start",
+        "t-again",
+      ],
+    },
+    "emptyCursor": {
+      "error": {
+        "message": "tools/list: exceeded listMaxPages (64); server pagination did not terminate",
+        "tag": "Mcp.RequestError",
+      },
+    },
+    "nullCursor": {
+      "error": {
+        "message": "Invalid result for tools/list: nextCursor: Invalid input: expected string, received null",
+        "tag": "Mcp.RequestError",
+      },
+    },
+  },
+  "unadvertisedListChanged": {
+    "listChanged": {},
+    "toolsChanged": true,
+  },
+  "unauthorized": {
+    "redirects": [
+      "/authorize",
+    ],
+    "withProvider": {
+      "message": "Unauthorized",
+      "tag": "Mcp.NeedsAuthError",
+    },
+    "without": {
+      "message": "Error POSTing to endpoint: unauthorized (HTTP 401)",
+      "tag": "Mcp.ConnectError",
+    },
+  },
+}

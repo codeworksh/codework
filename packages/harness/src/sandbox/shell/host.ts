@@ -1,5 +1,6 @@
-import { Duration, Effect, Exit, Layer, Option, Stream } from "effect";
+import { Duration, Effect, Exit, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Process } from "../utils/process.ts";
 import { type ExecChunk, type ExecResult, Shell, ShellError, type ShellOptions } from "./shell.ts";
 
 /**
@@ -41,15 +42,9 @@ export const layer = (options: Options = {}): Layer.Layer<Shell, never, ChildPro
 			// the pairing true for one mount and unrepresentable for two.
 			const forceKillAfter = options.forceKillAfter ?? DEFAULT_FORCE_KILL_AFTER;
 
-			// The spawner's own release sends SIGTERM and then waits for exit, so a
-			// command that ignores SIGTERM (and children inheriting that) would make
-			// an interrupt or timeout wait forever. Registered after the spawn, this
-			// runs first: SIGTERM the group, and SIGKILL it if it outlives the grace.
-			// Then, still only when the command was cut short, SIGKILL whatever is
-			// left of the group — children can outlive a leader that already exited.
-			// Only while the leader runs or a pipe is still held open: either keeps
-			// the group id ours, so it cannot have been reused by someone else.
-			// A command that completes keeps its background jobs.
+			// Registered after the spawn, the finalizer runs before the spawner's own
+			// release, and only when the command was cut short (interrupt or
+			// timeout). A command that completes keeps its background jobs.
 			const spawn = (file: string, args: ReadonlyArray<string>, opts?: ShellOptions) =>
 				Effect.gen(function* () {
 					const spawned = yield* spawner.spawn(
@@ -69,29 +64,7 @@ export const layer = (options: Options = {}): Layer.Layer<Shell, never, ChildPro
 					yield* Effect.addFinalizer((exit) =>
 						Exit.isSuccess(exit)
 							? Effect.void
-							: Effect.gen(function* () {
-									const running = yield* spawned.isRunning.pipe(Effect.orElseSucceed(() => false));
-									if (!running && openPipes === 0) return;
-									if (running) {
-										yield* spawned.kill({ killSignal: "SIGTERM" }).pipe(
-											Effect.timeoutOption(forceKillAfter),
-											Effect.flatMap(
-												Option.match({
-													onSome: () => Effect.void,
-													onNone: () => spawned.kill({ killSignal: "SIGKILL" }),
-												}),
-											),
-											Effect.ignore,
-										);
-									}
-									yield* Effect.sync(() => {
-										try {
-											process.kill(-Number(spawned.pid), "SIGKILL");
-										} catch {
-											// the group is already gone
-										}
-									});
-								}),
+							: Effect.suspend(() => Process.terminate(spawned, { forceKillAfter, pipesOpen: openPipes > 0 })),
 					);
 					return { exitCode: spawned.exitCode, ...output };
 				});
