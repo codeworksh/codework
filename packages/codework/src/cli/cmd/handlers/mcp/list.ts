@@ -1,5 +1,5 @@
 /* @effect-diagnostics preferSchemaOverJson:off -- `--json` prints the report as it is built. */
-import { Database, Event, Mcp } from "@codeworksh/harness/effect";
+import { Database, Event, type EventList, Mcp } from "@codeworksh/harness/effect";
 import { Effect, Layer, References } from "effect";
 import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
@@ -18,6 +18,8 @@ interface Report {
 	readonly transport: string;
 	readonly state: Mcp.State;
 	readonly tools: ReadonlyArray<string>;
+	/** Tools it listed that were left out because the MCP SDK rejects them. */
+	readonly skipped?: EventList.McpSkipped;
 	/** Tools whose exposure differs from the server's, from `toolExposure`. */
 	readonly toolExposure?: Record<string, string>;
 	/** Whether the server offers resources. They are not listed: listing every one can take long. */
@@ -61,6 +63,7 @@ export default Runtime.handler(
 					transport: "url" in config ? config.url : [config.command, ...(config.args ?? [])].join(" "),
 					state,
 					tools: tools.map((tool) => tool.name),
+					...(status?.skipped === undefined ? {} : { skipped: status.skipped }),
 					...(overrides.length === 0
 						? {}
 						: { toolExposure: Object.fromEntries(overrides.map((tool) => [tool.name, tool.exposure])) }),
@@ -81,7 +84,7 @@ export default Runtime.handler(
 			const width = Math.max(0, ...reports.map((report) => report.name.length));
 			for (const report of reports) {
 				lines.push(
-					`${MARKS[report.state]} ${report.name.padEnd(width)}  ${describe(report.state, report.tools.length)} (${report.exposure}, ${report.level})`,
+					`${MARKS[report.state]} ${report.name.padEnd(width)}  ${describe(report.state, report.tools.length, report.skipped)} (${report.exposure}, ${report.level})`,
 				);
 				const detail = (line: string) => lines.push(`    ${line}`);
 				detail(report.transport);

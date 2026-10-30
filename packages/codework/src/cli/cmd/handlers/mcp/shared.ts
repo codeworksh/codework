@@ -1,4 +1,4 @@
-import { Global, type Mcp, McpConfig, McpOAuth, Settings } from "@codeworksh/harness/effect";
+import { type EventList, Global, type Mcp, McpConfig, McpOAuth, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option, Path, Predicate } from "effect";
 import { InvalidInputError } from "../../../error.ts";
 import { Jsonc } from "../../../jsonc.ts";
@@ -39,9 +39,16 @@ export const MARKS: Record<Mcp.State, string> = {
 	disabled: "○",
 };
 
-/** A server's state as the commands print it. */
-export const describe = (state: Mcp.State, tools: number) =>
-	state === "connected" ? `connected, ${tools} tool${tools === 1 ? "" : "s"}` : state;
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** A server's state as the commands print it, with the tools its listing left out. */
+export const describe = (state: Mcp.State, tools: number, skipped?: EventList.McpSkipped) => {
+	if (state !== "connected") return state;
+	const connected = `connected, ${plural(tools, "tool")}`;
+	if (skipped === undefined) return connected;
+	const left = [...skipped.names, ...(skipped.unnamed === 0 ? [] : [plural(skipped.unnamed, "unnamed tool")])];
+	return `${connected} — skipped ${left.join(", ")}`;
+};
 
 /** The `mcpServers` of one `mcp.json`, and the text an edit rewrites. */
 export const readServers = Effect.fn("CLI.mcp.readServers")(function* (path: string) {

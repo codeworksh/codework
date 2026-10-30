@@ -55,6 +55,8 @@ it("codework mcp add, remove and list edit both mcp.json files in place and repo
 
 	const added = {
 		stdio: await cli("mcp", "add", "echo", "--env", "GREETING=hi", "--", process.execPath, echo),
+		// Connects, with tools the SDK rejects skipped.
+		partial: await cli("mcp", "add", "partial", "--env", "E2E_SKIPPED=1", "--", process.execPath, echo),
 		http: await cli("mcp", "add", "secure", "--url", `${oauth.url}/mcp`, "--oauth-client-name", "CodeWork test"),
 		crashing: await cli(
 			"mcp",

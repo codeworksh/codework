@@ -5,6 +5,11 @@
 			"stdout": "Added user MCP server \"echo\" in <home>/mcp.json.\nCheck it with: codework mcp list\n",
 			"stderr": ""
 		},
+		"partial": {
+			"status": 0,
+			"stdout": "Added user MCP server \"partial\" in <home>/mcp.json.\nCheck it with: codework mcp list\n",
+			"stderr": ""
+		},
 		"http": {
 			"status": 0,
 			"stdout": "Added user MCP server \"secure\" in <home>/mcp.json.\nCheck it with: codework mcp list. If it requires sign-in: codework mcp login secure\n",
@@ -44,13 +49,13 @@
 		}
 	},
 	"edited": {
-		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\n\t\t\"old\": {\n\t\t\t\"command\": \"old-server\",\n\t\t\t\"args\": [\n\t\t\t\t\"--verbose\"\n\t\t\t],\n\t\t\t\"exposure\": \"hidden\"\n\t\t},\n\t\t\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t},\n\t\t\"secure\": {\n\t\t\t\"url\": \"<oauth>/mcp\",\n\t\t\t\"oauth\": {\n\t\t\t\t\"clientName\": \"CodeWork test\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
+		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\n\t\t\"old\": {\n\t\t\t\"command\": \"old-server\",\n\t\t\t\"args\": [\n\t\t\t\t\"--verbose\"\n\t\t\t],\n\t\t\t\"exposure\": \"hidden\"\n\t\t},\n\t\t\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t},\n\t\t\"partial\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"E2E_SKIPPED\": \"1\"\n\t\t\t}\n\t\t},\n\t\t\"secure\": {\n\t\t\t\"url\": \"<oauth>/mcp\",\n\t\t\t\"oauth\": {\n\t\t\t\t\"clientName\": \"CodeWork test\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
 		"project": "{\n\t\"mcpServers\": {\n\t\t// Hide one tool of the user server here.\n\t\t\"echo\": { \"toolExposure\": { \"echo\": \"hidden\" } },\n\t\t\"broken\": {\n\t\t\t\"url\": 42\n\t\t},\n\t\t\"crash\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"-e\",\n\t\t\t\t\"console.error('cannot start: missing config'); process.exit(3)\"\n\t\t\t]\n\t\t}\n\t}\n}\n"
 	},
 	"list": {
 		"text": {
 			"status": 1,
-			"stdout": "✗ old     failed (hidden, user)\n    old-server --verbose\n    command not found: old-server\n✓ echo    connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n⚠ secure  authenticate (direct, user)\n    <oauth>/mcp\n    MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\".\n✗ crash   failed (direct, project)\n    <node> -e console.error('cannot start: missing config'); process.exit(3)\n    connection closed: mcp server process exited with code 3: cannot start: missing config\nconfig error: <home>/project/.codework/mcp.json: server \"broken\" needs either \"command\" (stdio) or \"url\" (streamable HTTP)\n",
+			"stdout": "✗ old      failed (hidden, user)\n    old-server --verbose\n    command not found: old-server\n✓ echo     connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n✓ partial  connected, 1 tool — skipped broken, 1 unnamed tool (direct, user)\n    <node> <echo>\n    tools: echo\n⚠ secure   authenticate (direct, user)\n    <oauth>/mcp\n    MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\".\n✗ crash    failed (direct, project)\n    <node> -e console.error('cannot start: missing config'); process.exit(3)\n    connection closed: mcp server process exited with code 3: cannot start: missing config\nconfig error: <home>/project/.codework/mcp.json: server \"broken\" needs either \"command\" (stdio) or \"url\" (streamable HTTP)\n",
 			"stderr": ""
 		},
 		"json": {
@@ -80,6 +85,24 @@
 					],
 					"toolExposure": {
 						"echo": "hidden"
+					}
+				},
+				{
+					"name": "partial",
+					"level": "user",
+					"file": "<home>/mcp.json",
+					"enabled": true,
+					"exposure": "direct",
+					"transport": "<node> <echo>",
+					"state": "connected",
+					"tools": [
+						"echo"
+					],
+					"skipped": {
+						"names": [
+							"broken"
+						],
+						"unnamed": 1
 					}
 				},
 				{
@@ -144,11 +167,11 @@
 	},
 	"passing": {
 		"status": 0,
-		"stdout": "✓ echo  connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n",
+		"stdout": "✓ echo     connected, 1 tool (direct, user)\n    <node> <echo>\n    project override: <home>/project/.codework/mcp.json\n    tools: echo [hidden]\n✓ partial  connected, 1 tool — skipped broken, 1 unnamed tool (direct, user)\n    <node> <echo>\n    tools: echo\n",
 		"stderr": ""
 	},
 	"files": {
-		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
+		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t},\n\t\t\"partial\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"E2E_SKIPPED\": \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
 		"project": "{\n\t\"mcpServers\": {\n\t\t// Hide one tool of the user server here.\n\t\t\"echo\": { \"toolExposure\": { \"echo\": \"hidden\" } }\n\t}\n}\n"
 	}
 }

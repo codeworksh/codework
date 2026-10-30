@@ -32,7 +32,9 @@ export const control = (operation: "connect" | "disconnect") =>
 				...(threadId === undefined ? {} : { threadId }),
 				server: name,
 			});
-			const lines = [`${MARKS[status.state]} ${status.server}  ${describe(status.state, status.tools.length)}`];
+			const lines = [
+				`${MARKS[status.state]} ${status.server}  ${describe(status.state, status.tools.length, status.skipped)}`,
+			];
 			if (status.error !== undefined) for (const line of status.error.split("\n")) lines.push(`    ${line}`);
 			yield* writeOut(`${lines.join("\n")}\n`);
 			if (status.state !== (operation === "connect" ? "connected" : "disconnected")) process.exitCode = 1;

@@ -137,6 +137,7 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 - If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings or reconnect it.
 - Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
 - A server no running session needs closes after 10 minutes, and starts again when one does.
+- A tool the server lists in a shape the MCP SDK rejects is skipped; the server's other tools still work. `codework mcp list` names the skipped tools, and `~/.codework/mcp.log` says why.
 - Server log messages go to `~/.codework/mcp.log`.
 
 ## Reconnecting

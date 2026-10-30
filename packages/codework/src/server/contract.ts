@@ -253,6 +253,8 @@ export const McpStatus = Schema.Struct({
 		Schema.Struct({ name: Schema.String, exposure: Schema.Literals(["direct", "codemode", "deferred", "hidden"]) }),
 	),
 	resources: Schema.Boolean,
+	/** Tools it listed last that were left out because the MCP SDK rejects them; absent when none were. */
+	skipped: optional(EventList.McpSkipped),
 });
 export type McpStatus = typeof McpStatus.Type;
 
