@@ -10,7 +10,10 @@ import {
 	type ListResourcesResult,
 	type ListResourceTemplatesResult,
 	type LoggingMessageNotificationParams,
+	isJSONRPCNotification,
+	isJSONRPCRequest,
 	type ReadResourceResult,
+	type RequestId,
 	SdkError,
 	SdkErrorCode,
 	SdkHttpError,
@@ -256,12 +259,31 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			),
 		);
 
-	const http = (endpoint: Http, sessionId?: string) =>
-		new StreamableHTTPClientTransport(endpoint.url, {
+	const http = (endpoint: Http, sessionId?: string) => {
+		const transport = new StreamableHTTPClientTransport(endpoint.url, {
 			requestInit: { headers: endpoint.headers },
 			...(input.authProvider === undefined ? {} : { authProvider: input.authProvider }),
 			...(sessionId === undefined ? {} : { sessionId }),
 		});
+		// The SDK passes no request signal to the transport in the legacy wire era, so a request cancelled
+		// while it waits for a token or an authorization retry would still be sent afterwards. Each request
+		// gets one, aborted when its cancellation is sent.
+		const pending = new Map<RequestId, AbortController>();
+		const send = transport.send.bind(transport);
+		transport.send = (message, options) => {
+			if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
+				const id = (message.params as { readonly requestId?: RequestId } | undefined)?.requestId;
+				if (id !== undefined) pending.get(id)?.abort();
+			}
+			if (!isJSONRPCRequest(message) || options?.requestSignal !== undefined) return send(message, options);
+			const controller = new AbortController();
+			pending.set(message.id, controller);
+			return send(message, { ...options, requestSignal: controller.signal }).finally(() => {
+				pending.delete(message.id);
+			});
+		};
+		return transport;
+	};
 	// Ends the HTTP session a transport holds, bounded: the server expires it anyway.
 	const terminate = (transport: StreamableHTTPClientTransport) =>
 		Effect.tryPromise({ try: () => transport.terminateSession(), catch: fail }).pipe(
