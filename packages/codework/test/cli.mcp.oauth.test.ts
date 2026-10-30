@@ -260,34 +260,39 @@ it("a refresh refused because another process signed in meanwhile keeps that pro
 
 	// While the run's refresh waits for the token endpoint, another process signs in again: it stores
 	// new tokens under the file's lock, and the server revokes the refresh token the run presented.
-	beforeToken = () => {
-		beforeToken = undefined;
-		const lock = `${file}.lock`;
-		mkdirSync(lock);
-		const all = stored();
-		const tokens = {
-			access_token: "access-other",
-			token_type: "Bearer",
-			expires_in: 3600,
-			refresh_token: "refresh-other",
+	const signInElsewhere = (access: string, refresh: string) => {
+		beforeToken = () => {
+			beforeToken = undefined;
+			const lock = `${file}.lock`;
+			mkdirSync(lock);
+			const all = stored();
+			const tokens = { access_token: access, token_type: "Bearer", expires_in: 3600, refresh_token: refresh };
+			all[id] = { ...all[id], tokens };
+			writeFileSync(`${file}.other.tmp`, JSON.stringify(all), { mode: 0o600 });
+			renameSync(`${file}.other.tmp`, file);
+			rmdirSync(lock);
+			server.state.refresh = refresh;
 		};
-		all[id] = { ...all[id], tokens };
-		writeFileSync(`${file}.other.tmp`, JSON.stringify(all), { mode: 0o600 });
-		renameSync(`${file}.other.tmp`, file);
-		rmdirSync(lock);
-		server.state.access.set("access-other", undefined);
-		server.state.refresh = "refresh-other";
+		server.state.access.clear();
 	};
-	server.state.access.clear();
-	const refused = await run("Signed in elsewhere.", [whoami("secure")]);
+
+	signInElsewhere("access-other", "refresh-other");
+	const replaced = await run("Signed in elsewhere.", [whoami("secure")]);
 	// The refused refresh drops nothing it did not present, so the run carries on with those tokens.
-	expect(refused.answer).toBe("Tool said: called with access-2");
+	expect(replaced.answer).toBe("Tool said: called with access-2");
 	expect(stored()[id]?.tokens?.access_token).toBe("access-2");
+
+	// The other process got the same access token back with a new refresh token.
+	signInElsewhere("access-2", "refresh-other-2");
+	const rotated = await run("Refresh token rotated elsewhere.", [whoami("secure")]);
+	expect(rotated.answer).toBe("Tool said: called with access-3");
+	expect(stored()[id]?.tokens?.access_token).toBe("access-3");
 
 	await expect(
 		`${JSON.stringify(
 			{
-				refused,
+				replaced,
+				rotated,
 				stored: JSON.parse(normalise(JSON.stringify(stored()[id]?.tokens))),
 				server: JSON.parse(normalise(JSON.stringify(server.state.log))),
 			},
