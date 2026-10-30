@@ -160,12 +160,62 @@
 		{
 			"server": "remote",
 			"state": "connected",
-			"tools": 1
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				}
+			]
 		},
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "hidden"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			]
 		}
 	]
 }
