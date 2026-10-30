@@ -98,6 +98,8 @@ export interface Status {
 	 * The resource tools reach it only while it is not disconnected on request, and not hidden.
 	 */
 	readonly resources: boolean;
+	/** The tools it listed last that were left out because the SDK rejects them; absent when none were. */
+	readonly skipped?: EventList.McpSkipped;
 }
 
 export interface Input {
@@ -180,6 +182,8 @@ interface Server {
 	state: State;
 	error: string | undefined;
 	tools: ReadonlyArray<Tool>;
+	/** The tools its last listing left out, when it left any out. */
+	skipped: EventList.McpSkipped | undefined;
 	/** Whether the server offered resources when it last connected. */
 	resources: boolean;
 	/** The credential it was refused with, when it needs sign-in: a new one is worth a retry. */
@@ -282,6 +286,7 @@ const statusOf = (name: string, entry: Entry): Status => {
 		...(server.error === undefined ? {} : { error: server.error }),
 		tools: server.tools.map((tool) => ({ name: tool.name, exposure: McpTool.exposure(entry.config, tool.name) })),
 		resources: server.resources,
+		...(server.skipped === undefined ? {} : { skipped: server.skipped }),
 	};
 };
 
@@ -293,7 +298,12 @@ const eventStatus = (server: Server): EventList.McpServerState => {
 	const { name, state } = server;
 	switch (state) {
 		case "connected":
-			return { server: name, state, tools: server.tools.map((tool) => tool.name) };
+			return {
+				server: name,
+				state,
+				tools: server.tools.map((tool) => tool.name),
+				...(server.skipped === undefined ? {} : { skipped: server.skipped }),
+			};
 		case "failed":
 		case "authenticate":
 			return { server: name, state, error: server.error ?? state };
@@ -376,10 +386,12 @@ export const layer = (options: {
 			const publish = (server: Server) =>
 				Effect.suspend(() => {
 					const status = eventStatus(server);
+					const skipped = "skipped" in status ? status.skipped : undefined;
 					const key = [
 						status.state,
 						"error" in status ? (status.error ?? "") : "",
 						...("tools" in status ? status.tools : []),
+						...(skipped === undefined ? [] : ["\u0001skipped", ...skipped.names, String(skipped.unnamed)]),
 					].join("\0");
 					if (key === server.published) return Effect.void;
 					server.published = key;
@@ -468,6 +480,25 @@ export const layer = (options: {
 						}).pipe(Effect.ignore);
 				});
 
+			/** Take in a listing: the tools the SDK accepts, and the ones it left out, each logged with why. */
+			const listed = (server: Server, connection: McpClient.Connection, tools: ReadonlyArray<Tool>) =>
+				Effect.suspend(() => {
+					const skipped = connection.skipped();
+					const names = skipped.flatMap((tool) => (tool.name === undefined ? [] : [tool.name]));
+					server.tools = tools;
+					server.skipped = skipped.length === 0 ? undefined : { names, unnamed: skipped.length - names.length };
+					return Effect.forEach(
+						skipped,
+						(tool) =>
+							log.write(server.name, {
+								level: "warning",
+								logger: "codework",
+								data: `skipped ${tool.name === undefined ? "a tool without a name" : `tool "${tool.name}"`}: ${tool.reason}`,
+							}),
+						{ discard: true },
+					);
+				});
+
 			const watch = (server: Server, live: Live) => {
 				// Callbacks run in the connection's own scope, and retiring closes that scope; run them
 				// in the service's instead, or closing would wait on the callback doing the closing.
@@ -499,11 +530,11 @@ export const layer = (options: {
 							live.connection.tools().pipe(
 								Effect.matchEffect({
 									onSuccess: (tools) =>
-										Effect.suspend(() => {
-											if (!latest()) return Effect.void;
-											server.tools = tools;
-											return publish(server);
-										}),
+										Effect.suspend(() =>
+											latest()
+												? Effect.andThen(listed(server, live.connection, tools), publish(server))
+												: Effect.void,
+										),
 									onFailure: (error) =>
 										Effect.sync(() => {
 											if (latest()) server.error = `failed to refresh tools: ${error.message}`;
@@ -567,7 +598,7 @@ export const layer = (options: {
 						refreshes: 0,
 					};
 					server.live = live;
-					server.tools = exit.value.tools;
+					yield* listed(server, live.connection, exit.value.tools);
 					server.resources = exit.value.connection.capabilities?.resources !== undefined;
 					yield* setState(server, "connected");
 					watch(server, live);
@@ -958,6 +989,7 @@ export const layer = (options: {
 								state: "connecting",
 								error: undefined,
 								tools: [],
+								skipped: undefined,
 								resources: false,
 								refused: undefined,
 								live: undefined,

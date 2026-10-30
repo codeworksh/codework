@@ -5,6 +5,8 @@ import {
 	Client,
 	type Implementation,
 	InsufficientScopeError,
+	isJSONRPCResponse,
+	isJSONRPCResultResponse,
 	ProtocolError,
 	ProtocolErrorCode,
 	type ListResourcesResult,
@@ -55,13 +57,24 @@ export interface Progress {
 
 export type Failed = RequestError | SessionExpiredError | NeedsAuthError;
 
+/** A `tools/list` entry the SDK rejects, left out of the listing: its name when it has a usable one, and why. */
+export interface Skipped {
+	readonly name: string | undefined;
+	readonly reason: string;
+}
+
 /** Handle over a connected MCP server that keeps the SDK `Client` out of the rest of the harness. */
 export interface Connection {
 	readonly serverInfo: Implementation | undefined;
 	readonly capabilities: ServerCapabilities | undefined;
 	readonly instructions: string | undefined;
-	/** Every tool, following pagination. Empty when the server has no tools capability. */
+	/**
+	 * Every tool the SDK accepts, following pagination. Empty when the server has no tools capability.
+	 * The ones it rejects are left out; see {@link Connection.skipped}.
+	 */
 	readonly tools: () => Effect.Effect<Tool[], Failed>;
+	/** The entries the latest listing left out, page by page. */
+	readonly skipped: () => ReadonlyArray<Skipped>;
 	/** One page of resources, starting at `cursor`. Empty when the server has no resources capability. */
 	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, Failed>;
 	/** One page of resource templates; empty when the server does not implement the method. */
@@ -117,24 +130,37 @@ const systemCode = (error: Error): string | undefined => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-// The SDK reports a result that fails its schema as `Invalid result for <method>: <issues>`, the issues
-// being the validator's multi-line JSON list. One `path: message` per issue reads better.
-const condense = (message: string) => {
-	const match = /^(Invalid result for [^:]+): (\[[\s\S]*\])$/.exec(message);
-	if (!match) return message;
+// The validator lists its issues as multi-line JSON; one `path: message` per issue reads better.
+const issues = (json: string, prefix = ""): string | undefined => {
 	try {
-		const issues: unknown = JSON.parse(match[2]!);
-		if (!Array.isArray(issues) || issues.length === 0) return message;
-		const parts = issues.map((issue) => {
-			if (!isRecord(issue)) return String(issue);
-			const path = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
-			return `${path}${typeof issue.message === "string" ? issue.message : "invalid"}`;
-		});
-		return `${match[1]}: ${parts.join("; ")}`;
+		const list: unknown = JSON.parse(json);
+		if (!Array.isArray(list) || list.length === 0) return undefined;
+		return list
+			.map((issue) => {
+				if (!isRecord(issue)) return String(issue);
+				const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+				const relative = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+				return `${relative === "" ? "" : `${relative}: `}${typeof issue.message === "string" ? issue.message : "invalid"}`;
+			})
+			.join("; ");
 	} catch {
-		return message;
+		return undefined;
 	}
 };
+
+// The SDK reports a result that fails its schema as `Invalid result for <method>: <issues>`.
+const condense = (message: string) => {
+	const match = /^(Invalid result for [^:]+): (\[[\s\S]*\])$/.exec(message);
+	const parts = match ? issues(match[2]!) : undefined;
+	return parts === undefined ? message : `${match![1]}: ${parts}`;
+};
+
+class CheckingClient extends Client {
+	/** The SDK's own check of a `tools/list` result, for the negotiated protocol version. */
+	checkToolsList(result: unknown) {
+		return this._wireCodec().validateResult("tools/list", result);
+	}
+}
 const isInvalidResult = (error: unknown) => error instanceof SdkError && error.code === SdkErrorCode.InvalidResult;
 
 // HTTP statuses and network error codes live on error properties and are lost once flattened to a message.
@@ -297,10 +323,66 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			Effect.ignore,
 		);
 
+	// The SDK checks a `tools/list` page as a whole, so one entry it rejects would fail every tool of the
+	// server. Each entry is checked on its own first, and the rejected ones are dropped from the page
+	// before the SDK sees it. What a page dropped is kept under the cursor it was asked for, the latest
+	// answer for each, so a listing reads it back however the SDK paged or cached it.
+	const pages = new Map<string | null, { readonly skipped: ReadonlyArray<Skipped>; readonly next?: string }>();
+	const skipped = () => {
+		const all: Skipped[] = [];
+		const seen = new Set<string | null>();
+		for (let cursor: string | null | undefined = null; cursor !== undefined && !seen.has(cursor);) {
+			seen.add(cursor);
+			const page = pages.get(cursor);
+			all.push(...(page?.skipped ?? []));
+			cursor = page?.next;
+		}
+		return all;
+	};
+	const screen = (client: CheckingClient, result: Record<string, unknown>) => {
+		const tools = result.tools;
+		// A page that fails for another reason is left for the SDK to report.
+		if (!Array.isArray(tools) || !client.checkToolsList({ ...result, tools: [] }).ok) return undefined;
+		const dropped: Skipped[] = [];
+		result.tools = tools.filter((tool: unknown) => {
+			const outcome = client.checkToolsList({ ...result, tools: [tool] });
+			if (outcome.ok) return true;
+			const name = isRecord(tool) && typeof tool.name === "string" && tool.name !== "" ? tool.name : undefined;
+			const reason =
+				outcome.reason === "invalid" ? (issues(outcome.message, "tools.0.") ?? outcome.message) : outcome.reason;
+			dropped.push({ name, reason });
+			return false;
+		});
+		return { skipped: dropped, ...(typeof result.nextCursor === "string" ? { next: result.nextCursor } : {}) };
+	};
+	/** Wires {@link screen} into a transport before the client connects it, so it runs ahead of the SDK. */
+	const screening = (client: CheckingClient, transport: Transport) => {
+		const listings = new Map<RequestId, string | null>();
+		const send = transport.send.bind(transport);
+		transport.send = (message, options) => {
+			if (isJSONRPCRequest(message) && message.method === "tools/list") {
+				const cursor = message.params?.cursor;
+				listings.set(message.id, typeof cursor === "string" ? cursor : null);
+			}
+			return send(message, options);
+		};
+		const receive = transport.onmessage;
+		transport.onmessage = (message, extra) => {
+			if (isJSONRPCResponse(message) && message.id !== undefined && listings.has(message.id)) {
+				const cursor = listings.get(message.id)!;
+				listings.delete(message.id);
+				const page = isJSONRPCResultResponse(message) ? screen(client, message.result) : undefined;
+				if (page !== undefined) pages.set(cursor, page);
+			}
+			receive?.(message, extra);
+		};
+	};
+
 	const initialize = Effect.fnUntraced(function* (transport: Transport, timeout: number) {
-		const client = new Client(input.clientInfo ?? { name: "codework", version: "unknown" }, {
+		const client = new CheckingClient(input.clientInfo ?? { name: "codework", version: "unknown" }, {
 			capabilities: input.roots ? { roots: {} } : {},
 		});
+		screening(client, transport);
 		// Background work such as the standalone SSE stream reports failures only here; aborts come from close.
 		client.onerror = (error) => {
 			if (error.name === "AbortError") return;
@@ -521,6 +603,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			request("tools/call", (signal) =>
 				client.callTool({ name: call.name, arguments: call.args ?? {} }, options(signal, call.onProgress)),
 			),
+		skipped,
 		onToolsChanged: (handler) => listen("tools", handler),
 		onResourcesChanged: (handler) => listen("resources", handler),
 		onSessionExpired: (handler) => {

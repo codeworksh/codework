@@ -85,3 +85,76 @@ it("mcp: a changed tool list applies from the next request, a withdrawn tool say
 	expect(published).not.toContain("stale");
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.changes.json");
 }, 60_000);
+
+it("mcp: tools the SDK rejects are skipped, reported on the status and logged, and a refresh updates them", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	await write(join(home, "mcp.json"), {
+		mcpServers: { odd: stdio({}, { MCP_MALFORMED: "skipped" }, "malformed.mjs") },
+	});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({
+			directory: work,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+			tools: { execution: "sequential" },
+		});
+		const main = session.main;
+		const seen = yield* statusEvents((threadId) => (threadId === main.id ? "main" : threadId));
+		const mcp = yield* Mcp.Service;
+		const status = mcp.status(main.id).pipe(Effect.map((all) => all[0]));
+
+		model.turn(main.id, [
+			pendingCall("mcp__odd__good", {}, "good"),
+			pendingCall("mcp__odd__scalar", {}, "scalar"),
+			pendingCall("mcp__odd__bare", {}, "bare"),
+		]);
+		yield* main.run("one");
+		const first = { declared: model.declared(), status: yield* status };
+
+		// `fix` repairs `bad` and offers `worse`, which the SDK rejects.
+		model.turn(main.id, [pendingCall("mcp__odd__fix", {}, "fix")]);
+		yield* main.run("two");
+		const refreshed = yield* waitFor(status, (one) => one?.skipped?.names.includes("worse") === true);
+		yield* main.run("three");
+		const log = yield* Effect.promise(() => fs.readFile(join(home, "mcp.log"), "utf8"));
+		return {
+			first,
+			refreshed: { declared: model.declared(), status: refreshed },
+			calls: yield* results(main),
+			events: seen.read(),
+			// Timestamps vary; the rest of each line is fixed.
+			log: log
+				.split("\n")
+				.filter(Boolean)
+				.map((line) => line.replace(/^\S+ /, "")),
+		};
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin],
+				llm: model.open,
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.first.status?.state).toBe("connected");
+	expect(result.first.status?.skipped).toEqual({ names: ["typed", "bad"], unnamed: 1 });
+	expect(result.first.declared).toEqual(["mcp__odd__good", "mcp__odd__scalar", "mcp__odd__bare", "mcp__odd__fix"]);
+	expect(result.refreshed.status?.skipped).toEqual({ names: ["typed", "worse"], unnamed: 1 });
+	expect(result.refreshed.declared).toContain("mcp__odd__bad");
+	expect(result.calls.good).toBe("good");
+	expect(result.calls.scalar).toContain("Invalid result for tools/call: structuredContent");
+	expect(result.log).toHaveLength(6);
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.changes.skipped.json",
+	);
+}, 60_000);
