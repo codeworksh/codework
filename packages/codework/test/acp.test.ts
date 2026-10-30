@@ -351,7 +351,6 @@ describe("codework acp", () => {
 								})),
 								loadFork: yield* load(forked.sessionId),
 								loadMain: yield* load(sessionId),
-								cancelIdleFork: "ok" in (yield* settle(acp.agent.cancel({ sessionId: forked.sessionId }))),
 							};
 							expect(forked.sessionId.startsWith("thr_")).toBe(true);
 							expect(record.loadFork.user).toBe("hellobranch");

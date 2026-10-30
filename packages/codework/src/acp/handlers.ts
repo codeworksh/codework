@@ -201,11 +201,9 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const { thread, hostDir } = yield* attach(id);
-						// ACP forks the conversation as it stands: at the last entry that is settled.
-						const last = (yield* thread.history()).findLast(
-							({ entry }) =>
-								(entry.type === "user" || entry.type === "assistant") && entry.state === "committed",
-						);
+						// ACP forks the conversation as it stands: at its last committed entry, of any type, so
+						// a trailing tool result or compaction comes along.
+						const last = (yield* thread.history()).findLast(({ entry }) => entry.state === "committed");
 						if (last === undefined) {
 							return yield* Agent.RequestError.invalidRequest(
 								"Nothing to fork yet: the session has no messages",
@@ -248,11 +246,12 @@ export const make = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const parts = yield* promptParts(prompt);
 						const { thread: handle } = yield* attach(id);
-						if (running.has(id)) {
+						// Keyed by thread: main answers to its session id and its own thread id alike.
+						if (running.has(handle.id)) {
 							return yield* Agent.RequestError.invalidRequest("A prompt is already running for this session");
 						}
-						running.add(id);
-						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(id)));
+						running.add(handle.id);
+						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(handle.id)));
 
 						// Forward this execution's updates until it settles; the settling event decides the answer.
 						let reason: EventList.LLMEnded["data"]["reason"] | undefined;

@@ -289,7 +289,9 @@ export const Cmd = Spec.make("codework", {
 						),
 						directory: Flag.String("directory").pipe(
 							Flag.withAlias("C"),
-							Flag.withDescription("Directory inside the target space to land in"),
+							Flag.withDescription(
+								"Checkout to move into; the work keeps its position under it when that path exists there",
+							),
 							Flag.optional,
 						),
 						sandboxId: Flag.String("sandbox-id").pipe(

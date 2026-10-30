@@ -79,7 +79,8 @@ codework thread list ses_01a070f0
 codework thread fork ses_01a070f0 --at <entry-id>
 codework thread fork ses_01a070f0 --thread thr_01a071c2 --before <entry-id>
 
-# Move where one thread runs, leaving the rest of the session where it is
+# Move one thread into another checkout of the project, keeping its position under it;
+# the rest of the session stays where it is
 codework session relink ses_01a070f0 --thread thr_01a071c2 -C ~/work/api
 ```
 

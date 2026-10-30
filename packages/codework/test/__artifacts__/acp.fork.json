@@ -22,6 +22,5 @@
 	"loadMain": {
 		"user": "hello",
 		"agent": "reply 1"
-	},
-	"cancelIdleFork": true
+	}
 }

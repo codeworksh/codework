@@ -66,7 +66,7 @@ export const ThreadOrigin = Schema.Union([
 
 /** Billed usage of a thread's own entries; what it inherits through a fork point counts for its source. */
 export const ThreadUsage = Schema.Struct({
-	/** Total cost in the provider's currency units. */
+	/** Total cost in US dollars, from the catalog's prices. */
 	cost: Schema.Finite,
 	input: Schema.Int,
 	output: Schema.Int,
@@ -376,7 +376,8 @@ export const Api = RpcGroup.make(
 	 * Ephemeral events (text and tool progress deltas) are never stored, so they are not here;
 	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
 	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
-	 * With `threadId`, only that thread's events; the marker still names the session's head.
+	 * With `threadId`, only that thread's events; the marker still names the session's head. A fork's
+	 * own log starts at its `thread.forked`: what it inherits is in `thread.history`.
 	 */
 	Rpc.make("session.log", {
 		payload: {
