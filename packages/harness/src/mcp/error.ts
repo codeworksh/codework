@@ -48,6 +48,12 @@ export class UnavailableError extends Schema.TaggedError<UnavailableError>()("Mc
 	message: Schema.String,
 }) {}
 
+/** The thread has no MCP server of this name, or a turn replaced it meanwhile. */
+export class UnknownServerError extends Schema.TaggedError<UnknownServerError>()("Mcp.UnknownServerError", {
+	server: Schema.String,
+	message: Schema.String,
+}) {}
+
 /** A tool call or resource request reached the server and failed. `message` is what the model reads. */
 export class ToolCallError extends Schema.TaggedError<ToolCallError>()("Mcp.ToolCallError", {
 	server: Schema.String,

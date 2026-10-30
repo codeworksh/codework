@@ -436,7 +436,7 @@
 		},
 		{
 			"server": "badheader",
-			"state": "connecting",
+			"state": "failed",
 			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
 			"tools": [],
 			"resources": false

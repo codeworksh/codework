@@ -1,25 +1,31 @@
 /**
- * The MCP servers sessions run, kept connected across their exchanges.
+ * The MCP servers threads run, kept connected across their turns.
  *
- * A server's `scope` decides who shares a running instance of it: one session, every session in a
- * space, or the whole app. An instance is keyed by that scope and by everything its connection is
- * made from, so sessions that resolve different settings never share one.
+ * A server's `scope` decides who shares a running instance of it: the threads of one session at the
+ * same place, every session in a space, or the whole app. An instance is keyed by that scope and by
+ * everything its connection is made from, so threads that resolve different settings never share
+ * one.
  *
- * Every exchange hands over the session's servers as its `mcp` plugins left them ({@link
- * Interface.reconcile}); a session moves to a new instance when a server's connection settings
+ * Every turn hands over the thread's servers as its `mcp` plugins left them ({@link
+ * Interface.reconcile}); a thread moves to a new instance when a server's connection settings
  * change, stops using one it no longer names, and new instances connect in the background. Exposure
- * stays the session's own: two sessions can share an instance and show the model different tools.
+ * stays the thread's own: two threads can share an instance and show the model different tools.
  *
- * A running drain holds a {@link Interface.lease} on its session's instances. An instance no session
- * uses any more closes at once; one no drain holds closes after an idle timeout. The tools an exchange registers are the ones the servers offered
- * at that moment, frozen with the rest of the exchange; the connection behind a tool is looked up
- * when it is called:
+ * A running drain holds a {@link Interface.lease} on its thread's instances. An instance no thread
+ * uses any more closes at once; one no drain holds closes after an idle timeout. The tools a turn
+ * registers are the ones the servers offered at that moment, each with its exposure, frozen with the
+ * rest of the turn; the connection behind a tool is looked up when it is called:
  *
  * - A connection that drops fails the calls running on it, and the next call reconnects.
+ * - Reconcile never restarts a failed server; only a config change or {@link Interface.connect}
+ *   does. A server whose tools were declared still reconnects on its next call.
  * - A Streamable HTTP session the server forgot is replaced, and calls that hit it run once more on
  *   the new one. The old connection closes when its last call finishes, never under one.
  * - A tool call is never retried after the server may have run it.
- * - A changed tool list takes effect at the next exchange; a call to a withdrawn tool says so.
+ * - A changed tool list takes effect at the next turn; a call to a withdrawn tool says so.
+ *
+ * Every state change of an instance is published, as an ephemeral `mcp.server.status` event, to
+ * each thread using it.
  *
  * Each connection lives in its own scope under the service's, so closing it, or shutting the
  * service down, stops the server process and ends the HTTP session.
@@ -30,6 +36,7 @@ import type { AuthProvider, Tool } from "@modelcontextprotocol/client";
 import {
 	Cause,
 	Context,
+	DateTime,
 	Deferred,
 	Duration,
 	Effect,
@@ -37,15 +44,27 @@ import {
 	Fiber,
 	FiberSet,
 	Layer,
+	Option,
 	Schema,
 	Scope,
 	Semaphore,
 } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
-import { ConnectError, type McpError, NeedsAuthError, ToolCallError, UnavailableError } from "./error.ts";
+import {
+	ConnectError,
+	type McpError,
+	NeedsAuthError,
+	ToolCallError,
+	UnavailableError,
+	UnknownServerError,
+} from "./error.ts";
+import { Event } from "../event/event.ts";
+import { EventList } from "../event/list.ts";
 import { ID as SessionId } from "../session/schema.ts";
+import { ID as ThreadId } from "../thread/schema.ts";
 import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
+import { namespace } from "./config.ts";
 import { McpLog } from "./log.ts";
 import { McpOAuth } from "./oauth.ts";
 import { McpOutput } from "./output.ts";
@@ -56,19 +75,19 @@ import { hostPath } from "../host.ts";
 import { ModelCatalog } from "../model/catalog.ts";
 import { expandTilde } from "../util/home.ts";
 
-/** An exchange waits this long for the servers it started whose tools are declared to the model. */
+/** A turn waits this long for the servers it started whose tools it declares or has loaded. */
 const STARTUP_WAIT = Duration.seconds(10);
 /** An instance no running drain holds closes after this long. */
 const IDLE_TIMEOUT = Duration.minutes(10);
 const DEFAULT_TIMEOUT_SECONDS = 60;
 
-export type State = "connecting" | "connected" | "disconnected" | "failed" | "needs-auth" | "disabled";
+export type State = EventList.McpServerState["state"];
 
 export interface Status {
 	readonly server: string;
 	readonly state: State;
 	readonly error?: string;
-	/** Tools the server offered when last listed, each with its exposure in the session. */
+	/** Tools the server offered when last listed, each with its exposure in the thread; kept while it is not connected. */
 	readonly tools: ReadonlyArray<{ readonly name: string; readonly exposure: Exposure }>;
 	/** Whether the server offered resources when it last connected. */
 	readonly resources: boolean;
@@ -76,29 +95,42 @@ export interface Status {
 
 export interface Input {
 	readonly sessionId: SessionId;
+	readonly threadId: ThreadId;
 	readonly servers: ReadonlyArray<readonly [name: string, config: ServerConfig]>;
 	/**
 	 * Where a `session` server starts (its own relative `cwd` resolves against it), and the root sent
-	 * to it: the session's directory when its sandbox is the host's own filesystem. Absent otherwise,
+	 * to it: the thread's directory when its sandbox is the host's own filesystem. Absent otherwise,
 	 * since that directory does not exist here; servers then start in the session's host directory
 	 * and are sent no roots.
 	 */
 	readonly directory?: string | undefined;
-	/** The session's space; `root`, its folder, only when the space is on the host's own filesystem. */
+	/** The thread's space; `root`, its folder, only when the space is on the host's own filesystem. */
 	readonly space: { readonly id: string; readonly root?: string | undefined };
 	readonly hostDir?: string | undefined;
-	/** Configuration problems from `mcp.json`, reported once per session. */
+	/** Configuration problems from `mcp.json`, reported once per thread. */
 	readonly errors?: ReadonlyArray<string>;
+	/** Deferred tools the thread has loaded (its `modelTools.add`); their servers are waited for like direct ones. */
+	readonly loaded?: ReadonlyArray<string> | undefined;
 }
 
 export interface Interface {
-	/** Settle a session's servers for its next exchange, and return the tools that exchange declares. */
+	/** Settle a thread's servers for its next turn, and return every tool they offer, with its exposure. */
 	readonly reconcile: (input: Input) => Effect.Effect<ReadonlyArray<RegisteredTool>>;
-	/** Keep the session's instances open for as long as the calling scope, a drain, runs. */
-	readonly lease: (sessionId: SessionId) => Effect.Effect<void, never, Scope.Scope>;
-	readonly status: (sessionId: SessionId) => Effect.Effect<ReadonlyArray<Status>>;
-	/** Wait until each of the session's servers has finished its first connect attempt. */
-	readonly settle: (sessionId: SessionId) => Effect.Effect<void>;
+	/** Keep the thread's instances open for as long as the calling scope, a drain, runs. */
+	readonly lease: (thread: {
+		readonly sessionId: SessionId;
+		readonly threadId: ThreadId;
+	}) => Effect.Effect<void, never, Scope.Scope>;
+	readonly status: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<Status>>;
+	/** Wait until each of the thread's servers has finished its first connect attempt. */
+	readonly settle: (threadId: ThreadId) => Effect.Effect<void>;
+	/**
+	 * Close the instance's connection or attempt and connect it afresh, for every thread sharing it,
+	 * returning its state after that attempt.
+	 */
+	readonly connect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
+	/** Close the instance and keep it disconnected, for every thread sharing it, until {@link connect} or a config change. */
+	readonly disconnect: (threadId: ThreadId, server: string) => Effect.Effect<Status, UnknownServerError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/mcp/mcp/Service") {}
@@ -112,10 +144,10 @@ interface Live {
 	refreshes: number;
 }
 
-/** One running instance of a server, shared by the sessions whose servers resolve to its key. */
+/** One running instance of a server, shared by the threads whose servers resolve to its key. */
 interface Server {
 	readonly name: string;
-	/** The config it was started with. Exposure is read from each session's own config instead. */
+	/** The config it was started with. Exposure is read from each thread's own config instead. */
 	readonly config: ServerConfig;
 	/** The scope and everything a connection is made from. */
 	readonly key: string;
@@ -134,30 +166,37 @@ interface Server {
 	/** Settles when the first background attempt finishes. */
 	ready: Deferred.Deferred<void> | undefined;
 	closed: boolean;
+	/** Disconnected on request: nothing connects it until `connect` or a config change. */
+	stopped: boolean;
+	/** The last status published, so a no-op change publishes nothing. */
+	published: string | undefined;
 	readonly lock: Semaphore.Semaphore;
-	/** Sessions whose servers resolve to this instance. */
-	readonly users: Set<SessionId>;
+	/** Runs `connect` and `disconnect` one at a time. */
+	readonly control: Semaphore.Semaphore;
+	/** Threads whose servers resolve to this instance. */
+	readonly users: Set<ThreadId>;
 	/** Drains holding it open. */
 	leases: number;
 	/** Bumped whenever the lease count changes, so an idle timer can tell it went stale. */
 	generation: number;
 }
 
-/** One of a session's servers: its own config, and the instance it resolves to unless disabled. */
+/** One of a thread's servers: its own config, and the instance it resolves to unless disabled. */
 interface Entry {
 	readonly config: ServerConfig;
 	readonly server: Server | undefined;
 }
 
-interface Session {
-	readonly id: SessionId;
+interface Thread {
+	readonly id: ThreadId;
+	readonly sessionId: SessionId;
 	readonly servers: Map<string, Entry>;
 	readonly names: ReturnType<typeof McpTool.names>;
 	readonly lock: Semaphore.Semaphore;
 	readonly reported: Set<string>;
-	/** Whether the session was told its `codemode` or `deferred` tools cannot be reached. */
+	/** Whether the thread was told its `codemode` tools cannot be reached. */
 	warnedUnreachable: boolean;
-	/** Running drains of this session. */
+	/** Running drains of this thread. */
 	leases: number;
 }
 
@@ -175,7 +214,7 @@ const canonical = (value: unknown): string =>
 /**
  * The scope, the server's name and the parts of its config that decide the connection; exposure and
  * description do not. The name is part of it so that two entries are always two instances, and a
- * session's servers map one to one onto the instances it uses.
+ * thread's servers map one to one onto the instances it uses.
  */
 const instanceKey = (
 	scope: string,
@@ -206,6 +245,39 @@ const hasDirectTools = (config: ServerConfig) =>
 	exposureOf(config) === "direct" ||
 	Object.values(config.toolExposure ?? {}).some((exposure) => exposure === "direct");
 
+/** Whether a loaded tool name could belong to the server; its tools are not known before it connects. */
+const loadsFrom = (server: string, loaded: ReadonlyArray<string>) =>
+	loaded.some((name) => name.startsWith(`${namespace(server)}__`));
+
+/** A thread's server as that thread sees it: the instance's state, with the thread's own exposure. */
+const statusOf = (name: string, entry: Entry): Status => {
+	const server = entry.server;
+	if (server === undefined) return { server: name, state: "disabled", tools: [], resources: false };
+	return {
+		server: name,
+		state: server.closed ? "disconnected" : server.state,
+		...(server.error === undefined ? {} : { error: server.error }),
+		tools: server.tools.map((tool) => ({ name: tool.name, exposure: McpTool.exposure(entry.config, tool.name) })),
+		resources: server.resources,
+	};
+};
+
+const eventStatus = (server: Server): EventList.McpServerState => {
+	const { name, state } = server;
+	switch (state) {
+		case "connected":
+			return { server: name, state, tools: server.tools.map((tool) => tool.name) };
+		case "failed":
+		case "authenticate":
+			return { server: name, state, error: server.error ?? state };
+		case "disconnected":
+			return { server: name, state, ...(server.error === undefined ? {} : { error: server.error }) };
+		case "connecting":
+		case "disabled":
+			return { server: name, state };
+	}
+};
+
 export const layer = (options: {
 	readonly hostCwd: string;
 	readonly home: string;
@@ -218,6 +290,8 @@ export const layer = (options: {
 		Service,
 		Effect.gen(function* () {
 			const root = yield* Effect.scope;
+			// `check` runs servers apart from any session, without the event service: nobody listens then.
+			const events = yield* Effect.serviceOption(Event.Service);
 			// Connections close in parallel on shutdown, so one slow server's stop grace does not hold up
 			// the rest. Made before the fibers below, so connect attempts are interrupted before it closes.
 			const servers = yield* Scope.fork(root, "parallel");
@@ -226,7 +300,7 @@ export const layer = (options: {
 			const context = yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner>();
 			const log = yield* McpLog.make(hostPath.join(options.home, "mcp.log"));
 			const oauth = McpOAuth.store(options.home);
-			const sessions = new Map<SessionId, Session>();
+			const threads = new Map<ThreadId, Thread>();
 			const instances = new Map<string, Server>();
 			const idleTimeout = options.idleTimeout ?? IDLE_TIMEOUT;
 			// Shared remote endpoints should not see a burst of concurrent startups.
@@ -236,6 +310,52 @@ export const layer = (options: {
 				if (lock === undefined) endpoints.set(url, (lock = Semaphore.makeUnsafe(1)));
 				return lock;
 			};
+
+			/** Publish a status to each of these threads. */
+			const publishTo = (users: Iterable<ThreadId>, status: EventList.McpServerState) =>
+				Option.match(events, {
+					onNone: () => Effect.void,
+					onSome: (events) => publishWith(events, users, status),
+				});
+			const publishWith = (events: Event.Interface, users: Iterable<ThreadId>, status: EventList.McpServerState) =>
+				Effect.flatMap(DateTime.now, (timestamp) =>
+					Effect.forEach(
+						[...users].flatMap((threadId) => {
+							const thread = threads.get(threadId);
+							return thread === undefined ? [] : [thread];
+						}),
+						(thread) =>
+							events.publish(EventList.McpServerStatus, {
+								timestamp,
+								sessionId: thread.sessionId,
+								threadId: thread.id,
+								status,
+							}),
+						{ discard: true },
+					),
+				);
+
+			/** Publish the instance's status to every thread using it, unless it is the one published last. */
+			const publish = (server: Server) =>
+				Effect.suspend(() => {
+					const status = eventStatus(server);
+					const key = [
+						status.state,
+						"error" in status ? (status.error ?? "") : "",
+						...("tools" in status ? status.tools : []),
+					].join("\0");
+					if (key === server.published) return Effect.void;
+					server.published = key;
+					return publishTo(server.users, status);
+				});
+
+			/** The one place an instance's state changes. */
+			const setState = (server: Server, state: State, error?: string) =>
+				Effect.suspend(() => {
+					server.state = state;
+					server.error = error;
+					return publish(server);
+				});
 
 			const release = (live: Live) =>
 				live.retired && live.inflight === 0 ? Scope.close(live.scope, Exit.void) : Effect.void;
@@ -300,9 +420,8 @@ export const layer = (options: {
 			/** The server needs sign-in: remember what it was refused with, and any scope it asked for. */
 			const needsSignIn = (server: Server, error: NeedsAuthError) =>
 				Effect.gen(function* () {
-					server.state = "needs-auth";
-					server.error = signInHint(server.name, server.config);
 					server.refused = yield* credential(server);
+					yield* setState(server, "authenticate", signInHint(server.name, server.config));
 					const target = oauthServer(server);
 					if (target !== undefined && error.scope !== undefined)
 						yield* McpOAuth.remember(oauth, target, {
@@ -326,8 +445,7 @@ export const layer = (options: {
 				live.connection.onClose((reason) =>
 					current(
 						Effect.gen(function* () {
-							server.state = "disconnected";
-							server.error = reason;
+							yield* setState(server, "disconnected", reason);
 							yield* retire(server, live);
 						}),
 					),
@@ -342,13 +460,17 @@ export const layer = (options: {
 						const latest = () => server.live === live && live.refreshes === refresh;
 						fork(
 							live.connection.tools().pipe(
-								Effect.match({
-									onSuccess: (tools) => {
-										if (latest()) server.tools = tools;
-									},
-									onFailure: (error) => {
-										if (latest()) server.error = `failed to refresh tools: ${error.message}`;
-									},
+								Effect.matchEffect({
+									onSuccess: (tools) =>
+										Effect.suspend(() => {
+											if (!latest()) return Effect.void;
+											server.tools = tools;
+											return publish(server);
+										}),
+									onFailure: (error) =>
+										Effect.sync(() => {
+											if (latest()) server.error = `failed to refresh tools: ${error.message}`;
+										}),
 								}),
 							),
 						);
@@ -386,14 +508,22 @@ export const layer = (options: {
 						const error = Cause.squash(exit.cause);
 						const message =
 							typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
+						if (server.closed || server.stopped) return yield* new ConnectError({ server: server.name, message });
 						yield* Effect.logWarning("mcp connect failed", { server: server.name, error: message });
 						if (Schema.is(NeedsAuthError)(error)) {
 							yield* needsSignIn(server, error);
 							return yield* new ConnectError({ server: server.name, message: server.error! });
 						}
-						server.state = "failed";
-						server.error = message;
+						yield* setState(server, "failed", message);
 						return yield* new ConnectError({ server: server.name, message });
+					}
+					// Closed or disconnected while connecting: the connection must not outlive that.
+					if (server.closed || server.stopped) {
+						yield* Scope.close(scope, Exit.void);
+						return yield* new ConnectError({
+							server: server.name,
+							message: `MCP server "${server.name}" is ${server.closed ? "shut down" : "disconnected"}`,
+						});
 					}
 					const live: Live = {
 						connection: exit.value.connection,
@@ -405,8 +535,7 @@ export const layer = (options: {
 					server.live = live;
 					server.tools = exit.value.tools;
 					server.resources = exit.value.connection.capabilities?.resources !== undefined;
-					server.state = "connected";
-					server.error = undefined;
+					yield* setState(server, "connected");
 					watch(server, live);
 					yield* Effect.logInfo("mcp connected", { server: server.name, tools: server.tools.length });
 					return live;
@@ -428,17 +557,21 @@ export const layer = (options: {
 					});
 					const next = yield* Effect.gen(function* () {
 						if (server.closed) return yield* shutDown;
+						if (server.stopped)
+							return yield* new UnavailableError({
+								server: server.name,
+								message: `MCP server "${server.name}" is disconnected`,
+							});
 						const current = server.live;
 						// A drop is known here before its `onClose` handler has run.
 						const reason = current?.connection.dropped();
 						if (current !== undefined && reason === undefined) return current;
 						if (current !== undefined) {
-							server.state = "disconnected";
-							server.error = reason;
+							yield* setState(server, "disconnected", reason);
 							yield* retire(server, current);
 						}
 						if (server.attempt === undefined) {
-							server.state = "connecting";
+							yield* setState(server, "connecting");
 							// Started after the assignment: an attempt that fails at once would otherwise clear
 							// `attempt` before it is set, and the finished fiber would stand in for every retry.
 							server.attempt = forkAttempt(Effect.andThen(Effect.yieldNow, attempt(server)));
@@ -452,16 +585,20 @@ export const layer = (options: {
 					return yield* Cause.hasInterruptsOnly(exit.cause) ? Effect.fail(shutDown) : Effect.failCause(exit.cause);
 				});
 
-			/** Stop the instance: interrupt a connect in progress, and retire the connection it has. */
-			const close = (server: Server) =>
+			/** Interrupt a connect in progress, and retire the connection the instance has. */
+			const stop = (server: Server) =>
 				Effect.gen(function* () {
-					if (instances.get(server.key) === server) instances.delete(server.key);
-					server.closed = true;
 					const pending = server.attempt;
 					if (pending !== undefined) yield* Fiber.interrupt(pending);
-					yield* Effect.suspend(() =>
-						server.live === undefined ? Effect.void : retire(server, server.live),
-					).pipe(server.lock.withPermits(1));
+					if (server.live !== undefined) yield* retire(server, server.live);
+				}).pipe(server.lock.withPermits(1));
+
+			/** Stop the instance for good: nobody uses it any more, or it idled out. */
+			const close = (server: Server) =>
+				Effect.suspend(() => {
+					if (instances.get(server.key) === server) instances.delete(server.key);
+					server.closed = true;
+					return stop(server);
 				});
 
 			/**
@@ -470,7 +607,7 @@ export const layer = (options: {
 			 * runs once more on a new one; nothing else is retried here.
 			 */
 			const request =
-				(session: Session, name: string, failed: (message: string) => ToolCallError) =>
+				(thread: Thread, name: string, failed: (message: string) => ToolCallError) =>
 				<A>(
 					run: (connection: McpClient.Connection) => Effect.Effect<A, McpClient.Failed>,
 					/** Why the server, as it stands, no longer offers what is asked; checked before every attempt. */
@@ -479,7 +616,7 @@ export const layer = (options: {
 					Effect.gen(function* () {
 						const refuse = (message: string) => new UnavailableError({ server: name, message });
 						for (let attempt = 1; ; attempt++) {
-							const entry = session.servers.get(name);
+							const entry = thread.servers.get(name);
 							const server = entry?.server;
 							if (entry === undefined || server === undefined || server.closed)
 								return yield* refuse(`MCP server "${name}" is disabled.`);
@@ -489,7 +626,7 @@ export const layer = (options: {
 								// A server that needs sign-in says how to sign in, which is all the model can pass on.
 								Effect.mapError((error) =>
 									refuse(
-										server.state === "needs-auth"
+										server.state === "authenticate"
 											? error.message
 											: `MCP server "${name}" is not connected: ${error.message}`,
 									),
@@ -525,9 +662,9 @@ export const layer = (options: {
 					});
 
 			/** One call of one of the server's tools. A tool call is never retried after the server may have run it. */
-			const call = (session: Session, name: string, tool: string) => (run: McpTool.Run) =>
+			const call = (thread: Thread, name: string, tool: string) => (run: McpTool.Run) =>
 				request(
-					session,
+					thread,
 					name,
 					(message) =>
 						new ToolCallError({ server: name, tool, message: `MCP tool "${name}/${tool}" failed: ${message}` }),
@@ -540,13 +677,16 @@ export const layer = (options: {
 							: undefined,
 				);
 
-			/** Servers the resource tools reach: enabled, offering resources, and not hidden for this session. */
+			/** Servers the resource tools reach: enabled, connectable, offering resources, and not hidden for this thread. */
 			const withResources = (entry: Entry) =>
-				entry.server !== undefined && entry.server.resources && (entry.config.exposure ?? "direct") !== "hidden";
+				entry.server !== undefined &&
+				!entry.server.stopped &&
+				entry.server.resources &&
+				exposureOf(entry.config) !== "hidden";
 
-			const resourceServer = (session: Session, name: string): McpResources.Server => {
+			const resourceServer = (thread: Thread, name: string): McpResources.Server => {
 				const reach = request(
-					session,
+					thread,
 					name,
 					(message) =>
 						new ToolCallError({
@@ -599,15 +739,16 @@ export const layer = (options: {
 				arm(server);
 			};
 
-			/** The instances a session uses, each once. */
-			const used = (session: Session) =>
-				new Set([...session.servers.values()].flatMap((entry) => (entry.server ? [entry.server] : [])));
+			/** The instances a thread uses, each once. */
+			const used = (thread: Thread) =>
+				new Set([...thread.servers.values()].flatMap((entry) => (entry.server ? [entry.server] : [])));
 
-			const sessionOf = (sessionId: SessionId) => {
-				let session = sessions.get(sessionId);
-				if (session === undefined) {
-					session = {
-						id: sessionId,
+			const threadOf = (threadId: ThreadId, sessionId: SessionId) => {
+				let thread = threads.get(threadId);
+				if (thread === undefined) {
+					thread = {
+						id: threadId,
+						sessionId,
 						leases: 0,
 						servers: new Map(),
 						names: McpTool.names(),
@@ -615,16 +756,16 @@ export const layer = (options: {
 						reported: new Set(),
 						warnedUnreachable: false,
 					};
-					sessions.set(sessionId, session);
+					threads.set(threadId, thread);
 				}
-				return session;
+				return thread;
 			};
 
 			const reconcile = Effect.fn("Mcp.reconcile")(function* (input: Input) {
-				const session = sessionOf(input.sessionId);
+				const thread = threadOf(input.threadId, input.sessionId);
 				for (const error of input.errors ?? []) {
-					if (session.reported.has(error)) continue;
-					session.reported.add(error);
+					if (thread.reported.has(error)) continue;
+					thread.reported.add(error);
 					yield* Effect.logWarning(`mcp config: ${error}`);
 				}
 				/** Where a server of this scope starts, the roots it is sent, and the key of its instances. */
@@ -641,6 +782,7 @@ export const layer = (options: {
 							};
 						}
 						default:
+							// Threads of a session at the same place share one; `cwd` and `roots` are in the key.
 							return {
 								key: `session:${input.sessionId}`,
 								cwd: input.directory ?? input.hostDir ?? options.hostCwd,
@@ -649,26 +791,31 @@ export const layer = (options: {
 					}
 				};
 				// A server that needed sign-in connects again once its credential changed: the user signed in,
-				// in this process or another, and expects the next exchange to have its tools.
+				// in this process or another, and expects the next turn to have its tools.
 				const signedIn = new Set<Server>();
 				for (const server of instances.values())
 					if (
-						server.state === "needs-auth" &&
+						server.state === "authenticate" &&
 						server.attempt === undefined &&
 						!server.closed &&
 						(yield* credential(server)) !== server.refused
 					)
 						signedIn.add(server);
-				const started: Array<readonly [Entry, Server]> = [];
-				// All bookkeeping happens in one step, so an interrupted exchange cannot leave an instance
-				// counting a session or a drain it no longer has; closing what nobody uses runs on its own.
+				const restart = new Set<Server>();
+				/** Servers this turn waits for; `joined` when the thread did not use that instance before. */
+				const started: Array<readonly [string, Entry, Server, joined: boolean]> = [];
+				const disabled: string[] = [];
+				// All bookkeeping happens in one step, so an interrupted turn cannot leave an instance
+				// counting a thread or a drain it no longer has; closing what nobody uses runs on its own.
 				const closing = yield* Effect.sync(() => {
-					const before = new Map(session.servers);
-					const previous = used(session);
-					session.servers.clear();
+					const before = new Map(thread.servers);
+					const previous = used(thread);
+					thread.servers.clear();
 					for (const [name, config] of input.servers) {
 						if (config.enabled === false) {
-							session.servers.set(name, { config, server: undefined });
+							thread.servers.set(name, { config, server: undefined });
+							const was = before.get(name);
+							if (was === undefined || was.server !== undefined) disabled.push(name);
 							continue;
 						}
 						const where = placement(config.scope);
@@ -690,87 +837,95 @@ export const layer = (options: {
 								attempt: undefined,
 								ready: undefined,
 								closed: false,
+								stopped: false,
+								published: undefined,
 								lock: Semaphore.makeUnsafe(1),
+								control: Semaphore.makeUnsafe(1),
 								users: new Set(),
 								leases: 0,
 								generation: 0,
 							};
 							instances.set(key, server);
-							start(server);
-						} else if ((server.state === "failed" || signedIn.has(server)) && server.attempt === undefined) {
-							// A server that could not connect declares no tools, so no call would retry it, and
-							// shared instances would keep every later session on it. Retry in the background;
-							// waiting would hold up every prompt while it is down.
-							start(server);
-						}
+						} else if (signedIn.has(server) && server.attempt === undefined) restart.add(server);
 						const entry: Entry = { config, server };
-						session.servers.set(name, entry);
-						if (before.get(name)?.server !== server || signedIn.has(server)) started.push([entry, server]);
-						if (!server.users.has(session.id)) {
-							server.users.add(session.id);
-							hold(server, session.leases);
+						thread.servers.set(name, entry);
+						const joined = before.get(name)?.server !== server;
+						if (joined || signedIn.has(server)) started.push([name, entry, server, joined]);
+						if (!server.users.has(thread.id)) {
+							server.users.add(thread.id);
+							hold(server, thread.leases);
 						}
 					}
-					// Instances this session no longer uses: a removed server, or changed settings.
-					const current = used(session);
+					// Instances this thread no longer uses: a removed server, or changed settings.
+					const current = used(thread);
 					const unused: Server[] = [];
 					for (const server of previous) {
 						if (current.has(server)) continue;
-						server.users.delete(session.id);
-						hold(server, -session.leases);
+						server.users.delete(thread.id);
+						hold(server, -thread.leases);
 						if (server.users.size === 0) unused.push(server);
 					}
 					return unused;
-				}).pipe(session.lock.withPermits(1));
+				}).pipe(thread.lock.withPermits(1));
 				for (const server of closing) fork(close(server));
+				for (const name of disabled) yield* publishTo([thread.id], { server: name, state: "disabled" });
+				for (const server of restart) start(server);
+				for (const [, , server, joined] of started) {
+					// A new instance publishes from its first state on; a thread joining a running one learns
+					// where it stands.
+					if (server.published === undefined && server.ready === undefined) start(server);
+					else if (joined) yield* publishTo([thread.id], eventStatus(server));
+				}
 
-				// Wait for servers this exchange started (all of them at first, then new or restarted ones) so
-				// their tools are declared in its first request, but never indefinitely: one hanging server
+				// Wait for servers this turn started using (all of them at first, then new or restarted ones)
+				// so their tools are offered in its first request, but never indefinitely: one hanging server
 				// must not hold up the prompt.
-				const pending = started.filter(([entry]) => hasDirectTools(entry.config));
+				const loaded = input.loaded ?? [];
+				const pending = started.filter(([name, entry]) => hasDirectTools(entry.config) || loadsFrom(name, loaded));
 				if (pending.length > 0) {
-					const finished = yield* Effect.forEach(pending, ([, server]) =>
+					const finished = yield* Effect.forEach(pending, ([, , server]) =>
 						server.ready === undefined ? Effect.void : Deferred.await(server.ready),
 					).pipe(Effect.timeoutOption(STARTUP_WAIT));
 					if (finished._tag === "None")
 						yield* Effect.logInfo("mcp servers are still connecting; their tools appear once connected");
 				}
 
-				const tools: RegisteredTool[] = [];
-				// Until codemode and `tool_search` exist, nothing reaches these tools; say so once.
-				const unreachable = [...session.servers.values()].some(
+				// Until codemode exists, nothing reaches these tools; say so once.
+				const unreachable = [...thread.servers.values()].some(
 					(entry) =>
 						entry.server !== undefined &&
 						[exposureOf(entry.config), ...Object.values(entry.config.toolExposure ?? {})].some(
-							(exposure) => exposure === "codemode" || exposure === "deferred",
+							(exposure) => exposure === "codemode",
 						),
 				);
-				if (unreachable && !session.warnedUnreachable) {
-					session.warnedUnreachable = true;
+				if (unreachable && !thread.warnedUnreachable) {
+					thread.warnedUnreachable = true;
 					yield* Effect.logWarning(
-						"MCP tools are only reachable from the codemode or tool_search tool, but neither is active; they cannot be called.",
+						"MCP tools exposed to codemode are only reachable from the codemode tool, which is not active; they cannot be called.",
 					);
 				}
+				// Every tool is registered with its exposure; the registry decides which ones are offered.
+				const tools: RegisteredTool[] = [];
 				const output = { save: McpOutput.save };
 				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
-				const resourceTools = [...session.servers.values()].some(
+				const resourceTools = [...thread.servers.values()].some(
 					(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
 				);
-				for (const [name, entry] of session.servers) {
+				for (const [name, entry] of thread.servers) {
 					const server = entry.server;
-					if (server === undefined || server.tools.length === 0) continue;
-					const names = session.names(
+					if (server === undefined || server.stopped || server.tools.length === 0) continue;
+					const names = thread.names(
 						name,
 						server.tools.map((tool) => tool.name),
 					);
 					for (const tool of server.tools) {
-						if (McpTool.exposure(entry.config, tool.name) !== "direct") continue;
 						tools.push(
 							McpTool.make({
 								server: name,
 								tool,
 								name: names.get(tool.name)!,
-								call: call(session, name, tool.name),
+								exposure: McpTool.exposure(entry.config, tool.name),
+								call: call(thread, name, tool.name),
 								// A resource link points to `read_mcp_resource` only when the model has it.
 								content: { ...output, readable: resourceTools && withResources(entry) },
 							}),
@@ -781,13 +936,13 @@ export const layer = (options: {
 					tools.push(
 						...McpResources.make({
 							servers: () =>
-								[...session.servers]
+								[...thread.servers]
 									.filter(([, entry]) => withResources(entry))
-									.map(([name]) => resourceServer(session, name)),
+									.map(([name]) => resourceServer(thread, name)),
 							// A server still connecting may offer resources once it has.
 							ready: () =>
 								Effect.forEach(
-									[...session.servers.values()],
+									[...thread.servers.values()],
 									({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
 									{ discard: true },
 								),
@@ -797,46 +952,81 @@ export const layer = (options: {
 				return tools;
 			});
 
-			const lease = (sessionId: SessionId) =>
+			const lease = (input: { readonly sessionId: SessionId; readonly threadId: ThreadId }) =>
 				Effect.acquireRelease(
 					Effect.sync(() => {
-						const session = sessionOf(sessionId);
-						session.leases += 1;
-						for (const server of used(session)) hold(server, 1);
-						return session;
+						const thread = threadOf(input.threadId, input.sessionId);
+						thread.leases += 1;
+						for (const server of used(thread)) hold(server, 1);
+						return thread;
 					}),
-					(session) =>
+					(thread) =>
 						Effect.sync(() => {
-							session.leases -= 1;
-							for (const server of used(session)) hold(server, -1);
-							// Every session drains, MCP or not; one with no servers has nothing worth keeping.
-							if (session.leases === 0 && session.servers.size === 0 && sessions.get(session.id) === session)
-								sessions.delete(session.id);
+							thread.leases -= 1;
+							for (const server of used(thread)) hold(server, -1);
+							// Every thread drains, MCP or not; one with no servers has nothing worth keeping.
+							if (thread.leases === 0 && thread.servers.size === 0 && threads.get(thread.id) === thread)
+								threads.delete(thread.id);
 						}),
 				).pipe(Effect.asVoid);
+
+			/**
+			 * Run `operation` on the instance behind the thread's server, one operation per instance at a
+			 * time. A turn that moved the thread to another instance meanwhile makes the server unknown,
+			 * so a stale status is never returned.
+			 */
+			const control = (threadId: ThreadId, name: string, operation: (server: Server) => Effect.Effect<void>) =>
+				Effect.gen(function* () {
+					const unknown = new UnknownServerError({ server: name, message: `unknown MCP server "${name}"` });
+					const entry = threads.get(threadId)?.servers.get(name);
+					if (entry === undefined) return yield* unknown;
+					const server = entry.server;
+					if (server === undefined) return statusOf(name, entry);
+					return yield* Effect.gen(function* () {
+						yield* operation(server);
+						const current = threads.get(threadId)?.servers.get(name);
+						if (current?.server !== server) return yield* unknown;
+						return statusOf(name, current);
+					}).pipe(server.control.withPermits(1));
+				});
+
+			const connect = Effect.fn("Mcp.connect")((threadId: ThreadId, name: string) =>
+				control(threadId, name, (server) =>
+					Effect.gen(function* () {
+						server.stopped = false;
+						yield* stop(server);
+						// An explicit restart is reported even when an interrupted attempt left it `connecting`.
+						server.published = undefined;
+						yield* open(server).pipe(Effect.ignore);
+					}),
+				),
+			);
+
+			const disconnect = Effect.fn("Mcp.disconnect")((threadId: ThreadId, name: string) =>
+				control(threadId, name, (server) =>
+					Effect.gen(function* () {
+						server.stopped = true;
+						yield* stop(server);
+						yield* setState(server, "disconnected");
+					}),
+				),
+			);
 
 			return Service.of({
 				reconcile,
 				lease,
-				status: (sessionId) =>
+				status: (threadId) =>
 					Effect.sync(() =>
-						[...(sessions.get(sessionId)?.servers ?? [])].map(([name, { config, server }]) => ({
-							server: name,
-							state: server === undefined ? "disabled" : server.closed ? "disconnected" : server.state,
-							...(server?.error === undefined ? {} : { error: server.error }),
-							tools: (server?.tools ?? []).map((tool) => ({
-								name: tool.name,
-								exposure: McpTool.exposure(config, tool.name),
-							})),
-							resources: server?.resources ?? false,
-						})),
+						[...(threads.get(threadId)?.servers ?? [])].map(([name, entry]) => statusOf(name, entry)),
 					),
-				settle: (sessionId) =>
+				settle: (threadId) =>
 					Effect.forEach(
-						[...(sessions.get(sessionId)?.servers.values() ?? [])],
+						[...(threads.get(threadId)?.servers.values() ?? [])],
 						({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
 						{ discard: true, concurrency: "unbounded" },
 					),
+				connect,
+				disconnect,
 			});
 		}),
 	);
@@ -849,10 +1039,12 @@ export const check = Effect.fn("Mcp.check")(function* (
 	input: Pick<Input, "servers" | "directory" | "hostDir" | "errors">,
 ) {
 	const mcp = yield* Service;
+	// Servers checked outside a session run for a thread of their own.
 	const sessionId = SessionId.create();
-	yield* mcp.reconcile({ ...input, sessionId, space: { id: sessionId, root: input.directory } });
-	yield* mcp.settle(sessionId);
-	return yield* mcp.status(sessionId);
+	const threadId = ThreadId.create();
+	yield* mcp.reconcile({ ...input, sessionId, threadId, space: { id: sessionId, root: input.directory } });
+	yield* mcp.settle(threadId);
+	return yield* mcp.status(threadId);
 });
 
 export * as Mcp from "./mcp.ts";

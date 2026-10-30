@@ -27,7 +27,7 @@ interface Report {
 
 const MARKS: Record<Mcp.State, string> = {
 	connected: "✓",
-	"needs-auth": "⚠",
+	authenticate: "⚠",
 	failed: "✗",
 	connecting: "○",
 	disconnected: "○",
@@ -38,8 +38,6 @@ const describe = (report: Report) => {
 	switch (report.state) {
 		case "connected":
 			return `connected, ${report.tools.length} tool${report.tools.length === 1 ? "" : "s"}`;
-		case "needs-auth":
-			return "needs sign-in";
 		default:
 			return report.state;
 	}

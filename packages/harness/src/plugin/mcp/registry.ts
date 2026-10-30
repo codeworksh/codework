@@ -18,7 +18,7 @@ const frozen = <A>(value: A): A => {
 };
 
 /**
- * The session's MCP servers for one exchange, seeded from `mcp.json`. A plugin written in plain
+ * The session's MCP servers for one turn, seeded from `mcp.json`. A plugin written in plain
  * JavaScript can hand in anything, so every write is checked here with the rules `mcp.json` follows,
  * and a bad one fails that plugin's `setup` rather than a connection later.
  */
