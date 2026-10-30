@@ -85,7 +85,7 @@ const STARTUP_WAIT = Duration.seconds(10);
 const IDLE_TIMEOUT = Duration.minutes(10);
 const DEFAULT_TIMEOUT_SECONDS = 60;
 
-export type State = EventList.McpServerState["state"];
+export type State = typeof EventList.McpState.Type;
 
 export interface Status {
 	readonly server: string;

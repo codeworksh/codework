@@ -2,6 +2,7 @@ import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
+	EventList,
 	Location,
 	McpError,
 	optional,
@@ -245,7 +246,7 @@ const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.N
 /** One of a thread's MCP servers as that thread sees it. */
 export const McpStatus = Schema.Struct({
 	server: Schema.String,
-	state: Schema.Literals(["connecting", "connected", "failed", "authenticate", "disconnected", "disabled"]),
+	state: EventList.McpState,
 	error: optional(Schema.String),
 	/** Tools the server offered when last listed, each with its exposure in the thread. */
 	tools: Schema.Array(
