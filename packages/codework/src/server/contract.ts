@@ -103,6 +103,9 @@ const ThreadRef = {
 	threadId: optional(ThreadSchema.ID),
 };
 
+/** A thread's MCP server, by the name its `mcp.json` gives it. */
+const McpServerRef = { ...ThreadRef, server: Schema.String };
+
 /** One message in a thread's line (inherited ones first), oldest first. */
 export const HistoryEntry = Schema.Struct({
 	/** The entry id: what live events and `thread.message` refer to. */
@@ -252,9 +255,7 @@ export const McpStatus = Schema.Struct({
 });
 export type McpStatus = typeof McpStatus.Type;
 
-/** A thread's MCP server, by the name its `mcp.json` gives it. */
-const McpServerRef = { threadId: ThreadSchema.ID, server: Schema.String };
-const McpErrors = Schema.Union([ThreadStore.ThreadNotFoundError, McpError.UnknownServerError]);
+const McpErrors = Schema.Union([ThreadErrors, McpError.UnknownServerError]);
 
 export const Api = RpcGroup.make(
 	/**

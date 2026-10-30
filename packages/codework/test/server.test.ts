@@ -1288,7 +1288,13 @@ describe("WebSocket client", () => {
 				const main = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
 				// A thread that never ran has no MCP servers started yet.
 				const idle = yield* rpc["session.create"]({});
-				const scrub = (text: string) => text.replaceAll(main.id, "<main>").replaceAll(idle.id, "<idle>");
+				const sessionId = main.session.id;
+				const scrub = (text: string) =>
+					text
+						.replaceAll(main.id, "<main>")
+						.replaceAll(sessionId, "<session>")
+						.replaceAll(idle.id, "<idle>")
+						.replaceAll(idle.session.id, "<idle session>");
 				const quiet = () => Effect.void;
 				const turn = (text: string) =>
 					Client.run(rpc, { sessionId: main.session.id, threadId: main.id, text }, quiet).pipe(
@@ -1307,15 +1313,35 @@ describe("WebSocket client", () => {
 				const failed = yield* turn("one");
 				rmSync(gate);
 				const stillFailed = yield* turn("two");
-				const reconnected = yield* cli("mcp", "reconnect", "gated", "--threadId", main.id);
+				// Without --thread, the session's main thread.
+				const reconnected = yield* cli("mcp", "reconnect", "gated", "--session", sessionId);
 				const declared = yield* turn("three");
-				const disconnected = yield* cli("mcp", "disconnect", "gated", "--threadId", main.id);
+				const disconnected = yield* cli("mcp", "disconnect", "gated", "--session", sessionId, "--thread", main.id);
 				const afterDisconnect = yield* turn("four");
 				const errors = {
-					notStarted: yield* cli("mcp", "reconnect", "gated", "--threadId", idle.id),
-					unknownServer: yield* cli("mcp", "reconnect", "nope", "--threadId", main.id),
-					unknownThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "thr_missing"),
-					notAThread: yield* cli("mcp", "reconnect", "gated", "--threadId", "nope"),
+					notStarted: yield* cli("mcp", "reconnect", "gated", "--session", idle.session.id),
+					unknownServer: yield* cli("mcp", "reconnect", "nope", "--session", sessionId),
+					missingSession: yield* cli("mcp", "reconnect", "gated", "--thread", main.id),
+					unknownSession: yield* cli("mcp", "reconnect", "gated", "--session", "ses_missing"),
+					otherSessionThread: yield* cli(
+						"mcp",
+						"reconnect",
+						"gated",
+						"--session",
+						idle.session.id,
+						"--thread",
+						main.id,
+					),
+					unknownThread: yield* cli(
+						"mcp",
+						"reconnect",
+						"gated",
+						"--session",
+						sessionId,
+						"--thread",
+						"thr_missing",
+					),
+					notAThread: yield* cli("mcp", "reconnect", "gated", "--session", sessionId, "--thread", "nope"),
 				};
 				return { failed, stillFailed, reconnected, declared, disconnected, afterDisconnect, errors };
 			})
@@ -1329,9 +1355,10 @@ describe("WebSocket client", () => {
 					expect(artifact.failed).not.toContain("mcp__gated__echo");
 					expect(artifact.stillFailed).not.toContain("mcp__gated__echo");
 					expect(artifact.reconnected).toEqual({ status: 0, stdout: "✓ gated  connected, 1 tool\n" });
+					expect(artifact.disconnected).toEqual({ status: 0, stdout: "○ gated  disconnected\n" });
 					expect(artifact.declared).toContain("mcp__gated__echo");
 					expect(artifact.afterDisconnect).not.toContain("mcp__gated__echo");
-					for (const error of Object.values(artifact.errors)) expect(error.status).toBe(1);
+					for (const error of Object.values(artifact.errors)) expect(error.status).not.toBe(0);
 					return expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 						"./__artifacts__/server.mcp-reconnect.json",
 					);

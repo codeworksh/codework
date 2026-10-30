@@ -1,13 +1,12 @@
 import { Session } from "@codeworksh/harness/effect";
-import { Effect, Schema } from "effect";
+import { Effect, type Option } from "effect";
 import { Runtime } from "../../../../framework/runtime.ts";
 import { Client } from "../../../../server/client.ts";
-import { InvalidInputError, reportFailure } from "../../../error.ts";
+import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
+import { threadFlag } from "../../../thread.ts";
 import { Cmd } from "../../cmd.ts";
 import { describe, MARKS } from "./shared.ts";
-
-const isThreadId = Schema.is(Session.ThreadSchema.ID);
 
 /**
  * `reconnect` and `disconnect`: one RPC on a thread's server in a running server, which acts on the
@@ -16,18 +15,23 @@ const isThreadId = Schema.is(Session.ThreadSchema.ID);
 export const control = (operation: "connect" | "disconnect") =>
 	Effect.fn(`CLI.mcp.${operation}`)(function* ({
 		name,
-		threadId,
+		session,
+		thread,
 		server,
 	}: {
 		readonly name: string;
-		readonly threadId: string;
+		readonly session: string;
+		readonly thread: Option.Option<string>;
 		readonly server: string;
 	}) {
 		const program = Effect.gen(function* () {
-			if (!isThreadId(threadId))
-				return yield* new InvalidInputError({ message: "--threadId takes a thread ID (thr_…)" });
+			const threadId = yield* threadFlag(thread);
 			const rpc = yield* Client.make;
-			const status = yield* rpc[`mcp.${operation}`]({ threadId, server: name });
+			const status = yield* rpc[`mcp.${operation}`]({
+				sessionId: Session.SessionSchema.ID.make(session),
+				...(threadId === undefined ? {} : { threadId }),
+				server: name,
+			});
 			const lines = [`${MARKS[status.state]} ${status.server}  ${describe(status.state, status.tools.length)}`];
 			if (status.error !== undefined) for (const line of status.error.split("\n")) lines.push(`    ${line}`);
 			yield* writeOut(`${lines.join("\n")}\n`);

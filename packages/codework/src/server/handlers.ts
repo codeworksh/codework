@@ -113,12 +113,9 @@ export const layer = Contract.Api.toLayer(
 		const events = yield* Event.Service;
 		const registry = yield* EventRegistry.Service;
 		const mcp = yield* Mcp.Service;
-		/** Act on a thread's MCP server; a thread this server does not know fails like other thread RPCs. */
 		const mcpControl = (operation: "connect" | "disconnect") =>
-			Effect.fnUntraced(function* ({ threadId, server }: { threadId: ThreadSchema.ID; server: string }) {
-				if (Option.isNone(yield* threads.get(threadId)))
-					return yield* new ThreadStore.ThreadNotFoundError({ threadId });
-				return yield* mcp[operation](threadId, server);
+			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
+				return yield* mcp[operation](yield* resolve(ref), server);
 			});
 
 		return Contract.Api.of({

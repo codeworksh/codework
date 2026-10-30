@@ -52,7 +52,11 @@ const RunningServer = Flag.String("server").pipe(
 /** A thread's MCP server in a running server: every thread sharing its instance is affected. */
 const McpControlParams = {
 	name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
-	threadId: Flag.String("threadId").pipe(Flag.withDescription("Thread whose server it is: a thread ID")),
+	session: Flag.String("session").pipe(Flag.withAlias("s"), Flag.withDescription("The session")),
+	thread: Flag.String("thread").pipe(
+		Flag.withDescription("Thread of --session whose server it is: a thread ID, or main (default)"),
+		Flag.optional,
+	),
 	server: RunningServer,
 };
 
@@ -260,8 +264,12 @@ export const Cmd = Spec.make("codework", {
 					params: McpControlParams,
 					examples: [
 						{
-							command: "codework mcp reconnect linear --threadId thr_01ja",
-							description: "Restart the linear server the thread uses; its tools return from the next turn",
+							command: "codework mcp reconnect linear --session ses_01h9",
+							description: "Restart the linear server the main thread uses; its tools return from the next turn",
+						},
+						{
+							command: "codework mcp reconnect linear --session ses_01h9 --thread thr_01ja",
+							description: "Restart the one a thread of the session uses",
 						},
 					],
 				}),
@@ -270,8 +278,8 @@ export const Cmd = Spec.make("codework", {
 					params: McpControlParams,
 					examples: [
 						{
-							command: "codework mcp disconnect linear --threadId thr_01ja",
-							description: "Close the linear server the thread uses",
+							command: "codework mcp disconnect linear --session ses_01h9",
+							description: "Close the linear server the main thread uses",
 						},
 					],
 				}),

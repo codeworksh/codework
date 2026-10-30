@@ -24,6 +24,21 @@
 			"stdout": "",
 			"stderr": "error: unknown MCP server \"nope\"\n"
 		},
+		"missingSession": {
+			"status": 1,
+			"stdout": "DESCRIPTION\n  Connect a thread's MCP server afresh in a running server\n\nUSAGE\n  codework mcp reconnect [flags] <name>\n\nARGUMENTS\n  name string    Server name in mcp.json\n\nFLAGS\n  --user-config-dir string    Directory whose settings.jsonc replaces the user settings in --home\n  --home string               CodeWork home: user settings, credentials, cache and data (default: ~/.codework)\n  --database string           SQLite database path or :memory:\n  --session, -s string        The session\n  --thread string             Thread of --session whose server it is: a thread ID, or main (default)\n  --server string             Base URL of the running codework server\n\nGLOBAL FLAGS\n  --help, -h                                                          Show help information\n  --version, -v                                                       Show version information\n  --wizard                                                            Start wizard mode for a command\n  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)\n  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)\n\nEXAMPLES\n  # Restart the linear server the main thread uses; its tools return from the next turn\n  codework mcp reconnect linear --session ses_01h9\n\n  # Restart the one a thread of the session uses\n  codework mcp reconnect linear --session ses_01h9 --thread thr_01ja\n",
+			"stderr": "\nERROR\n  Missing required flag: --session\n"
+		},
+		"unknownSession": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: SessionNotFoundError\n"
+		},
+		"otherSessionThread": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: thread <main> not found\n"
+		},
 		"unknownThread": {
 			"status": 1,
 			"stdout": "",
@@ -32,7 +47,7 @@
 		"notAThread": {
 			"status": 1,
 			"stdout": "",
-			"stderr": "error: --threadId takes a thread ID (thr_…)\n"
+			"stderr": "error: --thread takes a thread ID (thr_…) or main\n"
 		}
 	}
 }

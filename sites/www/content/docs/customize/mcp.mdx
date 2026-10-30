@@ -141,10 +141,10 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 
 ## Reconnecting
 
-Restart a thread's server in a running CodeWork server, for example once a failed one can start:
+Restart a session's server in a running CodeWork server, for example once a failed one can start:
 
 ```bash
-codework mcp reconnect linear --threadId thr_01ja
+codework mcp reconnect linear --session ses_01h9
 ```
 
-It prints the server's state, like `codework mcp list`, and exits with 1 if it did not connect. Every thread sharing that server is reconnected, and its tools are back from their next message. `codework mcp disconnect linear --threadId thr_01ja` closes it until you reconnect it or change its settings.
+It acts on the session's main thread; `--thread <id>` picks another of its threads. It prints the server's state, like `codework mcp list`, and exits with 1 if it did not connect. Every thread sharing that server is reconnected, and its tools are back from their next message. `codework mcp disconnect linear --session ses_01h9` closes it until you reconnect it or change its settings.
