@@ -1,0 +1,40 @@
+{
+	"first": {
+		"status": [
+			{
+				"server": "remote",
+				"state": "authenticate",
+				"error": "MCP server \"remote\" requires sign-in. Run \"codework mcp login remote\".",
+				"tools": []
+			}
+		],
+		"attempts": 1
+	},
+	"unchanged": 1,
+	"afterSignIn": 2,
+	"settled": 2,
+	"events": {
+		"main": {
+			"remote": [
+				{
+					"server": "remote",
+					"state": "connecting"
+				},
+				{
+					"server": "remote",
+					"state": "authenticate",
+					"error": "MCP server \"remote\" requires sign-in. Run \"codework mcp login remote\"."
+				},
+				{
+					"server": "remote",
+					"state": "connecting"
+				},
+				{
+					"server": "remote",
+					"state": "authenticate",
+					"error": "MCP server \"remote\" requires sign-in. Run \"codework mcp login remote\"."
+				}
+			]
+		}
+	}
+}

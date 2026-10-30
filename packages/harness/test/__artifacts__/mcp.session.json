@@ -491,7 +491,8 @@
 	"configErrors": [
 		"<tmp>/home/mcp.json: server \"my_srv\" conflicts with \"my-srv\"",
 		"<tmp>/home/mcp.json: server \"broken\": url must be an http or https URL",
-		"<tmp>/home/mcp.json: server \"signin\": \"oauth\" is not supported yet",
-		"<tmp>/project/.codework/mcp.json: server \"ghost\" needs \"command\" or \"url\", or a user server to override"
+		"<tmp>/home/mcp.json: server \"signin\": oauth.callbackUrl must be an http URI on localhost, 127.0.0.1 or [::1] without query or fragment",
+		"<tmp>/project/.codework/mcp.json: server \"ghost\" needs \"command\" or \"url\", or a user server to override",
+		"<tmp>/project/.codework/mcp.json: server \"keyed\": auth is only allowed in the user mcp.json"
 	]
 }

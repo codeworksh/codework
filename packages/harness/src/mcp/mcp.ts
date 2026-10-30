@@ -18,7 +18,8 @@
  *
  * - A connection that drops fails the calls running on it, and the next call reconnects.
  * - Reconcile never restarts a failed server; only a config change or {@link Interface.connect}
- *   does. A server whose tools were declared still reconnects on its next call.
+ *   does. A server whose tools were declared still reconnects on its next call, and one waiting for
+ *   sign-in reconnects on a turn once its stored credential changed.
  * - A Streamable HTTP session the server forgot is replaced, and calls that hit it run once more on
  *   the new one. The old connection closes when its last call finishes, never under one.
  * - A tool call is never retried after the server may have run it.
@@ -32,7 +33,7 @@
  */
 
 import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
-import type { Tool } from "@modelcontextprotocol/client";
+import type { AuthProvider, Tool } from "@modelcontextprotocol/client";
 import {
 	Cause,
 	Context,
@@ -65,11 +66,13 @@ import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { namespace } from "./config.ts";
 import { McpLog } from "./log.ts";
+import { McpOAuth } from "./oauth.ts";
 import { McpOutput } from "./output.ts";
 import { McpResources } from "./resources.ts";
 import { McpTool } from "./tool.ts";
 import { McpValue } from "./value.ts";
 import { hostPath } from "../host.ts";
+import { ModelCatalog } from "../model/catalog.ts";
 import { expandTilde } from "../util/home.ts";
 
 /** A turn waits this long for the servers it started whose tools it declares or has loaded. */
@@ -153,6 +156,8 @@ interface Server {
 	tools: ReadonlyArray<Tool>;
 	/** Whether the server offered resources when it last connected. */
 	resources: boolean;
+	/** The credential it was refused with, when it needs sign-in: a new one is worth a retry. */
+	refused: string | undefined;
 	live: Live | undefined;
 	/** The connect attempt in progress. Callers share it; closing the server interrupts it. */
 	attempt: Fiber.Fiber<Live, ConnectError> | undefined;
@@ -222,6 +227,18 @@ const instanceKey = (
 
 const exposureOf = (config: ServerConfig) => config.exposure ?? "direct";
 
+/** An `Authorization` header is the user's own credential; OAuth stays out of its way. */
+const usesOAuth = (config: ServerConfig) =>
+	"url" in config &&
+	config.auth === undefined &&
+	!Object.keys(config.headers ?? {}).some((header) => header.toLowerCase() === "authorization");
+
+/** What the model reads about a server that needs sign-in: how the user signs in. */
+const signInHint = (name: string, config: ServerConfig) =>
+	"url" in config && config.auth !== undefined
+		? `MCP server "${name}" refused the credential of provider "${config.auth.provider}". Sign in to it with "codework auth login", or set its API key.`
+		: `MCP server "${name}" requires sign-in. Run "codework mcp login ${name}".`;
+
 const hasDirectTools = (config: ServerConfig) =>
 	exposureOf(config) === "direct" ||
 	Object.values(config.toolExposure ?? {}).some((exposure) => exposure === "direct");
@@ -261,6 +278,8 @@ const eventStatus = (server: Server): EventList.McpServerState => {
 export const layer = (options: {
 	readonly hostCwd: string;
 	readonly home: string;
+	/** Where provider logins are read for `auth.provider`; see {@link ModelCatalog.Credentials}. */
+	readonly authFile?: string | undefined;
 	/** How long an instance no drain holds stays open. Default: 10 minutes. */
 	readonly idleTimeout?: Duration.Input | undefined;
 }) =>
@@ -276,6 +295,7 @@ export const layer = (options: {
 			const forkAttempt = yield* FiberSet.makeRuntime<never, Live, ConnectError>();
 			const context = yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner>();
 			const log = yield* McpLog.make(hostPath.join(options.home, "mcp.log"));
+			const oauth = McpOAuth.store(options.home);
 			const threads = new Map<ThreadId, Thread>();
 			const instances = new Map<string, Server>();
 			const idleTimeout = options.idleTimeout ?? IDLE_TIMEOUT;
@@ -374,6 +394,50 @@ export const layer = (options: {
 				} satisfies McpClient.Stdio;
 			});
 
+			const oauthServer = (server: Server) =>
+				"url" in server.config
+					? { name: server.name, url: server.config.url, oauth: server.config.oauth }
+					: undefined;
+
+			/** The credential a request to the server carries, if the harness supplies one. */
+			const credential = Effect.fnUntraced(function* (server: Server) {
+				const config = server.config;
+				if ("url" in config && config.auth !== undefined)
+					return yield* ModelCatalog.providerToken(config.auth.provider, options.authFile).pipe(
+						Effect.orElseSucceed(() => undefined),
+					);
+				const target = oauthServer(server);
+				if (target === undefined || !usesOAuth(config)) return undefined;
+				return yield* McpOAuth.accessToken(oauth, target);
+			});
+
+			const authProvider = Effect.fnUntraced(function* (server: Server) {
+				const config = server.config;
+				if (!("url" in config)) return undefined;
+				if (config.auth !== undefined) {
+					// Read on every request, so the provider's refreshes apply; MCP keeps no copy.
+					return {
+						token: () => Effect.runPromiseWith(context)(credential(server)),
+					} satisfies AuthProvider;
+				}
+				if (!usesOAuth(config)) return undefined;
+				return yield* McpOAuth.connection({ store: oauth, server: oauthServer(server)! });
+			});
+
+			/** The server needs sign-in: remember what it was refused with, and any scope it asked for. */
+			const needsSignIn = (server: Server, error: NeedsAuthError) =>
+				Effect.gen(function* () {
+					server.refused = yield* credential(server);
+					yield* setState(server, "authenticate", signInHint(server.name, server.config));
+					const target = oauthServer(server);
+					if (target !== undefined && error.scope !== undefined)
+						yield* McpOAuth.remember(oauth, target, {
+							scope: error.scope,
+							resourceMetadataUrl: error.resourceMetadataUrl,
+							error: "insufficient_scope",
+						}).pipe(Effect.ignore);
+				});
+
 			const watch = (server: Server, live: Live) => {
 				// Callbacks run in the connection's own scope, and retiring closes that scope; run them
 				// in the service's instead, or closing would wait on the callback doing the closing.
@@ -428,9 +492,11 @@ export const layer = (options: {
 					const config = server.config;
 					const connect = Effect.gen(function* () {
 						const target = yield* endpoint(server);
+						const auth = yield* authProvider(server);
 						const connection = yield* McpClient.connect({
 							server: server.name,
 							endpoint: target,
+							...(auth === undefined ? {} : { authProvider: auth }),
 							...(server.roots === undefined ? {} : { roots: server.roots }),
 							timeout: { request: Duration.seconds(config.timeout ?? DEFAULT_TIMEOUT_SECONDS) },
 							// Written on the service's fibers: a failed handshake closes the connection's, and
@@ -450,8 +516,12 @@ export const layer = (options: {
 						const message =
 							typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
 						if (server.closed || server.stopped) return yield* new ConnectError({ server: server.name, message });
-						yield* setState(server, Schema.is(NeedsAuthError)(error) ? "authenticate" : "failed", message);
 						yield* Effect.logWarning("mcp connect failed", { server: server.name, error: message });
+						if (Schema.is(NeedsAuthError)(error)) {
+							yield* needsSignIn(server, error);
+							return yield* new ConnectError({ server: server.name, message: server.error! });
+						}
+						yield* setState(server, "failed", message);
 						return yield* new ConnectError({ server: server.name, message });
 					}
 					// Closed or disconnected while connecting: the connection must not outlive that.
@@ -558,7 +628,14 @@ export const layer = (options: {
 							const reason = unavailable(entry, server);
 							if (reason !== undefined) return yield* refuse(reason);
 							const live = yield* open(server).pipe(
-								Effect.mapError((error) => refuse(`MCP server "${name}" is not connected: ${error.message}`)),
+								// A server that needs sign-in says how to sign in, which is all the model can pass on.
+								Effect.mapError((error) =>
+									refuse(
+										server.state === "authenticate"
+											? error.message
+											: `MCP server "${name}" is not connected: ${error.message}`,
+									),
+								),
 							);
 							live.inflight += 1;
 							const exit = yield* run(live.connection).pipe(
@@ -580,10 +657,10 @@ export const layer = (options: {
 							}
 							if (failure._tag === "Mcp.NeedsAuthError") {
 								yield* Effect.gen(function* () {
-									yield* setState(server, "authenticate", failure.message);
+									yield* needsSignIn(server, failure);
 									yield* retire(server, live);
 								}).pipe(server.lock.withPermits(1));
-								return yield* refuse(`MCP server "${name}" needs sign-in: ${failure.message}`);
+								return yield* refuse(signInHint(name, entry.config));
 							}
 							return yield* failed(failure.message);
 						}
@@ -729,6 +806,24 @@ export const layer = (options: {
 							};
 					}
 				};
+				// A server that needed sign-in connects again once its credential changed: the user signed in,
+				// in this process or another, and expects the next turn to have its tools. Only the instances
+				// this thread's servers resolve to are checked.
+				const signedIn = new Set<Server>();
+				for (const [name, config] of input.servers) {
+					if (config.enabled === false) continue;
+					const where = placement(config.scope);
+					const server = instances.get(instanceKey(where.key, name, config, where.cwd, where.roots));
+					if (
+						server !== undefined &&
+						server.state === "authenticate" &&
+						server.attempt === undefined &&
+						!server.closed &&
+						(yield* credential(server)) !== server.refused
+					)
+						signedIn.add(server);
+				}
+				const restart = new Set<Server>();
 				const started: Array<readonly [string, Entry, Server]> = [];
 				const created: Server[] = [];
 				/** Running instances the thread joins, with the status published last when it joined. */
@@ -761,6 +856,7 @@ export const layer = (options: {
 								error: undefined,
 								tools: [],
 								resources: false,
+								refused: undefined,
 								live: undefined,
 								attempt: undefined,
 								ready: undefined,
@@ -775,10 +871,13 @@ export const layer = (options: {
 							};
 							instances.set(key, server);
 							created.push(server);
-						} else if (!server.users.has(thread.id)) joined.push([server, server.published]);
+						} else {
+							if (signedIn.has(server) && server.attempt === undefined) restart.add(server);
+							if (!server.users.has(thread.id)) joined.push([server, server.published]);
+						}
 						const entry: Entry = { config, server };
 						thread.servers.set(name, entry);
-						if (before.get(name)?.server !== server) started.push([name, entry, server]);
+						if (before.get(name)?.server !== server || signedIn.has(server)) started.push([name, entry, server]);
 						if (!server.users.has(thread.id)) {
 							server.users.add(thread.id);
 							hold(server, thread.leases);
@@ -798,6 +897,7 @@ export const layer = (options: {
 				// A new instance publishes from its first state on, to every thread using it by then.
 				for (const server of created) start(server);
 				for (const name of disabled) yield* publishTo([thread.id], { server: name, state: "disabled" });
+				for (const server of restart) start(server);
 
 				// Wait for servers this turn started using (all of them at first, then new or restarted ones)
 				// so their tools are offered in its first request, but never indefinitely: one hanging server

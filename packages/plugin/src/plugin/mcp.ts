@@ -62,11 +62,49 @@ export interface StdioServer extends Base {
 	readonly cwd?: string;
 }
 
-/** A Streamable HTTP server. `headers` values resolve like a stdio server's `env`. */
+/**
+ * OAuth client settings, for servers that do not accept dynamic client registration or need a
+ * fixed redirect URI.
+ */
+export interface OAuthConfig {
+	/** A pre-registered client id. Without it, the harness registers a client with the server. */
+	readonly clientId?: string;
+	/** Resolves like a header value. */
+	readonly clientSecret?: string;
+	/** Port of the loopback callback, for a client registered with a fixed redirect URI. */
+	readonly callbackPort?: number;
+	/**
+	 * The redirect URI registered for `clientId`: `http` on `localhost`, `127.0.0.1` or `[::1]`.
+	 * Without a port, the callback listens on `callbackPort` or a free port.
+	 */
+	readonly callbackUrl?: string;
+	/** Scopes to request, separated by spaces. Default: the scopes the server advertises. */
+	readonly scope?: string;
+	/** `client_name` sent with dynamic client registration. Default: `CodeWork`. */
+	readonly clientName?: string;
+	/**
+	 * Authorization server metadata (RFC 8414 or OpenID Connect discovery) to use instead of
+	 * discovering it through the server. `https`, or `http` on a loopback host.
+	 */
+	readonly authServerMetadataUrl?: string;
+}
+
+/**
+ * A Streamable HTTP server. `headers` values resolve like a stdio server's `env`.
+ *
+ * A server without an `Authorization` header or `auth` signs in with OAuth when it answers 401
+ * (`codework mcp login <name>`).
+ */
 export interface HttpServer extends Base {
 	readonly type?: "http" | "streamable-http";
 	readonly url: string;
 	readonly headers?: Readonly<Record<string, string>>;
+	readonly oauth?: OAuthConfig;
+	/**
+	 * Send a model provider's credential (its login token, else its API key) as the bearer instead
+	 * of using OAuth. Only in the user `mcp.json`, and only to `https` URLs or loopback hosts.
+	 */
+	readonly auth?: { readonly provider: string };
 }
 
 export type ServerConfig = StdioServer | HttpServer;

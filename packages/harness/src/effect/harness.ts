@@ -259,7 +259,7 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
 				Layer.provideMerge(
-					Mcp.layer({ hostCwd, home: paths.home, idleTimeout: options.mcpIdleTimeout }).pipe(
+					Mcp.layer({ hostCwd, home: paths.home, authFile, idleTimeout: options.mcpIdleTimeout }).pipe(
 						Layer.provide(Process.host),
 					),
 				),

@@ -35,6 +35,45 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStringRecord = (value: unknown): value is Record<string, string> =>
 	isRecord(value) && Object.values(value).every(Predicate.isString);
 
+const LOOPBACK_HOSTS: ReadonlyArray<string> = ["localhost", "127.0.0.1", "[::1]"];
+
+/** `https`, or `http` on a loopback host. */
+export const isSecure = (url: URL) =>
+	url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname));
+
+/** A redirect URI the loopback callback can serve. */
+export const isLoopbackRedirect = (value: string) => {
+	if (!URL.canParse(value)) return false;
+	const url = new URL(value);
+	return url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname) && url.search === "" && url.hash === "";
+};
+
+const validateOAuth = (value: unknown): string | undefined => {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) return "oauth must be an object";
+	for (const key of ["clientId", "clientSecret", "scope"])
+		if (value[key] !== undefined && !Predicate.isString(value[key])) return `oauth.${key} must be a string`;
+	const port = value.callbackPort;
+	if (port !== undefined && !(Predicate.isNumber(port) && Number.isInteger(port) && port >= 1 && port <= 65535))
+		return "oauth.callbackPort must be a port number";
+	if (value.callbackUrl !== undefined) {
+		if (!Predicate.isString(value.callbackUrl) || !isLoopbackRedirect(value.callbackUrl))
+			return "oauth.callbackUrl must be an http URI on localhost, 127.0.0.1 or [::1] without query or fragment";
+		const urlPort = new URL(value.callbackUrl).port;
+		if (urlPort && port !== undefined && Number(urlPort) !== port)
+			return "oauth.callbackUrl and oauth.callbackPort name different ports";
+	}
+	if (value.clientName !== undefined && !(Predicate.isString(value.clientName) && value.clientName.trim()))
+		return "oauth.clientName must be a non-empty string";
+	const metadata = value.authServerMetadataUrl;
+	if (
+		metadata !== undefined &&
+		!(Predicate.isString(metadata) && URL.canParse(metadata) && isSecure(new URL(metadata)))
+	)
+		return "oauth.authServerMetadataUrl must be an https URL, or http on localhost, 127.0.0.1 or [::1]";
+	return undefined;
+};
+
 /** Whether a project entry overrides a user server instead of defining one. */
 const isOverride = (value: Record<string, unknown>) =>
 	value.command === undefined && value.url === undefined && value.type === undefined;
@@ -67,9 +106,6 @@ export const validate = (name: string, raw: unknown): ServerConfig | string => {
 		return `server "${name}": description must be a string`;
 	if (timeout !== undefined && !(Predicate.isNumber(timeout) && timeout > 0))
 		return `server "${name}": timeout must be a positive number of seconds`;
-	// Until sign-in exists, an entry relying on it could only fail; say so instead of ignoring the key.
-	for (const key of ["auth", "oauth"])
-		if (value[key] !== undefined) return `server "${name}": "${key}" is not supported yet`;
 	if (type === "sse") return `server "${name}": legacy SSE transport is not supported; use the streamable HTTP URL`;
 
 	if (Predicate.isString(value.url) && (type === undefined || type === "http" || type === "streamable-http")) {
@@ -77,8 +113,19 @@ export const validate = (name: string, raw: unknown): ServerConfig | string => {
 			return `server "${name}": url must be an http or https URL`;
 		if (value.headers !== undefined && !isStringRecord(value.headers))
 			return `server "${name}": headers must map names to strings`;
+		const oauth = validateOAuth(value.oauth);
+		if (oauth !== undefined) return `server "${name}": ${oauth}`;
+		if (value.auth !== undefined) {
+			if (!isRecord(value.auth) || !Predicate.isString(value.auth.provider) || !value.auth.provider)
+				return `server "${name}": auth.provider must be a provider name`;
+			// It sends a credential to `url`, so never in the clear beyond this machine.
+			if (!isSecure(new URL(value.url)))
+				return `server "${name}": auth requires an https URL, or http on localhost, 127.0.0.1 or [::1]`;
+		}
 		return value as unknown as ServerConfig;
 	}
+	for (const key of ["auth", "oauth"])
+		if (value[key] !== undefined) return `server "${name}": "${key}" applies only to HTTP servers`;
 	if (Predicate.isString(value.command) && (type === undefined || type === "stdio")) {
 		if (value.args !== undefined && !(Array.isArray(value.args) && value.args.every(Predicate.isString)))
 			return `server "${name}": args must be an array of strings`;
@@ -136,6 +183,11 @@ const read = Effect.fnUntraced(function* (path: string, scope: "user" | "project
 		const config = validate(name, value);
 		if (Predicate.isString(config)) {
 			problems.push(`${path}: ${config}`);
+			continue;
+		}
+		// A repository must not choose where a user's provider credential is sent.
+		if (scope === "project" && "auth" in config && config.auth !== undefined) {
+			problems.push(`${path}: server "${name}": auth is only allowed in the user mcp.json`);
 			continue;
 		}
 		const other = clash(servers.keys(), name);

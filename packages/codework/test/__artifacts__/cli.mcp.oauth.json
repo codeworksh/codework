@@ -1,0 +1,153 @@
+{
+	"before": {
+		"declared": [
+			"mcp__keyed__whoami"
+		],
+		"answer": "Tool said: called with provider-key"
+	},
+	"login": {
+		"stdout": "Signed in to MCP server \"secure\" (1 tool).\n",
+		"page": 200
+	},
+	"again": "Already signed in to MCP server \"secure\" (1 tool).\n",
+	"named": {
+		"declared": [
+			"mcp__secure__whoami",
+			"mcp__keyed__whoami"
+		],
+		"answer": "Tool said: called with access-1"
+	},
+	"processes": [
+		{
+			"declared": [
+				"mcp__secure__whoami",
+				"mcp__keyed__whoami"
+			],
+			"answer": "Tool said: called with access-2"
+		},
+		{
+			"declared": [
+				"mcp__secure__whoami",
+				"mcp__keyed__whoami"
+			],
+			"answer": "Tool said: called with access-2"
+		}
+	],
+	"refreshed": {
+		"declared": [
+			"mcp__secure__whoami",
+			"mcp__keyed__whoami"
+		],
+		"answer": "Tool said: called with access-3 | called with access-3"
+	},
+	"revoked": {
+		"declared": [
+			"mcp__secure__whoami",
+			"mcp__keyed__whoami"
+		],
+		"answer": "Tool said: MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\"."
+	},
+	"logout": "Signed out of MCP server \"secure\".\n",
+	"server": [
+		{
+			"mcp": "tools/call",
+			"token": "provider-key"
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"register": {
+				"application_type": "native",
+				"client_name": "CodeWork",
+				"client_uri": "https://codework.sh",
+				"logo_uri": "https://codework.sh/brand/icon.png",
+				"grant_types": [
+					"authorization_code",
+					"refresh_token"
+				],
+				"token_endpoint_auth_method": "none"
+			}
+		},
+		{
+			"authorize": {
+				"scope": "tools",
+				"resource": "<fixture>/mcp"
+			}
+		},
+		{
+			"token": "authorization_code",
+			"verified": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-1"
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"token": "refresh_token",
+			"presented": "refresh-1",
+			"valid": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-2"
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-2"
+		},
+		{
+			"expire": true
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"token": "refresh_token",
+			"presented": "refresh-2",
+			"valid": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-3"
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-3"
+		},
+		{
+			"revoke": true
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"token": "refresh_token",
+			"presented": "refresh-3",
+			"valid": false
+		}
+	]
+}

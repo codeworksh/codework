@@ -75,7 +75,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-turn and the ne
 			"my-srv": stdio({ enabled: false }),
 			my_srv: stdio(),
 			broken: { url: "ftp://example.com/mcp" },
-			signin: { url: "https://example.com/mcp", oauth: { clientId: "e2e" } },
+			// The callback must be served on this machine.
+			signin: { url: "https://example.com/mcp", oauth: { callbackUrl: "https://example.com/callback" } },
 			badheader: { url: "http://127.0.0.1:9/mcp", headers: { Authorization: "${MCP_E2E_BAD_HEADER}" } },
 			// Codemode and deferred exposures are valid; until codemode exists these tools are simply not declared.
 			later: stdio({ exposure: "codemode-deferred" }),
@@ -83,7 +84,12 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-turn and the ne
 	});
 	// The project turns a user server off without restating it, and cannot add an override with no base.
 	await write(join(project, ".codework", "mcp.json"), {
-		mcpServers: { off: { enabled: false }, ghost: { enabled: false } },
+		mcpServers: {
+			off: { enabled: false },
+			ghost: { enabled: false },
+			// A repository cannot choose where a user's provider credential goes.
+			keyed: { url: "https://example.com/mcp", auth: { provider: "openai" } },
+		},
 	});
 
 	const observed: { readonly mcpDomain: unknown[]; readonly toolDomain: string[] } = { mcpDomain: [], toolDomain: [] };
@@ -381,7 +387,8 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 		calls: Object.fromEntries(texts),
 		declared,
 		// One expiry: a second initialize and the call once more. Two in a row: the call fails.
-		remote: remote.seen.filter((request) => request !== "POST notifications/initialized"),
+		// The standalone SSE stream (`GET`) opens in the background, at no fixed point among the requests.
+		remote: remote.seen.filter((request) => request !== "POST notifications/initialized" && request !== "GET"),
 		status: result.status,
 	});
 	pids.forEach((value, index) => {

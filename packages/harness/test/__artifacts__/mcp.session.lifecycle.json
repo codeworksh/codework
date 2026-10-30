@@ -142,17 +142,14 @@
 	],
 	"remote": [
 		"POST initialize",
-		"GET",
 		"POST tools/list",
 		"POST tools/call",
 		"POST tools/call",
 		"POST initialize",
-		"GET",
 		"POST tools/list",
 		"POST tools/call",
 		"POST tools/call",
 		"POST initialize",
-		"GET",
 		"POST tools/list",
 		"POST tools/call"
 	],

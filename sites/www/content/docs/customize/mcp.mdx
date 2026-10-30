@@ -44,9 +44,32 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 
 `env` and `headers` values can use `${NAME}` or `$NAME` for an environment variable (`$$` for a literal `$`), or `!command` to use a command's output. A command runs once, and its output is reused until CodeWork restarts.
 
-Servers that need you to sign in are not supported yet.
-
 A broken file or entry is reported and skipped. The other servers still connect.
+
+## Signing In
+
+An HTTP server without an `Authorization` header signs in with OAuth when it asks for it. Sign in from a terminal:
+
+```bash
+codework mcp login linear
+```
+
+CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
+
+Sign-ins are stored in `~/.codework/mcpauth.json`, by server name and URL, and refreshed when they expire. Servers that don't support client registration take an `oauth` object:
+
+| Field                         | Meaning                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `clientId`, `clientSecret`    | A client registered with the server. `clientSecret` resolves like a header. |
+| `callbackUrl`, `callbackPort` | The registered redirect URI, on `localhost`, `127.0.0.1` or `[::1]`.        |
+| `scope`, `clientName`         | Scopes to request, and the client name sent with registration.              |
+| `authServerMetadataUrl`       | Authorization server metadata to use instead of discovering it.             |
+
+To send a model provider's credential instead, its login or API key, set `auth`. It only goes to `https` URLs or your own machine, and only from your user file:
+
+```json title="~/.codework/mcp.json"
+{ "mcpServers": { "internal": { "url": "https://mcp.example.com/mcp", "auth": { "provider": "openai" } } } }
+```
 
 ## Project Overrides
 

@@ -6,8 +6,19 @@ export class ConnectError extends Schema.TaggedError<ConnectError>()("Mcp.Connec
 	message: Schema.String,
 }) {}
 
-/** The server rejected the connection until the user signs in. */
+/**
+ * The server rejected the connection until the user signs in. `scope` is set when it asked for more
+ * scope than the token was granted, so the next sign-in requests it.
+ */
 export class NeedsAuthError extends Schema.TaggedError<NeedsAuthError>()("Mcp.NeedsAuthError", {
+	server: Schema.String,
+	message: Schema.String,
+	scope: Schema.optional(Schema.String),
+	resourceMetadataUrl: Schema.optional(Schema.String),
+}) {}
+
+/** Signing in to or out of a server failed, or its stored credentials could not be read or written. */
+export class OAuthError extends Schema.TaggedError<OAuthError>()("Mcp.OAuthError", {
 	server: Schema.String,
 	message: Schema.String,
 }) {}

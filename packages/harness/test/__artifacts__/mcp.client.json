@@ -432,9 +432,6 @@ second line",
     "toolsChanged": true,
   },
   "unauthorized": {
-    "redirects": [
-      "/authorize",
-    ],
     "withProvider": {
       "message": "Unauthorized",
       "tag": "Mcp.NeedsAuthError",
