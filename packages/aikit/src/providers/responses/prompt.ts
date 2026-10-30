@@ -95,8 +95,8 @@ export type ResponsesPromptOptions = {
 	/** The providerOptions key this transport reads, e.g. `openai-codex`. */
 	provider: string;
 	/**
-	 * Where system prompt text goes: the `instructions` field (the Codex backend requires
-	 * one), or a developer message in place.
+	 * Where the leading system prompt goes: the `instructions` field (the Codex backend
+	 * requires one), or a developer message in place.
 	 */
 	systemPrompt: "instructions" | "developer";
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
@@ -282,9 +282,9 @@ function toolRemovalNotice(names: readonly string[]): string {
 }
 
 /**
- * Convert an AI SDK V3 prompt into the Responses request shape. Tool changes are
- * declared in place, other system messages go where `options.systemPrompt` says,
- * and everything else maps to `input` items.
+ * Convert an AI SDK V3 prompt into the Responses request shape. The leading system
+ * message goes where `options.systemPrompt` says, later ones (prompt updates and tool
+ * changes) go in place, and everything else maps to `input` items.
  */
 export function convertToResponsesPrompt(
 	prompt: LanguageModelV3Prompt | LanguageModelV4Prompt,
@@ -299,7 +299,8 @@ export function convertToResponsesPrompt(
 	/** Tools announced as removed and not declared again since. */
 	const unavailableTools = new Set<string>();
 
-	const appendToolChange = (change: ResponsesToolChange): void => {
+	/** Declares the change's tools; returns the removal notice, which goes with the message's text. */
+	const appendToolChange = (change: ResponsesToolChange): string | undefined => {
 		const seed = toolChangeCounter++;
 		const tools = change.tools.map((tool) => toResponsesTool(tool, provider));
 		for (const tool of tools) unavailableTools.delete(tool.name);
@@ -331,24 +332,23 @@ export function convertToResponsesPrompt(
 		const added = new Set(tools.map((tool) => tool.name));
 		const removed = change.removed.filter((name) => !added.has(name));
 		if (removed.length === 0) return;
-		input.push({ role: "developer", content: toolRemovalNotice(removed) });
 		// Recorded after this change's additions, whose notice precedes this removal notice.
 		for (const name of removed) unavailableTools.add(name);
+		return toolRemovalNotice(removed);
 	};
 
 	for (const message of prompt) {
 		switch (message.role) {
 			case "system": {
 				const change = toolChange(message.providerOptions, provider);
-				if (change) {
-					appendToolChange(change);
+				// The first plain system message is the leading prompt; every later one is an update in place.
+				if (!change && options.systemPrompt === "instructions" && instructions === undefined) {
+					instructions = message.content;
 					break;
 				}
-				if (options.systemPrompt === "developer") {
-					if (message.content.length > 0) input.push({ role: "developer", content: message.content });
-					break;
-				}
-				instructions = instructions == null ? message.content : `${instructions}\n\n${message.content}`;
+				const removal = change ? appendToolChange(change) : undefined;
+				const text = [message.content, removal ?? ""].filter((part) => part.length > 0).join("\n\n");
+				if (text.length > 0) input.push({ role: "developer", content: text });
 				break;
 			}
 

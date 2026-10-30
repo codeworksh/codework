@@ -501,6 +501,21 @@ const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 	"gpt-6-sol",
 	"gpt-6.1-sol",
 ]);
+// These Responses models accept developer messages after the conversation has started (pi).
+const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = new Set([
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.4-pro",
+	"gpt-5.5",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-5.6-luna",
+	"gpt-6-astra",
+	"gpt-6-sol",
+	"gpt-6-luna",
+	"gpt-6.1-sol",
+	"gpt-6.1-terra",
+]);
 // Copilot passes `additional_tools` items through to OpenAI for these Responses models.
 const GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 	"gpt-5.4",
@@ -552,6 +567,7 @@ export function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Re
 			providerOptionsKey: OPENAI_CODEX_PROVIDER_ID,
 			compat: {
 				supportsOpenAIGrammarTools: true,
+				...(OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(seed.id) ? { supportsMidConvoSystemMessages: true } : {}),
 				...(OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id)
 					? { supportsToolSearch: true, supportsAdditionalTools: true }
 					: {}),
@@ -681,6 +697,9 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 		const gpt = /^gpt-(\d+)/.exec(id);
 		if (method === Model.APIMethodEnum.responses && gpt !== null && Number(gpt[1]) >= 5) {
 			mergeCompat(info, { supportsOpenAIGrammarTools: true });
+		}
+		if (method === Model.APIMethodEnum.responses && OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(id)) {
+			mergeCompat(info, { supportsMidConvoSystemMessages: true });
 		}
 		if (method === Model.APIMethodEnum.responses && GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS.has(id)) {
 			mergeCompat(info, { supportsAdditionalTools: true });

@@ -160,7 +160,10 @@ export const CompatibilitySchema = Type.Object({
 	/** The Google protocol accepts thinking levels rather than a token budget. */
 	supportsThinkingLevel: Type.Optional(Type.Boolean()),
 	supportsToolSearch: Type.Optional(Type.Boolean()),
+	/** Requires `supportsMidConvoSystemMessages`. */
 	supportsAdditionalTools: Type.Optional(Type.Boolean()),
+	/** The model accepts developer messages after the conversation has started. */
+	supportsMidConvoSystemMessages: Type.Optional(Type.Boolean()),
 	supportsStrictMode: Type.Optional(Type.Boolean()),
 	supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
 	/** The model takes a thinking-token budget as a top-level request field. */

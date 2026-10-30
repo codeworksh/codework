@@ -2782,6 +2782,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -2843,6 +2844,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -2904,6 +2906,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -2965,6 +2968,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -3027,6 +3031,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -3088,6 +3093,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
@@ -3149,6 +3155,7 @@
       "baseUrl": "https://chatgpt.com/backend-api",
       "compat": {
         "supportsAdditionalTools": true,
+        "supportsMidConvoSystemMessages": true,
         "supportsOpenAIGrammarTools": true,
         "supportsToolSearch": true
       },
