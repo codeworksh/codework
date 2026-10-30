@@ -26,7 +26,14 @@ import { errorMessage } from "../util/error.ts";
 import { ToolExecutionError, ToolUnavailable } from "./error.ts";
 import { type Offer, ToolOffer } from "./offer.ts";
 import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
-import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
+import {
+	type AnyToolDef,
+	type ModelContent,
+	type RegisteredTool,
+	isFromJsonSchema,
+	toAikitTool,
+	type ToolCallContext,
+} from "./tool.ts";
 
 /**
  * `ToolExecutor` — the uniform pipeline run for every tool call:
@@ -296,8 +303,10 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, op
 	// does not allow are dropped first.
 	const decoders = new Map(
 		wire.map((tool) => {
+			const parameters = impls.get(tool.name)!.tool.definition.parameters;
 			const decode = Schema.decodeUnknownEffect(
-				Schema.toCodecJson(asCodec(impls.get(tool.name)!.tool.definition.parameters)),
+				Schema.toCodecJson(asCodec(parameters)),
+				isFromJsonSchema(parameters) ? { onExcessProperty: "error" } : undefined,
 			);
 			const parse = (args: unknown) => {
 				const normalized = structuredClone(args);

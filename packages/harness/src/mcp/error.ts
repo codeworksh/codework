@@ -21,6 +21,15 @@ export class SessionExpiredError extends Schema.TaggedError<SessionExpiredError>
 	}
 }
 
+/** The thread runs no MCP server of this name. */
+export class UnknownServerError extends Schema.TaggedError<UnknownServerError>()("Mcp.UnknownServerError", {
+	server: Schema.String,
+}) {
+	override get message(): string {
+		return `unknown MCP server: ${this.server}`;
+	}
+}
+
 /** A request on a connected server failed. */
 export class RequestError extends Schema.TaggedError<RequestError>()("Mcp.RequestError", {
 	server: Schema.String,
