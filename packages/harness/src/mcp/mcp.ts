@@ -910,6 +910,12 @@ export const layer = (options: {
 					const server = entry.server;
 					if (server === undefined) return statusOf(name, entry);
 					return yield* Effect.gen(function* () {
+						// Only an idle timeout closes an instance a thread still uses; the next turn opens a new one.
+						if (server.closed)
+							return yield* new UnknownServerError({
+								server: name,
+								message: `MCP server "${name}" was closed while idle; the thread's next message starts it again`,
+							});
 						yield* operation(server);
 						const current = threads.get(threadId)?.servers.get(name);
 						if (current?.server !== server) return yield* unknown;
