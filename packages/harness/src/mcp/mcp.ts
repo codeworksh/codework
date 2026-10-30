@@ -323,6 +323,22 @@ export const layer = (options: {
 					),
 				);
 
+			/** Tell a thread that joined a running instance its status, unless the instance published since. */
+			const publishJoined = (thread: Thread, server: Server, seen: string | undefined) =>
+				Effect.flatMap(DateTime.now, (timestamp) =>
+					// Checked with nothing in between it and the publish, so no newer status can slip ahead.
+					seen === undefined || server.published !== seen
+						? Effect.void
+						: Effect.asVoid(
+								events.publish(EventList.McpServerStatus, {
+									timestamp,
+									sessionId: thread.sessionId,
+									threadId: thread.id,
+									status: eventStatus(server),
+								}),
+							),
+				);
+
 			/** Publish the instance's status to every thread using it, unless it is the one published last. */
 			const publish = (server: Server) =>
 				Effect.suspend(() => {
@@ -586,7 +602,8 @@ export const layer = (options: {
 				Effect.suspend(() => {
 					if (instances.get(server.key) === server) instances.delete(server.key);
 					server.closed = true;
-					return stop(server);
+					// Threads still using an instance that idled out learn it is gone, as `status` already says.
+					return Effect.andThen(setState(server, "disconnected"), stop(server));
 				});
 
 			/**
@@ -779,19 +796,27 @@ export const layer = (options: {
 					}
 				};
 				// A server that needed sign-in connects again once its credential changed: the user signed in,
-				// in this process or another, and expects the next turn to have its tools.
+				// in this process or another, and expects the next turn to have its tools. Only the instances
+				// this thread's servers resolve to are checked.
 				const signedIn = new Set<Server>();
-				for (const server of instances.values())
+				for (const [name, config] of input.servers) {
+					if (config.enabled === false) continue;
+					const where = placement(config.scope);
+					const server = instances.get(instanceKey(where.key, name, config, where.cwd, where.roots));
 					if (
+						server !== undefined &&
 						server.state === "authenticate" &&
 						server.attempt === undefined &&
 						!server.closed &&
 						(yield* credential(server)) !== server.refused
 					)
 						signedIn.add(server);
+				}
 				const restart = new Set<Server>();
-				/** Servers this turn waits for; `joined` when the thread did not use that instance before. */
-				const started: Array<readonly [string, Entry, Server, joined: boolean]> = [];
+				const started: Array<readonly [string, Entry, Server]> = [];
+				const created: Server[] = [];
+				/** Running instances the thread joins, with the status published last when it joined. */
+				const joined: Array<readonly [Server, string | undefined]> = [];
 				const disabled: string[] = [];
 				// All bookkeeping happens in one step, so an interrupted turn cannot leave an instance
 				// counting a thread or a drain it no longer has; closing what nobody uses runs on its own.
@@ -834,11 +859,14 @@ export const layer = (options: {
 								generation: 0,
 							};
 							instances.set(key, server);
-						} else if (signedIn.has(server) && server.attempt === undefined) restart.add(server);
+							created.push(server);
+						} else {
+							if (signedIn.has(server) && server.attempt === undefined) restart.add(server);
+							if (!server.users.has(thread.id)) joined.push([server, server.published]);
+						}
 						const entry: Entry = { config, server };
 						thread.servers.set(name, entry);
-						const joined = before.get(name)?.server !== server;
-						if (joined || signedIn.has(server)) started.push([name, entry, server, joined]);
+						if (before.get(name)?.server !== server || signedIn.has(server)) started.push([name, entry, server]);
 						if (!server.users.has(thread.id)) {
 							server.users.add(thread.id);
 							hold(server, thread.leases);
@@ -855,15 +883,14 @@ export const layer = (options: {
 					}
 					return unused;
 				}).pipe(thread.lock.withPermits(1));
+				// A thread joining a running instance learns where it stands. Skipped when the instance has
+				// published since it joined: that newer status already reached the thread, and this one would be stale.
+				for (const [server, seen] of joined) yield* publishJoined(thread, server, seen);
 				for (const server of closing) fork(close(server));
+				// A new instance publishes from its first state on, to every thread using it by then.
+				for (const server of created) start(server);
 				for (const name of disabled) yield* publishTo([thread.id], { server: name, state: "disabled" });
 				for (const server of restart) start(server);
-				for (const [, , server, joined] of started) {
-					// A new instance publishes from its first state on; a thread joining a running one learns
-					// where it stands.
-					if (server.published === undefined && server.ready === undefined) start(server);
-					else if (joined) yield* publishTo([thread.id], eventStatus(server));
-				}
 
 				// Wait for servers this turn started using (all of them at first, then new or restarted ones)
 				// so their tools are offered in its first request, but never indefinitely: one hanging server
@@ -952,8 +979,13 @@ export const layer = (options: {
 						Effect.sync(() => {
 							thread.leases -= 1;
 							for (const server of used(thread)) hold(server, -1);
-							// Every thread drains, MCP or not; one with no servers has nothing worth keeping.
-							if (thread.leases === 0 && thread.servers.size === 0 && threads.get(thread.id) === thread)
+							// Every thread drains, MCP or not; one with no servers and nothing reported has nothing worth keeping.
+							if (
+								thread.leases === 0 &&
+								thread.servers.size === 0 &&
+								thread.reported.size === 0 &&
+								threads.get(thread.id) === thread
+							)
 								threads.delete(thread.id);
 						}),
 				).pipe(Effect.asVoid);
