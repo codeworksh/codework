@@ -16,6 +16,7 @@
 
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Inbox } from "./inbox/inbox.ts";
+import { Mcp } from "./mcp/mcp.ts";
 import type { Admitted } from "./inbox/schema.ts";
 import { RunnerExecution } from "./runner/execution.ts";
 import type { Runner } from "./runner/run.ts";
@@ -128,6 +129,7 @@ export const layer = Layer.effect(
 		const threads = yield* Thread.Service;
 		const inputs = yield* Inbox.make;
 		const execution = yield* RunnerExecution.Service;
+		const mcp = yield* Mcp.Service;
 		const isLifecycleConflict = Schema.is(Inbox.LifecycleConflict);
 
 		// Marked before the wake, so a prompt accepted here survives a crash before its run starts.
@@ -241,6 +243,7 @@ export const layer = Layer.effect(
 				(id) => interrupt(id, { reason: "user", awaitSettlement: true }),
 				{ concurrency: "unbounded", discard: true },
 			);
+			yield* mcp.remove(sessionId);
 			return deleted;
 		});
 
