@@ -28,7 +28,7 @@
  * directory, because that would answer with the wrong project rather than with no project.
  *
  * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
- * API: an edit lands at the next exchange capture because the next capture goes to disk.
+ * API: an edit lands at the next turn capture because the next capture goes to disk.
  *
  * A missing file is ordinary; a file that exists and cannot be used is not. An unreadable,
  * unparseable or invalid file fails the read with the path, the reason and the offending key.
@@ -203,7 +203,7 @@ export const parse = Effect.fn("Settings.parse")(function* (path: string, source
 
 export interface Interface {
 	/**
-	 * Await fresh host files at each exchange. No cache, mutation, or reload API. Fails when a
+	 * Await fresh host files at each turn. No cache, mutation, or reload API. Fails when a
 	 * file exists and cannot be used, including on an edit made mid-session.
 	 *
 	 * The discovery root is an argument rather than a property of the layer because it is a

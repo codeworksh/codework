@@ -7,10 +7,15 @@ import * as Tool from "../src/tool/tool.ts";
 import type { ToolAddOptions, ToolAfter } from "../src/plugin/tool/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import { it } from "./utils/effect.ts";
 
-const options = { sessionId: SessionSchema.ID.create(), messageId: SessionMessageSchema.ID.create() };
+const options = {
+	sessionId: SessionSchema.ID.create(),
+	threadId: ThreadSchema.ID.create(),
+	messageId: SessionMessageSchema.ID.create(),
+};
 const call = pendingCall("echo", { value: "hello" });
 const tool = (handler: () => Effect.Effect<string, Error> = () => Effect.succeed("hello")) =>
 	Tool.register(

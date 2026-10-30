@@ -1,0 +1,13 @@
+{
+	"bothActive": true,
+	"main": [
+		"user committed",
+		"assistant committed",
+		"user committed",
+		"assistant committed"
+	],
+	"fork": [
+		"user committed",
+		"assistant committed"
+	]
+}

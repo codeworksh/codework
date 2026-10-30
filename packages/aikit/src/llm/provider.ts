@@ -79,22 +79,28 @@ export async function resolveAISDKLanguageModel(
 		}
 	}
 
+	const cacheDisabled =
+		options.cacheRetention === "none" ||
+		(typeof process !== "undefined" && process.env.CODEWORK_CACHE_RETENTION === "none");
+	// Our own Responses model (Codex, Copilot `/responses`) reads image support from compat.
+	const responsesCompat = () => ({
+		...model.compat,
+		supportsImages: model.input.includes("image"),
+		...(typeof factoryOptions.compat === "object" && factoryOptions.compat !== null ? factoryOptions.compat : {}),
+	});
+
 	if (npm === "@codeworksh/ai-sdk-openai-codex") {
 		// Codex uses the session id for the session-id header and prompt cache key.
-		const cacheDisabled =
-			options.cacheRetention === "none" ||
-			(typeof process !== "undefined" && process.env.CODEWORK_CACHE_RETENTION === "none");
 		if (options.sessionId && !cacheDisabled) factoryOptions.sessionId ??= options.sessionId;
-		factoryOptions.compat = {
-			...model.compat,
-			supportsImages: model.input.includes("image"),
-			...(typeof factoryOptions.compat === "object" && factoryOptions.compat !== null ? factoryOptions.compat : {}),
-		};
+		factoryOptions.compat = responsesCompat();
 	}
 
 	if (npm === "@codeworksh/ai-sdk-github-copilot") {
-		// Copilot uses the session id for X-Interaction-Id request grouping.
+		// Copilot uses the session id for X-Interaction-Id request grouping, and as the
+		// Responses prompt cache key.
 		if (options.sessionId) factoryOptions.sessionId ??= options.sessionId;
+		if (options.sessionId && !cacheDisabled) factoryOptions.promptCacheKey ??= options.sessionId;
+		factoryOptions.compat = responsesCompat();
 
 		const budgetField = Model.thinkingTokenBudgetField(model);
 		if (budgetField && thinkingTokenBudget !== undefined && thinkingTokenBudget > 0) {

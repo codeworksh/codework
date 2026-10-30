@@ -1,0 +1,46 @@
+{
+	"context": {
+		"roles": [
+			"user",
+			"user"
+		],
+		"texts": "The conversation was started over. Carried over from before:\n\n<handoff>\nkeep the login work\n</handoff> | after the reset"
+	},
+	"events": [
+		"1 session.created.1 T1",
+		"2 session.prompt.admitted.1 T1",
+		"3 session.prompt.promoted.1 T1",
+		"4 session.llm.started.1 T1",
+		"5 session.llm.ended.1 T1",
+		"6 session.turn.ended.1 T1",
+		"8 session.prompt.admitted.1 T1",
+		"9 session.prompt.promoted.1 T1",
+		"10 session.llm.started.1 T1",
+		"11 session.llm.ended.1 T1",
+		"12 session.turn.ended.1 T1"
+	],
+	"threads": [
+		{
+			"thread": "T1",
+			"origin": "main",
+			"createdSeq": 1,
+			"title": "before the reset"
+		}
+	],
+	"entries": [
+		"E1 T1 user seq=3 committed=3 committed",
+		"E2 T1 assistant seq=4 committed=6 committed",
+		"E3 T1 reset seq=7 committed=7 committed",
+		"E4 T1 user seq=9 committed=9 committed",
+		"E5 T1 assistant seq=10 committed=12 committed"
+	],
+	"documents": [
+		{
+			"thread": "T1",
+			"kind": "agent",
+			"revisions": [
+				"1 {}"
+			]
+		}
+	]
+}

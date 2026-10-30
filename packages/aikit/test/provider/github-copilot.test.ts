@@ -3,7 +3,16 @@ import {
 	GITHUB_COPILOT_API_VERSION,
 	GITHUB_COPILOT_STATIC_HEADERS,
 	createCopilotFetch,
+	createGitHubCopilot,
 } from "../../src/providers/github-copilot/index.ts";
+import { stream } from "../../src/stream.ts";
+import { makeModel, makeUserMessage } from "../utils/fixtures.ts";
+import {
+	openAICodexSSEResponse,
+	openAICodexTextEvents,
+	openAICodexUserPrompt,
+	readOpenAICodexStream,
+} from "../utils/openai-codex.ts";
 
 type CapturedRequest = { url: string; headers: Headers; body: unknown };
 
@@ -198,5 +207,91 @@ describe("createCopilotFetch", () => {
 			body: JSON.stringify({ model: "claude-haiku-4.5", messages: [] }),
 		});
 		expect(requests[2]!.headers.get("anthropic-beta")).toBe(beta);
+	});
+});
+
+describe("GitHub Copilot Responses", () => {
+	const sse = (events: Array<Record<string, unknown>>) => {
+		const bodies: Array<Record<string, unknown>> = [];
+		const fetch: typeof globalThis.fetch = async (_input, init) => {
+			bodies.push(JSON.parse(init?.body as string) as Record<string, unknown>);
+			return openAICodexSSEResponse(events);
+		};
+		return { bodies, fetch };
+	};
+	const responses = (fetch: typeof globalThis.fetch) =>
+		createGitHubCopilot({ apiKey: "ghu_test", fetch }).responses("gpt-6-luna");
+
+	it("keeps one tool call when Copilot rotates the item id on every event", async () => {
+		const { fetch } = sse([
+			{ type: "response.created", response: { id: "resp_1", model: "gpt-6-luna" } },
+			{
+				type: "response.output_item.added",
+				output_index: 0,
+				item: { type: "function_call", id: "fc_a", call_id: "call_1", name: "math", arguments: "" },
+			},
+			{ type: "response.function_call_arguments.delta", item_id: "fc_b", output_index: 0, delta: '{"a":' },
+			{ type: "response.function_call_arguments.delta", item_id: "fc_c", output_index: 0, delta: "15}" },
+			{
+				type: "response.output_item.done",
+				output_index: 0,
+				item: { type: "function_call", id: "fc_d", call_id: "call_1", name: "math", arguments: '{"a":15}' },
+			},
+			{
+				type: "response.completed",
+				response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1 } },
+			},
+		]);
+		const { stream: parts } = await responses(fetch).doStream({ prompt: openAICodexUserPrompt });
+		const calls = (await readOpenAICodexStream(parts)).filter((part) => part.type === "tool-call");
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ toolName: "math", input: '{"a":15}' });
+	});
+
+	it("sends tool fields only for a tool choice the call names", async () => {
+		const { bodies, fetch } = sse(openAICodexTextEvents);
+		const model = responses(fetch);
+		await model.doStream({ prompt: openAICodexUserPrompt });
+		await model.doStream({
+			prompt: openAICodexUserPrompt,
+			tools: [{ type: "function", name: "math", inputSchema: { type: "object", properties: {} } }],
+			toolChoice: { type: "auto" },
+		});
+
+		// Grok on Copilot rejects either field on a request without tools.
+		expect(bodies[0]).not.toHaveProperty("tool_choice");
+		expect(bodies[0]).not.toHaveProperty("parallel_tool_calls");
+		expect(bodies[1]).toMatchObject({ tool_choice: "auto" });
+		expect(bodies[1]).not.toHaveProperty("parallel_tool_calls");
+	});
+
+	it("turns reasoning off with the model's off effort", async () => {
+		const { bodies, fetch } = sse(openAICodexTextEvents);
+		const model = makeModel({
+			id: "gpt-6-luna",
+			provider: { id: "github-copilot", name: "GitHub Copilot", source: "custom", env: [] },
+			npm: "@codeworksh/ai-sdk-github-copilot",
+			api: { id: "gpt-6-luna", method: "responses" },
+			protocol: "github-copilot",
+			providerOptionsKey: "github-copilot",
+			reasoning: true,
+			thinkingLevelMap: { off: "none" },
+		});
+		const off = await stream.complete(
+			model,
+			{ messages: [makeUserMessage("hi")] },
+			{ apiKey: "ghu_test", factoryOptions: { fetch } },
+		);
+		const cannotDisable = await stream.complete(
+			{ ...model, thinkingLevelMap: { off: null } },
+			{ messages: [makeUserMessage("hi")] },
+			{ apiKey: "ghu_test", factoryOptions: { fetch } },
+		);
+
+		expect(off.stopReason, off.errorMessage).toBe("stop");
+		expect(cannotDisable.stopReason, cannotDisable.errorMessage).toBe("stop");
+		expect(bodies[0]).toMatchObject({ reasoning: { effort: "none" } });
+		expect(bodies[1]).not.toHaveProperty("reasoning");
 	});
 });

@@ -18,13 +18,16 @@ const { effect: it } = testEffect(layer);
 const setup = Effect.gen(function* () {
 	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
-	const session = yield* sessions.create({
+	const { session, thread } = yield* sessions.create({
 		spaceId,
 		directory: location,
 		title: "Provider test",
 		tag: "test",
 	});
-	return { sessionId: session.id, publisher: yield* LLMEventPublisher.make({ sessionId: session.id }) };
+	return {
+		threadId: thread.id,
+		publisher: yield* LLMEventPublisher.make({ sessionId: session.id, threadId: thread.id }),
+	};
 });
 
 const context: Message.Context = {
@@ -41,7 +44,7 @@ describe("runner LLM", () => {
 	it(
 		"maps an async iterator failure to a typed ProviderError",
 		Effect.gen(function* () {
-			const { sessionId, publisher } = yield* setup;
+			const { threadId, publisher } = yield* setup;
 			const request = LLM.make(() =>
 				Effect.succeed({
 					[Symbol.asyncIterator]() {
@@ -52,7 +55,7 @@ describe("runner LLM", () => {
 				}),
 			);
 			const failure = yield* request({
-				sessionId,
+				threadId,
 				context,
 				provider: "openai",
 				model: "gpt-4o-mini",

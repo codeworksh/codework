@@ -77,8 +77,8 @@ const seedSession = (id: string, space: string, directory: string) =>
 	Effect.flatMap(
 		SqlClient.SqlClient,
 		(sql) => sql`
-			INSERT INTO session (id, space_id, slug, directory, title, created_at, updated_at)
-			VALUES (${id}, ${space}, ${id}, ${directory}, ${id}, 0, 0)
+			INSERT INTO session (id, space_id, slug, directory, created_at, updated_at)
+			VALUES (${id}, ${space}, ${id}, ${directory}, 0, 0)
 		`,
 	);
 

@@ -37,7 +37,7 @@ const prompt = async (input: { root: string; directory: string; hostCwd: string;
 	});
 	await Effect.runPromise(
 		Effect.gen(function* () {
-			const session = yield* Session.create({ directory: input.directory });
+			const { main: session } = yield* Session.create({ directory: input.directory });
 			yield* session.run("hello");
 		}).pipe(
 			Effect.provide(

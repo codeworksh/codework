@@ -1,0 +1,16 @@
+[
+	{
+		"type": "function_call_output",
+		"call_id": "<call-id-0>",
+		"output": [
+			{
+				"type": "input_text",
+				"text": "Screenshot assertion failed: the page did not match."
+			},
+			{
+				"type": "input_image",
+				"image_url": "data:image/png;base64,<red-circle.png>"
+			}
+		]
+	}
+]

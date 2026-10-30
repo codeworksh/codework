@@ -1,11 +1,12 @@
 import { type Effect, Schema } from "effect";
 import { AikitToolCallTerminalPart } from "../event.ts";
-import { MessageID, SessionID } from "../ids.ts";
+import { MessageID, SessionID, ThreadID } from "../ids.ts";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, ToolCallContext } from "../tool.ts";
 
 export const ToolBefore = Schema.Struct({
 	...ToolCallContext.fields,
 	sessionId: SessionID,
+	threadId: ThreadID,
 	messageId: MessageID,
 	params: Schema.Unknown,
 });

@@ -18,7 +18,8 @@ import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@ope
 import { Type, type Static } from "typebox";
 import * as Model from "../model/model.ts";
 import type { GitHubCopilotProviderSettings } from "../providers/github-copilot/index.ts";
-import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
+import type { OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
+import type { ResponsesLanguageModelOptions } from "../providers/responses/model.ts";
 import type * as Protocol from "./protocol.ts";
 import { SharedOptions, ThinkingBudgets } from "./shared.ts";
 
@@ -68,7 +69,7 @@ type OpenAICompatibleLanguageOptions =
 type XaiLanguageOptions = XaiLanguageModelResponsesOptions;
 type GitHubCopilotLanguageOptions =
 	| AnthropicLanguageModelOptions
-	| OpenAILanguageModelResponsesOptions
+	| ResponsesLanguageModelOptions
 	| OpenAICompatibleLanguageModelChatOptions;
 
 export type OpenAIOptions = AISDKOptions<OpenAIProviderSettings, { openai?: OpenAILanguageOptions }>;
@@ -82,7 +83,7 @@ export type OpenAICompatibleOptions = AISDKOptions<
 >;
 export type OpenAICodexOptions = AISDKOptions<
 	OpenAICodexProviderSettings,
-	{ "openai-codex"?: OpenAICodexLanguageModelOptions }
+	{ "openai-codex"?: ResponsesLanguageModelOptions }
 >;
 export type GitHubCopilotOptions = AISDKOptions<
 	GitHubCopilotProviderSettings,

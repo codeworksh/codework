@@ -37,16 +37,18 @@ export const bashPluginSpec = (options: {
 				driver: options.driver.registered.name,
 				providerResourceId: yield* Effect.promise(options.resourceId),
 			});
-			const session = yield* Session.create({
+			const { main: session } = yield* Session.create({
 				sandbox,
 				directory: "/tmp",
 				model: { provider: "openai", id: "gpt-5.6-luna" },
 			});
 			yield* session.run(`Use bash exactly once to execute this command: ${command}\nReport its output verbatim.`);
-			const path = yield* session.path();
+			const path = yield* session.history();
 			const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 			expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
-			const calls = messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
+			const calls = messages.flatMap((message) =>
+				ContextCodec.parts(message).filter((part) => part.type === "toolCall"),
+			);
 			expect(calls).toHaveLength(1);
 			const call = calls[0];
 			if (call === undefined || call.type !== "toolCall" || (call.status !== "completed" && call.status !== "error"))
@@ -119,7 +121,7 @@ export const bashPluginSpec = (options: {
 					const { call } = await exchange(input, BASH_SYNTAX);
 					if (call.status !== "completed" && call.status !== "error") throw new Error("bash was not settled");
 					const text = call.result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-					await expect({ status: call.status, text }).toMatchFileSnapshot(
+					await expect(`${JSON.stringify({ status: call.status, text }, null, "\t")}\n`).toMatchFileSnapshot(
 						"./__artifacts__/tools.bash.syntax.json",
 					);
 				}),
@@ -213,7 +215,9 @@ export const bashPluginSpec = (options: {
 							const final = messages.at(-1);
 							expect(final?.role).toBe("assistant");
 							expect(
-								final?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+								(final === undefined ? [] : ContextCodec.parts(final))
+									.flatMap((part) => (part.type === "text" ? [part.text] : []))
+									.join(""),
 							).toContain(marker);
 						}),
 					180_000,

@@ -134,11 +134,16 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	}
 
 	if (key === "github-copilot") {
-		// Copilot accepts `thinking: {type:"disabled"}` on the Messages route; on
-		// Responses it rejects `reasoningEffort: "none"`, and the chat route has no
-		// reasoning control at all.
+		// Copilot accepts `thinking: {type:"disabled"}` on the Messages route, except for a
+		// Claude that cannot disable thinking: it rejects the request, so the field is left
+		// out and Copilot's default applies. On Responses only the models mapped to an off
+		// effort take one, and the chat route has no reasoning control at all.
+		const off = model.thinkingLevelMap?.off;
 		if (model.api?.method === Model.APIMethodEnum.messages) {
-			return { [key]: { thinking: { type: "disabled" } } };
+			return off === null ? {} : { [key]: { thinking: { type: "disabled" } } };
+		}
+		if (model.api?.method === Model.APIMethodEnum.responses && typeof off === "string") {
+			return { [key]: { reasoningEffort: off } };
 		}
 		return {};
 	}

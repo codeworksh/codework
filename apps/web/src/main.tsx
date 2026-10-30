@@ -12,8 +12,8 @@ import "./style.css";
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 const router = getRouter(history);
 
-// The splash in index.html stays up until the first route's split chunks have loaded, so the app
-// mounts whole instead of flashing an empty shell.
+// The app mounts once the first route's split chunks have loaded, so it is whole when the splash
+// over it fades (see Splash).
 export const startup = router.load().then(() => {
 	ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 		<React.StrictMode>
