@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ToolOffer } from "../../../tool/offer.ts";
 import { ToolSearch } from "../../../tool/search.ts";
 import * as Tool from "../../../tool/tool.ts";
-import { define } from "../../plugin.ts";
+import type { Builtin } from "../../plugin.ts";
 
 /**
  * The built-in toolsearch plugin: the model searches the deferred tools it is not offered yet,
@@ -76,11 +76,13 @@ export const toolSearchHandler: Tool.Handler<
 
 export const toolSearchTool = Tool.implement(toolSearchDef, toolSearchHandler);
 
-export const toolSearchPlugin = define({
+export const toolSearchPlugin: Builtin = {
 	id: "codework.tool.toolsearch",
 	kind: "tool",
-	optIn: "deferred",
+	optIn: true,
+	whenDeferred: true,
 	setup: (ctx) => {
-		ctx.plugin.tools.add(Tool.register(toolSearchTool));
+		// Held to the end of its domain, it must not override a `toolsearch` another plugin registered.
+		if (!ctx.plugin.tools.has(TOOL_SEARCH_NAME)) ctx.plugin.tools.add(Tool.register(toolSearchTool));
 	},
-});
+};

@@ -31,7 +31,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 	});
 	/**
 	 * `whenDeferred` plugins wait for the end of their domain, when every tool of it is registered,
-	 * and run only if one of those is deferred or an MCP server may still add one.
+	 * and run only if one of those is deferred or an MCP server of the thread is configured to add some.
 	 */
 	let waiting = selection.filter((prepared) => prepared.whenDeferred === true);
 	const flush = (before: number) =>
@@ -39,8 +39,8 @@ export const run = Effect.fn("PluginHost.run")(function* (
 			const due = waiting.filter(({ plugin }) => rank(plugin.kind) < before);
 			if (due.length === 0) return;
 			waiting = waiting.filter((prepared) => !due.includes(prepared));
-			const { connecting } = yield* settle;
-			if (connecting || buckets.registry.tools.list().some((def) => def.exposure === "deferred"))
+			const { defers } = yield* settle;
+			if (defers || buckets.registry.tools.list().some((def) => def.exposure === "deferred"))
 				for (const prepared of due) yield* apply(prepared);
 		});
 	const apply = ({ plugin, options }: Prepared) =>

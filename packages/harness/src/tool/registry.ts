@@ -39,8 +39,6 @@ export interface Resolved {
 	readonly wire: ReadonlyArray<Message.Tool>;
 	/** The offered tools' wire view: the tool state the transcript's system messages bring `wire` to. */
 	readonly offered: ReadonlyArray<Message.Tool>;
-	/** Deferred tools not offered, in registry order: what `toolsearch` searches, with any `live` adds. */
-	readonly deferred: ReadonlyArray<Message.Tool>;
 	/**
 	 * Transform one complete pending tool-call part into a complete terminal part. The **only**
 	 * execution entry point — the
@@ -115,7 +113,6 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 			defs: Object.freeze(offered.map((entry) => entry.tool.definition)),
 			wire: Object.freeze(declaredSet.map((entry) => toAikitTool(entry.tool.definition))),
 			offered: Object.freeze([...executor.wire]),
-			deferred,
 			handle: executor.handle,
 		});
 	};

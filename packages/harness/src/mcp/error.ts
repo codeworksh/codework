@@ -48,7 +48,7 @@ export class UnavailableError extends Schema.TaggedError<UnavailableError>()("Mc
 	message: Schema.String,
 }) {}
 
-/** The thread has no MCP server of this name, or a turn replaced it meanwhile. */
+/** The thread has no MCP server of this name, a turn replaced it meanwhile, or no turn started its servers yet. */
 export class UnknownServerError extends Schema.TaggedError<UnknownServerError>()("Mcp.UnknownServerError", {
 	server: Schema.String,
 	message: Schema.String,

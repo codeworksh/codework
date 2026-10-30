@@ -119,11 +119,14 @@ export interface Input {
 export interface Reconciled {
 	/** Every tool the thread's servers offer, with its exposure. */
 	readonly tools: ReadonlyArray<RegisteredTool>;
-	/** Whether a server that may offer deferred tools is still connecting, so they are not among `tools` yet. */
-	readonly connecting: boolean;
+	/**
+	 * Whether an enabled server of the thread is configured with `deferred` exposure, whatever its
+	 * state: taken from config, so it holds before the server connects and after it fails.
+	 */
+	readonly defers: boolean;
 	/**
 	 * The thread's deferred tools as they stand when it runs, under the names they are registered by.
-	 * Waits first, within {@link STARTUP_WAIT}, for servers still connecting that may offer some.
+	 * Waits first, within {@link STARTUP_WAIT}, for those servers' connect attempts in progress.
 	 */
 	readonly deferred: Effect.Effect<ReadonlyArray<Message.Tool>>;
 }
@@ -275,6 +278,10 @@ const statusOf = (name: string, entry: Entry): Status => {
 		resources: server.resources,
 	};
 };
+
+/** Settles when the server's first background connect attempt does. */
+const firstAttempt = (server: Server | undefined) =>
+	server?.ready === undefined ? Effect.void : Deferred.await(server.ready);
 
 const eventStatus = (server: Server): EventList.McpServerState => {
 	const { name, state } = server;
@@ -825,37 +832,33 @@ export const layer = (options: {
 									.map(([name]) => resourceServer(thread, name)),
 							// A server still connecting may offer resources once it has.
 							ready: () =>
-								Effect.forEach(
-									[...thread.servers.values()],
-									({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
-									{ discard: true },
-								),
+								Effect.forEach([...thread.servers.values()], ({ server }) => firstAttempt(server), {
+									discard: true,
+								}),
 							content: output,
 						}),
 					);
 				return tools;
 			};
 
-			/** The thread's servers still connecting that may offer deferred tools. */
-			const connecting = (thread: Thread) =>
+			/** The thread's enabled servers configured with `deferred` exposure. */
+			const deferring = (thread: Thread) =>
 				[...thread.servers.values()].flatMap(({ config, server }) =>
-					server !== undefined && !server.closed && server.state === "connecting" && hasTools(config, "deferred")
-						? [server]
-						: [],
+					server !== undefined && hasTools(config, "deferred") ? [server] : [],
 				);
 
 			/** Settles when the server's connect attempt in progress, if any, does. */
 			const attempted = (server: Server) =>
 				Effect.andThen(
-					server.ready === undefined ? Effect.void : Deferred.await(server.ready),
+					firstAttempt(server),
 					Effect.suspend(() => (server.attempt === undefined ? Effect.void : Fiber.await(server.attempt))),
 				);
 
 			const deferred = (thread: Thread) =>
 				Effect.gen(function* () {
-					const pending = connecting(thread);
-					if (pending.length > 0)
-						yield* Effect.forEach(pending, attempted, { concurrency: "unbounded", discard: true }).pipe(
+					const servers = deferring(thread);
+					if (servers.length > 0)
+						yield* Effect.forEach(servers, attempted, { concurrency: "unbounded", discard: true }).pipe(
 							Effect.timeoutOption(STARTUP_WAIT),
 						);
 					return toolsOf(thread).flatMap((tool) =>
@@ -997,9 +1000,9 @@ export const layer = (options: {
 					([name, entry]) => hasTools(entry.config, "direct") || loadsFrom(name, loaded),
 				);
 				if (pending.length > 0) {
-					const finished = yield* Effect.forEach(pending, ([, , server]) =>
-						server.ready === undefined ? Effect.void : Deferred.await(server.ready),
-					).pipe(Effect.timeoutOption(STARTUP_WAIT));
+					const finished = yield* Effect.forEach(pending, ([, , server]) => firstAttempt(server)).pipe(
+						Effect.timeoutOption(STARTUP_WAIT),
+					);
 					if (finished._tag === "None")
 						yield* Effect.logInfo("mcp servers are still connecting; their tools appear once connected");
 				}
@@ -1020,7 +1023,7 @@ export const layer = (options: {
 				}
 				return {
 					tools: toolsOf(thread),
-					connecting: connecting(thread).length > 0,
+					defers: deferring(thread).length > 0,
 					deferred: deferred(thread),
 				} satisfies Reconciled;
 			});
@@ -1056,7 +1059,13 @@ export const layer = (options: {
 			const control = (threadId: ThreadId, name: string, operation: (server: Server) => Effect.Effect<void>) =>
 				Effect.gen(function* () {
 					const unknown = new UnknownServerError({ server: name, message: `unknown MCP server "${name}"` });
-					const entry = threads.get(threadId)?.servers.get(name);
+					const thread = threads.get(threadId);
+					if (thread === undefined)
+						return yield* new UnknownServerError({
+							server: name,
+							message: `thread ${threadId} has not started MCP server "${name}" yet; send it a message first`,
+						});
+					const entry = thread.servers.get(name);
 					if (entry === undefined) return yield* unknown;
 					const server = entry.server;
 					if (server === undefined) return statusOf(name, entry);
@@ -1100,7 +1109,7 @@ export const layer = (options: {
 				settle: (threadId) =>
 					Effect.forEach(
 						[...(threads.get(threadId)?.servers.values() ?? [])],
-						({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
+						({ server }) => firstAttempt(server),
 						{ discard: true, concurrency: "unbounded" },
 					),
 				connect,

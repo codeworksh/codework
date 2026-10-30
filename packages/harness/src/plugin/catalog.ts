@@ -2,7 +2,7 @@ import type { PluginOptions, PluginPatch, PluginRef } from "@codeworksh/plugin/p
 import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
-import { type Plugin, rank } from "./plugin.ts";
+import { type Plugin, rank, whenDeferred } from "./plugin.ts";
 import { PluginSource } from "./source.ts";
 
 /**
@@ -13,7 +13,7 @@ export type { PluginOptions, PluginPatch, PluginRef, PluginSpec } from "@codewor
 export interface Prepared {
 	readonly plugin: Plugin;
 	readonly options: PluginOptions;
-	/** Set up only in a turn that has deferred tools: an `optIn: "deferred"` plugin no entry turned on or off. */
+	/** Set up only in a turn that has deferred tools: a `whenDeferred` built-in no entry turned on or off. */
 	readonly whenDeferred?: true;
 }
 export interface Options extends Loader.Options {
@@ -204,12 +204,12 @@ export interface Selected {
 export const select = Effect.fn("PluginCatalog.select")(function* (references: ReadonlyArray<PluginRef>, pool: Pool) {
 	const operations = new Map<string, { enabled: boolean | "deferred"; index: number; options: PluginOptions }>();
 	const missing: string[] = [];
-	// An `optIn` plugin is selected off, or `"deferred"`; only a configuration entry's `enabled`
-	// settles it, and naming its module again moves it without undoing that.
+	// An `optIn` plugin is selected off, or `"deferred"` for a `whenDeferred` built-in; only a
+	// configuration entry's `enabled` settles it, and naming its module again moves it without undoing that.
 	const choose = (id: string, index: number) => {
 		const previous = operations.get(id);
-		const optIn = pool.plugins.get(id)?.optIn;
-		const initial = optIn === true ? false : optIn === "deferred" ? optIn : undefined;
+		const plugin = pool.plugins.get(id);
+		const initial = plugin?.optIn !== true ? undefined : whenDeferred(plugin) ? ("deferred" as const) : false;
 		operations.set(id, {
 			enabled: initial === undefined ? true : (previous?.enabled ?? initial),
 			index,

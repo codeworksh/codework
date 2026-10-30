@@ -40,7 +40,7 @@ const write = async (file: string, value: unknown) => {
 	await fs.writeFile(file, JSON.stringify(value, null, 2));
 };
 
-/** `toolsearch` ships off; the entry after it turns it on. */
+/** `toolsearch` turns on by itself only with deferred tools; the entry after it keeps it on regardless. */
 const toolSearch = [toolSearchPlugin, { plugin: toolSearchPlugin.id, enabled: true }] as const;
 
 /** A scripted model: per thread, one reply per request, in order; an empty one ends the turn. */
@@ -609,22 +609,26 @@ it("mcp: toolsearch turns itself on while deferred tools exist, unless settings 
 			main.run(prompt).pipe(Effect.map(() => declaredIn(model).includes(TOOL_SEARCH_NAME)));
 
 		const nothingDeferred = yield* offered("one");
-		// A server with only deferred tools is not awaited; it may add some, so toolsearch is on already.
+		// A server configured with deferred tools turns toolsearch on before it connects.
 		yield* Effect.promise(() => servers({ lazy: stdio({ exposure: "deferred" }, { E2E_HOLD: hold }) }));
 		const whileConnecting = yield* offered("two");
+		yield* Effect.promise(() => settings({ enabled: false }));
+		const disabledWhileConnecting = yield* offered("three");
 		const connectingState = yield* stateOf;
+		yield* Effect.promise(() => settings());
 		yield* Effect.promise(() => fs.rm(hold));
 		yield* waitFor(stateOf, (state) => state === "connected");
-		const deferredRegistered = yield* offered("three");
+		const deferredRegistered = yield* offered("four");
 		yield* Effect.promise(() => settings({ enabled: false }));
-		const disabled = yield* offered("four");
+		const disabled = yield* offered("five");
 		yield* Effect.promise(() => Promise.all([settings({ enabled: true }), servers({})]));
-		const enabledWithNothingDeferred = yield* offered("five");
+		const enabledWithNothingDeferred = yield* offered("six");
 		yield* Effect.promise(() => settings());
-		const entryRemoved = yield* offered("six");
+		const entryRemoved = yield* offered("seven");
 		return {
 			nothingDeferred,
 			whileConnecting,
+			disabledWhileConnecting,
 			connectingState,
 			deferredRegistered,
 			disabled,
@@ -640,6 +644,7 @@ it("mcp: toolsearch turns itself on while deferred tools exist, unless settings 
 	expect(result).toEqual({
 		nothingDeferred: false,
 		whileConnecting: true,
+		disabledWhileConnecting: false,
 		connectingState: "connecting",
 		deferredRegistered: true,
 		disabled: false,
@@ -648,6 +653,60 @@ it("mcp: toolsearch turns itself on while deferred tools exist, unless settings 
 	});
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/mcp.toolsearch.activation.json",
+	);
+}, 60_000);
+
+it("mcp: toolsearch stays declared, with the same tools, while a deferred-only server fails and disconnects", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	// Held at first, then the gate makes it exit: connecting, then failed.
+	const hold = join(dir.path, "hold");
+	const gate = join(dir.path, "gate");
+	await fs.writeFile(hold, "held");
+	await fs.writeFile(gate, "closed");
+	await write(join(home, "mcp.json"), {
+		mcpServers: { flaky: stdio({ exposure: "deferred" }, { E2E_HOLD: hold, E2E_GATE: gate }) },
+	});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const mcp = yield* Mcp.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "flaky")?.state));
+		const states: Array<string | undefined> = [];
+
+		yield* main.run("one");
+		states.push(yield* stateOf);
+		yield* Effect.promise(() => fs.rm(hold));
+		yield* waitFor(stateOf, (state) => state === "failed");
+		// A search finds nothing to wait for on a failed server, and the request after it keeps the tools.
+		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "search")]);
+		yield* main.run("two");
+		states.push(yield* stateOf);
+		yield* mcp.disconnect(main.id, "flaky");
+		yield* main.run("three");
+		states.push(yield* stateOf);
+		return {
+			states,
+			requests: model.requests.map((request) => (request.context.tools ?? []).map((tool) => tool.name)),
+			calls: yield* results(main),
+		};
+	}).pipe(
+		Effect.provide(Harness.layer({ home, hostCwd: dir.path, database: ":memory:", llm: model.open })),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.states).toEqual(["connecting", "failed", "disconnected"]);
+	expect(result.requests).toHaveLength(4);
+	for (const tools of result.requests) expect(tools).toEqual(result.requests[0]);
+	expect(result.requests[0]).toContain(TOOL_SEARCH_NAME);
+	expect(result.calls.search).toBe("No matching tools found.");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.toolsearch.stable.json",
 	);
 }, 60_000);
 
