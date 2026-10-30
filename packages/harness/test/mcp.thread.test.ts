@@ -14,11 +14,13 @@ import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { Mcp } from "../src/mcp/mcp.ts";
+import { McpOAuth } from "../src/mcp/oauth.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { TOOL_SEARCH_NAME, toolSearchPlugin } from "../src/plugin/builtin/tool/toolsearch.ts";
 import { define } from "../src/plugin/plugin.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { assistant } from "./fixtures/llm.ts";
+import { listen, raw } from "./fixtures/mcp/http.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
@@ -468,5 +470,59 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 	expect(result.loadedWhileAway?.add).toContain("mcp__slow__echo");
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/mcp.thread.loaded.json",
+	);
+}, 60_000);
+
+it("mcp: a server refusing the connection needs sign-in, and a new credential reconnects it once", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	const remote = raw({ unauthorized: true });
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const url = yield* listen(remote.handler);
+		yield* Effect.promise(() => write(join(home, "mcp.json"), { mcpServers: { remote: { url: url.href } } }));
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const seen = yield* statusEvents((threadId) => (threadId === main.id ? "main" : threadId));
+		const mcp = yield* Mcp.Service;
+		const attempts = () => remote.seen.filter((request) => request === "POST /mcp").length;
+
+		yield* main.run("one");
+		const first = { status: yield* mcp.status(main.id), attempts: attempts() };
+		// Nothing changed: the turn does not try again.
+		yield* main.run("two");
+		const unchanged = attempts();
+		// A sign-in, in this process or another, stores a credential: the next turn reconnects once.
+		yield* McpOAuth.store(home).update("remote", McpOAuth.key({ name: "remote", url: url.href }), (state) => ({
+			...state,
+			tokens: { access_token: "e2e-token", token_type: "Bearer" },
+		}));
+		yield* main.run("three");
+		const afterSignIn = attempts();
+		yield* main.run("four");
+		return { first, unchanged, afterSignIn, settled: attempts(), events: seen };
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin],
+				llm: model.open,
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.first.status[0]?.state).toBe("authenticate");
+	expect(result.unchanged).toBe(result.first.attempts);
+	expect(result.afterSignIn).toBeGreaterThan(result.unchanged);
+	expect(result.settled).toBe(result.afterSignIn);
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.thread.authenticate.json",
 	);
 }, 60_000);
