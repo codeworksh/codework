@@ -201,7 +201,7 @@
 		},
 		"gated": {
 			"state": "failed",
-			"error": "Connection closed: mcp server process exited with code 1: gate closed",
+			"error": "connection closed: mcp server process exited with code 1: gate closed",
 			"tools": []
 		},
 		"off": {
@@ -261,7 +261,7 @@
 		},
 		"gated": {
 			"state": "failed",
-			"error": "Connection closed: mcp server process exited with code 1: gate closed",
+			"error": "connection closed: mcp server process exited with code 1: gate closed",
 			"tools": []
 		},
 		"off": {
@@ -640,7 +640,7 @@
 				{
 					"server": "gated",
 					"state": "failed",
-					"error": "Connection closed: mcp server process exited with code 1: gate closed"
+					"error": "connection closed: mcp server process exited with code 1: gate closed"
 				},
 				{
 					"server": "gated",
@@ -753,7 +753,7 @@
 				{
 					"server": "gated",
 					"state": "failed",
-					"error": "Connection closed: mcp server process exited with code 1: gate closed"
+					"error": "connection closed: mcp server process exited with code 1: gate closed"
 				}
 			],
 			"off": [
@@ -786,5 +786,10 @@
 				}
 			]
 		}
+	},
+	"deleted": {
+		"running": 0,
+		"status": {},
+		"events": 0
 	}
 }

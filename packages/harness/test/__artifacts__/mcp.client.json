@@ -5,7 +5,7 @@
   },
   "crash": {
     "error": {
-      "message": "Connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
+      "message": "connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
       "tag": "Mcp.RequestError",
     },
     "method": "tools/call",
@@ -42,7 +42,7 @@
   },
   "frameLimit": {
     "error": {
-      "message": "Connection closed: mcp stdio frame exceeded 16 MiB",
+      "message": "connection closed: mcp stdio frame exceeded 16 MiB",
       "tag": "Mcp.RequestError",
     },
     "reason": "connection closed: mcp stdio frame exceeded 16 MiB",

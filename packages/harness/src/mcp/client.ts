@@ -202,7 +202,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 	let lastError: string | undefined;
 	const explain = (error: unknown) =>
 		error instanceof SdkError && error.code === SdkErrorCode.ConnectionClosed && lastError
-			? `${describe(error)}: ${lastError}`
+			? `connection closed: ${lastError}`
 			: describe(error);
 	// A server that wants (new) credentials. Without an auth provider a 401 is a configuration error.
 	const needsAuth = (error: unknown) =>
