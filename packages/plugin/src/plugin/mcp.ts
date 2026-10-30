@@ -12,18 +12,18 @@
  *
  * - `direct`: declared to the model like any other tool.
  * - `codemode`: called from codemode scripts, never declared to the model.
- * - `deferred`: declared once `tool_search` finds them.
- * - `hidden`: never registered.
+ * - `deferred`: declared once `toolsearch` loads them.
+ * - `hidden`: never offered to the model.
  *
- * Until codemode and `tool_search` exist, `codemode` and `deferred` tools cannot be reached; a
- * session using them is warned once. `codemode-deferred` in `mcp.json` is read as `codemode`.
+ * Until codemode exists, `codemode` tools cannot be called. `codemode-deferred` in `mcp.json` is
+ * read as `codemode`.
  */
 export type Exposure = "direct" | "codemode" | "deferred" | "hidden";
 
 /**
  * Who shares one running instance of a server.
  *
- * - `session`: each session runs its own.
+ * - `session`: threads of one session at the same place share one.
  * - `space`: sessions in the same space (sandbox and folder) share one.
  * - `app`: every session shares one.
  */

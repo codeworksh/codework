@@ -171,8 +171,8 @@ export const layer = Layer.effect(
 						),
 					);
 
-					// The session's MCP servers stay open while its drain runs, and idle out after.
-					yield* mcp.lease(sessionId);
+					// The thread's MCP servers stay open while its drain runs, and idle out after.
+					yield* mcp.lease({ sessionId, threadId });
 					return yield* runner
 						.run({ threadId, force, recovered })
 						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));

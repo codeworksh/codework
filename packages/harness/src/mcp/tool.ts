@@ -129,6 +129,7 @@ export const define = (input: {
 	/** Who answers, for the details kept with the result: a server, or none for a tool reaching several. */
 	readonly server: string;
 	readonly tool: string;
+	readonly exposure: Exposure;
 	readonly run: (run: Run) => Effect.Effect<Result, McpError.Failure>;
 }) => {
 	const outcome = (result: Result): Outcome => ({
@@ -141,6 +142,7 @@ export const define = (input: {
 		Tool.make({
 			name: input.name,
 			label: input.label,
+			exposure: input.exposure,
 			description: input.description,
 			parameters: Tool.fromJsonSchema(input.parameters),
 			success: Outcome,
@@ -183,6 +185,7 @@ export const make = (input: {
 	readonly server: string;
 	readonly tool: McpTool;
 	readonly name: string;
+	readonly exposure: Exposure;
 	readonly call: (run: Run) => Effect.Effect<CallToolResult, McpError.Failure>;
 	readonly content: McpContent.Options;
 }) => {
@@ -195,6 +198,7 @@ export const make = (input: {
 		parameters: parameters(tool.inputSchema),
 		server,
 		tool: tool.name,
+		exposure: input.exposure,
 		run: (run) =>
 			Effect.gen(function* () {
 				const result = yield* input.call(run);
