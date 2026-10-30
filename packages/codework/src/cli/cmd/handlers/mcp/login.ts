@@ -1,5 +1,5 @@
-/* @effect-diagnostics nodeBuiltinImport:off -- the pasted redirect URL is read from the terminal. */
-import { createInterface } from "node:readline/promises";
+/* @effect-diagnostics nodeBuiltinImport:off -- the pasted redirect URL is read from standard input. */
+import { createInterface } from "node:readline";
 import { openBrowser } from "@codeworksh/aikit/oauth/interactive";
 import { McpOAuth } from "@codeworksh/harness/effect";
 import { Duration, Effect, Logger } from "effect";
@@ -10,19 +10,35 @@ import { Cmd } from "../../cmd.ts";
 import { oauthServer } from "./shared.ts";
 
 /**
- * The redirected URL, typed into the terminal when the browser cannot reach this machine's
- * callback (over SSH, say). Without a terminal there is no one to ask, and only the callback counts.
+ * The redirected URL, typed or piped in when the browser cannot reach this machine's callback (over
+ * SSH, say). Piped input that ends without a line leaves the callback to finish the sign-in; a
+ * terminal that closes (Ctrl+C, Ctrl+D) cancels it.
  */
-const paste: Effect.Effect<string | undefined> = process.stdin.isTTY
-	? Effect.acquireUseRelease(
-			Effect.sync(() => createInterface({ input: process.stdin, output: process.stderr })),
-			(readline) =>
-				Effect.tryPromise((signal) =>
-					readline.question("Or paste the URL the browser was redirected to: ", { signal }),
-				).pipe(Effect.orElseSucceed(() => undefined)),
-			(readline) => Effect.sync(() => readline.close()),
-		)
-	: Effect.never;
+const paste: Effect.Effect<string> = Effect.acquireUseRelease(
+	Effect.sync(() => ({
+		readline: createInterface({ input: process.stdin, output: process.stderr }),
+		answered: false,
+	})),
+	(asking) =>
+		Effect.callback<string>((resume) => {
+			const answer = (line: string) => {
+				asking.answered = true;
+				resume(Effect.succeed(line));
+			};
+			asking.readline.question("Or paste the URL the browser was redirected to: ", answer);
+			// An empty answer cancels the sign-in.
+			if (process.stdin.isTTY) asking.readline.once("close", () => answer(""));
+		}),
+	(asking) =>
+		Effect.sync(() => {
+			const unanswered = !asking.answered;
+			asking.readline.close();
+			// A pipe still open would keep the process alive after the sign-in.
+			process.stdin.destroy();
+			// What follows starts on its own line, not after the prompt.
+			if (unanswered) process.stderr.write("\n");
+		}),
+);
 
 export default Runtime.handler(
 	Cmd.commands.mcp.commands.login,

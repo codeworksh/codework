@@ -67,7 +67,7 @@ An HTTP server without an `Authorization` header signs in with OAuth when it ask
 codework mcp login linear
 ```
 
-CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
+CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to, or pipe it to the command. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
 
 Sign-ins are stored in `~/.codework/mcpauth.json`, by server name and URL, and refreshed when they expire. Servers that don't support client registration take an `oauth` object:
 
