@@ -93,7 +93,7 @@ export type SessionCreated = typeof SessionCreated.Type;
  * the thread the fork was asked of; the origin is the thread that owns the entry.
  */
 export const ThreadForked = EventSchema.define({
-	type: "thread.forked",
+	type: "session.thread.forked",
 	...durableOptions,
 	schema: {
 		...baseOptions,
@@ -106,7 +106,7 @@ export type ThreadForked = typeof ThreadForked.Type;
 
 /** A change to a thread's `agent` document; one revision at this event's seq. */
 export const ThreadConfigured = EventSchema.define({
-	type: "thread.configured",
+	type: "session.thread.configured",
 	...durableOptions,
 	schema: { ...baseOptions, change: DocumentSchema.AgentChange },
 });

@@ -166,7 +166,7 @@ export interface Interface {
 	readonly abort: (input: EndAssistant & { readonly data: string }) => Effect.Effect<void>;
 	/** Cut a new thread off `threadId`'s line at a committed entry. */
 	readonly fork: (input: ForkInput) => Effect.Effect<Forked, ThreadNotFoundError | ForkError>;
-	/** Projector of `thread.forked`: the thread and its copied documents, at the event's seq. */
+	/** Projector of `session.thread.forked`: the thread and its copied documents, at the event's seq. */
 	readonly projectForked: (input: EventList.ThreadForked["data"], seq: number) => Effect.Effect<void>;
 	/** Names an untitled thread. Returns whether the title changed. */
 	readonly retitle: (threadId: ThreadSchema.ID, title: string) => Effect.Effect<boolean>;

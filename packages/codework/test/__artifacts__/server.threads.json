@@ -67,7 +67,7 @@
 	],
 	"forkLog": [
 		{
-			"type": "thread.forked",
+			"type": "session.thread.forked",
 			"thread": "<fork>"
 		},
 		{

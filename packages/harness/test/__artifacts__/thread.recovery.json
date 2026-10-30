@@ -6,7 +6,7 @@
 		"4 session.llm.started.1 T1",
 		"5 session.llm.ended.1 T1",
 		"6 session.turn.ended.1 T1",
-		"7 thread.forked.1 T2",
+		"7 session.thread.forked.1 T2",
 		"8 session.prompt.admitted.1 T2",
 		"9 session.prompt.promoted.1 T2",
 		"10 session.llm.started.1 T2",

@@ -377,7 +377,7 @@ export const Api = RpcGroup.make(
 	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
 	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
 	 * With `threadId`, only that thread's events; the marker still names the session's head. A fork's
-	 * own log starts at its `thread.forked`: what it inherits is in `thread.history`.
+	 * own log starts at its `session.thread.forked`: what it inherits is in `thread.history`.
 	 */
 	Rpc.make("session.log", {
 		payload: {
