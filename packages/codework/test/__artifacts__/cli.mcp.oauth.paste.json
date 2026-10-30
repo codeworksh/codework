@@ -1,0 +1,37 @@
+{
+	"outcome": "Signed in to MCP server \"secure\" (1 tool).",
+	"access": "access-1",
+	"server": [
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"register": {
+				"application_type": "native",
+				"client_name": "CodeWork",
+				"client_uri": "https://codework.sh",
+				"logo_uri": "https://codework.sh/brand/icon.png",
+				"grant_types": [
+					"authorization_code",
+					"refresh_token"
+				],
+				"token_endpoint_auth_method": "none"
+			}
+		},
+		{
+			"authorize": {
+				"scope": "tools",
+				"resource": "<fixture>/mcp"
+			}
+		},
+		{
+			"token": "authorization_code",
+			"verified": true
+		}
+	]
+}

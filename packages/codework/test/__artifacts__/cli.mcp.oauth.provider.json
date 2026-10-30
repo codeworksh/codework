@@ -1,0 +1,25 @@
+{
+	"refused": {
+		"exit": 1,
+		"state": "authenticate",
+		"error": "MCP server \"keyed\" refused the credential of provider \"openai\". Sign in to it with \"codework auth login\", or set its API key."
+	},
+	"asked": {
+		"declared": [],
+		"answer": "Tool said: Unknown Tool: mcp__keyed__whoami"
+	},
+	"accepted": {
+		"exit": 0,
+		"state": "connected"
+	},
+	"called": {
+		"declared": [
+			"mcp__keyed__whoami"
+		],
+		"answer": "Tool said: called with provider-key"
+	},
+	"presented": [
+		"wrong-key",
+		"provider-key"
+	]
+}

@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Writable } from "node:stream";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { onTestFinished } from "vite-plus/test";
@@ -113,26 +114,37 @@ export interface Result {
 	readonly stderr: string;
 }
 
-/** Runs the CLI from source; `onStderr` sees its standard error as it arrives. */
+// Node pipes are sockets, which `script` refuses as its input on macOS.
+const terminal = fileURLToPath(new URL("./terminal.py", import.meta.url));
+
+/**
+ * Runs the CLI from source; `onStdout` and `onStderr` see each stream as it arrives. `tty` runs it
+ * in a pseudo-terminal whose output, both streams, comes back as `stdout`.
+ */
 export const runCli = (
 	args: ReadonlyArray<string>,
 	options: {
 		readonly cwd: string;
 		readonly env: NodeJS.ProcessEnv;
+		readonly tty?: boolean;
+		readonly onStdout?: (text: string) => void;
 		readonly onStderr?: (text: string) => void;
-		/** The child process, for a test that signals it. */
-		readonly onSpawn?: (child: { kill: (signal: NodeJS.Signals) => void }) => void;
+		/** The child process, for a test that signals it or types into it. */
+		readonly onSpawn?: (child: { kill: (signal: NodeJS.Signals) => void; stdin: Writable }) => void;
 	},
 ) =>
 	new Promise<Result>((resolve, reject) => {
-		const child = spawn(process.execPath, ["--conditions=development", cli, ...args], {
-			cwd: options.cwd,
-			env: options.env,
-		});
+		const command = [process.execPath, "--conditions=development", cli, ...args];
+		const child = options.tty
+			? spawn("python3", ["-I", terminal, ...command], { cwd: options.cwd, env: options.env })
+			: spawn(command[0]!, command.slice(1), { cwd: options.cwd, env: options.env });
 		options.onSpawn?.(child);
 		let stdout = "";
 		let stderr = "";
-		child.stdout.on("data", (data: Buffer) => (stdout += data.toString("utf8")));
+		child.stdout.on("data", (data: Buffer) => {
+			stdout += data.toString("utf8");
+			options.onStdout?.(stdout);
+		});
 		child.stderr.on("data", (data: Buffer) => {
 			stderr += data.toString("utf8");
 			options.onStderr?.(stderr);
