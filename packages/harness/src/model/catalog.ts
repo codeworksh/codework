@@ -10,7 +10,7 @@
  */
 import { getEnvApiKey, Model } from "@codeworksh/aikit";
 import { downloadCatalog } from "@codeworksh/aikit/modelgen";
-import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
+import { filterGitHubCopilotModels, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
@@ -178,8 +178,8 @@ export class Credentials extends Context.Service<Credentials, { readonly authFil
 /** The storage options an aikit OAuth store takes for {@link Credentials.authFile}. */
 export const oauthStorage = (authFile: string | undefined) => (authFile === undefined ? {} : { path: authFile });
 
-/** Whether an OAuth login is stored for the protocol. Reads the file; never refreshes a token. */
-const loggedIn = (protocol: string, authFile: string | undefined) => {
+/** The OAuth login stored for the protocol, if any. Reads the file; never refreshes a token. */
+const storedLogin = (protocol: string, authFile: string | undefined) => {
 	const storage = oauthStorage(authFile);
 	const store =
 		protocol === "openai-codex"
@@ -187,11 +187,8 @@ const loggedIn = (protocol: string, authFile: string | undefined) => {
 			: protocol === "github-copilot"
 				? new JsonGitHubCopilotAuthStorage(storage)
 				: undefined;
-	if (store === undefined) return Effect.succeed(false);
-	return Effect.tryPromise(() => store.get()).pipe(
-		Effect.map((stored) => stored !== undefined),
-		Effect.orElseSucceed(() => false),
-	);
+	if (store === undefined) return Effect.void;
+	return Effect.tryPromise(() => store.get()).pipe(Effect.orElseSucceed(() => undefined));
 };
 
 /**
@@ -243,7 +240,8 @@ const oauthProtocols: ReadonlySet<string> = new Set(["openai-codex", "github-cop
  * only the user's.
  *
  * `apiKey`: the provider's `key` or `env` names are set in the host environment (they include the
- * OAuth providers' env tokens). `oauth`: a login is stored in the {@link Credentials} file. `none`:
+ * OAuth providers' env tokens). `oauth`: a login is stored in the {@link Credentials} file; a
+ * Copilot login keeps only the models its account can reach. `none`:
  * the provider names no key and isn't an OAuth provider. A provider with a key and a login reports
  * `apiKey`, the one a model call uses first.
  *
@@ -262,16 +260,22 @@ export const available = Effect.fn("ModelCatalog.available")(function* (
 		if (entries === undefined || first === undefined) continue;
 		const keyless =
 			first.provider.key === undefined && first.provider.env.length === 0 && !oauthProtocols.has(first.protocol);
+		const login =
+			getEnvApiKey(first.provider) === undefined ? yield* storedLogin(first.protocol, authFile) : undefined;
 		const credential: Credential | undefined =
 			getEnvApiKey(first.provider) !== undefined
 				? "apiKey"
-				: (yield* loggedIn(first.protocol, authFile))
+				: login !== undefined
 					? "oauth"
 					: keyless
 						? "none"
 						: undefined;
 		if (credential === undefined || (filter.credential !== undefined && filter.credential !== credential)) continue;
-		usable.push({ id, credential, models: entries });
+		const models =
+			credential === "oauth" && first.protocol === "github-copilot" && login !== undefined && "access" in login
+				? filterGitHubCopilotModels(entries, login)
+				: entries;
+		usable.push({ id, credential, models });
 	}
 	return usable;
 });

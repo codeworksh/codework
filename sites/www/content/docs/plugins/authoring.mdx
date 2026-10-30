@@ -140,6 +140,7 @@ A tool is a definition plus a handler. `Tool.make` builds both at once:
 | `encodeFailureContent` | Optional. Renders a failure for the model.                                       |
 | `promptSnippet`        | Optional. One line for the system prompt's tool list.                            |
 | `promptGuidelines`     | Optional. Bullets added to the prompt's guidelines while the tool is active.     |
+| `exposure`             | Optional. Only `"direct"` (default) and `"model"` tools reach the model.         |
 | `label`                | Optional. A short display name for UIs.                                          |
 
 Register it with `Tool.register(tool)` when the handler needs nothing but its arguments.

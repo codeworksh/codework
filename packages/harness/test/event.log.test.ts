@@ -6,12 +6,14 @@ import { EventList } from "../src/event/list.ts";
 import { EventSchema } from "../src/event/schema.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { ThreadSchema } from "../src/thread/schema.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const layer = Layer.provideMerge(Event.layer, Database.layer(":memory:"));
 const { effect: it, live: liveIt } = testEffect(layer);
 const A = SessionSchema.ID.make("session_a");
 const B = SessionSchema.ID.make("session_b");
+const threadId = ThreadSchema.ID.make("thread_a");
 
 const messageId = (name: string) => SessionMessageSchema.ID.make(name);
 
@@ -20,7 +22,7 @@ const turns = (events: Event.Interface, sessionId: SessionSchema.ID, names: Read
 		const timestamp = yield* DateTime.now;
 		yield* Effect.forEach(
 			names,
-			(name) => events.publish(EventList.TurnEnded, { timestamp, sessionId, messageId: messageId(name) }),
+			(name) => events.publish(EventList.TurnEnded, { timestamp, sessionId, threadId, messageId: messageId(name) }),
 			{ discard: true },
 		);
 	});
@@ -67,7 +69,7 @@ describe("Event.log", () => {
 			expect(items[0]).toEqual({ type: "log.synced", aggregateId: A });
 			expect(names(items)).toEqual(expected);
 			expect(items.flatMap((item) => (Event.isSynced(item) ? [] : [item.durable?.seq]))).toEqual(
-				expected.map((_, index) => index),
+				expected.map((_, index) => index + 1),
 			);
 		}),
 	);
@@ -123,7 +125,7 @@ describe("Event.log", () => {
 			yield* Fiber.join(interruption);
 			const exit = yield* Fiber.await(publisher);
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
-			expect(yield* events.latestSequence(A)).toBe(0);
+			expect(yield* events.latestSequence(A)).toBe(1);
 			expect(names(Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect)))).toEqual([
 				"cancelled",
 			]);
@@ -139,7 +141,7 @@ describe("Event.log", () => {
 
 			const items = Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect));
 			expect(names(items)).toEqual(["a0", "a1"]);
-			expect(items.at(-1)).toEqual({ type: "log.synced", aggregateId: A, seq: 1 });
+			expect(items.at(-1)).toEqual({ type: "log.synced", aggregateId: A, seq: 2 });
 		}));
 
 	liveIt("appends commits after the marker and never live-only events", () =>
@@ -155,6 +157,7 @@ describe("Event.log", () => {
 			yield* events.publish(EventList.LLMTextDelta, {
 				timestamp,
 				sessionId: A,
+				threadId,
 				messageId: messageId("live"),
 				partIndex: 0,
 				delta: "token",
@@ -165,7 +168,7 @@ describe("Event.log", () => {
 
 			const items = Array.from(yield* Fiber.join(fiber));
 			expect(names(items)).toEqual(["replayed", "tailed"]);
-			expect(items[1]).toEqual({ type: "log.synced", aggregateId: A, seq: 0 });
+			expect(items[1]).toEqual({ type: "log.synced", aggregateId: A, seq: 1 });
 		}),
 	);
 
@@ -307,7 +310,7 @@ describe("Event.log", () => {
 				readonly durable?: { readonly aggregateId: string; readonly seq: number };
 			};
 			expect(first.durable?.aggregateId).toBe(topic);
-			expect(first.durable?.seq).toBe(0);
+			expect(first.durable?.seq).toBe(1);
 		}));
 
 	it("pages custom definitions across many pages and resumes from a cursor", () =>
@@ -335,12 +338,12 @@ describe("Event.log", () => {
 			// Sequences are contiguous across the page boundaries, so nothing was
 			// skipped or re-read where one page hands over to the next.
 			const seqs = all.flatMap((item) => (Event.isSynced(item) ? [] : [item.durable?.seq]));
-			expect(seqs).toEqual(Array.from({ length: total }, (_, index) => index));
+			expect(seqs).toEqual(Array.from({ length: total }, (_, index) => index + 1));
 
 			// And a cursor resumes mid-stream rather than replaying from the start.
 			const resumed = Array.from(
 				yield* events
-					.log({ aggregateId: topic, after: 199, definitions: foreignDefinitions })
+					.log({ aggregateId: topic, after: 200, definitions: foreignDefinitions })
 					.pipe(Stream.runCollect),
 			);
 			const tail = resumed.flatMap((item) =>

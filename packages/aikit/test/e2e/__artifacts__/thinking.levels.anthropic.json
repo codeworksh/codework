@@ -183,6 +183,37 @@
 			"providerThinkingLevel": "max"
 		}
 	},
+	"claude-haiku-5-5": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
 	"claude-haiku-4-5-20251001": {
 		"off": {
 			"thinkingLevel": "off",

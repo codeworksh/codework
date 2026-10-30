@@ -10,6 +10,7 @@ import { Contract } from "@codeworksh/contract";
 import { Db } from "./db.ts";
 import { Event } from "./event.ts";
 import { Handlers } from "./handlers.ts";
+import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
 import { Servers } from "./servers.ts";
 import { Widgets } from "./widgets.ts";
@@ -72,7 +73,8 @@ export const layer = Layer.mergeAll(
 	Widgets.layer,
 	exitWithParent,
 ).pipe(
-	Layer.provide(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)),
+	// The servers' status is checked from launch, so the first page already has it.
+	Layer.provide(Health.layer.pipe(Layer.provideMerge(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)))),
 	// The app's servers decide which one its connection goes to, and the handlers manage them too.
 	Layer.provideMerge(Servers.layer),
 	Layer.provideMerge(announceReady),

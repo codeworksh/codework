@@ -346,7 +346,7 @@ describe("Sandbox.Controller", () => {
 				ownership: "managed",
 				status: "provisioning",
 			});
-			yield* sql`UPDATE sandbox_instance SET state_observed_at = -1000 WHERE id = ${instanceId}`;
+			yield* sql`UPDATE sandbox SET state_observed_at = -1000 WHERE id = ${instanceId}`;
 
 			const restarted = yield* SandboxController.make({ hostCwd: "/", provisioningTimeoutMs: 1 });
 			const swept = Option.getOrThrow(yield* restarted.get(instanceId));

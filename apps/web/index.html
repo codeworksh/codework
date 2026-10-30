@@ -31,9 +31,14 @@
 					sans-serif;
 			}
 
+			/* Over the app while it mounts behind, then faded away (src/splash.ts) so the swap reads as one. */
 			#boot-shell {
+				position: fixed;
+				inset: 0;
+				z-index: 100;
+				background: inherit;
+				transition: opacity 280ms cubic-bezier(0.23, 1, 0.32, 1);
 				display: flex;
-				height: 100%;
 				flex-direction: column;
 				align-items: center;
 				justify-content: center;
@@ -46,6 +51,23 @@
 				width: 64px;
 				height: 64px;
 				border-radius: 14px;
+				transition: transform 280ms cubic-bezier(0.23, 1, 0.32, 1);
+			}
+
+			#boot-shell.done {
+				opacity: 0;
+				pointer-events: none;
+			}
+
+			#boot-shell.done img {
+				transform: scale(1.08);
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				#boot-shell,
+				#boot-shell img {
+					transition: none;
+				}
 			}
 
 			#boot-shell button {
@@ -61,11 +83,10 @@
 		</style>
 	</head>
 	<body>
-		<!-- The splash: shown until the app mounts and replaces it. -->
-		<div id="root">
-			<div id="boot-shell">
-				<img src="/src/assets/codework.png" alt="CodeWork" />
-			</div>
+		<div id="root"></div>
+		<!-- The splash: shown until the app has mounted and knows the servers' status. -->
+		<div id="boot-shell">
+			<img src="/src/assets/codework.png" alt="CodeWork" />
 		</div>
 		<script type="module" src="/src/bootstrap.ts"></script>
 	</body>

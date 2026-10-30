@@ -65,6 +65,7 @@ function toolResultChars(part: Message.ToolCall): number {
 }
 
 export function estimateMessageTokens(message: Message.Message): number {
+	if (message.role === "system") return estimateToolsTokens(message.toolsAdded);
 	if (message.role === "user") return estimateContentTokens(message.parts);
 
 	let chars = 0;
@@ -122,7 +123,7 @@ function estimateMessages(messages: ReadonlyArray<Message.Message>): ContextUsag
 		const usageTokens = calculateContextTokens(usage.usage);
 		// Tool results are attached to the assistant turn after its usage was
 		// reported, not sent as separate messages. Only its output is counted.
-		const latest = messages[usage.index]!;
+		const latest = messages[usage.index] as Message.AssistantMessage;
 		let resultChars = 0;
 		for (const part of latest.parts) {
 			if (part.type === "toolCall") resultChars += toolResultChars(part);
@@ -142,37 +143,15 @@ function estimateToolsTokens(tools: ReadonlyArray<Message.Tool> | undefined): nu
 	return estimateTextTokens(safeJsonStringify(tools));
 }
 
-/** Tools discovered by execution of the given assistant turn or later turns. */
-function toolNamesAddedAfter(messages: ReadonlyArray<Message.Message>, index: number): Set<string> {
-	const names = new Set<string>();
-	for (let i = index; i < messages.length; i++) {
-		const message = messages[i]!;
-		if (message.role !== "assistant") continue;
-		for (const part of message.parts) {
-			if (part.type !== "toolCall") continue;
-			for (const name of part.addedToolNames ?? []) names.add(name);
-		}
-	}
-	return names;
-}
-
 export function estimateContextTokens(context: Message.Context): ContextUsageEstimate {
 	const estimate = estimateMessages(context.messages);
 
 	/*
 	 * Reported usage already includes the system prompt and the tools that were
-	 * live at the time, so only what arrived since is added on top.
+	 * live at the time. Tools added since arrive as system messages after it,
+	 * which the trailing estimate already counts.
 	 */
-	if (estimate.lastUsageIndex !== null) {
-		const added = toolNamesAddedAfter(context.messages, estimate.lastUsageIndex);
-		const addedTokens = estimateToolsTokens(context.tools?.filter((tool) => added.has(tool.name)));
-		return {
-			tokens: estimate.tokens + addedTokens,
-			usageTokens: estimate.usageTokens,
-			trailingTokens: estimate.trailingTokens + addedTokens,
-			lastUsageIndex: estimate.lastUsageIndex,
-		};
-	}
+	if (estimate.lastUsageIndex !== null) return estimate;
 
 	const prefixTokens =
 		(context.systemPrompt ? estimateTextTokens(context.systemPrompt) : 0) + estimateToolsTokens(context.tools);

@@ -97,7 +97,7 @@ const run = (live: (typeof LIVE)[number], settings: object | undefined) => {
 		const db = new DatabaseSync(database);
 		try {
 			const rows = db
-				.prepare("SELECT tool_name, status FROM session_entry_part WHERE type = 'toolCall'")
+				.prepare("SELECT tool_name, status FROM part WHERE type = 'toolCall'")
 				.all()
 				.map((row) => ({ tool_name: String(row["tool_name"]), status: String(row["status"]) }));
 			return {

@@ -125,7 +125,7 @@ const platformOf = (shell: ISandboxExe) =>
 		return { os: mappedOs, arch: mappedArch } as const;
 	});
 
-/** Unpacks with the sandbox's own `tar`, as Pi does on its host; the archive layout varies by release. */
+/** Unpacks with the sandbox's own `tar`; the archive layout varies by release. */
 const unpack = [
 	"set -e",
 	'dir=$1; archive=$2; name=$3; tmp="$dir/.extract-$name-$$"',
@@ -142,7 +142,7 @@ const install = (name: Name, shell: ISandboxExe, fs: SandboxFileSystem.Interface
 	Effect.gen(function* () {
 		const spec = specs[name];
 		const { os, arch } = yield* platformOf(shell);
-		// Pi pins fd on Intel macs, where later releases ship no build.
+		// fd is pinned on Intel macs, where later releases ship no build.
 		const version =
 			name === "fd" && os === "darwin" && arch === "x86_64" ? "10.3.0" : yield* latestVersion(spec.repo);
 		const asset = spec.asset(version, os, arch);

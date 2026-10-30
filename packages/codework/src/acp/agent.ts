@@ -25,6 +25,7 @@ export interface Handlers {
 	/** Must replay the session's history through `Client.sessionUpdate` before it returns. */
 	readonly loadSession: Handler<Acp.LoadSessionRequest, Acp.LoadSessionResponse>;
 	readonly listSessions: Handler<Acp.ListSessionsRequest, Acp.ListSessionsResponse>;
+	readonly forkSession: Handler<Acp.ForkSessionRequest, Acp.ForkSessionResponse>;
 	readonly setConfigOption: Handler<Acp.SetSessionConfigOptionRequest, Acp.SetSessionConfigOptionResponse>;
 	readonly prompt: Handler<Acp.PromptRequest, Acp.PromptResponse>;
 	readonly cancel: (notification: Acp.CancelNotification) => Effect.Effect<void>;
@@ -81,6 +82,7 @@ export const serve = Effect.fn("ACP.serve")(function* (
 		.onRequest("session/new", handle(handlers.newSession))
 		.onRequest("session/load", handle(handlers.loadSession))
 		.onRequest("session/list", handle(handlers.listSessions))
+		.onRequest("session/fork", handle(handlers.forkSession))
 		.onRequest("session/set_config_option", handle(handlers.setConfigOption))
 		.onRequest("session/prompt", handle(handlers.prompt))
 		.onNotification("session/cancel", handle(handlers.cancel))

@@ -1,0 +1,106 @@
+{
+	"replies": [
+		"response 1",
+		"response 2"
+	],
+	"fork": {
+		"at": {
+			"origin": {
+				"kind": "fork",
+				"threadId": "<main>",
+				"entryId": "<main reply>"
+			},
+			"session": "<session>"
+		},
+		"before": {
+			"origin": {
+				"kind": "fork",
+				"threadId": "<main>",
+				"entryId": "<main reply>"
+			},
+			"text": "branch"
+		}
+	},
+	"listed": [
+		{
+			"id": "<at>",
+			"kind": "fork",
+			"title": "branch"
+		},
+		{
+			"id": "<before>",
+			"kind": "fork"
+		},
+		{
+			"id": "<main>",
+			"kind": "main",
+			"title": "hello"
+		}
+	],
+	"histories": {
+		"main": [
+			{
+				"thread": "<main>",
+				"role": "user",
+				"state": "committed",
+				"text": "hello"
+			},
+			{
+				"thread": "<main>",
+				"role": "assistant",
+				"state": "committed",
+				"text": "response 1"
+			}
+		],
+		"at": [
+			{
+				"thread": "<main>",
+				"role": "user",
+				"state": "committed",
+				"text": "hello"
+			},
+			{
+				"thread": "<main>",
+				"role": "assistant",
+				"state": "committed",
+				"text": "response 1"
+			},
+			{
+				"thread": "<at>",
+				"role": "user",
+				"state": "committed",
+				"text": "branch"
+			},
+			{
+				"thread": "<at>",
+				"role": "assistant",
+				"state": "committed",
+				"text": "response 2"
+			}
+		],
+		"before": [
+			{
+				"thread": "<main>",
+				"role": "user",
+				"state": "committed",
+				"text": "hello"
+			},
+			{
+				"thread": "<main>",
+				"role": "assistant",
+				"state": "committed",
+				"text": "response 1"
+			}
+		]
+	},
+	"deleted": {
+		"deleted": true
+	},
+	"afterDelete": {
+		"threads": 0,
+		"info": "SessionNotFoundError",
+		"again": {
+			"deleted": false
+		}
+	}
+}

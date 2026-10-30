@@ -59,7 +59,7 @@ export type Manifest<A> = {
 
 export type ReadAggregateInput<A> = {
 	readonly aggregateId: string;
-	/** Exclusive lower bound. Omitted reads from the first stored sequence (0). */
+	/** Exclusive lower bound. Omitted reads from the first stored sequence (1). */
 	readonly after?: number;
 	readonly limit: number;
 	readonly manifest: Manifest<A>;
@@ -72,7 +72,7 @@ export type ReadAggregateResult<A> = {
 
 /**
  * Marks completion of the initial journal read through the captured sequence.
- * Emitted once per `log` stream; omitted `seq` means the head was -1.
+ * Emitted once per `log` stream; omitted `seq` means the log is empty.
  * This is a replay boundary, not an acknowledgment of consumer processing.
  */
 export type Synced = {
@@ -88,7 +88,7 @@ export const isSynced = (item: LogItem): item is Synced => item.type === "log.sy
 
 export type LogInput = {
 	readonly aggregateId: string;
-	/** Exclusive lower bound. Omitted reads from the first stored sequence (0). */
+	/** Exclusive lower bound. Omitted reads from the first stored sequence (1). */
 	readonly after?: number;
 	/** Keep the stream open past the marker, appending events as they commit. */
 	readonly follow?: boolean;
@@ -141,7 +141,7 @@ export interface Subscribe {
 }
 
 export interface Interface {
-	/** Current sequence head, or -1 if absent. A version position, not a row count. */
+	/** Current sequence head, or 0 if absent: every log starts at 1. A version position, not a row count. */
 	readonly latestSequence: (aggregateId: string) => Effect.Effect<number>;
 	/**
 	 * Reads one page of stored events in sequence order, filtered and decoded by
@@ -278,14 +278,14 @@ export const layer = Layer.effect(
 		const findLatestSequence = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: Schema.Struct({ seq: Schema.Int }),
-			execute: (aggregateId) => sql`SELECT seq FROM event_sequence WHERE aggregate_id = ${aggregateId}`,
+			execute: (aggregateId) => sql`SELECT seq FROM sequence WHERE aggregate_id = ${aggregateId}`,
 		});
 
-		// -1 for an aggregate that has never been written, so that the first
-		// sequence a publisher assigns (`latest + 1`) is 0.
+		// 0 for an aggregate that has never been written, so that the first
+		// sequence a publisher assigns (`latest + 1`) is 1.
 		const latestSequence = Effect.fn("Event.latestSequence")(function* (aggregateId: string) {
 			return yield* findLatestSequence(aggregateId).pipe(
-				Effect.map(Option.match({ onNone: () => -1, onSome: (row) => row.seq })),
+				Effect.map(Option.match({ onNone: () => 0, onSome: (row) => row.seq })),
 				Effect.orDie,
 			);
 		});
@@ -342,7 +342,7 @@ export const layer = Layer.effect(
 		const readAggregate = Effect.fn("Event.readAggregate")(function* <A>(input: ReadAggregateInput<A>) {
 			const rows = yield* selectAggregateEvents({
 				aggregateId: input.aggregateId,
-				after: input.after ?? -1,
+				after: input.after ?? 0,
 				through: UNBOUNDED,
 				types: Array.from(input.manifest.definitions.keys()),
 				limit: input.limit + 1,
@@ -443,8 +443,8 @@ export const layer = Layer.effect(
 			Request: Schema.String,
 			Result: Schema.Struct({ seq: Schema.Int }),
 			execute: (aggregateId) => sql`
-        INSERT INTO event_sequence (aggregate_id, seq) VALUES (${aggregateId}, 0)
-        ON CONFLICT(aggregate_id) DO UPDATE SET seq = event_sequence.seq + 1
+        INSERT INTO sequence (aggregate_id, seq) VALUES (${aggregateId}, 1)
+        ON CONFLICT(aggregate_id) DO UPDATE SET seq = sequence.seq + 1
         RETURNING seq
       `,
 		});
@@ -550,8 +550,8 @@ export const layer = Layer.effect(
 		const advanceSequence = SqlSchema.void({
 			Request: Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int }),
 			execute: ({ aggregateId, seq }) => sql`
-        INSERT INTO event_sequence (aggregate_id, seq) VALUES (${aggregateId}, ${seq})
-        ON CONFLICT(aggregate_id) DO UPDATE SET seq = MAX(event_sequence.seq, excluded.seq)
+        INSERT INTO sequence (aggregate_id, seq) VALUES (${aggregateId}, ${seq})
+        ON CONFLICT(aggregate_id) DO UPDATE SET seq = MAX(sequence.seq, excluded.seq)
       `,
 		});
 
@@ -623,7 +623,7 @@ export const layer = Layer.effect(
 					const definitions = input.definitions ?? EventManifest.Manifest.definitions;
 					// The cursor outlives a single catch-up: each wake resumes from the
 					// last sequence actually emitted, not from where the pass began.
-					const cursor = yield* Ref.make(input.after ?? -1);
+					const cursor = yield* Ref.make(input.after ?? 0);
 					const catchUp = (through: number): Stream.Stream<Payload> =>
 						Stream.unwrap(
 							Ref.get(cursor).pipe(
@@ -661,7 +661,7 @@ export const layer = Layer.effect(
 					const marker: Synced = {
 						type: "log.synced",
 						aggregateId: input.aggregateId,
-						...(head >= 0 ? { seq: head } : {}),
+						...(head > 0 ? { seq: head } : {}),
 					};
 					const replay = catchUp(head).pipe(Stream.concat(Stream.make(marker)));
 					if (!wakes) return replay;

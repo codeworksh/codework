@@ -24,7 +24,7 @@
  *
  * **A generation is immutable.** Installing never mutates a published one: it stages elsewhere and
  * renames into place. Three problems that solves, and nothing simpler solves all three -- a
- * running exchange holding file URLs into generation *N* is not disturbed by *N+1*; Node's ESM
+ * running turn holding file URLs into generation *N* is not disturbed by *N+1*; Node's ESM
  * registry is keyed by URL and never evicts, so an in-place update would hand back the *old*
  * module on re-import; and rollback is a `rename`, because a generation that fails validation
  * never gets a marker.
@@ -341,7 +341,7 @@ export const add = Effect.fn("PluginStore.add")(function* <A>(
  * Expire what is superseded.
  *
  * The two newest generations are kept regardless of age: the newest is live, and the one before it
- * may still be imported by an exchange in flight. Runs at the end of an `add` that published
+ * may still be imported by a turn in flight. Runs at the end of an `add` that published
  * something -- no timer and no sweeper, because installs are the only thing that creates garbage.
  */
 export const collect = Effect.fn("PluginStore.collect")(function* (directory: string) {

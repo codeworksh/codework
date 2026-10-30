@@ -1,15 +1,77 @@
 import { LoadAPIKeyError, NoSuchModelError, type LanguageModelV3, type ProviderV3 } from "@ai-sdk/provider";
+import type { TSchema } from "typebox";
+import type * as Message from "../../message/message.ts";
 import { getOpenAICodexAccountId } from "../../oauth/openai/codex.ts";
 import {
-	OPENAI_CODEX_DEFAULT_BASE_URL,
-	OpenAICodexLanguageModel,
-	clampOpenAICodexPromptCacheKey,
-	type OpenAICodexModelId,
-	type OpenAICodexCompatibility,
-	type OpenAICodexServiceTier,
-} from "./codex-language-model.ts";
+	ResponsesLanguageModel,
+	clampPromptCacheKey,
+	type ResponsesCompatibility,
+	type ResponsesRequestProfile,
+	type ResponsesServiceTier,
+} from "../responses/model.ts";
 
 export const OPENAI_CODEX_API_KEY_ENV = "OPENAI_CODEX_API_KEY";
+export const OPENAI_CODEX_DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
+
+export type OpenAICodexModelId =
+	| "gpt-5.3-codex-spark"
+	| "gpt-5.4"
+	| "gpt-5.4-mini"
+	| "gpt-5.5"
+	| "gpt-5.6-luna"
+	| "gpt-5.6-sol"
+	| "gpt-5.6-terra"
+	| (string & {});
+
+export type OpenAICodexCompatibility = ResponsesCompatibility;
+
+/**
+ * The ChatGPT Codex backend requires `instructions`, rejects `max_output_tokens`, and
+ * takes a zstd-compressed body.
+ */
+const CODEX_REQUEST: ResponsesRequestProfile = {
+	systemPrompt: "instructions",
+	maxOutputTokens: false,
+	encryptedReasoning: "always",
+	compress: true,
+	toolDefaults: true,
+	textVerbosity: "low",
+};
+
+/**
+ * Resolve the Codex responses endpoint from a base URL that may already
+ * include the `/codex` or `/codex/responses` suffix.
+ */
+export function resolveOpenAICodexUrl(baseUrl?: string): string {
+	const raw = baseUrl?.trim() ? baseUrl : OPENAI_CODEX_DEFAULT_BASE_URL;
+	const normalized = raw.replace(/\/+$/, "");
+	if (normalized.endsWith("/codex/responses")) return normalized;
+	if (normalized.endsWith("/codex")) return `${normalized}/responses`;
+	return `${normalized}/codex/responses`;
+}
+
+/** Tool helpers for Responses-only tool kinds. */
+export const openAICodexTools = {
+	custom<TParameters extends TSchema>(args: {
+		name: string;
+		description: string;
+		parameters: TParameters;
+		format: { type: "grammar"; syntax: "lark" | "regex"; definition: string };
+	}): Message.Tool<TParameters> {
+		return {
+			name: args.name,
+			description: args.description,
+			parameters: args.parameters,
+			constrainedSampling: {
+				type: "grammar",
+				variants:
+					args.format.syntax === "lark"
+						? { openai_lark: args.format.definition }
+						: { openai_regex: args.format.definition },
+			},
+		};
+	},
+};
 
 const DEFAULT_ORIGINATOR = "codework";
 
@@ -52,7 +114,7 @@ export interface OpenAICodexProviderSettings {
 	sessionId?: string;
 
 	/** Default service tier for requests. */
-	serviceTier?: OpenAICodexServiceTier;
+	serviceTier?: ResponsesServiceTier;
 
 	/** `originator` header value; defaults to `codework`. */
 	originator?: string;
@@ -90,7 +152,7 @@ function resolveAccountId(settings: OpenAICodexProviderSettings, apiKey: string)
 
 export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): OpenAICodexProvider {
 	const baseURL = options.baseURL?.replace(/\/+$/, "") || OPENAI_CODEX_DEFAULT_BASE_URL;
-	const sessionId = clampOpenAICodexPromptCacheKey(options.sessionId);
+	const sessionId = clampPromptCacheKey(options.sessionId);
 
 	const getHeaders = async (): Promise<Record<string, string | undefined>> => {
 		const apiKey = await resolveApiKey(options);
@@ -109,12 +171,14 @@ export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): Op
 	};
 
 	const createLanguageModel = (modelId: OpenAICodexModelId) =>
-		new OpenAICodexLanguageModel(modelId, {
+		new ResponsesLanguageModel(modelId, {
 			provider: "openai-codex",
-			baseURL,
+			label: "OpenAI Codex",
+			url: resolveOpenAICodexUrl(baseURL),
 			headers: getHeaders,
+			request: CODEX_REQUEST,
 			...(options.fetch !== undefined && { fetch: options.fetch }),
-			...(sessionId !== undefined && { sessionId }),
+			...(sessionId !== undefined && { promptCacheKey: sessionId }),
 			...(options.serviceTier !== undefined && { serviceTier: options.serviceTier }),
 			...(options.compat !== undefined && { compat: options.compat }),
 		});

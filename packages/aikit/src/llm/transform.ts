@@ -9,14 +9,18 @@ import {
 	type ToolSet,
 	type UserModelMessage,
 } from "ai";
+import type { LanguageModelV3FunctionTool, SharedV3ProviderOptions } from "@ai-sdk/provider";
 import * as Message from "../message/message.ts";
+import * as Transcript from "../message/transcript.ts";
 import { Pricing } from "./pricing.ts";
 import * as Model from "../model/model.ts";
-import { resolveOpenAICodexToolConstraint } from "../providers/openai-codex/codex-tools.ts";
+import { resolveToolGrammar, type ResponsesToolChange } from "../providers/responses/tools.ts";
 import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
+import { packageForModel, resolveMethod } from "./registry.ts";
 import { resolveStrictParameters } from "./strict.ts";
+import { isAnthropicMessagesModel } from "./thinking.ts";
 
 type ToolCallPart = Extract<Message.AssistantMessage["parts"][number], { type: "toolCall" }>;
 type TerminalToolCall = Exclude<ToolCallPart, Message.ToolCallPendingPart | Message.ToolCallRunningPart>;
@@ -82,14 +86,87 @@ function sanitizeRecord(value: Record<string, unknown>): Record<string, unknown>
 	return sanitizeValue(value) as Record<string, unknown>;
 }
 
-function toolResultOutput(toolCall: TerminalToolCall) {
-	const text = toolCall.result.content
+const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
+const MOVED_TOOL_IMAGE_PLACEHOLDER = "(see attached image)";
+const CHAT_TOOL_IMAGES_CAPTION = "Attached image(s) from tool result:";
+const GEMINI_TOOL_IMAGES_CAPTION = "Tool result image:";
+
+/**
+ * Where a tool result's images go when the wire cannot carry them inside the result. Each case
+ * sends them in a user message after the turn's tool results:
+ * - `anthropicError`: Anthropic rejects images in error tool results.
+ * - `chat`: Chat Completions adapters serialize tool result images as JSON text.
+ * - `gemini`: before Gemini 3 (and for non-Gemini models), an image-only result loses its function response.
+ */
+type MovedImages = "anthropicError" | "chat" | "gemini";
+
+const COPILOT = "@codeworksh/ai-sdk-github-copilot";
+
+function isAnthropicWire(model: Model.Info, method: Model.APIMethodEnum): boolean {
+	if (packageForModel(model) === COPILOT) return method === Model.APIMethodEnum.messages;
+	return isAnthropicMessagesModel(model);
+}
+
+/** Whether the model runs on our own Responses transport: Codex, and Copilot's `/responses`. */
+export function isOwnResponses(model: Model.Info, methodOverride?: Model.APIMethodEnum): boolean {
+	if (model.protocol === Model.KnownProviderEnum.openaiCodex) return true;
+	return (
+		model.protocol === Model.KnownProviderEnum.githubCopilot &&
+		resolveMethod(model, methodOverride) === Model.APIMethodEnum.responses
+	);
+}
+
+function isChatCompletions(model: Model.Info, method: Model.APIMethodEnum): boolean {
+	const npm = packageForModel(model);
+	// The compatible adapter falls back to its chat model for every other method.
+	if (npm === "@ai-sdk/openai-compatible") return true;
+	if (npm === COPILOT) return method !== Model.APIMethodEnum.responses && method !== Model.APIMethodEnum.messages;
+	return npm === "@ai-sdk/openai" && method === Model.APIMethodEnum.chat;
+}
+
+/** The Google adapter's own split: anything but Gemini 3 and later gets the legacy function response. */
+function isLegacyGoogleToolResults(model: Model.Info): boolean {
+	if (model.protocol !== Model.KnownProviderEnum.google && model.protocol !== Model.KnownProviderEnum.googleVertex) {
+		return false;
+	}
+	const id = model.api?.id ?? model.id;
+	const gemini = /(^|[/.])gemini-/i.test(id);
+	const legacy =
+		/(^|[/.])gemini-[12](?:[.-]|$)/i.test(id) ||
+		/(^|[/.])gemini-pro(?:-vision)?$/i.test(id) ||
+		/(^|[/.])gemini-robotics-er-1\.5(?:[.-]|$)/i.test(id);
+	return !gemini || legacy;
+}
+
+function movedImages(
+	toolCall: TerminalToolCall,
+	model: Model.Info,
+	method: Model.APIMethodEnum,
+): MovedImages | undefined {
+	if (!toolCall.result.content.some((content) => content.type === "image")) return;
+	if (isAnthropicWire(model, method)) return toolCall.result.isError ? "anthropicError" : undefined;
+	if (isChatCompletions(model, method)) return "chat";
+	if (isLegacyGoogleToolResults(model)) return "gemini";
+}
+
+function toolResultOutput(toolCall: TerminalToolCall, moved: MovedImages | undefined) {
+	const content =
+		moved === "anthropicError"
+			? Message.omitImages(toolCall.result.content, ERROR_TOOL_IMAGE_PLACEHOLDER)
+			: moved
+				? toolCall.result.content.filter((content) => content.type === "text")
+				: toolCall.result.content;
+	const joined = content
 		.filter((content) => content.type === "text")
 		.map((content) => sanitizeSurrogates(content.text))
 		.join("\n");
-	const images = toolCall.result.content.filter((content) => content.type === "image");
+	const text =
+		moved && moved !== "anthropicError" && joined.trim().length === 0 ? MOVED_TOOL_IMAGE_PLACEHOLDER : joined;
+	const images = content.filter((content) => content.type === "image");
 
-	if (toolCall.result.isError) {
+	// The AI SDK's content output has no error flag, so other providers keep the images and lose
+	// the flag: Google drops its `error` key, OpenAI-family wires have no flag to lose.
+	if (toolCall.result.isError && images.length === 0) {
 		return {
 			type: "error-text" as const,
 			value: text || "tool returned an error",
@@ -149,7 +226,8 @@ export function normalizeForeignToolCallId(id: string): string {
 	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
 }
 
-function toolCallIdNormalizer(model: Model.Info) {
+function toolCallIdNormalizer(model: Model.Info, method: Model.APIMethodEnum) {
+	if (isOwnResponses(model, method)) return normalizeOpenAICodexToolCallId;
 	switch (model.protocol) {
 		case Model.KnownProviderEnum.openaiCodex:
 			return normalizeOpenAICodexToolCallId;
@@ -174,9 +252,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function encodeOpenAIReasoningSignature(providerMetadata: unknown): string | undefined {
 	if (!isRecord(providerMetadata)) return;
-	// Copilot's Responses adapter is named "github-copilot", so its reasoning
-	// metadata lands under that key rather than "openai".
-	const metadata = providerMetadata.openai ?? providerMetadata["github-copilot"];
+	const metadata = providerMetadata.openai;
 	if (!isRecord(metadata) || typeof metadata.itemId !== "string") return;
 
 	const signature: OpenAIReasoningMetadata = { itemId: metadata.itemId };
@@ -202,6 +278,29 @@ function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetad
 	}
 }
 
+/**
+ * The reasoning item our Responses transport replays from a thinking signature. Copilot
+ * messages from before it ran on that transport carry `{ itemId, reasoningEncryptedContent }`
+ * instead of the item; those replay when they hold encrypted content.
+ */
+function responsesReasoningItem(signature: string): string | undefined {
+	try {
+		const parsed: unknown = JSON.parse(signature);
+		if (!isRecord(parsed)) return;
+		if (parsed.type === "reasoning" && typeof parsed.id === "string") return signature;
+		const legacy = decodeOpenAIReasoningSignature(signature);
+		if (!legacy || typeof legacy.reasoningEncryptedContent !== "string") return;
+		return JSON.stringify({
+			type: "reasoning",
+			id: legacy.itemId,
+			encrypted_content: legacy.reasoningEncryptedContent,
+			summary: [],
+		});
+	} catch {
+		return;
+	}
+}
+
 export function googleThoughtSignature(metadata: unknown): string | undefined {
 	if (!isRecord(metadata)) return;
 	for (const key of ["google", "google-vertex"]) {
@@ -210,11 +309,21 @@ export function googleThoughtSignature(metadata: unknown): string | undefined {
 	}
 }
 
-function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
+function assistantMessages(
+	message: Message.AssistantMessage,
+	model: Model.Info,
+	method: Model.APIMethodEnum,
+): ModelMessage[] {
 	if (message.stopReason === "error" || message.stopReason === "aborted") return [];
 
 	const assistantContent: Exclude<AssistantModelMessage["content"], string> = [];
 	const toolResults: ToolModelMessage["content"] = [];
+	const movedImageContent: Exclude<UserModelMessage["content"], string> = [];
+	// Replay metadata for our own Responses transport, only from a message it produced.
+	const responsesKey =
+		isOwnResponses(model, method) && message.protocol === model.protocol && message.provider.id === model.provider.id
+			? Model.optionsKey(model)
+			: undefined;
 	const googleReplay =
 		(model.protocol === "google" || model.protocol === "google-vertex") &&
 		message.protocol === model.protocol &&
@@ -240,8 +349,8 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				type: "text",
 				text,
 				...(google ? { providerOptions: google } : {}),
-				...(part.textSignature && message.protocol === Model.KnownProviderEnum.openaiCodex
-					? { providerOptions: { "openai-codex": { messageId: part.textSignature } } }
+				...(part.textSignature && responsesKey
+					? { providerOptions: { [responsesKey]: { messageId: part.textSignature } } }
 					: {}),
 			});
 			continue;
@@ -250,23 +359,26 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 			const thinking = sanitizeSurrogates(part.thinking);
 			if (thinking.trim().length === 0 && !part.thinkingSignature) continue;
 
+			if (responsesKey) {
+				// Only a signed reasoning item replays; unsigned thinking is dropped.
+				const reasoningItem = part.thinkingSignature ? responsesReasoningItem(part.thinkingSignature) : undefined;
+				if (!reasoningItem) continue;
+				assistantContent.push({
+					type: "reasoning",
+					text: thinking,
+					providerOptions: { [responsesKey]: { reasoningItem } },
+				} as (typeof assistantContent)[number]);
+				continue;
+			}
+
 			if (message.protocol === Model.KnownProviderEnum.githubCopilot) {
 				/*
-				 * Copilot signs reasoning differently per endpoint family: Responses
-				 * models round-trip encoded item metadata, Messages models carry
-				 * Anthropic signatures, and the chat endpoint cannot replay thinking
-				 * at all. A signature from the wrong family is foreign material, so
-				 * the text survives as plain text instead of going out unsigned.
+				 * Copilot Messages models carry Anthropic signatures, and the chat endpoint
+				 * cannot replay thinking at all. Thinking that cannot be replayed natively
+				 * survives as plain text instead of going out unsigned.
 				 */
-				const method = model.api?.method;
 				const openai = part.thinkingSignature ? decodeOpenAIReasoningSignature(part.thinkingSignature) : undefined;
-				if (method === Model.APIMethodEnum.responses && openai) {
-					assistantContent.push({
-						type: "reasoning",
-						text: thinking,
-						providerOptions: { "github-copilot": openai },
-					} as (typeof assistantContent)[number]);
-				} else if (method === Model.APIMethodEnum.messages && part.thinkingSignature && !openai) {
+				if (method === Model.APIMethodEnum.messages && part.thinkingSignature && !openai) {
 					assistantContent.push({
 						type: "reasoning",
 						text: thinking,
@@ -288,54 +400,58 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 			} else if (google) {
 				reasoning.providerOptions = google;
 			} else if (part.thinkingSignature && message.protocol !== "google" && message.protocol !== "google-vertex") {
-				reasoning.providerOptions =
-					message.protocol === Model.KnownProviderEnum.openaiCodex
-						? { "openai-codex": { reasoningItem: part.thinkingSignature } }
-						: { anthropic: { signature: part.thinkingSignature } };
+				reasoning.providerOptions = { anthropic: { signature: part.thinkingSignature } };
 			}
 			assistantContent.push(reasoning as (typeof assistantContent)[number]);
 			continue;
 		}
 		if (part.type !== "toolCall") continue;
 
-		const codexToolMetadata: { namespace?: string; omitItemId?: boolean } = {};
-		if (part.namespace && message.protocol === Model.KnownProviderEnum.openaiCodex) {
-			codexToolMetadata.namespace = part.namespace;
-		}
-		if (
-			model.protocol === Model.KnownProviderEnum.openaiCodex &&
-			message.protocol === model.protocol &&
-			message.provider.id === model.provider.id &&
-			message.model !== model.id
-		) {
-			codexToolMetadata.omitItemId = true;
-		}
+		const responsesToolMetadata: { namespace?: string; omitItemId?: boolean } = {};
+		if (responsesKey && part.namespace) responsesToolMetadata.namespace = part.namespace;
+		if (responsesKey && message.model !== model.id) responsesToolMetadata.omitItemId = true;
 		assistantContent.push({
 			type: "tool-call",
 			toolCallId: part.callID,
 			toolName: part.name,
 			input: sanitizeRecord(part.arguments ?? {}),
 			...(google ? { providerOptions: google } : {}),
-			...(Object.keys(codexToolMetadata).length > 0
-				? { providerOptions: { "openai-codex": codexToolMetadata } }
+			...(responsesKey && Object.keys(responsesToolMetadata).length > 0
+				? { providerOptions: { [responsesKey]: responsesToolMetadata } }
 				: {}),
 		});
 
 		const terminal = part.status === "pending" || part.status === "running" ? undefined : part;
+		const moved = terminal ? movedImages(terminal, model, method) : undefined;
 		toolResults.push({
 			type: "tool-result",
 			toolCallId: part.callID,
 			toolName: part.name,
-			...(terminal?.addedToolNames?.length
-				? { providerOptions: { "openai-codex": { addedToolNames: terminal.addedToolNames } } }
-				: {}),
 			output: terminal
-				? toolResultOutput(terminal)
+				? toolResultOutput(terminal, moved)
 				: {
 						type: "error-text",
 						value: "no result provided",
 					},
 		});
+		if (terminal && moved) {
+			const caption =
+				moved === "anthropicError"
+					? `Images from the error result of tool call ${part.callID} (${part.name}):`
+					: moved === "gemini"
+						? GEMINI_TOOL_IMAGES_CAPTION
+						: movedImageContent.length === 0
+							? CHAT_TOOL_IMAGES_CAPTION
+							: undefined;
+			movedImageContent.push(
+				...(caption === undefined ? [] : [{ type: "text" as const, text: caption }]),
+				...terminal.result.content.flatMap((content) =>
+					content.type === "image"
+						? [{ type: "file" as const, data: content.data, mediaType: content.mimeType }]
+						: [],
+				),
+			);
+		}
 	}
 
 	const result: ModelMessage[] = [];
@@ -345,39 +461,148 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 	if (toolResults.length > 0) {
 		result.push({ role: "tool", content: toolResults });
 	}
+	// @ai-sdk/anthropic merges this into the tool results' user message, after the tool_result blocks.
+	if (movedImageContent.length > 0) {
+		result.push({ role: "user", content: movedImageContent });
+	}
 	return result;
 }
 
-export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
-	const messages: ModelMessage[] = [];
-	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model));
+/**
+ * How the model's transport expresses tool changes after the first request. Only our own
+ * Responses transport can declare tools in place; the AI SDK adapters take the current tool
+ * set top-level. A request limited to some tools (`activeTools`) takes them top-level too,
+ * since only that list is filtered.
+ */
+export function transcriptToolSupport(
+	model: Model.Info,
+	method: Model.APIMethodEnum | undefined,
+	restricted = false,
+): Transcript.TranscriptToolSupport {
+	if (restricted || !isOwnResponses(model, method)) return "none";
+	if (model.compat?.supportsAdditionalTools) return "changes";
+	return model.compat?.supportsToolSearch ? "additions" : "none";
+}
 
+/** A tool as the language model receives it, for declaring it inside the prompt. */
+function functionTool(tool: Message.Tool, model: Model.Info, method: Model.APIMethodEnum): LanguageModelV3FunctionTool {
+	const { inputSchema, strict, providerOptions } = toolWire(tool, model, method);
+	return {
+		type: "function",
+		name: tool.name,
+		description: tool.description,
+		inputSchema: JSON.parse(JSON.stringify(inputSchema)) as LanguageModelV3FunctionTool["inputSchema"],
+		...(strict ? { strict } : {}),
+		...(providerOptions ? { providerOptions } : {}),
+	};
+}
+
+function toolChangeMessage(
+	toolsAdded: readonly Message.Tool[],
+	toolsRemoved: readonly Message.ToolReference[],
+	support: Transcript.TranscriptToolSupport,
+	model: Model.Info,
+	method: Model.APIMethodEnum,
+): ModelMessage | undefined {
+	if (toolsAdded.length === 0 && toolsRemoved.length === 0) return;
+	const toolChange: ResponsesToolChange = {
+		mode: support === "changes" ? "changes" : "additions",
+		tools: toolsAdded.map((tool) => functionTool(tool, model, method)),
+		removed: toolsRemoved.map((tool) => tool.name),
+	};
+	return {
+		role: "system",
+		content: "",
+		// Function tools are plain JSON once their schema went through `functionTool`.
+		providerOptions: { [Model.optionsKey(model)]: { toolChange } } as unknown as SharedV3ProviderOptions,
+	};
+}
+
+export function convertMessages(
+	context: Message.Context,
+	model: Model.Info,
+	methodOverride?: Model.APIMethodEnum,
+	activeTools?: readonly string[],
+): ModelMessage[] {
+	const method = resolveMethod(model, methodOverride);
+	const messages: ModelMessage[] = [];
+	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model, method));
+	const support = transcriptToolSupport(model, method, activeTools !== undefined);
+	const transcript = Transcript.resolveTranscriptTools(context, support);
+
+	if (transcript.initialToolsInPlace) {
+		const head = toolChangeMessage(context.tools ?? [], [], support, model, method);
+		if (head) messages.push(head);
+	}
+	// Our Responses transport takes the system prompt in place, after the initial tool declaration.
+	if (isOwnResponses(model, method) && context.systemPrompt) {
+		messages.push({ role: "system", content: sanitizeSurrogates(context.systemPrompt) });
+	}
+
+	let systemIndex = 0;
 	for (const msg of transformedMessages) {
+		if (msg.role === "system") {
+			if (systemIndex++ < transcript.foldedSystemMessages) continue;
+			const change = toolChangeMessage(msg.toolsAdded ?? [], msg.toolsRemoved ?? [], support, model, method);
+			if (change) messages.push(change);
+			continue;
+		}
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts));
 			continue;
 		}
-		messages.push(...assistantMessages(msg, model));
+		messages.push(...assistantMessages(msg, model, method));
 	}
 
 	return messages;
 }
 
-export function convertTools(tools?: Message.Tool[], model?: Model.Info): ToolSet | undefined {
+/**
+ * The string input property of every grammar tool the transcript declared, for our Responses
+ * transport: earlier calls to a tool since removed or redefined still replay as grammar calls.
+ */
+export function grammarToolInputProperties(
+	context: Message.Context,
+	model: Model.Info,
+	method: Model.APIMethodEnum | undefined,
+): Record<string, string> | undefined {
+	if (!isOwnResponses(model, method)) return;
+	const properties: Record<string, string> = {};
+	for (const tool of Transcript.getDeclaredTools(context)) {
+		const grammar = resolveToolGrammar(tool, model.compat);
+		if (grammar) properties[tool.name] = grammar.inputProperty;
+	}
+	return Object.keys(properties).length > 0 ? properties : undefined;
+}
+
+/** The parameter schema, strict flag and grammar a tool goes out with on this model. */
+function toolWire(tool: Message.Tool, model?: Model.Info, method?: Model.APIMethodEnum) {
+	const strictParameters = resolveStrictParameters(tool, model);
+	const grammarConstraint =
+		model && isOwnResponses(model, method) ? resolveToolGrammar(tool, model.compat) : undefined;
+	return {
+		inputSchema: strictParameters ?? tool.parameters,
+		strict: strictParameters ? true : undefined,
+		providerOptions:
+			model && grammarConstraint ? { [Model.optionsKey(model)]: { grammar: grammarConstraint } } : undefined,
+	};
+}
+
+export function convertTools(
+	tools?: Message.Tool[],
+	model?: Model.Info,
+	method?: Model.APIMethodEnum,
+): ToolSet | undefined {
 	if (!tools || tools.length === 0) return;
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
-		const strictParameters = resolveStrictParameters(tool, model);
-		const grammarConstraint =
-			model?.protocol === Model.KnownProviderEnum.openaiCodex
-				? resolveOpenAICodexToolConstraint(tool, model.compat)
-				: undefined;
+		const { inputSchema, strict, providerOptions } = toolWire(tool, model, method);
 		result[tool.name] = {
 			description: tool.description,
-			inputSchema: jsonSchema(strictParameters ?? (tool.parameters as any)),
-			...(strictParameters ? { strict: true } : {}),
-			...(grammarConstraint ? { providerOptions: { "openai-codex": { grammar: grammarConstraint } } } : {}),
+			inputSchema: jsonSchema(inputSchema as any),
+			...(strict ? { strict } : {}),
+			...(providerOptions ? { providerOptions } : {}),
 		};
 	}
 	return result;
