@@ -1,0 +1,70 @@
+{
+	"refused": {
+		"declared": [
+			"mcp__secure__whoami"
+		],
+		"answer": "Tool said: called with access-2"
+	},
+	"stored": {
+		"refresh_token": "refresh-2",
+		"access_token": "access-2",
+		"token_type": "Bearer",
+		"expires_in": 3600,
+		"issuer": "<fixture>"
+	},
+	"server": [
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"register": {
+				"application_type": "native",
+				"client_name": "CodeWork",
+				"client_uri": "https://codework.sh",
+				"logo_uri": "https://codework.sh/brand/icon.png",
+				"grant_types": [
+					"authorization_code",
+					"refresh_token"
+				],
+				"token_endpoint_auth_method": "none"
+			}
+		},
+		{
+			"authorize": {
+				"scope": "tools",
+				"resource": "<fixture>/mcp"
+			}
+		},
+		{
+			"token": "authorization_code",
+			"verified": true
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"token": "refresh_token",
+			"presented": "refresh-1",
+			"valid": false
+		},
+		{
+			"token": "refresh_token",
+			"presented": "refresh-other",
+			"valid": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-2"
+		}
+	]
+}

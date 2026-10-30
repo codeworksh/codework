@@ -1,6 +1,6 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite writes its home and settings with node:fs. */
 /* @effect-diagnostics globalFetch:off -- the suite plays the browser with plain fetch. */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vite-plus/test";
@@ -13,6 +13,7 @@ interface Fixture {
 	readonly state: {
 		log: unknown[];
 		access: Map<string, unknown>;
+		refresh: string | undefined;
 		afterList: "expire" | "revoke" | undefined;
 		presented: Set<string>;
 	};
@@ -245,6 +246,55 @@ it("a call needing more scope asks for sign-in, and the next login requests that
 			"\t",
 		)}\n`,
 	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.scope.json");
+}, 120_000);
+
+it("a refresh refused because another process signed in meanwhile keeps that process's tokens", async () => {
+	let beforeToken: (() => void) | undefined;
+	const { server, run, login, stored, file, normalise } = await setup(
+		{ beforeToken: async () => beforeToken?.() },
+		(url) => ({ secure: { url: `${url}/mcp` } }),
+	);
+	const signedIn = await login("secure");
+	expect(signedIn.status, signedIn.error).toBe(0);
+	const id = `mcp__secure|${server.url}/mcp`;
+
+	// While the run's refresh waits for the token endpoint, another process signs in again: it stores
+	// new tokens under the file's lock, and the server revokes the refresh token the run presented.
+	beforeToken = () => {
+		beforeToken = undefined;
+		const lock = `${file}.lock`;
+		mkdirSync(lock);
+		const all = stored();
+		const tokens = {
+			access_token: "access-other",
+			token_type: "Bearer",
+			expires_in: 3600,
+			refresh_token: "refresh-other",
+		};
+		all[id] = { ...all[id], tokens };
+		writeFileSync(`${file}.other.tmp`, JSON.stringify(all), { mode: 0o600 });
+		renameSync(`${file}.other.tmp`, file);
+		rmdirSync(lock);
+		server.state.access.set("access-other", undefined);
+		server.state.refresh = "refresh-other";
+	};
+	server.state.access.clear();
+	const refused = await run("Signed in elsewhere.", [whoami("secure")]);
+	// The refused refresh drops nothing it did not present, so the run carries on with those tokens.
+	expect(refused.answer).toBe("Tool said: called with access-2");
+	expect(stored()[id]?.tokens?.access_token).toBe("access-2");
+
+	await expect(
+		`${JSON.stringify(
+			{
+				refused,
+				stored: JSON.parse(normalise(JSON.stringify(stored()[id]?.tokens))),
+				server: JSON.parse(normalise(JSON.stringify(server.state.log))),
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/cli.mcp.oauth.invalidate.json");
 }, 120_000);
 
 it("codework mcp login accepts what a sign-in may trust and refuses the rest", async () => {
