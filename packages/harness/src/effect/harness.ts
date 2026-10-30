@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Ref } from "effect";
+import { type Duration, Effect, Layer, Option, Ref } from "effect";
 import { Context } from "../context/context.ts";
 import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
@@ -64,6 +64,8 @@ export interface Options {
 	 * Otherwise it is checked once, at boot.
 	 */
 	readonly watchModels?: boolean;
+	/** How long an MCP server no running session holds stays open. Default: 10 minutes. */
+	readonly mcpIdleTimeout?: Duration.Input;
 }
 
 export const layer = (options: Options = {}) =>
@@ -256,7 +258,11 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
-				Layer.provideMerge(Mcp.layer({ hostCwd, home: paths.home }).pipe(Layer.provide(Process.host))),
+				Layer.provideMerge(
+					Mcp.layer({ hostCwd, home: paths.home, idleTimeout: options.mcpIdleTimeout }).pipe(
+						Layer.provide(Process.host),
+					),
+				),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

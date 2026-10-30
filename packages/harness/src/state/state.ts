@@ -505,6 +505,10 @@ export const layer = (
 								servers,
 								// MCP servers run on the host, so only a host sandbox's directory exists for them.
 								directory: sandbox.kind === "local" ? location.directory : undefined,
+								space: {
+									id: location.space.id,
+									...(sandbox.kind === "local" ? { root: location.space.location } : {}),
+								},
 								hostDir,
 								errors: loadedSettings.mcp.errors,
 								loaded: agent.modelTools?.add,

@@ -11,6 +11,7 @@ import { ToolProgress } from "../tool/progress.ts";
 import * as Tool from "../tool/tool.ts";
 import { Hash } from "../util/hash.ts";
 import { McpContent } from "./content.ts";
+import type { McpError } from "./error.ts";
 import type { Progress } from "./client.ts";
 
 /** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
@@ -129,7 +130,7 @@ export const define = (input: {
 	readonly server: string;
 	readonly tool: string;
 	readonly exposure: Exposure;
-	readonly run: (run: Run) => Effect.Effect<Result, string>;
+	readonly run: (run: Run) => Effect.Effect<Result, McpError.Failure>;
 }) => {
 	const outcome = (result: Result): Outcome => ({
 		content: result.content,
@@ -162,7 +163,7 @@ export const define = (input: {
 								report(progress.report({ content: [{ type: "text", text }] }));
 							},
 						})
-						.pipe(Effect.mapError((message) => outcome({ content: [{ type: "text", text: message }] })));
+						.pipe(Effect.mapError((error) => outcome({ content: [{ type: "text", text: error.message }] })));
 					return result.isError ? yield* Effect.fail(outcome(result)) : outcome(result);
 				}),
 		}),
@@ -185,7 +186,7 @@ export const make = (input: {
 	readonly tool: McpTool;
 	readonly name: string;
 	readonly exposure: Exposure;
-	readonly call: (run: Run) => Effect.Effect<CallToolResult, string>;
+	readonly call: (run: Run) => Effect.Effect<CallToolResult, McpError.Failure>;
 	readonly content: McpContent.Options;
 }) => {
 	const { server, tool } = input;

@@ -20,6 +20,15 @@
  */
 export type Exposure = "direct" | "codemode" | "deferred" | "hidden";
 
+/**
+ * Who shares one running instance of a server.
+ *
+ * - `session`: threads of one session at the same place share one.
+ * - `space`: sessions in the same space (sandbox and folder) share one.
+ * - `app`: every session shares one.
+ */
+export type Scope = "session" | "space" | "app";
+
 interface Base {
 	/** Default: `direct`. */
 	readonly exposure?: Exposure;
@@ -31,6 +40,8 @@ interface Base {
 	readonly toolExposure?: Readonly<Record<string, Exposure>>;
 	/** `false` keeps the entry without connecting. Default: `true`. */
 	readonly enabled?: boolean;
+	/** Default: `session`. Share a server only when it is safe to share. */
+	readonly scope?: Scope;
 	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. */
 	readonly timeout?: number;
 	/** What the server offers, in a sentence. */

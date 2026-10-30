@@ -70,7 +70,11 @@ const scripted = () => {
 	return { open, turn, requests };
 };
 
-/** Every `mcp.server.status` event, by thread label and server, in order. */
+/** Threads and servers connect concurrently; their keys are sorted so the artifact does not depend on it. */
+const byName = <A>(record: Record<string, A>) =>
+	Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+
+/** Every `mcp.server.status` event, by thread label and server, in order; `read` takes a copy. */
 const statusEvents = (label: (threadId: string) => string) =>
 	Effect.gen(function* () {
 		const seen: Record<string, Record<string, Array<EventList.McpServerState>>> = {};
@@ -83,7 +87,10 @@ const statusEvents = (label: (threadId: string) => string) =>
 				(byServer[status.server] ??= []).push(status);
 			}),
 		);
-		return seen;
+		return {
+			read: () =>
+				byName(Object.fromEntries(Object.entries(seen).map(([thread, servers]) => [thread, byName(servers)]))),
+		};
 	});
 
 /** The text of each settled tool call of a thread, by call id. */
@@ -131,10 +138,9 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	await using dir = await tmpdir();
 	const home = join(dir.path, "home");
 	const work = join(dir.path, "work");
-	const elsewhere = join(work, "sub");
+	// A worktree of the same project: a thread can move there, and it is another place.
+	const elsewhere = join(dir.path, "elsewhere");
 	await fs.mkdir(work, { recursive: true });
-	await fs.mkdir(elsewhere, { recursive: true });
-	// One project, so a thread can move to another directory of it.
 	await git(work, "init", "-q", "-b", "main");
 	await git(
 		work,
@@ -148,6 +154,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		"-m",
 		"init",
 	);
+	await git(work, "worktree", "add", "-q", "--detach", elsewhere);
 	const gate = join(dir.path, "gate");
 	const starts = join(dir.path, "starts");
 	await fs.writeFile(gate, "closed");
@@ -168,6 +175,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 
 	// Only the forked thread runs `extra`: MCP config may differ per thread.
 	let forkId: string | undefined;
+	let siblingId: string | undefined;
 	const perThread = define({
 		id: "test.mcp.per-thread",
 		kind: "mcp",
@@ -208,7 +216,8 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	const result = await Effect.gen(function* () {
 		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
 		const main = session.main;
-		const label = (threadId: string) => (threadId === main.id ? "main" : threadId === forkId ? "fork" : threadId);
+		const label = (threadId: string) =>
+			threadId === main.id ? "main" : threadId === forkId ? "fork" : threadId === siblingId ? "sibling" : threadId;
 		const seen = yield* statusEvents(label);
 		const mcp = yield* Mcp.Service;
 		const status = (threadId: string) =>
@@ -251,9 +260,15 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		forkId = forked.thread.id;
 		const fork = forked.thread;
 		yield* Session.relink({ sessionId: session.id, threadId: fork.id, directory: elsewhere });
+		// A sibling stays where main is, so it shares main's instances.
+		const sibling = (yield* main.fork({ entryId: line.at(-1)!.entry.id })).thread;
+		siblingId = sibling.id;
+		model.turn(sibling.id, [pendingCall("mcp__e2e__pid", {}, "sibling-pid")]);
 		model.turn(main.id, [pendingCall("mcp__e2e__pid", {}, "main-pid-2")]);
 		model.turn(fork.id, [pendingCall("mcp__e2e__pid", {}, "fork-pid")]);
-		yield* Effect.all([main.run("two"), fork.run("two, forked")], { concurrency: "unbounded" });
+		yield* Effect.all([main.run("two"), fork.run("two, forked"), sibling.run("two, sibling")], {
+			concurrency: "unbounded",
+		});
 		const mainStatus = yield* status(main.id);
 		const forkStatus = yield* status(fork.id);
 		const forkRegistered = registered[fork.id];
@@ -322,7 +337,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			declaredAfterDisconnect,
 			stillDisconnected,
 			startsAfterDisconnect,
-			calls: { main: yield* results(main), fork: yield* results(fork) },
+			calls: { main: yield* results(main), fork: yield* results(fork), sibling: yield* results(sibling) },
 			changes: changes(model.requests.at(-1)?.context.messages ?? []),
 			loaded: (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools,
 			restarted,
@@ -330,7 +345,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			disconnectThenConnect,
 			startsAfterRaces,
 			unknown: { tag: unknown._tag, message: unknown.message },
-			events: seen,
+			events: seen.read(),
 		};
 
 		// Deleting the session closes its servers and reports nothing more to its threads.
@@ -362,8 +377,9 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		expect(result.firstDeclared).not.toContain(name);
 	expect(result.calls.main["main-pid"]).toMatch(/^\d+$/);
 	expect(result.calls.fork["fork-pid"]).toMatch(/^\d+$/);
-	// Each thread runs its own process.
+	// A thread placed elsewhere runs its own process.
 	expect(result.calls.fork["fork-pid"]).not.toBe(result.calls.main["main-pid-2"]);
+	expect(result.calls.sibling["sibling-pid"]).toBe(result.calls.main["main-pid-2"]);
 	expect(result.calls.main["main-pid-2"]).toBe(result.calls.main["main-pid"]);
 	expect(result.mainStatus.extra).toBeUndefined();
 	expect(result.forkStatus.extra?.state).toBe("connected");
@@ -401,7 +417,9 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	pids.forEach((pid, index) => {
 		serialized = serialized.replaceAll(`"${pid}"`, `"<process-${index + 1}>"`);
 	});
-	const artifact = JSON.parse(serialized.replaceAll(forkId ?? "\0", "<fork>"));
+	const artifact = JSON.parse(
+		serialized.replaceAll(forkId ?? "\0", "<fork>").replaceAll(siblingId ?? "\0", "<sibling>"),
+	);
 	await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.json");
 }, 60_000);
 
@@ -470,4 +488,51 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/mcp.thread.loaded.json",
 	);
+}, 60_000);
+
+it("mcp: an instance that idles out tells the threads still using it", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	await write(join(home, "mcp.json"), { mcpServers: { idle: stdio() } });
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		const seen = yield* statusEvents((threadId) => (threadId === main.id ? "main" : threadId));
+		const mcp = yield* Mcp.Service;
+		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all[0]?.state));
+		// The turn's drain ends with it; nothing holds the instance after that.
+		yield* main.run("one");
+		const afterTurn = yield* stateOf;
+		const idled = yield* waitFor(stateOf, (state) => state === "disconnected");
+		const events = yield* waitFor(
+			Effect.sync(() => seen.read()),
+			(read) => read.main?.idle?.at(-1)?.state === "disconnected",
+		);
+		// Connect does not revive it; the thread's next turn does.
+		const connect = yield* Effect.flip(mcp.connect(main.id, "idle"));
+		return { afterTurn, idled, events, connect: { tag: connect._tag, message: connect.message } };
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin],
+				llm: model.open,
+				mcpIdleTimeout: "500 millis",
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.afterTurn).toBe("connected");
+	expect(result.idled).toBe("disconnected");
+	expect(result.events.main?.idle?.at(-1)?.state).toBe("disconnected");
+	expect(result.connect.message).toContain("was closed while idle");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.idle.json");
 }, 60_000);

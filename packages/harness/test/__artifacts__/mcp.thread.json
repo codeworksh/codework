@@ -474,6 +474,15 @@
 			"search": "Loaded 1 tool. They are available from your next call:\n- mcp__e2e__args: The arguments as received.",
 			"deferred-loaded": "{\"word\":\"abc\"}",
 			"fork-pid": "<process-2>"
+		},
+		"sibling": {
+			"main-pid": "<process-1>",
+			"codemode": "Tool \"mcp__e2e__fail\" is not available in this thread.",
+			"hidden": "Tool \"mcp__e2e__secret\" is not available in this thread.",
+			"deferred-unloaded": "Tool \"mcp__e2e__args\" is not available in this thread.",
+			"search": "Loaded 1 tool. They are available from your next call:\n- mcp__e2e__args: The arguments as received.",
+			"deferred-loaded": "{\"word\":\"abc\"}",
+			"sibling-pid": "<process-1>"
 		}
 	},
 	"changes": [
@@ -558,9 +567,74 @@
 	"startsAfterRaces": 5,
 	"unknown": {
 		"tag": "Mcp.UnknownServerError",
-		"message": "unknown MCP server: nope"
+		"message": "unknown MCP server \"nope\""
 	},
 	"events": {
+		"fork": {
+			"e2e": [
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			],
+			"extra": [
+				{
+					"server": "extra",
+					"state": "connecting"
+				},
+				{
+					"server": "extra",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			],
+			"gated": [
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "failed",
+					"error": "connection closed: mcp server process exited with code 1: gate closed"
+				}
+			],
+			"off": [
+				{
+					"server": "off",
+					"state": "disabled"
+				}
+			]
+		},
 		"main": {
 			"e2e": [
 				{
@@ -721,8 +795,51 @@
 				}
 			]
 		},
-		"fork": {
+		"sibling": {
 			"e2e": [
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				},
+				{
+					"server": "e2e",
+					"state": "disconnected",
+					"error": "connection closed: mcp server process exited with code 0"
+				},
+				{
+					"server": "e2e",
+					"state": "connecting"
+				},
+				{
+					"server": "e2e",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				},
 				{
 					"server": "e2e",
 					"state": "connecting"
@@ -748,27 +865,15 @@
 			"gated": [
 				{
 					"server": "gated",
+					"state": "failed",
+					"error": "connection closed: mcp server process exited with code 1: gate closed"
+				},
+				{
+					"server": "gated",
 					"state": "connecting"
 				},
 				{
 					"server": "gated",
-					"state": "failed",
-					"error": "connection closed: mcp server process exited with code 1: gate closed"
-				}
-			],
-			"off": [
-				{
-					"server": "off",
-					"state": "disabled"
-				}
-			],
-			"extra": [
-				{
-					"server": "extra",
-					"state": "connecting"
-				},
-				{
-					"server": "extra",
 					"state": "connected",
 					"tools": [
 						"echo",
@@ -783,6 +888,62 @@
 						"link",
 						"big"
 					]
+				},
+				{
+					"server": "gated",
+					"state": "disconnected"
+				},
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				},
+				{
+					"server": "gated",
+					"state": "disconnected"
+				},
+				{
+					"server": "gated",
+					"state": "connecting"
+				},
+				{
+					"server": "gated",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			],
+			"off": [
+				{
+					"server": "off",
+					"state": "disabled"
 				}
 			]
 		}
