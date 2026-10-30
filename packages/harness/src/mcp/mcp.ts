@@ -93,7 +93,10 @@ export interface Status {
 	readonly error?: string;
 	/** Tools the server offered when last listed, each with its exposure in the thread; kept while it is not connected. */
 	readonly tools: ReadonlyArray<{ readonly name: string; readonly exposure: Exposure }>;
-	/** Whether the server offered resources when it last connected. */
+	/**
+	 * Whether the server offered resources when it last connected; kept while it is not connected.
+	 * The resource tools reach it only while it is not disconnected on request, and not hidden.
+	 */
 	readonly resources: boolean;
 }
 
@@ -1017,11 +1020,7 @@ export const layer = (options: {
 
 				// Until codemode exists, nothing reaches these tools; say so once.
 				const unreachable = [...thread.servers.values()].some(
-					(entry) =>
-						entry.server !== undefined &&
-						[exposureOf(entry.config), ...Object.values(entry.config.toolExposure ?? {})].some(
-							(exposure) => exposure === "codemode",
-						),
+					(entry) => entry.server !== undefined && hasTools(entry.config, "codemode"),
 				);
 				if (unreachable && !thread.warnedUnreachable) {
 					thread.warnedUnreachable = true;
