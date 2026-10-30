@@ -8,7 +8,9 @@
 				"edit",
 				"toolsearch"
 			],
-			"system": []
+			"system": [
+				[]
+			]
 		},
 		{
 			"tools": [
@@ -19,6 +21,7 @@
 				"toolsearch"
 			],
 			"system": [
+				[],
 				[
 					"vault_read_token"
 				]
@@ -33,6 +36,7 @@
 				"toolsearch"
 			],
 			"system": [
+				[],
 				[
 					"vault_read_token"
 				]

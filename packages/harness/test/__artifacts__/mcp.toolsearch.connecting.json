@@ -9,6 +9,16 @@
 	],
 	"secondChanges": [
 		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"

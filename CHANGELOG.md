@@ -29,6 +29,7 @@ This file is the canonical source for unreleased changes and published release n
 - MCP OAuth: servers sign in with discovery, client registration and PKCE, tokens stored in `~/.codework/mcpauth.json` by server name and URL and refreshed under a lock shared across processes. A server waiting for sign-in reconnects on the next message once its sign-in changes. `auth: { provider }` sends a model provider's credential instead.
 - The ephemeral `mcp.server.status` event reports each MCP server state change (`connecting`, `connected`, `disconnected`, `failed`, `authenticate`, `disabled`) to every thread using the server. A tool the MCP SDK rejects is skipped instead of failing its server, and listed as `skipped` on the `connected` status.
 - `toolsearch` turns itself on when a thread has deferred tools or an enabled MCP server with `deferred` exposure; a settings entry still turns it off or on. A search waits up to 10 seconds for such servers still connecting.
+- Prompt sections reach the model as transcript system messages. A request sends the foundation as its system prompt; the first request of a thread appends a `system` entry declaring every tagged section (`<tools>`, `<rules>`, `<cwd>`, plugin sections), and a later request appends one only for the sections that changed, a removed section as `null`, together with any tool change. Resume and fork replay these entries, so the model sees what it saw before, and a model that takes system messages in place (OpenAI Codex, GitHub Copilot Responses) keeps its cached prefix when a section changes.
 
 #### Breaking Changes
 
@@ -50,6 +51,7 @@ This file is the canonical source for unreleased changes and published release n
 - Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
 - Stored context messages are user and assistant messages only; a stored system message fails to decode with "system messages are not stored as entries".
 - Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+- `session.thread.tools.changed` (`ToolsChanged`) is now `session.thread.system.changed` (`SystemChanged`), and its `system` entry data has an optional `sections` patch. `State.Snapshot.systemPrompt` is now `prompt: { foundation, sections }`.
 
 ### @codeworksh/cli
 
@@ -91,6 +93,7 @@ This file is the canonical source for unreleased changes and published release n
 - `Transcript` helpers: `getCurrentTools`, `getDeclaredTools`, `getToolStateChanges`, `declarationsEqual`, `toToolDeclaration` and `resolveTranscriptTools`.
 - Transcript system messages also change the system prompt: `content` adds instructions from that point on, and `sections` replace named sections, `null` removing one. `Context.systemPrompt` is the initial prompt. OpenAI Codex and GitHub Copilot Responses models with `supportsMidConvoSystemMessages` keep the leading prompt and get each change in place as a developer message (`Updated system prompt section "<name>": …`), so the cached prompt prefix holds; every other model gets the current prompt as its system prompt. Helpers: `getCurrentSystemPrompt`, `renderSystemPrompt`, `renderSystemPromptUpdate` and `resolveTranscriptPrompt`.
 - `supportsMidConvoSystemMessages` compat flag, set by `modelgen` for the OpenAI Codex and GitHub Copilot Responses models that accept developer messages mid-conversation. In-place tool declarations (`supportsAdditionalTools`) require it.
+- `Transcript.getCurrentSections`: the sections a transcript declares after replaying its system messages.
 - `filterGitHubCopilotModels` keeps the catalog models a Copilot login can reach.
 - GitHub Copilot GPT models turn reasoning off with `reasoning.effort: "none"` where OpenAI accepts it, such as gpt-5.3-codex, gpt-5.6-luna and gpt-6-luna.
 

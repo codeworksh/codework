@@ -59,3 +59,10 @@ export const toolTurn = (...calls: ReadonlyArray<Message.ToolCallPendingPart>): 
 			return stream;
 		});
 };
+
+// Read from the checkout's AGENTS.md and installed skills, so they differ per machine.
+const machineSections = new Set(["project_context", "skills"]);
+
+/** The section names a system message declares, without those that differ per machine. */
+export const sectionNames = (sections: Readonly<Record<string, string | null>> | undefined): Array<string> =>
+	Object.keys(sections ?? {}).filter((name) => !machineSections.has(name));

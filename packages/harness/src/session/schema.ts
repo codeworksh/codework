@@ -44,16 +44,20 @@ export const ToolDeclaration = Schema.Struct({
 	constrainedSampling: optional(Schema.Unknown),
 });
 
-/** A change to the tools offered from one point of the transcript on, as a `system` entry stores it. */
-export const ToolChanges = Schema.Struct({
+/**
+ * A change to the prompt sections and tools offered from one point of the transcript on, as a
+ * `system` entry stores it. A `null` section is removed.
+ */
+export const SystemChange = Schema.Struct({
+	sections: optional(Schema.Record(Schema.String, Schema.NullOr(Schema.String))),
 	toolsAdded: Schema.Array(ToolDeclaration),
 	toolsRemoved: Schema.Array(Schema.Struct({ name: Schema.String })),
 	/** sha256 of the offered tool declarations after the change. */
 	hash: Schema.String,
 });
-export type ToolChanges = typeof ToolChanges.Type;
+export type SystemChange = typeof SystemChange.Type;
 
-export const SystemData = Schema.fromJsonString(ToolChanges);
+export const SystemData = Schema.fromJsonString(SystemChange);
 
 // Harness-owned shape of the billed usage inside a persisted assistant envelope.
 // This is data-structure integrity only — business validation

@@ -31,7 +31,7 @@ import { State } from "../src/state/state.ts";
 import { ThreadSchema } from "../src/thread/schema.ts";
 import { Thread } from "../src/thread/thread.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { assistant } from "./fixtures/llm.ts";
+import { assistant, sectionNames } from "./fixtures/llm.ts";
 import { pooled } from "./fixtures/pool.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -233,13 +233,17 @@ const run = (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID, prompt: str
 		yield* control.run({ sessionId, threadId, prompt: PromptSchema.Prompt.fromText(prompt), delivery: "followUp" });
 	});
 
-/** A request as the model saw it: its declared tools, and the tool changes its system messages carry. */
+/**
+ * A request as the model saw it: its declared tools, and the section names and tool changes its
+ * system messages carry.
+ */
 const sent = (context: Message.Context) => ({
 	tools: (context.tools ?? []).map((tool) => tool.name),
 	system: context.messages.flatMap((message) =>
 		message.role === "system"
 			? [
 					{
+						sections: sectionNames(message.sections),
 						added: (message.toolsAdded ?? []).map((tool) => tool.name),
 						removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
 					},
@@ -274,6 +278,12 @@ const results = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
 	);
 });
 
+/** A system entry's data, its sections by name only. */
+const systemData = (data: string) => {
+	const { sections, ...rest } = JSON.parse(data) as { readonly sections?: Record<string, string | null> };
+	return { ...(sections === undefined ? {} : { sections: sectionNames(sections) }), ...rest };
+};
+
 /** The thread's events, entries and `agent` revisions, by seq; ids aliased in order seen. */
 const ledger = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID) {
 	const sql = yield* SqlClient.SqlClient;
@@ -304,12 +314,15 @@ const ledger = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, threadI
 			seq: entry.seq,
 			type: entry.type,
 			state: entry.state,
-			...(entry.type === "system" ? { data: JSON.parse(entry.data) as unknown } : {}),
+			...(entry.type === "system" ? { data: systemData(entry.data) } : {}),
 		})),
 		agent: revisions.map((revision) => ({ seq: revision.seq, value: JSON.parse(revision.value) as unknown })),
 	};
 });
 type Ledger = Effect.Success<ReturnType<typeof ledger>>;
+
+/** The first request's system message: every prompt section, no tool change. */
+const prompt = { sections: ["tools", "rules", "cwd"], added: [], removed: [] };
 
 const systemEntries = (book: Ledger) => book.entries.filter((entry) => entry.type === "system");
 const settledSeqs = (book: Ledger) =>
@@ -352,15 +365,17 @@ describe("toolsearch", () => {
 			expect(first!.tools).toContain(TOOL_SEARCH_NAME);
 			expect(first!.tools).not.toContain("weather_forecast");
 			expect(second!.tools).toEqual(first!.tools);
-			expect(first!.system).toEqual([]);
-			expect(second!.system).toEqual([{ added: ["weather_forecast"], removed: [] }]);
-			// The third request replays the one system entry; nothing new is declared.
+			// The first request declares the prompt sections; loading a tool leaves them as they are.
+			expect(first!.system).toEqual([prompt]);
+			expect(second!.system).toEqual([prompt, { sections: [], added: ["weather_forecast"], removed: [] }]);
+			// The third request replays both system entries; nothing new is declared.
 			expect(third!.tools).toEqual(first!.tools);
 			expect(third!.system).toEqual(second!.system);
-			expect(systemEntries(book)).toHaveLength(1);
-			expect(systemEntries(book)[0]!.data).toMatchObject({
-				toolsAdded: [{ name: "weather_forecast" }],
+			expect(systemEntries(book)).toHaveLength(2);
+			expect(systemEntries(book)[1]!.data).toEqual({
+				toolsAdded: [expect.objectContaining({ name: "weather_forecast" })],
 				toolsRemoved: [],
+				hash: expect.any(String),
 			});
 			// The loaded tool runs.
 			expect(outcomes[1]).toMatchObject({
@@ -397,14 +412,14 @@ describe("toolsearch", () => {
 			]);
 			for (const failed of outcomes.slice(0, 3)) expect(failed.details).toMatchObject({ _tag: "ToolSearchFailed" });
 			expect(outcomes[3]!.details).toEqual({ loaded: [] });
-			// Nothing loaded: no `agent` change and no system entry.
+			// Nothing loaded: no `agent` change and no system entry past the first request's prompt.
 			expect(book.agent.some((revision) => JSON.stringify(revision.value).includes("modelTools"))).toBe(false);
-			expect(systemEntries(book)).toEqual([]);
+			expect(systemEntries(book)).toHaveLength(1);
 			expect(
 				requestsOf(main)
 					.map(sent)
 					.map((one) => one.system),
-			).toEqual([[], []]);
+			).toEqual([[prompt], [prompt]]);
 			yield* artifact("tools.toolsearch.refused.json", { results: outcomes, agent: book.agent });
 		}),
 	);
@@ -429,8 +444,7 @@ describe("toolsearch", () => {
 			expect(add.slice(0, 2)).toEqual(loadedOf(limited!.details));
 			expect(new Set(add)).toEqual(new Set([...loadedOf(limited!.details), ...loadedOf(all!.details)]));
 			const [, next] = requestsOf(main).map(sent);
-			expect(next!.system).toHaveLength(1);
-			expect(next!.system[0]!.added).toEqual(add);
+			expect(next!.system).toEqual([prompt, { sections: [], added: add, removed: [] }]);
 
 			yield* artifact("tools.toolsearch.limit.json", {
 				results: [limited, all],
@@ -449,11 +463,11 @@ describe("toolsearch", () => {
 			const { sessionId, main } = yield* createSession;
 			yield* run(sessionId, main, "Load the forecast tool", [call(search("weather forecast", 1)), reply]);
 			const line = yield* threads.line(main);
-			expect(line.map(({ entry }) => entry.type)).toEqual(["user", "assistant", "system", "assistant"]);
-			const [prompt, searched] = line;
+			expect(line.map(({ entry }) => entry.type)).toEqual(["user", "system", "assistant", "system", "assistant"]);
+			const [asked, , searched] = line;
 
 			const before = ThreadSchema.ID.make(
-				(yield* threads.fork({ threadId: main, entryId: prompt!.entry.id })).thread.id,
+				(yield* threads.fork({ threadId: main, entryId: asked!.entry.id })).thread.id,
 			);
 			const after = ThreadSchema.ID.make(
 				(yield* threads.fork({ threadId: main, entryId: searched!.entry.id })).thread.id,
@@ -471,14 +485,15 @@ describe("toolsearch", () => {
 			const [afterFirst] = requestsOf(after).map(sent);
 			const beforeResults = yield* results(before);
 			const afterResults = yield* results(after);
-			expect(beforeFirst!.system).toEqual([]);
+			// Cut before main's first system entry, the fork declares the prompt itself.
+			expect(beforeFirst!.system).toEqual([prompt]);
 			expect(beforeResults[0]).toMatchObject({
 				status: "error",
 				text: 'Tool "weather_forecast" is not available in this thread.',
 				details: { _tag: "ToolUnavailable", name: "weather_forecast" },
 			});
-			// The history up to the cut has no system entry; the fork declares the tool itself.
-			expect(afterFirst!.system).toEqual([{ added: ["weather_forecast"], removed: [] }]);
+			// The history up to the cut declares the prompt but not the tool; the fork declares the tool itself.
+			expect(afterFirst!.system).toEqual([prompt, { sections: [], added: ["weather_forecast"], removed: [] }]);
 			expect(afterResults[0]).toMatchObject({ status: "completed", text: "weather_forecast ran" });
 			const afterBook = yield* ledger(sessionId, after);
 			expect(systemEntries(afterBook)).toHaveLength(1);
@@ -536,7 +551,10 @@ describe("toolsearch", () => {
 			});
 			// The removal is declared to the model as a system entry.
 			expect(systemEntries(book)).toHaveLength(1);
-			expect(systemEntries(book)[0]!.data).toMatchObject({ toolsRemoved: [{ name: "notes_read" }] });
+			expect(systemEntries(book)[0]!.data).toMatchObject({
+				sections: prompt.sections,
+				toolsRemoved: [{ name: "notes_read" }],
+			});
 		}),
 	);
 });

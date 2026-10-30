@@ -9,7 +9,17 @@
 				"toolsearch",
 				"notes_read"
 			],
-			"system": []
+			"system": [
+				{
+					"sections": [
+						"tools",
+						"rules",
+						"cwd"
+					],
+					"added": [],
+					"removed": []
+				}
+			]
 		},
 		{
 			"tools": [
@@ -22,6 +32,16 @@
 			],
 			"system": [
 				{
+					"sections": [
+						"tools",
+						"rules",
+						"cwd"
+					],
+					"added": [],
+					"removed": []
+				},
+				{
+					"sections": [],
 					"added": [
 						"weather_forecast"
 					],
@@ -40,6 +60,16 @@
 			],
 			"system": [
 				{
+					"sections": [
+						"tools",
+						"rules",
+						"cwd"
+					],
+					"added": [],
+					"removed": []
+				},
+				{
+					"sections": [],
 					"added": [
 						"weather_forecast"
 					],
@@ -88,50 +118,54 @@
 		},
 		{
 			"seq": 4,
-			"type": "session.llm.started.1"
+			"type": "session.thread.system.changed.1"
 		},
 		{
 			"seq": 5,
-			"type": "session.llm.ended.1"
+			"type": "session.llm.started.1"
 		},
 		{
 			"seq": 6,
-			"type": "session.tool.settled.1"
+			"type": "session.llm.ended.1"
 		},
 		{
 			"seq": 7,
-			"type": "session.turn.ended.1"
-		},
-		{
-			"seq": 8,
-			"type": "session.thread.tools.changed.1"
-		},
-		{
-			"seq": 9,
-			"type": "session.llm.started.1"
-		},
-		{
-			"seq": 10,
-			"type": "session.llm.ended.1"
-		},
-		{
-			"seq": 11,
 			"type": "session.tool.settled.1"
 		},
 		{
-			"seq": 12,
+			"seq": 8,
 			"type": "session.turn.ended.1"
 		},
 		{
-			"seq": 13,
+			"seq": 9,
+			"type": "session.thread.system.changed.1"
+		},
+		{
+			"seq": 10,
 			"type": "session.llm.started.1"
 		},
 		{
-			"seq": 14,
+			"seq": 11,
 			"type": "session.llm.ended.1"
 		},
 		{
+			"seq": 12,
+			"type": "session.tool.settled.1"
+		},
+		{
+			"seq": 13,
+			"type": "session.turn.ended.1"
+		},
+		{
+			"seq": 14,
+			"type": "session.llm.started.1"
+		},
+		{
 			"seq": 15,
+			"type": "session.llm.ended.1"
+		},
+		{
+			"seq": 16,
 			"type": "session.turn.ended.1"
 		}
 	],
@@ -145,12 +179,28 @@
 		{
 			"id": "E2",
 			"seq": 4,
+			"type": "system",
+			"state": "committed",
+			"data": {
+				"sections": [
+					"tools",
+					"rules",
+					"cwd"
+				],
+				"toolsAdded": [],
+				"toolsRemoved": [],
+				"hash": "2aedbc0fffd70a2b41a7ce78f786f9809d727be73bf31b672ac2d603d3817fbb"
+			}
+		},
+		{
+			"id": "E3",
+			"seq": 5,
 			"type": "assistant",
 			"state": "committed"
 		},
 		{
-			"id": "E3",
-			"seq": 8,
+			"id": "E4",
+			"seq": 9,
 			"type": "system",
 			"state": "committed",
 			"data": {
@@ -189,14 +239,14 @@
 			}
 		},
 		{
-			"id": "E4",
-			"seq": 9,
+			"id": "E5",
+			"seq": 10,
 			"type": "assistant",
 			"state": "committed"
 		},
 		{
-			"id": "E5",
-			"seq": 13,
+			"id": "E6",
+			"seq": 14,
 			"type": "assistant",
 			"state": "committed"
 		}
@@ -207,7 +257,7 @@
 			"value": {}
 		},
 		{
-			"seq": 6,
+			"seq": 7,
 			"value": {
 				"modelTools": {
 					"add": [

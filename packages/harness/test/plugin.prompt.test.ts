@@ -1,3 +1,4 @@
+import { Transcript } from "@codeworksh/aikit";
 import "./utils/env.ts";
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
@@ -38,7 +39,7 @@ describe("codework.prompt.default", () => {
 						hostCwd: root,
 						database: ":memory:",
 						llm: (input, signal) => {
-							observed.push(input.context.systemPrompt ?? "");
+							observed.push(Transcript.getCurrentSystemPrompt(input.context));
 							return open(input, signal);
 						},
 						...harness,

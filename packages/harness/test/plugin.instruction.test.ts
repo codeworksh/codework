@@ -1,3 +1,4 @@
+import { Transcript } from "@codeworksh/aikit";
 import "./utils/env.ts";
 import { Effect, Logger } from "effect";
 import { execFile } from "node:child_process";
@@ -46,7 +47,7 @@ const prompt = async (input: { root: string; directory: string; hostCwd: string;
 					hostCwd: input.hostCwd,
 					database: ":memory:",
 					llm: (request, signal) => {
-						observed.push(request.context.systemPrompt ?? "");
+						observed.push(Transcript.getCurrentSystemPrompt(request.context));
 						return open(request, signal);
 					},
 				}),

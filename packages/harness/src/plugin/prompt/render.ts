@@ -35,7 +35,17 @@ const toolIndex = (tools: ReadonlyArray<AnyToolDef>): string => {
 	return listed.map((tool) => `- ${tool.name}: ${tool.promptSnippet}`).join("\n");
 };
 
-export const render = (input: Input): string => {
+/**
+ * The prompt as the transcript carries it: the untagged foundation, then named sections, each
+ * holding its own tags. A section's text is compared whole between requests, so one that did not
+ * change is never sent again.
+ */
+export interface Rendered {
+	readonly foundation: string;
+	readonly sections: Readonly<Record<string, string>>;
+}
+
+export const render = (input: Input): Rendered => {
 	const written = new Map(input.prompt.sections);
 
 	const guidelines = input.tools.flatMap((tool) => tool.promptGuidelines ?? []);
@@ -44,17 +54,34 @@ export const render = (input: Input): string => {
 		entries: [...guidelines, ...(written.get(Section.Rules.name)?.entries ?? [])],
 	});
 
-	const parts: string[] = [input.prompt.foundation ?? fallback, tag("tools", toolIndex(input.tools))];
+	const sections: Record<string, string> = { tools: tag("tools", toolIndex(input.tools)) };
 	const push = (name: string) => {
 		const section = written.get(name);
 		const rendered = section === undefined ? undefined : body(section);
-		if (rendered !== undefined) parts.push(tag(name, rendered));
+		if (rendered !== undefined) sections[name] = tag(name, rendered);
 		written.delete(name);
 	};
 
 	for (const section of Section.builtins) push(section.name);
-	parts.push(tag("cwd", input.directory));
+	sections.cwd = tag("cwd", input.directory);
 	for (const name of Array.from(written.keys())) push(name);
 
-	return parts.join("\n\n");
+	// A blank foundation would leave models that take system messages in place with no leading
+	// prompt, and their transport would promote a later section update in its stead.
+	const foundation = input.prompt.foundation?.trim() ? input.prompt.foundation : fallback;
+	return { foundation, sections };
+};
+
+/**
+ * The patch that brings the sections the transcript declares to `current`, `null` removing one;
+ * `undefined` when they match.
+ */
+export const diff = (
+	previous: Readonly<Record<string, string>>,
+	current: Readonly<Record<string, string>>,
+): Record<string, string | null> | undefined => {
+	const patch: Record<string, string | null> = {};
+	for (const [name, text] of Object.entries(current)) if (previous[name] !== text) patch[name] = text;
+	for (const name of Object.keys(previous)) if (!Object.hasOwn(current, name)) patch[name] = null;
+	return Object.keys(patch).length === 0 ? undefined : patch;
 };

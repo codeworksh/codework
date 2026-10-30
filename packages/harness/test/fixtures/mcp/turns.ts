@@ -10,7 +10,7 @@ import { Event } from "../../../src/event/event.ts";
 import { EventList } from "../../../src/event/list.ts";
 import { toolSearchPlugin } from "../../../src/plugin/builtin/tool/toolsearch.ts";
 import type { LLM } from "../../../src/runner/llm.ts";
-import { assistant } from "../llm.ts";
+import { assistant, sectionNames } from "../llm.ts";
 
 const fixtures = fileURLToPath(new URL("./", import.meta.url));
 
@@ -111,12 +111,13 @@ export const results = (thread: Session.ThreadHandle) =>
 		return out;
 	});
 
-/** Tool changes the transcript declared, as names. */
+/** Section and tool changes the transcript declared, as names. */
 export const changes = (messages: ReadonlyArray<Message.Message>) =>
 	messages.flatMap((message) =>
 		message.role === "system"
 			? [
 					{
+						sections: sectionNames(message.sections),
 						added: (message.toolsAdded ?? []).map((tool) => tool.name),
 						removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
 					},

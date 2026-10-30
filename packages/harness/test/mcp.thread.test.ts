@@ -435,7 +435,11 @@ it("mcp: a thread resumed in a new process awaits the server of a tool it loaded
 
 	expect(first.calls.first).toBe("hello: first");
 	expect(first.loaded?.add).toContain("mcp__docs__echo");
-	expect(second.changes).toEqual([{ added: ["mcp__docs__echo", "mcp__docs__big"], removed: [] }]);
+	// The prompt and the loaded tools stay declared by the first run's system entries; nothing is declared again.
+	expect(second.changes).toEqual([
+		{ sections: ["tools", "rules", "cwd"], added: [], removed: [] },
+		{ sections: [], added: ["mcp__docs__echo", "mcp__docs__big"], removed: [] },
+	]);
 	expect(second.calls.again).toBe("hello: again");
 	const { sessionId: _sessionId, ...firstRun } = first;
 	await expect(`${JSON.stringify({ first: firstRun, second }, null, "\t")}\n`).toMatchFileSnapshot(

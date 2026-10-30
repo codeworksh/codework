@@ -57,6 +57,16 @@
 		],
 		"system": [
 			{
+				"sections": [
+					"tools",
+					"rules",
+					"cwd"
+				],
+				"added": [],
+				"removed": []
+			},
+			{
+				"sections": [],
 				"added": [
 					"github_create_issue",
 					"jira_search_issues",

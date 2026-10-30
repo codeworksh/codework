@@ -1,0 +1,220 @@
+{
+	"requests": [
+		{
+			"roles": [
+				"user",
+				"system"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				}
+			],
+			"mode": "Plan only."
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				}
+			],
+			"mode": "Build allowed."
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				},
+				{
+					"mode": null
+				}
+			],
+			"mode": null
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				},
+				{
+					"mode": null
+				}
+			],
+			"mode": null
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"assistant",
+				"user"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				},
+				{
+					"mode": null
+				}
+			],
+			"mode": null
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"assistant",
+				"user",
+				"assistant",
+				"user",
+				"system"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": "<mode>\nBuild allowed.\n</mode>"
+				},
+				{
+					"mode": null
+				},
+				{
+					"mode": "<mode>\nPlan again.\n</mode>"
+				}
+			],
+			"mode": "Plan again."
+		},
+		{
+			"roles": [
+				"user",
+				"system",
+				"assistant",
+				"user",
+				"system"
+			],
+			"declared": [
+				{
+					"tools": "…",
+					"rules": "…",
+					"cwd": "…",
+					"mode": "<mode>\nPlan only.\n</mode>"
+				},
+				{
+					"mode": null
+				}
+			],
+			"mode": null
+		}
+	],
+	"prefixKept": [
+		true,
+		true,
+		true,
+		true,
+		true
+	],
+	"threads": {
+		"main": [
+			"user",
+			"system",
+			"assistant",
+			"user",
+			"system",
+			"assistant",
+			"user",
+			"system",
+			"assistant",
+			"user",
+			"assistant",
+			"user",
+			"assistant",
+			"user",
+			"system",
+			"assistant"
+		],
+		"fork": [
+			"user",
+			"system",
+			"assistant",
+			"user",
+			"system",
+			"assistant"
+		]
+	}
+}

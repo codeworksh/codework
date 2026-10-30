@@ -86,8 +86,10 @@ describe("Harness Effect SDK", () => {
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({ sessionId });
 						yield* session.run("second");
+						// The restarted runtime finds the prompt the first run declared, so declares nothing again.
 						expect((yield* session.history()).map(({ entry }) => entry.type)).toEqual([
 							"user",
+							"system",
 							"assistant",
 							"user",
 							"assistant",

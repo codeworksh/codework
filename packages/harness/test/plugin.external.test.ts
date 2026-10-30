@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import type { Message } from "@codeworksh/aikit";
+import { type Message, Transcript } from "@codeworksh/aikit";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { join } from "node:path";
 import { writeFile } from "node:fs/promises";
@@ -57,7 +57,7 @@ const exchange = (input: {
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);
-					prompts.push(request.context.systemPrompt ?? "");
+					prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 					return open(request, signal);
 				},
 				...(input.plugins === undefined ? {} : { plugins: input.plugins }),
@@ -125,8 +125,8 @@ describe("third-party plugins", () => {
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["acme_echo"]);
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
 
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant", "assistant"]);
-			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant", "assistant"]);
+			const settled = JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({
 				status: "completed",
 				result: {
@@ -153,7 +153,9 @@ describe("third-party plugins", () => {
 					pendingCall("acme_secret", { value: "allow" }, "call_allowed"),
 				),
 			});
-			const parts = (path[1]?.parts ?? []).map((part) => JSON.parse(part.data));
+			const parts = (path.find((item) => item.entry.type === "assistant")?.parts ?? []).map((part) =>
+				JSON.parse(part.data),
+			);
 			const blocked = parts.find((part) => part.callID === "call_blocked");
 			const allowed = parts.find((part) => part.callID === "call_allowed");
 			expect(blocked).toMatchObject({
@@ -174,7 +176,7 @@ describe("third-party plugins", () => {
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(prompts[0]).toContain("- bash: Run a command through the acme shell");
-			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
+			const settled = JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({
 				status: "completed",
 				result: { content: [{ type: "text", text: "acme-override:echo hi" }] },
@@ -292,7 +294,7 @@ describe("third-party plugins", () => {
 			});
 			expect(contexts[0]?.tools?.[0]).toMatchObject({ name: "acme_echo", description: "Echo, relabelled by acme" });
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
-			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
+			const settled = JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}");
 			expect(settled.result.content).toEqual([
 				{ type: "text", text: "hi" },
 				{ type: "text", text: "(acme-checked)" },
@@ -340,7 +342,7 @@ describe("third-party plugins", () => {
 			});
 			expect(contexts[0]?.tools).toEqual([]);
 			expect(prompts[0]).toContain("<tools>\n(none)\n</tools>");
-			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
+			const settled = JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({ status: "error", result: { isError: true } });
 			expect(settled.result.content[0].text).toContain("Unknown Tool: bash");
 		}));

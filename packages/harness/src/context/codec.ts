@@ -199,11 +199,12 @@ export const decodeSyntheticMessage = Effect.fn("Context.decodeSyntheticMessage"
 	);
 });
 
-/** The transcript system message of a tool change; empty sides are left out. */
+/** The transcript system message of a section and tool change; empty parts are left out. */
 export const systemMessage = <T>(
 	messageId: string,
 	created: number,
 	changes: {
+		readonly sections?: Readonly<Record<string, string | null>> | undefined;
 		readonly toolsAdded: ReadonlyArray<T>;
 		readonly toolsRemoved: ReadonlyArray<Message.ToolReference>;
 	},
@@ -211,6 +212,7 @@ export const systemMessage = <T>(
 	messageId,
 	role: "system" as const,
 	time: { created },
+	...(changes.sections === undefined ? {} : { sections: { ...changes.sections } }),
 	...(changes.toolsAdded.length === 0 ? {} : { toolsAdded: [...changes.toolsAdded] }),
 	...(changes.toolsRemoved.length === 0 ? {} : { toolsRemoved: changes.toolsRemoved.map(({ name }) => ({ name })) }),
 });

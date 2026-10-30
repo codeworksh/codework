@@ -8,6 +8,7 @@
 import { type Message, Transcript } from "@codeworksh/aikit";
 import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
+import { diff } from "../plugin/prompt/render.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
@@ -275,11 +276,12 @@ export const layer = (options: Options = {}) =>
 			});
 
 			/**
-			 * The request keeps the declared tools as `tools`; what the thread offers beyond them (or
-			 * withholds) is declared by a `system` entry, published when the transcript's tool state
-			 * differs from the offered one. Returns its message, for the request at hand.
+			 * The request keeps the foundation as `systemPrompt` and the declared tools as `tools`. The
+			 * prompt sections, and what the thread offers beyond those tools (or withholds), are declared
+			 * by a `system` entry, published when the transcript's state differs from the snapshot's: the
+			 * first request declares every section. Returns its message, for the request at hand.
 			 */
-			const declareToolChanges = Effect.fn("Loop.declareToolChanges")(function* (
+			const declareSystemChanges = Effect.fn("Loop.declareSystemChanges")(function* (
 				snapshot: State.Snapshot,
 				messages: ReadonlyArray<Message.Message>,
 			) {
@@ -287,12 +289,14 @@ export const layer = (options: Options = {}) =>
 					{ messages: [...messages], tools: [...snapshot.tools.wire] },
 					"none",
 				).requestTools;
-				const changes = Transcript.getToolStateChanges(previous, snapshot.tools.offered);
-				if (changes.toolsAdded.length === 0 && changes.toolsRemoved.length === 0) return [];
+				const tools = Transcript.getToolStateChanges(previous, snapshot.tools.offered);
+				const sections = diff(Transcript.getCurrentSections(messages), snapshot.prompt.sections);
+				if (sections === undefined && tools.toolsAdded.length === 0 && tools.toolsRemoved.length === 0) return [];
+				const changes = { ...(sections === undefined ? {} : { sections }), ...tools };
 				const messageId = SessionMessageSchema.ID.create();
 				const timestamp = yield* DateTime.now;
 				const hash = Hash.sha256(yield* encodeJson(snapshot.tools.offered.map(Transcript.toToolDeclaration)));
-				yield* events.publish(EventList.ToolsChanged, {
+				yield* events.publish(EventList.SystemChanged, {
 					timestamp,
 					sessionId: snapshot.sessionId,
 					threadId: snapshot.threadId,
@@ -326,7 +330,7 @@ export const layer = (options: Options = {}) =>
 				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
 					return undefined;
 				}
-				const messages = [...assembled.messages, ...(yield* declareToolChanges(snapshot, assembled.messages))];
+				const messages = [...assembled.messages, ...(yield* declareSystemChanges(snapshot, assembled.messages))];
 
 				// The latest attempt's publisher; a retried turn has one per provider request.
 				let publisher: LLMEventPublisher.Publisher | undefined;
@@ -351,7 +355,7 @@ export const layer = (options: Options = {}) =>
 					const prepared = yield* hooks.prepareRequest(
 						{
 							context: {
-								systemPrompt: snapshot.systemPrompt,
+								systemPrompt: snapshot.prompt.foundation,
 								messages: [...messages],
 								tools: [...snapshot.tools.wire],
 							},

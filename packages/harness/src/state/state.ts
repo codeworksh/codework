@@ -37,6 +37,7 @@ import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block, Info, RetryPolicy } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
+import type { Rendered } from "../plugin/prompt/render.ts";
 import type { Resolved } from "../tool/registry.ts";
 
 /**
@@ -116,7 +117,8 @@ export interface Snapshot {
 	readonly threadId: ThreadSchema.ID;
 	readonly sandbox: SandboxIO.Identity;
 	readonly location: Location.Info;
-	readonly systemPrompt: string;
+	/** The foundation goes out as `systemPrompt`; the sections reach the transcript as system messages. */
+	readonly prompt: Rendered;
 	readonly tools: Resolved;
 	readonly provider: string;
 	readonly model: string;

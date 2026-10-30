@@ -306,8 +306,15 @@ describe("threads", () => {
 			yield* run(sessionId, main, "Now add tests");
 
 			const line = yield* threads.line(main);
-			expect(line.map(({ entry }) => entry.type)).toEqual(["user", "assistant", "assistant", "user", "assistant"]);
-			const [, e2, e3] = line;
+			expect(line.map(({ entry }) => entry.type)).toEqual([
+				"user",
+				"system",
+				"assistant",
+				"assistant",
+				"user",
+				"assistant",
+			]);
+			const [, , e2, e3] = line;
 			const forked = yield* threads.fork({ threadId: main, entryId: e3!.entry.id });
 			const t2 = ThreadSchema.ID.make(forked.thread.id);
 
@@ -352,7 +359,9 @@ describe("threads", () => {
 			const { sessionId, main } = yield* createSession;
 			yield* run(sessionId, main, "first");
 			yield* run(sessionId, main, "second");
-			const [e1, e2, e3, e4] = yield* threads.line(main);
+			const line = yield* threads.line(main);
+			expect(line.map(({ entry }) => entry.type)).toEqual(["user", "system", "assistant", "user", "assistant"]);
+			const [e1, , e2, e3, e4] = line;
 
 			// An inherited entry re-points the origin to the thread that wrote it.
 			const t2 = ThreadSchema.ID.make((yield* threads.fork({ threadId: main, entryId: e4!.entry.id })).thread.id);
@@ -445,11 +454,13 @@ describe("threads", () => {
 			const result = { bothActive: true, main: yield* own(main), fork: yield* own(t2) };
 			expect(result.main).toEqual([
 				"user committed",
+				"system committed",
 				"assistant committed",
 				"user committed",
 				"assistant committed",
 			]);
-			expect(result.fork).toEqual(["user committed", "assistant committed"]);
+			// The fork cuts before main's system entry, so its first request declares its own.
+			expect(result.fork).toEqual(["user committed", "system committed", "assistant committed"]);
 			// Seqs interleave between the two runs, so the artifact holds per-thread facts only.
 			yield* artifact("thread.concurrent.json", result);
 		}),
@@ -475,7 +486,8 @@ describe("threads", () => {
 			});
 			yield* run(sessionId, main, "after the reset");
 			const last = contexts.at(-1)!;
-			expect(last.roles).toEqual(["user", "user"]);
+			// The reset drops the earlier system entry too, so the request declares the prompt again.
+			expect(last.roles).toEqual(["user", "user", "system"]);
 			expect(last.texts.includes("before the reset")).toBe(false);
 			expect(last.texts.includes("keep the login work")).toBe(true);
 			yield* artifact("thread.reset.json", {
@@ -537,14 +549,14 @@ describe("threads", () => {
 			const own = (yield* threads.line(t2))
 				.filter(({ entry }) => entry.threadId === t2)
 				.map(({ entry }) => `${entry.type} ${entry.state}`);
-			expect(own).toEqual(["user committed", "assistant aborted", "assistant committed"]);
+			expect(own).toEqual(["user committed", "assistant aborted", "system committed", "assistant committed"]);
 			const thread = Option.getOrThrow(yield* threads.get(t2));
 			expect(Option.getOrUndefined(thread.execution)).toBeUndefined();
 			expect(thread.restarts).toBe(0);
 			// Only the thread that was cut off ran again, from its committed entries: the inherited
 			// prompt and its own, without the aborted draft.
 			expect(contexts.filter((one) => one.threadId === main)).toHaveLength(1);
-			expect(contexts.at(-1)!.roles).toEqual(["user", "user"]);
+			expect(contexts.at(-1)!.roles).toEqual(["user", "user", "system"]);
 			yield* artifact("thread.recovery.json", yield* snapshot(sessionId));
 		}),
 	);

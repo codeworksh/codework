@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import { createAssistantMessageEventStream } from "@codeworksh/aikit";
+import { createAssistantMessageEventStream, Transcript } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -100,7 +100,9 @@ describe("settings at turn boundaries", () => {
 						// The "high" edit landed during the tool batch, so the continuation turn reads it.
 						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "high", "high"]);
 						expect(inputs.map((input) => input.options?.headers?.revision)).toEqual(["low", "high", "high"]);
-						expect(inputs[1]?.context.systemPrompt).toBe(inputs[0]?.context.systemPrompt);
+						expect(Transcript.getCurrentSystemPrompt(inputs[1]!.context)).toBe(
+							Transcript.getCurrentSystemPrompt(inputs[0]!.context),
+						);
 						yield* Effect.promise(() => file(custom, "off"));
 						yield* handle.run("idle steer");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");

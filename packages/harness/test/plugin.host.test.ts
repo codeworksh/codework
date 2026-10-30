@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import { createAssistantMessageEventStream, type Model } from "@codeworksh/aikit";
+import { createAssistantMessageEventStream, type Model, Transcript } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { join } from "node:path";
@@ -42,9 +42,14 @@ describe("plugin domains and exchange host", () => {
 		buckets.registry.prompt.foundation.set("Base.");
 		const snapshot = buckets.freeze("/work");
 		// The patched guideline reaches the harness-rendered <rules>; no snippet, so no index line.
-		expect(snapshot.systemPrompt).toBe(
-			["Base.", "<tools>\n(none)\n</tools>", "<rules>\n- one\n</rules>", "<cwd>\n/work\n</cwd>"].join("\n\n"),
-		);
+		expect(snapshot.prompt).toEqual({
+			foundation: "Base.",
+			sections: {
+				tools: "<tools>\n(none)\n</tools>",
+				rules: "<rules>\n- one\n</rules>",
+				cwd: "<cwd>\n/work\n</cwd>",
+			},
+		});
 		expect(snapshot.tools.defs[0]?.description).toBe("patched");
 		expect(snapshot.tools.wire[0]?.description).toBe("patched");
 		expect((await Effect.runPromise(snapshot.tools.handle(pendingCall("echo")))).status).toBe("completed");
@@ -93,7 +98,7 @@ describe("plugin domains and exchange host", () => {
 							database: ":memory:",
 							llm: (input, signal) => {
 								models.push(input.resolvedModel);
-								observed.push(input.context.systemPrompt ?? "");
+								observed.push(Transcript.getCurrentSystemPrompt(input.context));
 								return open(input, signal);
 							},
 							plugins: [
@@ -326,7 +331,7 @@ describe("plugin pipelines in the kernel loop", () => {
 							]);
 						if (mode === "sequential") expect(trace.indexOf("a:done")).toBeLessThan(trace.indexOf("b:before"));
 						const path = yield* session.history();
-						expect(path).toHaveLength(3);
+						expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant", "assistant"]);
 					}).pipe(
 						Effect.provide(
 							Harness.layer({

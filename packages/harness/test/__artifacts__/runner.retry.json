@@ -4,6 +4,9 @@
 			"type": "session.created"
 		},
 		{
+			"type": "session.thread.system.changed"
+		},
+		{
 			"type": "session.turn.started"
 		},
 		{
@@ -67,6 +70,12 @@
 			"type": "user",
 			"state": "committed",
 			"parts": 1
+		},
+		{
+			"id": "system",
+			"type": "system",
+			"state": "committed",
+			"parts": 0
 		},
 		{
 			"id": "assistant_1",
