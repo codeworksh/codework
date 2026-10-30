@@ -14,7 +14,8 @@ import { define } from "../src/plugin/plugin.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { assistant } from "./fixtures/llm.ts";
-import { listen, raw } from "./fixtures/mcp/http.ts";
+import { listen, raw, type Reply } from "./fixtures/mcp/http.ts";
+import { results } from "./fixtures/mcp/turns.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
@@ -399,6 +400,63 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 	);
 	await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/mcp.session.lifecycle.json",
+	);
+}, 60_000);
+
+it("mcp: concurrent calls that meet an expired HTTP session share one new session", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+
+	// How the next tool calls are answered, in the order they arrive; normally once the plan is used up.
+	const plan: Reply[] = [];
+	const remote = raw({ script: (request) => (request === "POST tools/call" ? plan.shift() : undefined) });
+	const echo = (id: string) => pendingCall("mcp__remote__echo", {}, id);
+	const requests: LLM.Input[] = [];
+	const llm = scripted([[echo("both-a"), echo("both-b")], [], [echo("one-a"), echo("one-b")], []], requests);
+
+	const result = await Effect.gen(function* () {
+		const url = yield* listen(remote.handler);
+		yield* Effect.promise(() => write(join(home, "mcp.json"), { mcpServers: { remote: { url: url.href } } }));
+		const session = yield* Session.create({
+			directory: work,
+			model: { provider: "openai", id: "gpt-5.6-luna" },
+			tools: { execution: "parallel" },
+		});
+		const initializes = () => remote.seen.filter((request) => request === "POST initialize").length;
+
+		// Both calls meet the expired session.
+		plan.push({ status: 404, body: "session not found" }, { status: 404, body: "session not found" });
+		yield* session.main.run("one");
+		const both = initializes();
+		// One meets it while the other is still running on the old session, which stays open until it answers.
+		plan.push({ status: 404, body: "session not found" }, { delay: 300 });
+		yield* session.main.run("two");
+		return {
+			initializes: { first: 1, afterBoth: both, afterOne: initializes() },
+			// A forgotten session is never ended with a DELETE. The standalone SSE stream (`GET`) opens in the
+			// background, at no fixed point among the requests.
+			remote: remote.seen.filter((request) => request !== "POST notifications/initialized" && request !== "GET"),
+			calls: yield* results(session.main),
+			status: (yield* Mcp.Service.use((mcp) => mcp.status(session.main.id))).map(({ server, state }) => ({
+				server,
+				state,
+			})),
+		};
+	}).pipe(
+		Effect.provide(
+			Harness.layer({ home, hostCwd: dir.path, database: ":memory:", plugins: [defaultPromptPlugin], llm }),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.initializes).toEqual({ first: 1, afterBoth: 2, afterOne: 3 });
+	expect(result.calls).toEqual({ "both-a": "called", "both-b": "called", "one-a": "called", "one-b": "called" });
+	expect(result.status).toEqual([{ server: "remote", state: "connected" }]);
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.session.expired.json",
 	);
 }, 60_000);
 

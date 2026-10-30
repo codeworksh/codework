@@ -1,0 +1,41 @@
+{
+	"boundedWait": true,
+	"first": {
+		"declared": [],
+		"state": "connecting"
+	},
+	"nextDidNotWait": true,
+	"next": {
+		"declared": true
+	},
+	"calls": {
+		"late": "hello: late"
+	},
+	"events": {
+		"main": {
+			"stuck": [
+				{
+					"server": "stuck",
+					"state": "connecting"
+				},
+				{
+					"server": "stuck",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			]
+		}
+	}
+}

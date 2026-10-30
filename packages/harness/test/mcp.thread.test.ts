@@ -1,13 +1,10 @@
 import "./utils/env.ts";
-import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, it } from "vite-plus/test";
-import { ContextCodec } from "../src/context/codec.ts";
 import { Document } from "../src/document/document.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
@@ -18,125 +15,25 @@ import { McpOAuth } from "../src/mcp/oauth.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { TOOL_SEARCH_NAME, toolSearchPlugin } from "../src/plugin/builtin/tool/toolsearch.ts";
 import { define } from "../src/plugin/plugin.ts";
-import type { LLM } from "../src/runner/llm.ts";
-import { assistant } from "./fixtures/llm.ts";
 import { listen, raw } from "./fixtures/mcp/http.ts";
+import {
+	alive,
+	changes,
+	elapsed,
+	results,
+	scripted,
+	startedPids,
+	statusEvents,
+	stdio,
+	toolSearch,
+	waitFor,
+	write,
+} from "./fixtures/mcp/turns.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
-const fixture = fileURLToPath(new URL("./fixtures/mcp/session.mjs", import.meta.url));
-const stdio = (extra: Record<string, unknown> = {}, env: Record<string, string> = {}) => ({
-	command: process.execPath,
-	args: [fixture],
-	env: { E2E_GREETING: "hello", ...env },
-	...extra,
-});
-
 const git = (cwd: string, ...args: string[]) =>
 	promisify(execFile)("git", ["-c", "commit.gpgsign=false", ...args], { cwd }).then(() => undefined);
-
-const write = async (file: string, value: unknown) => {
-	await fs.mkdir(join(file, ".."), { recursive: true });
-	await fs.writeFile(file, JSON.stringify(value, null, 2));
-};
-
-/** `toolsearch` turns on by itself only with deferred tools; the entry after it keeps it on regardless. */
-const toolSearch = [toolSearchPlugin, { plugin: toolSearchPlugin.id, enabled: true }] as const;
-
-/** A scripted model: per thread, one reply per request, in order; an empty one ends the turn. */
-const scripted = () => {
-	const script = new Map<string, Array<ReadonlyArray<Message.ToolCallPendingPart>>>();
-	const requests: Array<LLM.Input> = [];
-	let responses = 0;
-	const open: LLM.Open = (input) =>
-		Effect.sync(() => {
-			requests.push(input);
-			const calls = script.get(input.threadId)?.shift() ?? [];
-			responses += 1;
-			const message = assistant(
-				input,
-				responses,
-				calls.length > 0 ? { stopReason: "toolUse", parts: [...calls] } : {},
-			);
-			const stream = createAssistantMessageEventStream();
-			stream.push({ type: "start", partial: message });
-			stream.push({ type: "done", reason: calls.length > 0 ? "toolUse" : "stop", message });
-			return stream;
-		});
-	/** Queue a turn on a thread: tool calls for each request, then a closing reply. */
-	const turn = (threadId: string, ...requests: ReadonlyArray<ReadonlyArray<Message.ToolCallPendingPart>>) => {
-		const queue = script.get(threadId) ?? [];
-		queue.push(...requests, []);
-		script.set(threadId, queue);
-	};
-	/** Drop what is left of a thread's script, as an interrupted turn leaves it. */
-	const clear = (threadId: string) => script.delete(threadId);
-	return { open, turn, clear, requests };
-};
-
-/** Threads and servers connect concurrently; their keys are sorted so the artifact does not depend on it. */
-const byName = <A>(record: Record<string, A>) =>
-	Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
-
-/** Every `mcp.server.status` event, by thread label and server, in order; `read` takes a copy. */
-const statusEvents = (label: (threadId: string) => string) =>
-	Effect.gen(function* () {
-		const seen: Record<string, Record<string, Array<EventList.McpServerState>>> = {};
-		const events = yield* Event.Service;
-		yield* events.listen((event) =>
-			Effect.sync(() => {
-				if (event.type !== EventList.McpServerStatus.type) return;
-				const { threadId, status } = (event as unknown as EventList.McpServerStatus).data;
-				const byServer = (seen[label(threadId)] ??= {});
-				(byServer[status.server] ??= []).push(status);
-			}),
-		);
-		return {
-			read: () =>
-				byName(Object.fromEntries(Object.entries(seen).map(([thread, servers]) => [thread, byName(servers)]))),
-		};
-	});
-
-/** The text of each settled tool call of a thread, by call id. */
-const results = (thread: Session.ThreadHandle) =>
-	Effect.gen(function* () {
-		const line = yield* thread.history();
-		const out: Record<string, string> = {};
-		for (const hydrated of line) {
-			if (hydrated.entry.type !== "assistant") continue;
-			const message = yield* ContextCodec.decodeMessage(hydrated);
-			if (message.role !== "assistant") continue;
-			for (const part of message.parts)
-				if (part.type === "toolCall" && "result" in part)
-					out[part.callID] = part.result.content
-						.map((block) => (block.type === "text" ? block.text : ""))
-						.join("");
-		}
-		return out;
-	});
-
-/** Tool changes the transcript declared, as names. */
-const changes = (messages: ReadonlyArray<Message.Message>) =>
-	messages.flatMap((message) =>
-		message.role === "system"
-			? [
-					{
-						added: (message.toolsAdded ?? []).map((tool) => tool.name),
-						removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
-					},
-				]
-			: [],
-	);
-
-const waitFor = <A>(read: Effect.Effect<A>, done: (value: A) => boolean) =>
-	Effect.gen(function* () {
-		for (let tries = 0; tries < 250; tries++) {
-			const value = yield* read;
-			if (done(value)) return value;
-			yield* Effect.sleep("20 millis");
-		}
-		return yield* read;
-	});
 
 it("mcp: state per thread, no retry of a failed server, connect and disconnect, every exposure registered", async () => {
 	await using dir = await tmpdir();
@@ -200,20 +97,11 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 	});
 
 	const model = scripted();
-	const startedPids = () => fs.readFile(starts, "utf8").then((text) => text.split("\n").filter(Boolean).map(Number));
-	const startCount = () => startedPids().then((pids) => pids.length);
-	const alive = (pid: number) => {
-		try {
-			process.kill(pid, 0);
-			return true;
-		} catch {
-			return false;
-		}
-	};
+	const startCount = () => startedPids(starts).then((pids) => pids.length);
 	/** The gated server's processes still running, once the closed ones had time to exit. */
 	const running = (expected: number) =>
 		waitFor(
-			Effect.promise(startedPids).pipe(Effect.map((pids) => pids.filter(alive))),
+			Effect.promise(() => startedPids(starts)).pipe(Effect.map((pids) => pids.filter(alive))),
 			(pids) => pids.length === expected,
 		);
 
@@ -241,7 +129,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			);
 		const stateOf = (threadId: string, server: string) =>
 			status(threadId).pipe(Effect.map((all) => all[server]?.state));
-		const declared = () => (model.requests.at(-1)?.context.tools ?? []).map((tool) => tool.name);
+		const declared = model.declared;
 
 		// Turn one: codemode, hidden and unloaded deferred tools are registered but not offered.
 		model.turn(
@@ -494,6 +382,64 @@ it("mcp: a loaded deferred tool's server is awaited up front, and its name stays
 	);
 }, 60_000);
 
+it("mcp: a thread resumed in a new process awaits the server of a tool it loaded, which stays declared", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	const database = join(dir.path, "sessions.db");
+	await fs.mkdir(work, { recursive: true });
+	// Slow to start, so a turn that did not wait for it would find it still connecting.
+	await write(join(home, "mcp.json"), {
+		mcpServers: { docs: stdio({ exposure: "deferred" }, { E2E_DELAY: "500" }) },
+	});
+	const runtime = (llm: ReturnType<typeof scripted>) =>
+		Harness.layer({
+			home,
+			hostCwd: dir.path,
+			database,
+			plugins: [defaultPromptPlugin, ...toolSearch],
+			llm: llm.open,
+		});
+	const loaded = (threadId: Session.ThreadHandle["id"]) =>
+		Document.Service.use((documents) => documents.agent(threadId)).pipe(Effect.map((agent) => agent.modelTools));
+
+	const before = scripted();
+	const first = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		before.turn(
+			main.id,
+			[pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "search")],
+			[pendingCall("mcp__docs__echo", { text: "first" }, "first")],
+		);
+		yield* main.run("one");
+		return { sessionId: session.id, calls: yield* results(main), loaded: yield* loaded(main.id) };
+	}).pipe(Effect.provide(runtime(before)), Effect.scoped, Effect.runPromise);
+
+	const after = scripted(before.requests.length);
+	const second = await Effect.gen(function* () {
+		const main = yield* Session.attach({ sessionId: first.sessionId });
+		// Called in the first request, without searching again.
+		after.turn(main.id, [pendingCall("mcp__docs__echo", { text: "again" }, "again")]);
+		yield* main.run("two");
+		return {
+			// Loaded tools are declared in the transcript; the first request's carries only the first run's change.
+			changes: changes(after.requests[0]?.context.messages ?? []),
+			calls: yield* results(main),
+			loaded: yield* loaded(main.id),
+		};
+	}).pipe(Effect.provide(runtime(after)), Effect.scoped, Effect.runPromise);
+
+	expect(first.calls.first).toBe("hello: first");
+	expect(first.loaded?.add).toContain("mcp__docs__echo");
+	expect(second.changes).toEqual([{ added: ["mcp__docs__echo", "mcp__docs__big"], removed: [] }]);
+	expect(second.calls.again).toBe("hello: again");
+	const { sessionId: _sessionId, ...firstRun } = first;
+	await expect(`${JSON.stringify({ first: firstRun, second }, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.thread.resumed.json",
+	);
+}, 60_000);
+
 it("mcp: a server refusing the connection needs sign-in, and a new credential reconnects it once", async () => {
 	await using dir = await tmpdir();
 	const home = join(dir.path, "home");
@@ -595,10 +541,6 @@ it("mcp: an instance that idles out tells the threads still using it", async () 
 	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.thread.idle.json");
 }, 60_000);
 
-/** The tools the model was declared in its latest request. */
-const declaredIn = (model: ReturnType<typeof scripted>) =>
-	(model.requests.at(-1)?.context.tools ?? []).map((tool) => tool.name);
-
 it("mcp: toolsearch turns itself on while deferred tools exist, unless settings turn it off", async () => {
 	await using dir = await tmpdir();
 	const home = join(dir.path, "home");
@@ -621,7 +563,7 @@ it("mcp: toolsearch turns itself on while deferred tools exist, unless settings 
 		const mcp = yield* Mcp.Service;
 		const stateOf = mcp.status(main.id).pipe(Effect.map((all) => all.find((one) => one.server === "lazy")?.state));
 		const offered = (prompt: string) =>
-			main.run(prompt).pipe(Effect.map(() => declaredIn(model).includes(TOOL_SEARCH_NAME)));
+			main.run(prompt).pipe(Effect.map(() => model.declared().includes(TOOL_SEARCH_NAME)));
 
 		const nothingDeferred = yield* offered("one");
 		// A server configured with deferred tools turns toolsearch on before it connects.
@@ -815,13 +757,6 @@ it("mcp: toolsearch stops waiting for a server that never answers, at the startu
 				? Deferred.succeed(searching, undefined)
 				: Effect.void,
 		);
-		const elapsed = <A, E, R>(self: Effect.Effect<A, E, R>) =>
-			Effect.gen(function* () {
-				const start = Date.now();
-				yield* self;
-				return Date.now() - start;
-			});
-
 		// Interrupted while it waits: the call ends with the turn, long before the startup wait.
 		model.turn(main.id, [pendingCall(TOOL_SEARCH_NAME, { query: "echo text greeting" }, "interrupted")]);
 		const interrupter = yield* Deferred.await(searching).pipe(

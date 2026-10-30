@@ -1,0 +1,82 @@
+{
+	"declared": {
+		"first": [
+			"mcp__live__old",
+			"mcp__live__swap",
+			"mcp__live__burst"
+		],
+		"second": [
+			"mcp__live__swap",
+			"mcp__live__burst",
+			"mcp__live__new"
+		],
+		"last": [
+			"mcp__live__swap",
+			"mcp__live__burst",
+			"mcp__live__new",
+			"mcp__live__fresh"
+		]
+	},
+	"afterSwap": [
+		"swap",
+		"burst",
+		"new"
+	],
+	"afterBurst": [
+		"swap",
+		"burst",
+		"new",
+		"fresh"
+	],
+	"settled": [
+		"swap",
+		"burst",
+		"new",
+		"fresh"
+	],
+	"calls": {
+		"swap": "swapped",
+		"withdrawn": "MCP tool \"live/old\" is no longer available.",
+		"undeclared": "Unknown Tool: mcp__live__old",
+		"new": "new",
+		"burst": "burst"
+	},
+	"events": {
+		"main": {
+			"live": [
+				{
+					"server": "live",
+					"state": "connecting"
+				},
+				{
+					"server": "live",
+					"state": "connected",
+					"tools": [
+						"old",
+						"swap",
+						"burst"
+					]
+				},
+				{
+					"server": "live",
+					"state": "connected",
+					"tools": [
+						"swap",
+						"burst",
+						"new"
+					]
+				},
+				{
+					"server": "live",
+					"state": "connected",
+					"tools": [
+						"swap",
+						"burst",
+						"new",
+						"fresh"
+					]
+				}
+			]
+		}
+	}
+}

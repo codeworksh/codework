@@ -63,8 +63,8 @@ export const sdk = async (): Promise<Handler> => {
 	};
 };
 
-/** A scripted answer: a status with a text body, or no answer at all. */
-export type Reply = { readonly status: number; readonly body: string } | "hang";
+/** A scripted answer: a status with a text body, the normal answer after a delay, or no answer at all. */
+export type Reply = { readonly status: number; readonly body: string } | { readonly delay: number } | "hang";
 
 /** Requests a hand-written server saw, as `METHOD rpc-method`. */
 export interface Raw {
@@ -103,7 +103,9 @@ export const raw = (
 			state.seen.push(key);
 			const scripted = options.script?.(key);
 			if (scripted === "hang") return;
-			if (scripted !== undefined)
+			if (scripted !== undefined && "delay" in scripted)
+				await new Promise((resolve) => setTimeout(resolve, scripted.delay));
+			else if (scripted !== undefined)
 				return void response.writeHead(scripted.status, { "content-type": "text/plain" }).end(scripted.body);
 			if (state.forget && request.headers["mcp-session-id"] !== undefined) {
 				response.writeHead(404, { "content-type": "text/plain" });
