@@ -162,6 +162,9 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 			concurrency: "unbounded",
 		});
 		const mainStatus = yield* status(main.id);
+		// `extra` is deferred, so the fork's turn need not wait for it: wait here, and let a turn register it.
+		yield* waitFor(stateOf(fork.id, "extra"), (state) => state === "connected");
+		yield* fork.run("two, again");
 		const forkStatus = yield* status(fork.id);
 		const forkRegistered = registered[fork.id];
 
@@ -241,7 +244,7 @@ it("mcp: state per thread, no retry of a failed server, connect and disconnect, 
 		};
 
 		// Deleting the session closes its servers and reports nothing more to its threads.
-		const eventCount = () => Object.values(seen).flatMap((byServer) => Object.values(byServer).flat()).length;
+		const eventCount = () => Object.values(seen.read()).flatMap((byServer) => Object.values(byServer).flat()).length;
 		const eventsBeforeDelete = eventCount();
 		yield* Session.remove(session.id);
 		const deleted = {
