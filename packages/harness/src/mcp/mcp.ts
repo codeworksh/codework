@@ -347,20 +347,28 @@ export const layer = (options: {
 				return lock;
 			};
 
-			/** Publish a status to each of these threads. */
-			const publishTo = (users: Iterable<ThreadId>, status: EventList.McpServerState) =>
+			/**
+			 * Publish a status to each of these threads that still exists and, by `member`, still takes it:
+			 * checked right before each publish, since an earlier one can let a thread leave or be removed.
+			 */
+			const publishTo = (
+				users: Iterable<ThreadId>,
+				status: EventList.McpServerState,
+				member: (threadId: ThreadId) => boolean = () => true,
+			) =>
 				Effect.flatMap(DateTime.now, (timestamp) =>
 					Effect.forEach(
-						[...users].flatMap((threadId) => {
-							const thread = threads.get(threadId);
-							return thread === undefined ? [] : [thread];
-						}),
-						(thread) =>
-							events.publish(EventList.McpServerStatus, {
-								timestamp,
-								sessionId: thread.sessionId,
-								threadId: thread.id,
-								status,
+						[...users],
+						(threadId) =>
+							Effect.suspend(() => {
+								const thread = threads.get(threadId);
+								if (thread === undefined || !member(threadId)) return Effect.void;
+								return events.publish(EventList.McpServerStatus, {
+									timestamp,
+									sessionId: thread.sessionId,
+									threadId: thread.id,
+									status,
+								});
 							}),
 						{ discard: true },
 					),
@@ -395,7 +403,7 @@ export const layer = (options: {
 					].join("\0");
 					if (key === server.published) return Effect.void;
 					server.published = key;
-					return publishTo(server.users, status);
+					return publishTo(server.users, status, (threadId) => server.users.has(threadId));
 				});
 
 			/** The one place an instance's state changes. */
@@ -481,9 +489,8 @@ export const layer = (options: {
 				});
 
 			/** Take in a listing: the tools the SDK accepts, and the ones it left out, each logged with why. */
-			const listed = (server: Server, connection: McpClient.Connection, tools: ReadonlyArray<Tool>) =>
+			const listed = (server: Server, { tools, skipped }: McpClient.Listing) =>
 				Effect.suspend(() => {
-					const skipped = connection.skipped();
 					const names = skipped.flatMap((tool) => (tool.name === undefined ? [] : [tool.name]));
 					server.tools = tools;
 					server.skipped = skipped.length === 0 ? undefined : { names, unnamed: skipped.length - names.length };
@@ -527,13 +534,11 @@ export const layer = (options: {
 						const refresh = ++live.refreshes;
 						const latest = () => server.live === live && live.refreshes === refresh;
 						fork(
-							live.connection.tools().pipe(
+							live.connection.listing().pipe(
 								Effect.matchEffect({
-									onSuccess: (tools) =>
+									onSuccess: (listing) =>
 										Effect.suspend(() =>
-											latest()
-												? Effect.andThen(listed(server, live.connection, tools), publish(server))
-												: Effect.void,
+											latest() ? Effect.andThen(listed(server, listing), publish(server)) : Effect.void,
 										),
 									onFailure: (error) =>
 										Effect.sync(() => {
@@ -564,8 +569,8 @@ export const layer = (options: {
 							// its last messages usually say why.
 							onLog: (entry) => Effect.sync(() => fork(log.write(server.name, entry))),
 						}).pipe(Scope.provide(scope));
-						const tools = yield* connection.tools();
-						return { connection, tools };
+						const listing = yield* connection.listing();
+						return { connection, listing };
 					});
 					const exit = yield* ("url" in config ? endpointLock(config.url).withPermit(connect) : connect).pipe(
 						Effect.onInterrupt(() => Scope.close(scope, Exit.void)),
@@ -598,7 +603,7 @@ export const layer = (options: {
 						refreshes: 0,
 					};
 					server.live = live;
-					yield* listed(server, live.connection, exit.value.tools);
+					yield* listed(server, exit.value.listing);
 					server.resources = exit.value.connection.capabilities?.resources !== undefined;
 					yield* setState(server, "connected");
 					watch(server, live);
@@ -657,14 +662,16 @@ export const layer = (options: {
 					if (server.live !== undefined) yield* retire(server, server.live);
 				}).pipe(server.lock.withPermits(1));
 
-			/** Stop the instance for good: nobody uses it any more, or it idled out. */
-			const close = (server: Server) =>
-				Effect.suspend(() => {
-					if (instances.get(server.key) === server) instances.delete(server.key);
-					server.closed = true;
-					// Threads still using an instance that idled out learn it is gone, as `status` already says.
-					return Effect.andThen(setState(server, "disconnected"), stop(server));
-				});
+			/**
+			 * Stop the instance for good: nobody uses it any more, or it idled out. No thread can join it
+			 * from here on; stopping it, which can take seconds, runs in the background.
+			 */
+			const close = (server: Server) => {
+				if (instances.get(server.key) === server) instances.delete(server.key);
+				server.closed = true;
+				// Threads still using an instance that idled out learn it is gone, as `status` already says.
+				fork(Effect.andThen(setState(server, "disconnected"), stop(server)));
+			};
 
 			/**
 			 * One request on whichever connection of the server is current when it runs. `what` names
@@ -718,7 +725,10 @@ export const layer = (options: {
 							}
 							if (failure._tag === "Mcp.NeedsAuthError") {
 								yield* Effect.gen(function* () {
-									yield* needsSignIn(server, failure);
+									// A call on a connection that was replaced, or on an instance disconnected or closed
+									// since, must not overwrite the state that replaced it.
+									if (server.live === live && !server.stopped && !server.closed)
+										yield* needsSignIn(server, failure);
 									yield* retire(server, live);
 								}).pipe(server.lock.withPermits(1));
 								return yield* refuse(signInHint(name, entry.config));
@@ -789,8 +799,9 @@ export const layer = (options: {
 						Effect.andThen(
 							Effect.suspend(() =>
 								server.leases === 0 && server.generation === generation && !server.closed
-									? close(server).pipe(
-											Effect.andThen(Effect.logInfo("mcp server idle, closed", { server: server.name })),
+									? Effect.andThen(
+											Effect.sync(() => close(server)),
+											Effect.logInfo("mcp server idle, closed", { server: server.name }),
 										)
 									: Effect.void,
 							),
@@ -809,15 +820,16 @@ export const layer = (options: {
 			const used = (thread: Thread) =>
 				new Set([...thread.servers.values()].flatMap((entry) => (entry.server ? [entry.server] : [])));
 
-			/** The thread stops using these instances, and its drains stop holding them; returns the ones nobody uses now. */
+			/**
+			 * The thread stops using these instances, and its drains stop holding them. One nobody uses now
+			 * closes in the same step, so no other thread can join it while it stops.
+			 */
 			const leave = (thread: Thread, servers: Iterable<Server>) => {
-				const unused: Server[] = [];
 				for (const server of servers) {
 					server.users.delete(thread.id);
 					hold(server, -thread.leases);
-					if (server.users.size === 0) unused.push(server);
+					if (server.users.size === 0) close(server);
 				}
-				return unused;
 			};
 
 			const threadOf = (threadId: ThreadId, sessionId: SessionId) => {
@@ -964,8 +976,9 @@ export const layer = (options: {
 				const joined: Array<readonly [Server, string | undefined]> = [];
 				const disabled: string[] = [];
 				// All bookkeeping happens in one step, so an interrupted turn cannot leave an instance
-				// counting a thread or a drain it no longer has; closing what nobody uses runs on its own.
-				const closing = yield* Effect.sync(() => {
+				// counting a thread or a drain it no longer has, nor a new one that never starts. Stopping
+				// what nobody uses runs on its own.
+				yield* Effect.sync(() => {
 					const before = new Map(thread.servers);
 					const previous = used(thread);
 					thread.servers.clear();
@@ -1020,19 +1033,18 @@ export const layer = (options: {
 					}
 					// Instances this thread no longer uses: a removed server, or changed settings.
 					const current = used(thread);
-					return leave(
+					leave(
 						thread,
 						[...previous].filter((server) => !current.has(server)),
 					);
+					// A new instance publishes from its first state on, to every thread using it by then.
+					for (const server of created) start(server);
+					for (const server of restart) start(server);
 				}).pipe(thread.lock.withPermits(1));
 				// A thread joining a running instance learns where it stands. Skipped when the instance has
 				// published since it joined: that newer status already reached the thread, and this one would be stale.
 				for (const [server, seen] of joined) yield* publishJoined(thread, server, seen);
-				for (const server of closing) fork(close(server));
-				// A new instance publishes from its first state on, to every thread using it by then.
-				for (const server of created) start(server);
 				for (const name of disabled) yield* publishTo([thread.id], { server: name, state: "disabled" });
-				for (const server of restart) start(server);
 
 				// Wait for servers this turn started using (all of them at first, then new or restarted ones)
 				// so their tools are offered in its first request, but never indefinitely: one hanging server
@@ -1125,36 +1137,43 @@ export const layer = (options: {
 			const connect = Effect.fn("Mcp.connect")((threadId: ThreadId, name: string) =>
 				control(threadId, name, (server) =>
 					Effect.gen(function* () {
-						server.stopped = false;
-						yield* stop(server);
-						// An explicit restart is reported even when an interrupted attempt left it `connecting`.
-						server.published = undefined;
-						yield* open(server).pipe(Effect.ignore);
+						// Committed whole once begun: a cancelled caller still leaves an attempt running.
+						yield* Effect.uninterruptible(
+							Effect.gen(function* () {
+								server.stopped = false;
+								yield* stop(server);
+								// An explicit restart is reported even when an interrupted attempt left it `connecting`.
+								server.published = undefined;
+								start(server);
+							}),
+						);
+						yield* firstAttempt(server);
 					}),
 				),
 			);
 
 			const disconnect = Effect.fn("Mcp.disconnect")((threadId: ThreadId, name: string) =>
 				control(threadId, name, (server) =>
-					Effect.gen(function* () {
-						server.stopped = true;
-						yield* stop(server);
-						yield* setState(server, "disconnected");
-					}),
+					// Committed whole once begun, so a cancelled caller never leaves it stopped but not reported.
+					Effect.uninterruptible(
+						Effect.gen(function* () {
+							server.stopped = true;
+							yield* stop(server);
+							yield* setState(server, "disconnected");
+						}),
+					),
 				),
 			);
 
 			const remove = Effect.fn("Mcp.remove")(function* (sessionId: SessionId) {
 				for (const thread of threads.values()) {
 					if (thread.sessionId !== sessionId) continue;
-					const unused = yield* Effect.sync(() => {
-						if (threads.get(thread.id) === thread) threads.delete(thread.id);
-						const unused = leave(thread, used(thread));
-						thread.servers.clear();
-						return unused;
-					}).pipe(thread.lock.withPermits(1));
 					// Stopping can take seconds; deleting the session does not wait for it.
-					for (const server of unused) fork(close(server));
+					yield* Effect.sync(() => {
+						if (threads.get(thread.id) === thread) threads.delete(thread.id);
+						leave(thread, used(thread));
+						thread.servers.clear();
+					}).pipe(thread.lock.withPermits(1));
 				}
 			});
 

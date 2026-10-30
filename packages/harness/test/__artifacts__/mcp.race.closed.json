@@ -1,0 +1,106 @@
+{
+	"sibling": [
+		{
+			"server": "y",
+			"state": "connected"
+		},
+		{
+			"server": "x",
+			"state": "connected"
+		}
+	],
+	"events": {
+		"main": {
+			"x": [
+				{
+					"server": "x",
+					"state": "connecting"
+				},
+				{
+					"server": "x",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			],
+			"y": [
+				{
+					"server": "y",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			]
+		},
+		"sibling": {
+			"x": [
+				{
+					"server": "x",
+					"state": "connecting"
+				},
+				{
+					"server": "x",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			],
+			"y": [
+				{
+					"server": "y",
+					"state": "connecting"
+				},
+				{
+					"server": "y",
+					"state": "connected",
+					"tools": [
+						"echo",
+						"args",
+						"fail",
+						"pid",
+						"crash",
+						"my-tool.v2",
+						"secret",
+						"bye",
+						"cwd",
+						"link",
+						"big"
+					]
+				}
+			]
+		}
+	}
+}
