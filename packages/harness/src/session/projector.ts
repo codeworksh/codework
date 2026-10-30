@@ -28,17 +28,22 @@
  */
 
 import { Message } from "@codeworksh/aikit";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { Document } from "../document/document.ts";
 import { Inbox } from "../inbox/inbox.ts";
+import { TOOL_SEARCH_NAME, ToolSearchDetails } from "../plugin/builtin/tool/toolsearch.ts";
 import { ThreadSchema } from "../thread/schema.ts";
 import { Thread } from "../thread/thread.ts";
 import { PromptSchema } from "./prompt/schema.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
+import { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
+
+const decodeLoaded = Schema.decodeUnknownOption(ToolSearchDetails);
+const encodeSystemData = Schema.encodeEffect(SessionSchema.SystemData);
 
 export const layer = Layer.effectDiscard(
 	Effect.gen(function* () {
@@ -193,15 +198,48 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
+		yield* events.project(EventList.ToolsChanged, (event) =>
+			Effect.gen(function* () {
+				const { toolsAdded, toolsRemoved, hash } = event.data;
+				yield* threads
+					.append({
+						id: event.data.messageId,
+						threadId: event.data.threadId,
+						seq: yield* seqOf(event),
+						type: "system",
+						data: yield* encodeSystemData({ toolsAdded, toolsRemoved, hash }).pipe(Effect.orDie),
+					})
+					.pipe(Effect.orDie);
+			}),
+		);
+
 		yield* events.project(EventList.ToolSettled, (event) =>
 			Effect.gen(function* () {
-				const encoded = yield* ContextCodec.encodePart(event.data.part).pipe(Effect.orDie);
+				const { part, threadId } = event.data;
+				const encoded = yield* ContextCodec.encodePart(part).pipe(Effect.orDie);
 				yield* threads.settleToolCall({
 					entryId: event.data.messageId,
 					callId: event.data.callID,
-					status: event.data.part.status,
+					status: part.status,
 					data: encoded.data,
 				});
+				// Written here, not by a second event: a load is a fact of the settled call, so its `agent`
+				// revision lands at the settle's own seq and can never be split from it.
+				const loaded =
+					part.name === TOOL_SEARCH_NAME && part.status === "completed"
+						? decodeLoaded(part.result.details)
+						: Option.none();
+				if (Option.isNone(loaded) || loaded.value.loaded.length === 0) return;
+				const names = loaded.value.loaded;
+				const current = (yield* documents.agent(threadId)).modelTools;
+				const remove = (current?.remove ?? []).filter((name) => !names.includes(name));
+				const add = [...(current?.add ?? [])];
+				for (const name of names) if (!add.includes(name)) add.push(name);
+				yield* documents.configure(
+					threadId,
+					{ modelTools: { ...(remove.length === 0 ? {} : { remove }), add } },
+					yield* seqOf(event),
+				);
 			}),
 		);
 

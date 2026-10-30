@@ -23,7 +23,8 @@ import {
 } from "effect";
 import { isAikitToolCallTerminalPart } from "../schema.ts";
 import { errorMessage } from "../util/error.ts";
-import { ToolExecutionError } from "./error.ts";
+import { ToolExecutionError, ToolUnavailable } from "./error.ts";
+import { type Offer, ToolOffer } from "./offer.ts";
 import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
 
@@ -262,12 +263,21 @@ const patchOutcome = (terminal: ToolOutcome, patch: ToolAfterResult | void): Too
 
 const ABORT_HOOK_GRACE = Duration.seconds(1);
 
+const encodeUnavailable = Schema.encodeEffect(ToolUnavailable);
+
+export interface MakeOptions extends Partial<Offer> {
+	/** Every registered tool name. A call to one of them that `tools` lacks is unavailable, not unknown. */
+	readonly registered?: ReadonlyArray<string>;
+}
+
 /**
  * Build an executor over a set of {@link RegisteredTool}s — tools whose capability `R` was
  * already discharged at registration (`Tool.provide`). The executor therefore needs no tool
  * `R`; only a progress sink's `RProgress` (if any) surfaces from `handle`.
  */
-export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): Executor => {
+export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>, options?: MakeOptions): Executor => {
+	const registered = new Set(options?.registered);
+	const offer: Offer = { deferred: options?.deferred ?? [] };
 	const impls = new Map<string, ToolRegistration>();
 	for (const item of tools) {
 		const entry = "tool" in item ? item : { tool: item, hooks: {} };
@@ -306,6 +316,11 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 			const entry = impls.get(call.name);
 			if (entry === undefined) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+				if (registered.has(call.name)) {
+					const unavailable = new ToolUnavailable({ name: call.name });
+					const details = yield* encodeUnavailable(unavailable).pipe(Effect.orDie);
+					return errored(call, [text(unavailable.message)], now, details);
+				}
 				return errored(call, [text(`Unknown tool: ${call.name}`)], now, {
 					error: "unknown_tool",
 					name: call.name,
@@ -444,6 +459,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 				const exit = yield* Effect.suspend(() => impl.handler(decoded.success, ctx)).pipe(
 					Effect.scoped,
 					Effect.provideService(ToolProgress, progress),
+					Effect.provideService(ToolOffer, offer),
 					Effect.exit,
 				);
 

@@ -1,0 +1,89 @@
+{
+	"firstRequest": {
+		"tools": [
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"toolsearch",
+			"notes_read"
+		],
+		"system": [
+			{
+				"added": [],
+				"removed": [
+					"notes_read"
+				]
+			}
+		]
+	},
+	"results": [
+		{
+			"name": "notes_read",
+			"arguments": {},
+			"status": "error",
+			"text": "Tool \"notes_read\" is not available in this thread.",
+			"details": {
+				"_tag": "ToolUnavailable",
+				"name": "notes_read"
+			}
+		},
+		{
+			"name": "stock_quote",
+			"arguments": {
+				"symbol": "ACME"
+			},
+			"status": "error",
+			"text": "Tool \"stock_quote\" is not available in this thread.",
+			"details": {
+				"_tag": "ToolUnavailable",
+				"name": "stock_quote"
+			}
+		},
+		{
+			"name": "no_such_tool",
+			"arguments": {},
+			"status": "error",
+			"text": "Unknown tool: no_such_tool",
+			"details": {
+				"error": "unknown_tool",
+				"name": "no_such_tool"
+			}
+		}
+	],
+	"entries": [
+		{
+			"id": "E1",
+			"seq": 4,
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "E2",
+			"seq": 5,
+			"type": "system",
+			"state": "committed",
+			"data": {
+				"toolsAdded": [],
+				"toolsRemoved": [
+					{
+						"name": "notes_read"
+					}
+				],
+				"hash": "d6d66014ddda5da53e6e8e6520f0e6e1851a1a9c246d23802463da98342397a1"
+			}
+		},
+		{
+			"id": "E3",
+			"seq": 6,
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "E4",
+			"seq": 12,
+			"type": "assistant",
+			"state": "committed"
+		}
+	]
+}

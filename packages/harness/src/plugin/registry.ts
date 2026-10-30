@@ -1,5 +1,6 @@
 import type { PluginRegistry } from "@codeworksh/plugin/plugin";
-import { make as makeCatalog } from "../tool/registry.ts";
+import { make as makeCatalog, type Selection } from "../tool/registry.ts";
+import { declared } from "../tool/tool.ts";
 import { make as makePrompt } from "./prompt/registry.ts";
 import { render } from "./prompt/render.ts";
 import { make as makeTools } from "./tool/registry.ts";
@@ -17,12 +18,13 @@ export const make = () => {
 	return {
 		registry: Object.freeze<PluginRegistry>({ tools: tools.registry, prompt: prompt.registry }),
 		close,
-		freeze: (directory: string) => {
+		freeze: (directory: string, selection?: Selection) => {
 			close();
-			const resolved = makeCatalog(tools.entries()).resolve();
+			const resolved = makeCatalog(tools.entries()).resolve(selection);
 			return {
 				tools: resolved,
-				systemPrompt: render({ prompt: prompt.snapshot(), tools: resolved.defs, directory }),
+				// Only declared tools: loading a deferred one must not change the prompt.
+				systemPrompt: render({ prompt: prompt.snapshot(), tools: resolved.defs.filter(declared), directory }),
 			};
 		},
 	};

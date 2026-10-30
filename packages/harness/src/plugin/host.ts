@@ -1,6 +1,7 @@
 import { Cause, Effect, Schema } from "effect";
 import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
+import type { Selection } from "../tool/registry.ts";
 import { make } from "./registry.ts";
 
 export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupError", {
@@ -12,6 +13,7 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 export const run = Effect.fn("PluginHost.run")(function* (
 	selection: ReadonlyArray<Prepared>,
 	input: Omit<SharedPluginContext, "plugin">,
+	tools?: Selection,
 ) {
 	const buckets = make();
 	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
@@ -57,7 +59,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 			);
 		}
 		return yield* Effect.try({
-			try: () => buckets.freeze(input.location.directory),
+			try: () => buckets.freeze(input.location.directory, tools),
 			catch: (cause) =>
 				new SetupError({
 					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,

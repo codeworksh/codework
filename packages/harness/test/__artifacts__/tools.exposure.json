@@ -33,11 +33,11 @@
 			"content": [
 				{
 					"type": "text",
-					"text": "Unknown tool: x_deferred"
+					"text": "Tool \"x_deferred\" is not available in this thread."
 				}
 			],
 			"details": {
-				"error": "unknown_tool",
+				"_tag": "ToolUnavailable",
 				"name": "x_deferred"
 			},
 			"isError": true

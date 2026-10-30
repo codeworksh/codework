@@ -112,6 +112,17 @@ export const ThreadConfigured = EventSchema.define({
 });
 export type ThreadConfigured = typeof ThreadConfigured.Type;
 
+/**
+ * The tools offered to a thread's next request differ from those its transcript declares, such as
+ * after `toolsearch` loaded some. Appends a `system` entry carrying the change.
+ */
+export const ToolsChanged = EventSchema.define({
+	type: "session.thread.tools.changed",
+	...durableOptions,
+	schema: { ...baseOptions, messageId: SessionMessageSchema.ID, ...SessionSchema.ToolChanges.fields },
+});
+export type ToolsChanged = typeof ToolsChanged.Type;
+
 const LLMFields = {
 	...baseOptions,
 	messageId: SessionMessageSchema.ID,
@@ -344,6 +355,7 @@ export const Definitions = EventSchema.inventory(
 	SessionCreated,
 	ThreadForked,
 	ThreadConfigured,
+	ToolsChanged,
 	TurnStarted,
 	TurnEnded,
 	TurnAborted,
@@ -379,6 +391,7 @@ export const DurableDefinitions = EventSchema.inventory(
 	SessionCreated,
 	ThreadForked,
 	ThreadConfigured,
+	ToolsChanged,
 	TurnEnded,
 	LLMStarted,
 	LLMEnded,
