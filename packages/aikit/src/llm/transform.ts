@@ -569,12 +569,15 @@ export function convertMessages(
 		messages.push({ role: "system", content: sanitizeSurrogates(prompt.systemPrompt) });
 	}
 
-	// Anthropic takes a later system message only after a user message, and never between a tool
-	// call and its result: each is held for the next assistant message, or the end (pi). One ahead
-	// of the conversation joins the leading prompt instead, where it caches like the rest of it; a
-	// trailing system message's cache entry is never read once a reply follows it.
+	// Every system message goes as an update, the first declaration too: a section a model read
+	// whole does not yield to a later update of it, one it read as an update does. Anthropic takes
+	// a later system message only after a user message, and never between a tool call and its
+	// result: each is held for the next assistant message, or the end. One ahead of the
+	// conversation joins the leading prompt there, where it caches; a trailing system message's
+	// cache entry is never read once a reply follows it.
 	const anthropic = isAnthropicWire(model, method);
 	const held: ModelMessage[] = [];
+	let started = false;
 	let systemIndex = 0;
 	for (const msg of transformedMessages) {
 		if (msg.role === "system") {
@@ -589,9 +592,10 @@ export function convertMessages(
 				model,
 				method,
 			);
-			if (change) (anthropic && messages.some((one) => one.role !== "system") ? held : messages).push(change);
+			if (change) (anthropic && started ? held : messages).push(change);
 			continue;
 		}
+		started = true;
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts));
 			continue;

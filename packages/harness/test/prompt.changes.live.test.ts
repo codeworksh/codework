@@ -15,7 +15,8 @@ import "./utils/live.ts";
  * A prompt section changed between two prompts reaches a real model. These models take system
  * messages in place, so the second request still carries the first codeword and adds the change
  * after it: ahead of the prompt it came with, or on Anthropic, which takes one only after a user
- * message, right after that prompt. The second request reads the first one's sections from the cache.
+ * message, right after that prompt. Where caching is explicit (Anthropic), the second request
+ * reads the first one's sections from the cache; OpenAI's is best effort, so it is not checked there.
  */
 
 const Codeword = Section.define("codeword");
@@ -28,10 +29,27 @@ process.env.CODEWORK_CACHE_RETENTION ??= "short";
 const CASES = [
 	{ name: "openai-codex", provider: "openai-codex", id: "gpt-6-luna", env: "OPENAI_CODEX_API_KEY", change: "before" },
 	{ name: "openai", provider: "openai", id: "gpt-6-luna", env: "OPENAI_API_KEY", change: "before" },
-	{ name: "anthropic", provider: "anthropic", id: "claude-sonnet-5-5", env: "ANTHROPIC_API_KEY", change: "after" },
+	{
+		name: "anthropic",
+		provider: "anthropic",
+		id: "claude-sonnet-5-5",
+		env: "ANTHROPIC_API_KEY",
+		change: "after",
+		cache: true,
+	},
+	{
+		name: "github-copilot",
+		provider: "github-copilot",
+		id: "claude-sonnet-5.5",
+		env: "COPILOT_GITHUB_TOKEN",
+		change: "after",
+		cache: true,
+	},
 ] as const;
 
-describe.each(CASES)("prompt sections against live $name", ({ name, provider, id, env, change }) => {
+describe.each(CASES)("prompt sections against live $name", (c) => {
+	const { name, provider, id, env, change } = c;
+	const cache = "cache" in c && c.cache;
 	it.skipIf(!process.env[env]?.trim())(
 		"answers from a section changed between prompts, sent in place",
 		{ timeout: 300_000 },
@@ -102,11 +120,11 @@ describe.each(CASES)("prompt sections against live $name", ({ name, provider, id
 					earlierSectionSent: second.includes("The codeword is alpha."),
 					change: bravo < 0 ? "missing" : bravo < second.indexOf("What is the codeword now?") ? "before" : "after",
 					// The change kept the prefix: the second request reads the first one's sections from the cache.
-					cached: cacheRead > 0,
+					...(cache ? { cached: cacheRead > 0 } : {}),
 				};
 				expect(artifact.promptChange).toBe("in place");
 				expect(artifact.change).toBe(change);
-				expect(artifact.cached).toBe(true);
+				if (cache) expect(artifact.cached).toBe(true);
 				await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 					`./__artifacts__/prompt.changes.live.${name}.json`,
 				);

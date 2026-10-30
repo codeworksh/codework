@@ -8,7 +8,6 @@
 import { type Message, Transcript } from "@codeworksh/aikit";
 import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
-import { diff } from "../plugin/prompt/render.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
@@ -290,7 +289,7 @@ export const layer = (options: Options = {}) =>
 					"none",
 				).requestTools;
 				const tools = Transcript.getToolStateChanges(previous, snapshot.tools.offered);
-				const sections = diff(Transcript.getCurrentSections(messages), snapshot.prompt.sections);
+				const sections = Transcript.diffSections(Transcript.getCurrentSections(messages), snapshot.prompt.sections);
 				if (sections === undefined && tools.toolsAdded.length === 0 && tools.toolsRemoved.length === 0) return [];
 				const changes = { ...(sections === undefined ? {} : { sections }), ...tools };
 				const messageId = SessionMessageSchema.ID.create();

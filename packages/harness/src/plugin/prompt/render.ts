@@ -66,22 +66,8 @@ export const render = (input: Input): Rendered => {
 	sections.cwd = tag("cwd", input.directory);
 	for (const name of Array.from(written.keys())) push(name);
 
-	// A blank foundation would leave models that take system messages in place with no leading
-	// prompt, and their transport would promote a later section update in its stead.
+	// A blank foundation would leave the Responses transport without instructions, and it would
+	// promote the first system message in its stead.
 	const foundation = input.prompt.foundation?.trim() ? input.prompt.foundation : fallback;
 	return { foundation, sections };
-};
-
-/**
- * The patch that brings the sections the transcript declares to `current`, `null` removing one;
- * `undefined` when they match.
- */
-export const diff = (
-	previous: Readonly<Record<string, string>>,
-	current: Readonly<Record<string, string>>,
-): Record<string, string | null> | undefined => {
-	const patch: Record<string, string | null> = {};
-	for (const [name, text] of Object.entries(current)) if (previous[name] !== text) patch[name] = text;
-	for (const name of Object.keys(previous)) if (!Object.hasOwn(current, name)) patch[name] = null;
-	return Object.keys(patch).length === 0 ? undefined : patch;
 };

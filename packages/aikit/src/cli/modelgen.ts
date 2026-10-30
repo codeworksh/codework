@@ -394,7 +394,7 @@ function isAnthropicMessages(model: Model.Info): boolean {
 
 // The Messages API rejects `temperature` on these.
 const ANTHROPIC_NO_TEMPERATURE = /opus-4[-.][78]|opus-5|(sonnet|haiku)-5[-.]5/;
-// These take system messages inside the conversation (pi).
+// These take system messages inside the conversation, verified live against the Messages API.
 const ANTHROPIC_MID_CONVO_SYSTEM_MESSAGES =
 	/^claude-(?:opus-(?:4[.-]8|5(?:[.-]5)?)|(?:sonnet|haiku)-5[.-]5|(?:fable|mythos)-5(?:[.-]1)?)(?:-\d{8})?$/;
 
@@ -708,6 +708,9 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 			mergeCompat(info, { supportsOpenAIGrammarTools: true });
 		}
 		if (method === Model.APIMethodEnum.responses && OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(id)) {
+			mergeCompat(info, { supportsMidConvoSystemMessages: true });
+		}
+		if (method === Model.APIMethodEnum.messages && ANTHROPIC_MID_CONVO_SYSTEM_MESSAGES.test(id)) {
 			mergeCompat(info, { supportsMidConvoSystemMessages: true });
 		}
 		if (method === Model.APIMethodEnum.responses && GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS.has(id)) {

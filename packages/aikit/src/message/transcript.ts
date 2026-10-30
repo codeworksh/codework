@@ -60,6 +60,20 @@ export function getCurrentSections(messages: readonly Message[]): Record<string,
 	return Object.fromEntries(sections);
 }
 
+/**
+ * The patch that brings `previous` sections to `current`, `null` removing one; `undefined` when
+ * they match.
+ */
+export function diffSections(
+	previous: Readonly<Record<string, string>>,
+	current: Readonly<Record<string, string>>,
+): Record<string, string | null> | undefined {
+	const patch: Record<string, string | null> = {};
+	for (const [name, text] of Object.entries(current)) if (previous[name] !== text) patch[name] = text;
+	for (const name of Object.keys(previous)) if (!Object.hasOwn(current, name)) patch[name] = null;
+	return Object.keys(patch).length === 0 ? undefined : patch;
+}
+
 /** The prompt after every transcript change in order: content accumulates, sections as {@link getCurrentSections}. */
 export function getCurrentSystemPrompt(context: Pick<Context, "systemPrompt" | "messages">): string {
 	const content: string[] = [context.systemPrompt ?? ""];
