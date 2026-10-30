@@ -37,17 +37,27 @@ const CASES = [
 		cache: true,
 	},
 	{
-		name: "github-copilot",
+		name: "copilot-claude-sonnet-5.5",
 		provider: "github-copilot",
 		id: "claude-sonnet-5.5",
 		env: "COPILOT_GITHUB_TOKEN",
 		change: "after",
 		cache: true,
 	},
+	{
+		name: "copilot-gpt-6-luna",
+		provider: "github-copilot",
+		id: "gpt-6-luna",
+		env: "COPILOT_GITHUB_TOKEN",
+		change: "after",
+	},
+	// Without mid-conversation system messages: the change is folded into the leading prompt.
+	{ name: "copilot-gpt-5.3-codex", provider: "github-copilot", id: "gpt-5.3-codex", env: "COPILOT_GITHUB_TOKEN" },
 ] as const;
 
 describe.each(CASES)("prompt sections against live $name", (c) => {
-	const { name, provider, id, env, change } = c;
+	const { name, provider, id, env } = c;
+	const change = "change" in c ? c.change : undefined;
 	const cache = "cache" in c && c.cache;
 	it.skipIf(!process.env[env]?.trim())(
 		"answers from a section changed between prompts, sent in place",
@@ -117,12 +127,21 @@ describe.each(CASES)("prompt sections against live $name", (c) => {
 					answers: replies.map((reply) => ["alpha", "bravo"].find((word) => reply.includes(word))),
 					promptChange: second.includes('Updated system prompt section \\"codeword\\"') ? "in place" : "folded",
 					earlierSectionSent: second.includes("The codeword is alpha."),
-					change: bravo < 0 ? "missing" : bravo < second.indexOf("What is the codeword now?") ? "before" : "after",
+					...(change === undefined
+						? {}
+						: {
+								change:
+									bravo < 0
+										? "missing"
+										: bravo < second.indexOf("What is the codeword now?")
+											? "before"
+											: "after",
+							}),
 					// The change kept the prefix: the second request reads the first one's sections from the cache.
 					...(cache ? { cached: cacheRead > 0 } : {}),
 				};
-				expect(artifact.promptChange).toBe("in place");
-				expect(artifact.change).toBe(change);
+				expect(artifact.promptChange).toBe(change === undefined ? "folded" : "in place");
+				if (change !== undefined) expect(artifact.change).toBe(change);
 				if (cache) expect(artifact.cached).toBe(true);
 				await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 					`./__artifacts__/prompt.changes.live.${name}.json`,
