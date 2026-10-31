@@ -89,6 +89,8 @@ export const ThreadInfo = Schema.Struct({
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	/** The thinking level chosen for this thread; absent when settings decide. */
 	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+	/** The prompt foundation chosen for this thread; absent when prompt plugins render it. */
+	foundation: optional(Schema.String),
 	/** Where it runs instead of the session's space and directory. */
 	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
 	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */

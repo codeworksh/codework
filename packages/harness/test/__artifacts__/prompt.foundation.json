@@ -5,7 +5,8 @@
 		"request": {
 			"foundation": "default",
 			"declarations": 1
-		}
+		},
+		"info": "default"
 	},
 	{
 		"step": "after configuring main",
@@ -13,7 +14,8 @@
 		"request": {
 			"foundation": "reviewer",
 			"declarations": 1
-		}
+		},
+		"info": "reviewer"
 	},
 	{
 		"step": "fork cut before the choice",
@@ -21,7 +23,8 @@
 		"request": {
 			"foundation": "default",
 			"declarations": 1
-		}
+		},
+		"info": "default"
 	},
 	{
 		"step": "fork cut after the choice",
@@ -29,7 +32,8 @@
 		"request": {
 			"foundation": "reviewer",
 			"declarations": 1
-		}
+		},
+		"info": "reviewer"
 	},
 	{
 		"step": "after configuring the fork",
@@ -37,7 +41,8 @@
 		"request": {
 			"foundation": "scout",
 			"declarations": 1
-		}
+		},
+		"info": "scout"
 	},
 	{
 		"step": "main after the fork's choice",
@@ -45,7 +50,8 @@
 		"request": {
 			"foundation": "reviewer",
 			"declarations": 1
-		}
+		},
+		"info": "reviewer"
 	},
 	{
 		"step": "main after a restart",
@@ -53,7 +59,8 @@
 		"request": {
 			"foundation": "reviewer",
 			"declarations": 1
-		}
+		},
+		"info": "reviewer"
 	},
 	{
 		"step": "main after clearing",
@@ -61,6 +68,7 @@
 		"request": {
 			"foundation": "default",
 			"declarations": 1
-		}
+		},
+		"info": "default"
 	}
 ]

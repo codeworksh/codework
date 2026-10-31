@@ -124,6 +124,8 @@ export interface ThreadInfo {
 	readonly model?: { readonly provider: string; readonly id: string };
 	/** The thinking level chosen for this thread over settings; absent when settings decide. */
 	readonly thinkingLevel?: Model.ThinkingLevel;
+	/** The prompt foundation chosen for this thread; absent when prompt plugins render it. */
+	readonly foundation?: string;
 	/** Where it runs instead of the session's space and directory. */
 	readonly placement?: DocumentSchema.Placement;
 	/**
@@ -293,6 +295,7 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 		updatedAt: DateTime.toEpochMillis(row.updatedAt),
 		...(agent.model === undefined ? {} : { model: agent.model }),
 		...(agent.thinkingLevel === undefined ? {} : { thinkingLevel: agent.thinkingLevel }),
+		...(agent.foundation === undefined ? {} : { foundation: agent.foundation }),
 		...(agent.placement === undefined ? {} : { placement: agent.placement }),
 		parked,
 		usage: {

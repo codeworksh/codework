@@ -63,6 +63,7 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	updatedAt: info.updatedAt,
 	...(info.model === undefined ? {} : { model: info.model }),
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
+	...(info.foundation === undefined ? {} : { foundation: info.foundation }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
 	...(info.parked ? { parked: true } : {}),
 	usage: info.usage,
