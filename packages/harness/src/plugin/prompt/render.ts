@@ -1,6 +1,8 @@
 // Bodies are never escaped: a plugin may nest its own tags inside an entry.
 
 import * as Section from "@codeworksh/plugin/plugin/section";
+import { McpSection } from "../../mcp/section.ts";
+import { ToolSearch } from "../../tool/search.ts";
 import type { AnyToolDef } from "../../tool/tool.ts";
 import { fallback, type Snapshot, type Written } from "./registry.ts";
 
@@ -8,6 +10,8 @@ interface Input {
 	readonly prompt: Snapshot;
 	readonly tools: ReadonlyArray<AnyToolDef>;
 	readonly directory: string;
+	/** The `mcpservers` section's body, rendered by the `mcp` domain. */
+	readonly mcpservers: string | undefined;
 }
 
 const tag = (name: string, body: string): string => `<${name}>\n${body}\n</${name}>`;
@@ -64,6 +68,9 @@ export const render = (input: Input): Rendered => {
 
 	for (const section of Section.builtins) push(section.name);
 	sections.cwd = tag("cwd", input.directory);
+	// The servers are listed only while the tool that reaches them is declared.
+	if (input.mcpservers !== undefined && input.tools.some((tool) => tool.name === ToolSearch.name))
+		sections[McpSection.name] = tag(McpSection.name, input.mcpservers);
 	for (const name of Array.from(written.keys())) push(name);
 
 	// A blank foundation would leave the Responses transport without instructions, and it would

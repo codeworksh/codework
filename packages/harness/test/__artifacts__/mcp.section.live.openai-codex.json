@@ -1,0 +1,27 @@
+{
+	"declared": [
+		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd",
+				"mcpservers"
+			],
+			"mcpservers": "<mcpservers>\nMCP servers whose tools are not declared to you. Load the tools of `toolsearch` servers with `toolsearch`.\n- mcp__atlas (toolsearch): Capital cities of the world.\n</mcpservers>"
+		},
+		{
+			"sections": [
+				"mcpservers"
+			],
+			"mcpservers": "<mcpservers>\nMCP servers whose tools are not declared to you. Load the tools of `toolsearch` servers with `toolsearch`.\n- mcp__atlas (toolsearch): Tide tables for coastal towns.\n</mcpservers>"
+		}
+	],
+	"order": [
+		"user",
+		"system",
+		"assistant",
+		"user",
+		"system"
+	],
+	"answer": "mcp__atlas"
+}

@@ -27,14 +27,22 @@ export const make = (servers: ReadonlyArray<McpServer>) => {
 		/** Close the MCP bucket and return the servers the `mcp` domain settled on. */
 		settle: mcp.settle,
 		close,
-		/** `live` is the MCP servers' deferred tools as they stand when searched; see `Registry.resolve`. */
-		freeze: (directory: string, selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>) => {
+		/**
+		 * `live` is the MCP servers' deferred tools as they stand when searched; see `Registry.resolve`.
+		 * `mcpservers` is the body of that prompt section, when there is one.
+		 */
+		freeze: (
+			directory: string,
+			selection?: Selection,
+			live?: Effect.Effect<ReadonlyArray<Message.Tool>>,
+			mcpservers?: string,
+		) => {
 			close();
 			const resolved = makeCatalog(tools.entries()).resolve(selection, live);
 			return {
 				tools: resolved,
 				// Only declared tools: loading a deferred one must not change the prompt.
-				prompt: render({ prompt: prompt.snapshot(), tools: resolved.defs.filter(declared), directory }),
+				prompt: render({ prompt: prompt.snapshot(), tools: resolved.defs.filter(declared), directory, mcpservers }),
 			};
 		},
 	};

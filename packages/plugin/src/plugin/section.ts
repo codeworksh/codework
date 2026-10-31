@@ -18,7 +18,7 @@ export const Skills: Section<"skills"> = Object.freeze({ name: "skills", format:
 export const builtins: ReadonlyArray<Section> = Object.freeze([Rules, Addendum, ProjectContext, Skills]);
 
 /** Rendered by the harness, never by a plugin. */
-export const reserved: ReadonlySet<string> = new Set(["tools", "cwd", "foundation"]);
+export const reserved: ReadonlySet<string> = new Set(["tools", "cwd", "mcpservers", "foundation"]);
 
 const pattern = /^[a-z][a-z0-9_-]*$/;
 
