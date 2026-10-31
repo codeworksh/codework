@@ -5,7 +5,8 @@
 			"sections": [
 				"tools",
 				"rules",
-				"cwd"
+				"cwd",
+				"mcpservers"
 			],
 			"added": [],
 			"removed": []
@@ -24,7 +25,8 @@
 			"sections": [
 				"tools",
 				"rules",
-				"cwd"
+				"cwd",
+				"mcpservers"
 			],
 			"added": [],
 			"removed": []
@@ -38,7 +40,9 @@
 			"removed": []
 		},
 		{
-			"sections": [],
+			"sections": [
+				"mcpservers"
+			],
 			"added": [],
 			"removed": [
 				"mcp__slow__echo",
@@ -57,7 +61,8 @@
 			"sections": [
 				"tools",
 				"rules",
-				"cwd"
+				"cwd",
+				"mcpservers"
 			],
 			"added": [],
 			"removed": []
@@ -71,7 +76,9 @@
 			"removed": []
 		},
 		{
-			"sections": [],
+			"sections": [
+				"mcpservers"
+			],
 			"added": [],
 			"removed": [
 				"mcp__slow__echo",
@@ -79,7 +86,9 @@
 			]
 		},
 		{
-			"sections": [],
+			"sections": [
+				"mcpservers"
+			],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"

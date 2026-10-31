@@ -17,7 +17,8 @@
 				"sections": [
 					"tools",
 					"rules",
-					"cwd"
+					"cwd",
+					"mcpservers"
 				],
 				"added": [],
 				"removed": []

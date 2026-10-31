@@ -2,6 +2,9 @@ import type { Message } from "@codeworksh/aikit";
 
 /** BM25 ranking over tool metadata: what `toolsearch` loads deferred tools by. */
 
+/** The tool that loads deferred tools. */
+export const name = "toolsearch";
+
 export interface Document {
 	readonly name: string;
 	readonly text: string;

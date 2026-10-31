@@ -12,6 +12,7 @@ import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { Inbox } from "../inbox/inbox.ts";
+import { McpSection } from "../mcp/section.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { ThreadSchema } from "../thread/schema.ts";
 import { Thread } from "../thread/thread.ts";
@@ -84,6 +85,16 @@ const observeTool = (
 			? { tool }
 			: { tool, error: exit.value.status };
 	return Telemetry.record(Telemetry.toolDuration, seconds, labels);
+};
+
+/** The `mcpservers` section is the one the run started with: servers that connect mid-run show at the next run. */
+const holdServers = (start: State.Snapshot, next: State.Snapshot): State.Snapshot => {
+	const { [McpSection.name]: _current, ...sections } = next.prompt.sections;
+	const held = start.prompt.sections[McpSection.name];
+	return {
+		...next,
+		prompt: { ...next.prompt, sections: held === undefined ? sections : { ...sections, [McpSection.name]: held } },
+	};
 };
 
 export const layer = (options: Options = {}) =>
@@ -520,7 +531,8 @@ export const layer = (options: Options = {}) =>
 					});
 
 				const drain = Effect.gen(function* () {
-					let snapshot = yield* state.snapshot(input.threadId);
+					const start = yield* state.snapshot(input.threadId);
+					let snapshot = start;
 					let continuing = input.force;
 					// Tool results and steers continue first; a follow-up only once both are exhausted.
 					while (true) {
@@ -544,7 +556,7 @@ export const layer = (options: Options = {}) =>
 						if (!continuing && !steer && !followUp) return;
 						promotion = followUp ? "followUp" : "steer";
 
-						const next = yield* state.snapshot(input.threadId);
+						const next = holdServers(start, yield* state.snapshot(input.threadId));
 						snapshot = completed === undefined ? next : yield* hooks.prepareNextTurn(completed, next);
 					}
 				});

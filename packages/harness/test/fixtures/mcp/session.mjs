@@ -5,7 +5,7 @@ import { appendFileSync, existsSync } from "node:fs";
 
 // E2E_STARTS: a file that gets each start's pid on a line. E2E_HOLD: while this file exists, wait before
 // answering the handshake. E2E_GATE: if this file exists once the hold is over, exit. E2E_DELAY:
-// milliseconds to wait before answering the handshake.
+// milliseconds to wait before answering the handshake. E2E_INSTRUCTIONS: the instructions it sends.
 if (process.env.E2E_STARTS) appendFileSync(process.env.E2E_STARTS, `${process.pid}\n`);
 while (process.env.E2E_HOLD && existsSync(process.env.E2E_HOLD))
 	await new Promise((resolve) => setTimeout(resolve, 20));
@@ -20,7 +20,10 @@ const text = (value) => ({ content: [{ type: "text", text: String(value) }] });
 
 const server = new Server(
 	{ name: "session-fixture", version: "1.0.0" },
-	{ capabilities: { tools: {}, resources: {} } },
+	{
+		capabilities: { tools: {}, resources: {} },
+		...(process.env.E2E_INSTRUCTIONS ? { instructions: process.env.E2E_INSTRUCTIONS } : {}),
+	},
 );
 server.setRequestHandler("tools/list", () => ({
 	tools: [

@@ -70,6 +70,7 @@ import { McpLog } from "./log.ts";
 import { McpOAuth } from "./oauth.ts";
 import { McpOutput } from "./output.ts";
 import { McpResources } from "./resources.ts";
+import { McpSection } from "./section.ts";
 import { McpTool } from "./tool.ts";
 import { McpValue } from "./value.ts";
 import { hostPath } from "../host.ts";
@@ -135,6 +136,8 @@ export interface Reconciled {
 	 * Waits first, within {@link STARTUP_WAIT}, for those servers' connect attempts in progress.
 	 */
 	readonly deferred: Effect.Effect<ReadonlyArray<Message.Tool>>;
+	/** The `mcpservers` prompt section, as the servers stand once the ones with declared tools were waited for. */
+	readonly section: string | undefined;
 }
 
 export interface Interface {
@@ -186,6 +189,8 @@ interface Server {
 	skipped: EventList.McpSkipped | undefined;
 	/** Whether the server offered resources when it last connected. */
 	resources: boolean;
+	/** The instructions it sent when it last connected; kept while it is not connected. */
+	instructions: string | undefined;
 	/** The credential it was refused with, when it needs sign-in: a new one is worth a retry. */
 	refused: string | undefined;
 	live: Live | undefined;
@@ -605,6 +610,7 @@ export const layer = (options: {
 					server.live = live;
 					yield* listed(server, exit.value.listing);
 					server.resources = exit.value.connection.capabilities?.resources !== undefined;
+					server.instructions = exit.value.connection.instructions;
 					yield* setState(server, "connected");
 					watch(server, live);
 					yield* Effect.logInfo("mcp connected", { server: server.name, tools: server.tools.length });
@@ -898,11 +904,12 @@ export const layer = (options: {
 				return tools;
 			};
 
-			/** The thread's enabled servers configured with `deferred` exposure. */
-			const deferring = (thread: Thread) =>
-				[...thread.servers.values()].flatMap(({ config, server }) =>
-					server !== undefined && hasTools(config, "deferred") ? [server] : [],
+			/** The thread's enabled servers configured with `deferred` exposure, by name. */
+			const deferringEntries = (thread: Thread) =>
+				[...thread.servers].flatMap(([name, { config, server }]) =>
+					server !== undefined && hasTools(config, "deferred") ? [{ name, config, server }] : [],
 				);
+			const deferring = (thread: Thread) => deferringEntries(thread).map(({ server }) => server);
 
 			/** Settles when the server's connect attempt in progress, if any, does. */
 			const attempted = (server: Server) =>
@@ -1004,6 +1011,7 @@ export const layer = (options: {
 								tools: [],
 								skipped: undefined,
 								resources: false,
+								instructions: undefined,
 								refused: undefined,
 								live: undefined,
 								attempt: undefined,
@@ -1076,6 +1084,14 @@ export const layer = (options: {
 					tools: toolsOf(thread),
 					defers: deferring(thread).length > 0,
 					deferred: deferred(thread),
+					// A server disconnected on request offers no tools to search.
+					section: McpSection.render(
+						deferringEntries(thread).flatMap(({ name, config, server }) =>
+							server.stopped
+								? []
+								: [{ name, description: config.description, instructions: server.instructions }],
+						),
+					),
 				} satisfies Reconciled;
 			});
 

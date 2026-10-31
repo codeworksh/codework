@@ -92,9 +92,9 @@ export const run = Effect.fn("PluginHost.run")(function* (
 			yield* apply(prepared);
 		}
 		yield* flush(Infinity);
-		const { deferred } = yield* settle;
+		const { deferred, section } = yield* settle;
 		return yield* Effect.try({
-			try: () => buckets.freeze(input.location.directory, tools, deferred),
+			try: () => buckets.freeze(input.location.directory, tools, deferred, section),
 			catch: (cause) =>
 				new SetupError({
 					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,

@@ -1,0 +1,48 @@
+{
+	"systems": [
+		1,
+		2,
+		3,
+		4
+	],
+	"changes": [
+		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd",
+				"mcpservers"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
+			"added": [
+				"mcp__atlas__echo"
+			],
+			"removed": []
+		},
+		{
+			"sections": [
+				"mcpservers"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [
+				"mcpservers"
+			],
+			"added": [],
+			"removed": [
+				"mcp__atlas__echo"
+			]
+		}
+	],
+	"mcpservers": [
+		"<mcpservers>\nMCP servers whose tools are not declared to you. Load the tools of `toolsearch` servers with `toolsearch`.\n- mcp__atlas (toolsearch)\n</mcpservers>",
+		"<mcpservers>\nMCP servers whose tools are not declared to you. Load the tools of `toolsearch` servers with `toolsearch`.\n- mcp__atlas (toolsearch): Tide tables for coastal towns.\n</mcpservers>",
+		null
+	]
+}

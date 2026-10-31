@@ -10,7 +10,7 @@ import type { Builtin } from "../../plugin.ts";
  * `modelTools.add`, so loaded tools stay offered on that line.
  */
 
-export const TOOL_SEARCH_NAME = "toolsearch";
+export const TOOL_SEARCH_NAME = ToolSearch.name;
 export const DEFAULT_LIMIT = 8;
 
 // Fixed, so it does not change as deferred tools are registered, for example as MCP servers connect.
