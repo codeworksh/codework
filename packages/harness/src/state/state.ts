@@ -524,6 +524,10 @@ export const layer = (
 						sandbox,
 						location,
 						...contributions,
+						prompt:
+							agent.foundation === undefined
+								? contributions.prompt
+								: { ...contributions.prompt, foundation: agent.foundation },
 						provider,
 						model,
 						resolvedModel,

@@ -146,10 +146,11 @@ export const LogSynced = Schema.Struct({
 });
 export type LogSynced = typeof LogSynced.Type;
 
-/** A thread's model and thinking choices: a given field replaces the stored one, `null` clears it. */
+/** A thread's model, thinking and foundation choices: a given field replaces the stored one, `null` clears it. */
 export const RuntimeConfig = Schema.Struct({
 	model: optional(Schema.NullOr(Schema.Struct({ provider: Schema.String, id: Schema.String }))),
 	thinkingLevel: optional(Schema.NullOr(Schema.Enum(Model.ThinkingLevelEnum))),
+	foundation: optional(Schema.NullOr(Schema.NonEmptyString)),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
