@@ -357,6 +357,7 @@ export const layer = (options: Options = {}) =>
 								systemPrompt: snapshot.prompt.foundation,
 								messages: [...messages],
 								tools: [...snapshot.tools.wire],
+								deferredTools: [...snapshot.tools.deferred],
 							},
 							provider: snapshot.provider,
 							model: snapshot.model,

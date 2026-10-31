@@ -333,6 +333,8 @@ export const ContextSchema = Type.Object({
 	systemPrompt: Type.Optional(Type.String()),
 	messages: Type.Array(MessageSchema),
 	tools: Type.Optional(Type.Array(ToolSchema)),
+	/** Tools a later system message may add, for transports that must declare every tool up front. */
+	deferredTools: Type.Optional(Type.Array(ToolSchema)),
 });
 export type Context = Static<typeof ContextSchema>;
 

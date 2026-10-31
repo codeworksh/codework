@@ -9,6 +9,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true
       },
       "contextWindow": 1000000,
@@ -52,6 +53,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true
       },
       "contextWindow": 1000000,
@@ -163,6 +165,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true,
         "supportsTemperature": false
       },
@@ -370,6 +373,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true,
         "supportsTemperature": false
       },
@@ -413,6 +417,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true,
         "supportsTemperature": false
       },
@@ -456,6 +461,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true,
         "supportsTemperature": false
       },
@@ -653,6 +659,7 @@
       "baseUrl": "https://api.anthropic.com/v1",
       "compat": {
         "forceAdaptiveThinking": true,
+        "supportsAdditionalTools": true,
         "supportsMidConvoSystemMessages": true,
         "supportsTemperature": false
       },

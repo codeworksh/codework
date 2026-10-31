@@ -421,3 +421,65 @@ describe("transcript prompt changes on the Anthropic wire", () => {
 		});
 	});
 });
+
+describe("transcript tool changes on the Anthropic wire", () => {
+	type ToolsBody = {
+		tools?: Array<{ name: string; defer_loading?: boolean }>;
+		messages: Array<{ role: string; content: Array<{ type: string; text?: string; tool?: { name: string } }> }>;
+	};
+	const claude = makeModel({
+		npm: "@ai-sdk/anthropic",
+		compat: { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true },
+	});
+	const capture = async (messages: Message.Message[]) => {
+		const server = fakeAnthropic(textReply);
+		await stream(
+			claude,
+			{
+				systemPrompt: "base prompt",
+				tools: [baseTool, dropTool],
+				deferredTools: [lateTool, tool("spare_tool")],
+				messages,
+			},
+			{ apiKey: "test-key", factoryOptions: { fetch: server.fetch } },
+		).result();
+		const body = server.body() as ToolsBody;
+		return {
+			tools: body.tools?.map((one) => `${one.name}${one.defer_loading ? " (deferred)" : ""}`),
+			messages: body.messages.map((message) => [
+				message.role,
+				message.content
+					.map((part) => (part.tool ? `${part.type} ${part.tool.name}` : (part.text ?? part.type)))
+					.join(" | "),
+			]),
+		};
+	};
+	const first = [makeUserMessage("first"), system({ toolsAdded: [tool("early_tool")] })];
+	const toolTurn = makeAssistantMessage(claude, { stopReason: "toolUse", parts: [makeCompletedToolCall("call-1")] });
+	const later = [
+		toolTurn,
+		system({ toolsAdded: [lateTool], toolsRemoved: [{ name: "drop_tool" }] }),
+		makeUserMessage("second"),
+	];
+
+	it("declares the catalog deferred up front and references a later change", async () => {
+		const before = await capture(first);
+		const after = await capture([...first, ...later]);
+
+		// Every tool is declared from the first request on, so a later change keeps the list as it was.
+		expect(after.tools).toEqual(before.tools);
+		expect(after.tools).toEqual([
+			"base_tool",
+			"drop_tool",
+			"early_tool",
+			"late_tool (deferred)",
+			"spare_tool (deferred)",
+		]);
+		expect(after.messages).toEqual([
+			["user", "first"],
+			["assistant", "tool_use"],
+			["user", "tool_result | second"],
+			["system", "tool_removal drop_tool | tool_addition late_tool"],
+		]);
+	});
+});

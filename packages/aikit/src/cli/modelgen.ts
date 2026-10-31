@@ -428,8 +428,9 @@ function applyAnthropicMetadata(model: Model.Info): void {
 		mergeThinkingLevelMap(model, { off: null });
 	}
 	if (ANTHROPIC_NO_TEMPERATURE.test(id)) mergeCompat(model, { supportsTemperature: false });
+	// Copilot passes these system messages through but rejects tool changes in them.
 	if (model.provider.id === "anthropic" && ANTHROPIC_MID_CONVO_SYSTEM_MESSAGES.test(id)) {
-		mergeCompat(model, { supportsMidConvoSystemMessages: true });
+		mergeCompat(model, { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true });
 	}
 }
 
