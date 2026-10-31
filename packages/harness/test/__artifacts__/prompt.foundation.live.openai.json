@@ -1,0 +1,19 @@
+{
+	"replies": {
+		"main": "none",
+		"reviewer": "REVIEW:",
+		"tester": "TESTS:",
+		"mainAfterForks": "none"
+	},
+	"requestFoundations": [
+		"default",
+		"reviewer",
+		"tester",
+		"default"
+	],
+	"info": {
+		"main": "default",
+		"reviewer": "reviewer",
+		"tester": "tester"
+	}
+}

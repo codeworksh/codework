@@ -10,7 +10,17 @@
 				"toolsearch",
 				"notes_read"
 			],
-			"system": []
+			"system": [
+				{
+					"sections": [
+						"tools",
+						"rules",
+						"cwd"
+					],
+					"added": [],
+					"removed": []
+				}
+			]
 		},
 		"results": [
 			{
@@ -46,6 +56,16 @@
 			],
 			"system": [
 				{
+					"sections": [
+						"tools",
+						"rules",
+						"cwd"
+					],
+					"added": [],
+					"removed": []
+				},
+				{
+					"sections": [],
 					"added": [
 						"weather_forecast"
 					],
@@ -67,13 +87,13 @@
 		"entries": [
 			{
 				"id": "E1",
-				"seq": 24,
+				"seq": 26,
 				"type": "user",
 				"state": "committed"
 			},
 			{
 				"id": "E2",
-				"seq": 25,
+				"seq": 27,
 				"type": "system",
 				"state": "committed",
 				"data": {
@@ -113,13 +133,13 @@
 			},
 			{
 				"id": "E3",
-				"seq": 26,
+				"seq": 28,
 				"type": "assistant",
 				"state": "committed"
 			},
 			{
 				"id": "E4",
-				"seq": 30,
+				"seq": 32,
 				"type": "assistant",
 				"state": "committed"
 			}

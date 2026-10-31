@@ -2,22 +2,25 @@
 	"context": {
 		"roles": [
 			"user",
-			"user"
+			"user",
+			"system"
 		],
-		"texts": "The conversation was started over. Carried over from before:\n\n<handoff>\nkeep the login work\n</handoff> | after the reset"
+		"texts": "The conversation was started over. Carried over from before:\n\n<handoff>\nkeep the login work\n</handoff> | after the reset | "
 	},
 	"events": [
 		"1 session.created.1 T1",
 		"2 session.prompt.admitted.1 T1",
 		"3 session.prompt.promoted.1 T1",
-		"4 session.llm.started.1 T1",
-		"5 session.llm.ended.1 T1",
-		"6 session.turn.ended.1 T1",
-		"8 session.prompt.admitted.1 T1",
-		"9 session.prompt.promoted.1 T1",
-		"10 session.llm.started.1 T1",
-		"11 session.llm.ended.1 T1",
-		"12 session.turn.ended.1 T1"
+		"4 session.thread.system.changed.1 T1",
+		"5 session.llm.started.1 T1",
+		"6 session.llm.ended.1 T1",
+		"7 session.turn.ended.1 T1",
+		"9 session.prompt.admitted.1 T1",
+		"10 session.prompt.promoted.1 T1",
+		"11 session.thread.system.changed.1 T1",
+		"12 session.llm.started.1 T1",
+		"13 session.llm.ended.1 T1",
+		"14 session.turn.ended.1 T1"
 	],
 	"threads": [
 		{
@@ -29,10 +32,12 @@
 	],
 	"entries": [
 		"E1 T1 user seq=3 committed=3 committed",
-		"E2 T1 assistant seq=4 committed=6 committed",
-		"E3 T1 reset seq=7 committed=7 committed",
-		"E4 T1 user seq=9 committed=9 committed",
-		"E5 T1 assistant seq=10 committed=12 committed"
+		"E2 T1 system seq=4 committed=4 committed",
+		"E3 T1 assistant seq=5 committed=7 committed",
+		"E4 T1 reset seq=8 committed=8 committed",
+		"E5 T1 user seq=10 committed=10 committed",
+		"E6 T1 system seq=11 committed=11 committed",
+		"E7 T1 assistant seq=12 committed=14 committed"
 	],
 	"documents": [
 		{

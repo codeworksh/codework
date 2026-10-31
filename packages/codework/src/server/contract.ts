@@ -89,6 +89,8 @@ export const ThreadInfo = Schema.Struct({
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	/** The thinking level chosen for this thread; absent when settings decide. */
 	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+	/** The prompt foundation chosen for this thread; absent when prompt plugins render it. */
+	foundation: optional(Schema.String),
 	/** Where it runs instead of the session's space and directory. */
 	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
 	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
@@ -146,10 +148,11 @@ export const LogSynced = Schema.Struct({
 });
 export type LogSynced = typeof LogSynced.Type;
 
-/** A thread's model and thinking choices: a given field replaces the stored one, `null` clears it. */
+/** A thread's model, thinking and foundation choices: a given field replaces the stored one, `null` clears it. */
 export const RuntimeConfig = Schema.Struct({
 	model: optional(Schema.NullOr(Schema.Struct({ provider: Schema.String, id: Schema.String }))),
 	thinkingLevel: optional(Schema.NullOr(Schema.Enum(Model.ThinkingLevelEnum))),
+	foundation: optional(Schema.NullOr(Schema.NonEmptyString)),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 

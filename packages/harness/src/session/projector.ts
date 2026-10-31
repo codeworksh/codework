@@ -198,16 +198,21 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
-		yield* events.project(EventList.ToolsChanged, (event) =>
+		yield* events.project(EventList.SystemChanged, (event) =>
 			Effect.gen(function* () {
-				const { toolsAdded, toolsRemoved, hash } = event.data;
+				const { sections, toolsAdded, toolsRemoved, hash } = event.data;
 				yield* threads
 					.append({
 						id: event.data.messageId,
 						threadId: event.data.threadId,
 						seq: yield* seqOf(event),
 						type: "system",
-						data: yield* encodeSystemData({ toolsAdded, toolsRemoved, hash }).pipe(Effect.orDie),
+						data: yield* encodeSystemData({
+							...(sections === undefined ? {} : { sections }),
+							toolsAdded,
+							toolsRemoved,
+							hash,
+						}).pipe(Effect.orDie),
 					})
 					.pipe(Effect.orDie);
 			}),

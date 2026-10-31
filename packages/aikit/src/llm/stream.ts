@@ -1,7 +1,6 @@
 import { APICallError } from "@ai-sdk/provider";
 import { RetryError, streamText, type TextStreamPart, type ToolSet } from "ai";
 import * as Message from "../message/message.ts";
-import * as Transcript from "../message/transcript.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
@@ -18,6 +17,7 @@ import {
 	convertMessages,
 	isOwnResponses,
 	convertTools,
+	requestTools,
 	createAssistantMessage,
 	encodeOpenAIReasoningSignature,
 	grammarToolInputProperties,
@@ -416,7 +416,8 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			const plan = Thinking.resolvePlan(model, context, runtimeOptions);
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
 			// Every tool callable now, so calls to tools declared in place still parse.
-			const tools = convertTools(Transcript.getCurrentTools(context), model, runtimeOptions.method);
+			const declared = requestTools(context, model, runtimeOptions.method, runtimeOptions.activeTools);
+			const tools = convertTools(declared.tools, model, runtimeOptions.method, declared.deferred);
 			const messages = convertMessages(context, model, runtimeOptions.method, runtimeOptions.activeTools);
 			const providerOptions = resolveProviderOptions(model, context, runtimeOptions, plan) as Parameters<
 				typeof streamText<ToolSet>
@@ -433,7 +434,9 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
 				model: languageModel,
 				// Our own Responses transport receives the system prompt among the messages.
-				system: isOwnResponses(model, runtimeOptions.method) ? undefined : leadingSystemPrompt(context),
+				system: isOwnResponses(model, runtimeOptions.method)
+					? undefined
+					: leadingSystemPrompt(context, model, runtimeOptions.method),
 				messages,
 				// Prompt and tool changes sent in place travel as system messages.
 				allowSystemInMessages: messages.some((message) => message.role === "system") || undefined,

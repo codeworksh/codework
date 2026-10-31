@@ -45,24 +45,43 @@ export function renderSystemPromptUpdate(message: PromptChange): string {
 }
 
 /**
- * The prompt after every transcript change in order: content accumulates, sections are
- * replaced by name, and a removed section added again goes last.
+ * The sections after every transcript change in order: replaced by name, removed by `null`, and
+ * a removed section added again goes last.
  */
-export function getCurrentSystemPrompt(context: Pick<Context, "systemPrompt" | "messages">): string {
-	const content: string[] = [];
+export function getCurrentSections(messages: readonly Message[]): Record<string, string> {
 	const sections = new Map<string, string>();
-	const changes: PromptChange[] = [
-		{ content: context.systemPrompt ?? "" },
-		...context.messages.filter(isSystemMessage),
-	];
-	for (const message of changes) {
-		if (message.content) content.push(message.content);
+	for (const message of messages) {
+		if (!isSystemMessage(message)) continue;
 		for (const [name, value] of Object.entries(message.sections ?? {})) {
 			if (value === null) sections.delete(name);
 			else sections.set(name, value);
 		}
 	}
-	return renderSystemPrompt({ content: content.join("\n\n"), sections: Object.fromEntries(sections) });
+	return Object.fromEntries(sections);
+}
+
+/**
+ * The patch that brings `previous` sections to `current`, `null` removing one; `undefined` when
+ * they match.
+ */
+export function diffSections(
+	previous: Readonly<Record<string, string>>,
+	current: Readonly<Record<string, string>>,
+): Record<string, string | null> | undefined {
+	const patch: Record<string, string | null> = {};
+	for (const [name, text] of Object.entries(current)) if (previous[name] !== text) patch[name] = text;
+	for (const name of Object.keys(previous)) if (!Object.hasOwn(current, name)) patch[name] = null;
+	return Object.keys(patch).length === 0 ? undefined : patch;
+}
+
+/** The prompt after every transcript change in order: content accumulates, sections as {@link getCurrentSections}. */
+export function getCurrentSystemPrompt(context: Pick<Context, "systemPrompt" | "messages">): string {
+	const content: string[] = [context.systemPrompt ?? ""];
+	for (const message of context.messages) if (isSystemMessage(message)) content.push(message.content ?? "");
+	return renderSystemPrompt({
+		content: content.filter((part) => part.length > 0).join("\n\n"),
+		sections: getCurrentSections(context.messages),
+	});
 }
 
 export interface TranscriptPrompt {

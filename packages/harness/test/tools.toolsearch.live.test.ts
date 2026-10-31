@@ -17,11 +17,16 @@ import { available, LIVE } from "./utils/live.ts";
 /**
  * One run against a real model: the token is held by a deferred tool the model is not offered,
  * so a right reply means it searched, the load reached its next request, and it called the tool.
+ * On Anthropic the deferred catalog is declared up front and the load names the tool by reference,
+ * so the request after the load reads the one before it from the cache.
  */
 
 const TOKEN = "vq7-lumen-4821";
-const codex = LIVE.find((one) => one.name === "openai-codex")!;
-const MODEL = "gpt-6-luna";
+process.env.CODEWORK_CACHE_RETENTION ??= "short";
+const CASES = [
+	{ live: LIVE.find((one) => one.name === "openai-codex")!, model: "gpt-6-luna", cache: false },
+	{ live: LIVE.find((one) => one.name === "anthropic")!, model: "claude-sonnet-5-5", cache: true },
+];
 
 /** A request as sent: its declared tools, and the tools its system messages add. */
 type Sent = { readonly tools: ReadonlyArray<string>; readonly system: ReadonlyArray<ReadonlyArray<string>> };
@@ -32,12 +37,12 @@ const sentOf = (context: Message.Context): Sent => ({
 	),
 });
 
-describe("toolsearch against live openai-codex", () => {
-	it.skipIf(!available(codex))("finds a deferred tool, then calls it", { timeout: 300_000 }, () =>
+describe.each(CASES)("toolsearch against live $live.name", ({ live, model, cache }) => {
+	it.skipIf(!available(live))("finds a deferred tool, then calls it", { timeout: 300_000 }, () =>
 		withSettings(async ({ root, custom }) => {
 			await writeFile(
 				join(custom, "settings.jsonc"),
-				JSON.stringify({ model: { provider: codex.provider, id: MODEL } }),
+				JSON.stringify({ model: { provider: live.provider, id: model } }),
 			);
 			const vault = define({
 				id: "acme.tool.vault",
@@ -65,7 +70,7 @@ describe("toolsearch against live openai-codex", () => {
 				return LLM.open(input, signal);
 			};
 
-			const { calls, reply } = await Effect.gen(function* () {
+			const { calls, reply, cacheReads } = await Effect.gen(function* () {
 				const handle = yield* Session.create({ directory: root });
 				yield* handle.main.run(
 					"Find the tool that reads the deployment access token from the secrets vault, call it, " +
@@ -82,6 +87,10 @@ describe("toolsearch against live openai-codex", () => {
 					reply: (last === undefined ? [] : ContextCodec.parts(last))
 						.flatMap((part) => (part.type === "text" ? [part.text] : []))
 						.join(""),
+					// One assistant message per request, in order.
+					cacheReads: messages.flatMap((message) =>
+						message.role === "assistant" ? [message.usage.cacheRead] : [],
+					),
 				};
 			}).pipe(
 				Effect.provide(
@@ -108,10 +117,12 @@ describe("toolsearch against live openai-codex", () => {
 			expect(loadedAt).toBeGreaterThan(0);
 			expect(sent.every((one) => !one.tools.includes("vault_read_token"))).toBe(true);
 			expect(found).toBe(true);
+			const cachedAfterLoad = (cacheReads[loadedAt] ?? 0) > 0;
+			if (cache) expect(cachedAfterLoad).toBe(true);
 
-			await expect(`${JSON.stringify({ requests: sent, calls, found }, null, "\t")}\n`).toMatchFileSnapshot(
-				"./__artifacts__/tools.toolsearch.live.openai-codex.json",
-			);
+			await expect(
+				`${JSON.stringify({ requests: sent, calls, found, ...(cache ? { cachedAfterLoad } : {}) }, null, "\t")}\n`,
+			).toMatchFileSnapshot(`./__artifacts__/tools.toolsearch.live.${live.name}.json`);
 		}),
 	);
 });

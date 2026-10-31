@@ -2,6 +2,16 @@
 	"notAwaited": "connecting",
 	"awaitedChanges": [
 		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"
@@ -11,6 +21,16 @@
 	],
 	"whileAway": [
 		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"
@@ -18,6 +38,7 @@
 			"removed": []
 		},
 		{
+			"sections": [],
 			"added": [],
 			"removed": [
 				"mcp__slow__echo",
@@ -33,6 +54,16 @@
 	},
 	"back": [
 		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"
@@ -40,6 +71,7 @@
 			"removed": []
 		},
 		{
+			"sections": [],
 			"added": [],
 			"removed": [
 				"mcp__slow__echo",
@@ -47,6 +79,7 @@
 			]
 		},
 		{
+			"sections": [],
 			"added": [
 				"mcp__slow__echo",
 				"mcp__slow__big"

@@ -1,0 +1,74 @@
+[
+	{
+		"step": "before any choice",
+		"thread": "main",
+		"request": {
+			"foundation": "default",
+			"declarations": 1
+		},
+		"info": "default"
+	},
+	{
+		"step": "after configuring main",
+		"thread": "main",
+		"request": {
+			"foundation": "reviewer",
+			"declarations": 1
+		},
+		"info": "reviewer"
+	},
+	{
+		"step": "fork cut before the choice",
+		"thread": "early fork",
+		"request": {
+			"foundation": "default",
+			"declarations": 1
+		},
+		"info": "default"
+	},
+	{
+		"step": "fork cut after the choice",
+		"thread": "late fork",
+		"request": {
+			"foundation": "reviewer",
+			"declarations": 1
+		},
+		"info": "reviewer"
+	},
+	{
+		"step": "after configuring the fork",
+		"thread": "late fork",
+		"request": {
+			"foundation": "scout",
+			"declarations": 1
+		},
+		"info": "scout"
+	},
+	{
+		"step": "main after the fork's choice",
+		"thread": "main",
+		"request": {
+			"foundation": "reviewer",
+			"declarations": 1
+		},
+		"info": "reviewer"
+	},
+	{
+		"step": "main after a restart",
+		"thread": "main",
+		"request": {
+			"foundation": "reviewer",
+			"declarations": 1
+		},
+		"info": "reviewer"
+	},
+	{
+		"step": "main after clearing",
+		"thread": "main",
+		"request": {
+			"foundation": "default",
+			"declarations": 1
+		},
+		"info": "default"
+	}
+]

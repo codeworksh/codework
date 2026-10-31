@@ -489,6 +489,16 @@
 	},
 	"changes": [
 		{
+			"sections": [
+				"tools",
+				"rules",
+				"cwd"
+			],
+			"added": [],
+			"removed": []
+		},
+		{
+			"sections": [],
 			"added": [
 				"mcp__e2e__args"
 			],

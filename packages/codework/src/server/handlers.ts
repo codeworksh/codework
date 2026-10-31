@@ -63,6 +63,7 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	updatedAt: info.updatedAt,
 	...(info.model === undefined ? {} : { model: info.model }),
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
+	...(info.foundation === undefined ? {} : { foundation: info.foundation }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
 	...(info.parked ? { parked: true } : {}),
 	usage: info.usage,
@@ -74,6 +75,7 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 const runtimeInput = (runtime: RuntimeConfig | undefined): Session.RuntimeInput => ({
 	...(runtime?.model == null ? {} : { model: runtime.model }),
 	...(runtime?.thinkingLevel == null ? {} : { thinkingLevel: runtime.thinkingLevel }),
+	...(runtime?.foundation == null ? {} : { foundation: runtime.foundation }),
 });
 
 const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
@@ -239,6 +241,7 @@ export const layer = Contract.Api.toLayer(
 				const change = {
 					...(runtime.model === undefined ? {} : { model: runtime.model }),
 					...(runtime.thinkingLevel === undefined ? {} : { thinkingLevel: runtime.thinkingLevel }),
+					...(runtime.foundation === undefined ? {} : { foundation: runtime.foundation }),
 				};
 				if (Object.keys(change).length > 0) {
 					yield* events.publish(EventList.ThreadConfigured, {

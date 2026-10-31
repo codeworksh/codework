@@ -1,0 +1,52 @@
+{
+	"requests": [
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch"
+			],
+			"system": [
+				[]
+			]
+		},
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch"
+			],
+			"system": [
+				[],
+				[
+					"vault_read_token"
+				]
+			]
+		},
+		{
+			"tools": [
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"toolsearch"
+			],
+			"system": [
+				[],
+				[
+					"vault_read_token"
+				]
+			]
+		}
+	],
+	"calls": [
+		"toolsearch:completed",
+		"vault_read_token:completed"
+	],
+	"found": true,
+	"cachedAfterLoad": true
+}

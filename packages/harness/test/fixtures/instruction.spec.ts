@@ -1,3 +1,4 @@
+import { Transcript } from "@codeworksh/aikit";
 import { Effect, type Layer, type Scope } from "effect";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -77,7 +78,7 @@ const run = <A, E>(
 					hostCwd: path.join(host.root, "cwd"),
 					sandboxes: drivers,
 					llm: (request, signal) => {
-						prompts.push(request.context.systemPrompt ?? "");
+						prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 						return open(request, signal);
 					},
 				}),

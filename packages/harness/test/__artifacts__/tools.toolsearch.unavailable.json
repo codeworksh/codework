@@ -10,6 +10,11 @@
 		],
 		"system": [
 			{
+				"sections": [
+					"tools",
+					"rules",
+					"cwd"
+				],
 				"added": [],
 				"removed": [
 					"notes_read"
@@ -64,6 +69,11 @@
 			"type": "system",
 			"state": "committed",
 			"data": {
+				"sections": [
+					"tools",
+					"rules",
+					"cwd"
+				],
 				"toolsAdded": [],
 				"toolsRemoved": [
 					{

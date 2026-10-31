@@ -35,7 +35,17 @@ const toolIndex = (tools: ReadonlyArray<AnyToolDef>): string => {
 	return listed.map((tool) => `- ${tool.name}: ${tool.promptSnippet}`).join("\n");
 };
 
-export const render = (input: Input): string => {
+/**
+ * The prompt as the transcript carries it: the untagged foundation, then named sections, each
+ * holding its own tags. A section's text is compared whole between requests, so one that did not
+ * change is never sent again.
+ */
+export interface Rendered {
+	readonly foundation: string;
+	readonly sections: Readonly<Record<string, string>>;
+}
+
+export const render = (input: Input): Rendered => {
 	const written = new Map(input.prompt.sections);
 
 	const guidelines = input.tools.flatMap((tool) => tool.promptGuidelines ?? []);
@@ -44,17 +54,20 @@ export const render = (input: Input): string => {
 		entries: [...guidelines, ...(written.get(Section.Rules.name)?.entries ?? [])],
 	});
 
-	const parts: string[] = [input.prompt.foundation ?? fallback, tag("tools", toolIndex(input.tools))];
+	const sections: Record<string, string> = { tools: tag("tools", toolIndex(input.tools)) };
 	const push = (name: string) => {
 		const section = written.get(name);
 		const rendered = section === undefined ? undefined : body(section);
-		if (rendered !== undefined) parts.push(tag(name, rendered));
+		if (rendered !== undefined) sections[name] = tag(name, rendered);
 		written.delete(name);
 	};
 
 	for (const section of Section.builtins) push(section.name);
-	parts.push(tag("cwd", input.directory));
+	sections.cwd = tag("cwd", input.directory);
 	for (const name of Array.from(written.keys())) push(name);
 
-	return parts.join("\n\n");
+	// A blank foundation would leave the Responses transport without instructions, and it would
+	// promote the first system message in its stead.
+	const foundation = input.prompt.foundation?.trim() ? input.prompt.foundation : fallback;
+	return { foundation, sections };
 };

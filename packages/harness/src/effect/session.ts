@@ -16,7 +16,7 @@ import { PromptSchema } from "../session/prompt/schema.ts";
 import * as SessionRuntime from "../session/runtime.ts";
 import type { ThreadRow } from "../db/schema.sql.ts";
 import { Document } from "../document/document.ts";
-import type { DocumentSchema } from "../document/schema.ts";
+import { DocumentSchema } from "../document/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import { ThreadSchema } from "../thread/schema.ts";
@@ -43,6 +43,8 @@ export interface SystemPromptConfig {
 export interface RuntimeInput {
 	readonly model?: ModelConfig;
 	readonly thinkingLevel?: Model.ThinkingLevel;
+	/** The thread's own prompt foundation, in place of the rendered one; `null` goes back to it. */
+	readonly foundation?: string | null;
 	readonly tools?: ToolsConfig;
 	readonly systemPrompt?: SystemPromptConfig;
 }
@@ -122,6 +124,8 @@ export interface ThreadInfo {
 	readonly model?: { readonly provider: string; readonly id: string };
 	/** The thinking level chosen for this thread over settings; absent when settings decide. */
 	readonly thinkingLevel?: Model.ThinkingLevel;
+	/** The prompt foundation chosen for this thread; absent when prompt plugins render it. */
+	readonly foundation?: string;
 	/** Where it runs instead of the session's space and directory. */
 	readonly placement?: DocumentSchema.Placement;
 	/**
@@ -158,7 +162,7 @@ export interface ThreadHandle {
 	readonly resume: () => ReturnType<Control.Interface["resume"]>;
 	/** Stops active work and waits for its cleanup; idle is a no-op returning false. */
 	readonly interrupt: () => ReturnType<Control.Interface["interrupt"]>;
-	/** Records model and thinking choices in the thread's `agent` document. */
+	/** Records model, thinking and foundation choices in the thread's `agent` document. */
 	readonly configure: (input: RuntimeInput) => Effect.Effect<void>;
 	/** A new thread cut at a committed entry of this one's line; `text` refills the editor for `before`. */
 	readonly fork: (
@@ -196,9 +200,10 @@ const runtimeBindings = (input: RuntimeInput): SessionRuntime.Bindings => ({
 });
 
 /** The `agent` fields this input names. */
-const chosen = (input: RuntimeInput): DocumentSchema.Agent => ({
+const chosen = (input: RuntimeInput): DocumentSchema.AgentChange => ({
 	...(input.model === undefined ? {} : { model: { provider: input.model.provider, id: input.model.id } }),
 	...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+	...(input.foundation === undefined ? {} : { foundation: input.foundation }),
 });
 
 /** Records a choice as one `agent` revision; nothing when the input names none. */
@@ -290,6 +295,7 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 		updatedAt: DateTime.toEpochMillis(row.updatedAt),
 		...(agent.model === undefined ? {} : { model: agent.model }),
 		...(agent.thinkingLevel === undefined ? {} : { thinkingLevel: agent.thinkingLevel }),
+		...(agent.foundation === undefined ? {} : { foundation: agent.foundation }),
 		...(agent.placement === undefined ? {} : { placement: agent.placement }),
 		parked,
 		usage: {
@@ -405,7 +411,7 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: location.directory,
 		...(input.title === undefined ? {} : { title: input.title }),
 		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
-		agent: chosen(input),
+		agent: DocumentSchema.applyAgentChange({}, chosen(input)),
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id).pipe(Effect.orDie);

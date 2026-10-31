@@ -34,7 +34,7 @@ export const make = (servers: ReadonlyArray<McpServer>) => {
 			return {
 				tools: resolved,
 				// Only declared tools: loading a deferred one must not change the prompt.
-				systemPrompt: render({ prompt: prompt.snapshot(), tools: resolved.defs.filter(declared), directory }),
+				prompt: render({ prompt: prompt.snapshot(), tools: resolved.defs.filter(declared), directory }),
 			};
 		},
 	};

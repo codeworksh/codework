@@ -485,16 +485,85 @@ export function transcriptToolSupport(
 }
 
 /**
- * Whether prompt changes go in place as developer messages. Only our own Responses transport
- * sends them; the AI SDK adapters take the current prompt as the leading system prompt.
+ * Whether prompt changes go in place as system messages. Our own Responses transport and the
+ * AI SDK's OpenAI Responses and Anthropic Messages adapters keep them where they stand; Chat
+ * Completions takes the current prompt as the leading system prompt.
  */
 export function supportsMidConvoSystemMessages(model: Model.Info, method: Model.APIMethodEnum | undefined): boolean {
-	return isOwnResponses(model, method) && model.compat?.supportsMidConvoSystemMessages === true;
+	if (model.compat?.supportsMidConvoSystemMessages !== true) return false;
+	return isOwnResponses(model, method) || !isChatCompletions(model, resolveMethod(model, method));
 }
 
-/** The prompt the AI SDK adapters take as `system`: the current one, every change folded in. */
-export function leadingSystemPrompt(context: Message.Context): string | undefined {
-	return Transcript.getCurrentSystemPrompt(context) || undefined;
+/**
+ * Anthropic with tool changes in place: every tool the thread can reach is declared up front, the
+ * ones beyond its initial set deferred, and later changes name them by reference. Adding a tool
+ * to the top-level list costs the cached prefix; referencing a deferred one does not.
+ */
+function anthropicToolReferences(model: Model.Info, method: Model.APIMethodEnum, restricted: boolean): boolean {
+	return (
+		!restricted &&
+		isAnthropicWire(model, method) &&
+		supportsMidConvoSystemMessages(model, method) &&
+		model.compat?.supportsAdditionalTools === true
+	);
+}
+
+/** Messages before the first reply: on Anthropic their system messages join the leading prompt and tools. */
+function beforeFirstReply(messages: readonly Message.Message[]): Message.Message[] {
+	const reply = messages.findIndex((message) => message.role === "assistant");
+	return reply === -1 ? [...messages] : messages.slice(0, reply);
+}
+
+/**
+ * The tools the request declares top-level, and which of them are deferred. Usually every tool
+ * callable now. With Anthropic tool references, the initial set, then the deferred catalog and
+ * every other tool the transcript declared, deferred, in an order that holds across requests.
+ */
+export function requestTools(
+	context: Message.Context,
+	model: Model.Info,
+	methodOverride?: Model.APIMethodEnum,
+	activeTools?: readonly string[],
+): { tools: Message.Tool[]; deferred: ReadonlySet<string> } {
+	if (!anthropicToolReferences(model, resolveMethod(model, methodOverride), activeTools !== undefined)) {
+		return { tools: Transcript.getCurrentTools(context), deferred: new Set() };
+	}
+	const initial = Transcript.getCurrentTools({ ...context, messages: beforeFirstReply(context.messages) });
+	const latest = new Map(Transcript.getDeclaredTools(context).map((tool) => [tool.name, tool]));
+	const tools = new Map(initial.map((tool) => [tool.name, tool]));
+	const deferred = new Set<string>();
+	for (const tool of [...(context.deferredTools ?? []), ...latest.values()]) {
+		if (tools.has(tool.name)) continue;
+		tools.set(tool.name, latest.get(tool.name) ?? tool);
+		deferred.add(tool.name);
+	}
+	return { tools: [...tools.values()], deferred };
+}
+
+/** A later system message's tool changes as Anthropic tool references; a redefinition needs no removal. */
+function toolReferences(message: Message.SystemMessage) {
+	const added = new Set((message.toolsAdded ?? []).map((tool) => tool.name));
+	return [
+		...(message.toolsRemoved ?? [])
+			.filter((tool) => !added.has(tool.name))
+			.map((tool) => ({ type: "tool_removal" as const, toolName: tool.name })),
+		...[...added].map((name) => ({ type: "tool_addition" as const, toolName: name })),
+	];
+}
+
+/**
+ * The prompt the AI SDK adapters take as `system`: the leading one when changes go in place,
+ * else the current one, every change folded in.
+ */
+export function leadingSystemPrompt(
+	context: Message.Context,
+	model: Model.Info,
+	method: Model.APIMethodEnum | undefined,
+): string | undefined {
+	return (
+		Transcript.resolveTranscriptPrompt(context, supportsMidConvoSystemMessages(model, method)).systemPrompt ||
+		undefined
+	);
 }
 
 /** A tool as the language model receives it, for declaring it inside the prompt. */
@@ -557,11 +626,32 @@ export function convertMessages(
 		messages.push({ role: "system", content: sanitizeSurrogates(prompt.systemPrompt) });
 	}
 
+	// Every system message goes as an update, the first declaration too: a section a model read
+	// whole does not yield to a later update of it, one it read as an update does. On Anthropic,
+	// one before the first reply joins the leading prompt, where it caches: a trailing system
+	// message's cache entry is never read once a reply follows it. Anthropic takes a later one
+	// only after a user message, and never between a tool call and its result: each is held for
+	// the next assistant message, or the end.
+	const anthropic = isAnthropicWire(model, method);
+	const references = anthropicToolReferences(model, method, activeTools !== undefined);
+	const leading: ModelMessage[] = [];
+	const held: ModelMessage[] = [];
+	let replied = false;
 	let systemIndex = 0;
 	for (const msg of transformedMessages) {
 		if (msg.role === "system") {
 			const index = systemIndex++;
 			const update = index < prompt.foldedSystemMessages ? "" : Transcript.renderSystemPromptUpdate(msg);
+			// The tools of one before the first reply belong to the initial set.
+			const toolChanges = references && replied ? toolReferences(msg) : [];
+			if (toolChanges.length > 0) {
+				held.push({
+					role: "system",
+					content: sanitizeSurrogates(update),
+					providerOptions: { [Model.optionsKey(model)]: { toolChanges } },
+				});
+				continue;
+			}
 			const folded = index < transcript.foldedSystemMessages;
 			const change = systemChangeMessage(
 				update,
@@ -571,17 +661,22 @@ export function convertMessages(
 				model,
 				method,
 			);
-			if (change) messages.push(change);
+			if (change) (!anthropic ? messages : replied ? held : leading).push(change);
 			continue;
 		}
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts));
 			continue;
 		}
-		messages.push(...assistantMessages(msg, model, method));
+		const converted = assistantMessages(msg, model, method);
+		if (converted.length > 0) {
+			replied = true;
+			messages.push(...held.splice(0));
+		}
+		messages.push(...converted);
 	}
 
-	return messages;
+	return [...leading, ...messages, ...held];
 }
 
 /**
@@ -619,17 +714,23 @@ export function convertTools(
 	tools?: Message.Tool[],
 	model?: Model.Info,
 	method?: Model.APIMethodEnum,
+	deferred: ReadonlySet<string> = new Set(),
 ): ToolSet | undefined {
 	if (!tools || tools.length === 0) return;
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
 		const { inputSchema, strict, providerOptions } = toolWire(tool, model, method);
+		const key = model && deferred.has(tool.name) ? Model.optionsKey(model) : undefined;
+		const options =
+			key === undefined
+				? providerOptions
+				: { ...providerOptions, [key]: { ...providerOptions?.[key], deferLoading: true } };
 		result[tool.name] = {
 			description: tool.description,
 			inputSchema: jsonSchema(inputSchema as any),
 			...(strict ? { strict } : {}),
-			...(providerOptions ? { providerOptions } : {}),
+			...(options ? { providerOptions: options } : {}),
 		};
 	}
 	return result;

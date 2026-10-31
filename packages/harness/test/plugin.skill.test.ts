@@ -1,3 +1,4 @@
+import { Transcript } from "@codeworksh/aikit";
 import "./utils/env.ts";
 import { Effect, Logger, Schema } from "effect";
 import { execFile } from "node:child_process";
@@ -59,7 +60,7 @@ const prompt = async (input: {
 					database: ":memory:",
 					...(input.plugins === undefined ? {} : { plugins: input.plugins }),
 					llm: (request, signal) => {
-						observed.push(request.context.systemPrompt ?? "");
+						observed.push(Transcript.getCurrentSystemPrompt(request.context));
 						return open(request, signal);
 					},
 				}),
@@ -386,7 +387,7 @@ describe("codework.prompt.skill", () => {
 							database: ":memory:",
 							llm: (request, signal) => {
 								requests.push({
-									systemPrompt: request.context.systemPrompt ?? "",
+									systemPrompt: Transcript.getCurrentSystemPrompt(request.context),
 									messages: request.context.messages,
 								});
 								return open(request, signal);

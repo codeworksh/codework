@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import type { Message } from "@codeworksh/aikit";
+import { type Message, Transcript } from "@codeworksh/aikit";
 import { Effect } from "effect";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -125,8 +125,8 @@ live("plugins installed from git, as a third party ships them", () => {
 			]);
 			// A prompt plugin runs after every tool plugin, so it indexed the tool above even
 			// though its settings entry is written after it.
-			expect(contexts[0]?.systemPrompt).toContain("<engineering_doctrine>");
-			expect(contexts[0]?.systemPrompt).toContain(
+			expect(Transcript.getCurrentSystemPrompt(contexts[0]!)).toContain("<engineering_doctrine>");
+			expect(Transcript.getCurrentSystemPrompt(contexts[0]!)).toContain(
 				"Tools available: bash, read, write, edit, spacex_launch_manifest.",
 			);
 		}),
@@ -173,7 +173,7 @@ live("plugins installed from git, as a third party ships them", () => {
 
 				const { contexts } = await exchange(workspace);
 				// The 0.4.0 section, which 0.1.0 does not render.
-				expect(contexts[0]?.systemPrompt).toContain("<engineering_doctrine>");
+				expect(Transcript.getCurrentSystemPrompt(contexts[0]!)).toContain("<engineering_doctrine>");
 			}),
 	);
 

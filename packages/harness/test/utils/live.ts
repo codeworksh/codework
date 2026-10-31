@@ -5,22 +5,26 @@ import { join } from "node:path";
 import "./env.ts";
 
 /**
- * The Codex login's current access token, for `OPENAI_CODEX_API_KEY`. The login file itself is
- * never used by a test: a refresh would rotate the refresh token and sign the developer out. An
- * expired token skips the Codex cases rather than refreshing.
+ * A login's current access token, for its key variable. The login file itself is never used by a
+ * test: a refresh would rotate the refresh token and sign the developer out. An expired token
+ * skips the provider's cases rather than refreshing; `expires: 0` never expires (GitHub Copilot).
  */
-const codexToken = (): string | undefined => {
+const loginToken = (provider: string): string | undefined => {
 	try {
-		const login = JSON.parse(readFileSync(join(homedir(), ".codework", "aikit", "auth.json"), "utf8"))[
-			"openai-codex"
-		];
-		return typeof login?.access === "string" && login.expires > Date.now() + 10 * 60_000 ? login.access : undefined;
+		const login = JSON.parse(readFileSync(join(homedir(), ".codework", "aikit", "auth.json"), "utf8"))[provider];
+		const fresh = login?.expires === 0 || login?.expires > Date.now() + 10 * 60_000;
+		return typeof login?.access === "string" && fresh ? login.access : undefined;
 	} catch {
 		return undefined;
 	}
 };
-const codex = process.env.OPENAI_CODEX_API_KEY ?? codexToken();
-if (codex !== undefined) process.env.OPENAI_CODEX_API_KEY = codex;
+for (const [env, provider] of [
+	["OPENAI_CODEX_API_KEY", "openai-codex"],
+	["COPILOT_GITHUB_TOKEN", "github-copilot"],
+] as const) {
+	const token = process.env[env] ?? loginToken(provider);
+	if (token !== undefined) process.env[env] = token;
+}
 
 /** Every live case runs against each of these; `env` names the key that enables it. */
 export const LIVE = [

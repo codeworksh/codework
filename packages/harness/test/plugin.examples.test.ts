@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import type { Message } from "@codeworksh/aikit";
+import { type Message, Transcript } from "@codeworksh/aikit";
 import { Effect } from "effect";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +65,7 @@ describe("extras examples", () => {
 			const { contexts } = await run(root, selection);
 			const context = contexts[0];
 			expect(context?.tools?.map((tool) => tool.name)).toEqual(["bash", "list_processes", "project_fact"]);
-			const prompt = context?.systemPrompt ?? "";
+			const prompt = context === undefined ? "" : Transcript.getCurrentSystemPrompt(context);
 			// The prompt plugin was named after the tool plugins, so its index carries them.
 			expect(prompt).toContain("- list_processes: List the processes running in the session's environment.");
 			expect(prompt).toContain("- project_fact: Look up a project convention: deploy.");
@@ -89,9 +89,11 @@ describe("extras examples", () => {
 				selection,
 				toolTurn(pendingCall("project_fact", { key: "deploy" }, "call_fact")),
 			);
-			expect(JSON.parse(path[1]?.parts[0]?.data ?? "{}")).toMatchObject({
-				status: "completed",
-				result: { content: [{ type: "text", text: "vercel" }] },
-			});
+			expect(JSON.parse(path.find((item) => item.entry.type === "assistant")?.parts[0]?.data ?? "{}")).toMatchObject(
+				{
+					status: "completed",
+					result: { content: [{ type: "text", text: "vercel" }] },
+				},
+			);
 		}));
 });

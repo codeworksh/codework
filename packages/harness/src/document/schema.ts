@@ -48,6 +48,8 @@ export const Agent = Schema.Struct({
 	modelTools: optional(ModelTools),
 	/** Physical boundary override; absent = the session's. */
 	placement: optional(Placement),
+	/** The prompt foundation for this thread, in place of the one prompt plugins render. */
+	foundation: optional(Schema.NonEmptyString),
 });
 export type Agent = typeof Agent.Type;
 
@@ -57,6 +59,7 @@ export const AgentChange = Schema.Struct({
 	thinkingLevel: optional(Schema.NullOr(ThinkingLevel)),
 	modelTools: optional(Schema.NullOr(ModelTools)),
 	placement: optional(Schema.NullOr(Placement)),
+	foundation: optional(Schema.NullOr(Schema.NonEmptyString)),
 });
 export type AgentChange = typeof AgentChange.Type;
 

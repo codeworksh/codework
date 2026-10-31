@@ -2,12 +2,14 @@
 	"bothActive": true,
 	"main": [
 		"user committed",
+		"system committed",
 		"assistant committed",
 		"user committed",
 		"assistant committed"
 	],
 	"fork": [
 		"user committed",
+		"system committed",
 		"assistant committed"
 	]
 }

@@ -4,7 +4,7 @@ import { Global } from "../src/global.ts";
 import { builtins as plugins } from "../src/plugin/builtin.ts";
 import type { Info } from "../src/settings/schema.ts";
 import { Settings } from "../src/settings/settings.ts";
-import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
+import { createAssistantMessageEventStream, Message, Transcript } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
@@ -173,6 +173,7 @@ describe("runner loop — aikit input/output", () => {
 			expect(bySeq.map((row) => row.id)).toEqual(["msg_steer", "msg_follow"]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
 				"user",
+				"system",
 				"assistant",
 				"user",
 				"assistant",
@@ -181,8 +182,8 @@ describe("runner loop — aikit input/output", () => {
 			// Every request is rebuilt from durable history. The second request sees
 			// the first terminal assistant and the newly promoted follow-up.
 			expect(contexts.map((context) => context.messages.map((message) => message.role))).toEqual([
-				["user"],
-				["user", "assistant", "user"],
+				["user", "system"],
+				["user", "system", "assistant", "user"],
 			]);
 		}),
 	);
@@ -199,7 +200,11 @@ describe("runner loop — aikit input/output", () => {
 			yield* execution.resume(threadId);
 
 			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 3 }]);
-			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
+				"user",
+				"system",
+				"assistant",
+			]);
 		}),
 	);
 
@@ -222,6 +227,7 @@ describe("runner loop — aikit input/output", () => {
 				"user",
 				"user",
 				"user",
+				"system",
 				"assistant",
 				"user",
 				"assistant",
@@ -343,14 +349,15 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 
 			expect(contexts).toHaveLength(2);
 			expect(snapshots).toBe(2);
-			const second = contexts[1]!.messages[1]!;
+			const second = contexts[1]!.messages.find((message) => message.role === "assistant");
 			const firstTool =
-				second.role === "assistant" ? second.parts.find((part) => part.type === "toolCall") : undefined;
+				second?.role === "assistant" ? second.parts.find((part) => part.type === "toolCall") : undefined;
 			expect(firstTool).toMatchObject({ callID: "call_echo", status: "completed" });
 
 			const path = yield* threads.line(threadId);
 			expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
 				["user", "committed"],
+				["system", "committed"],
 				["assistant", "committed"],
 				["assistant", "committed"],
 			]);
@@ -359,8 +366,8 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 			`) as ReadonlyArray<{ readonly type: string; readonly seq: number }>;
 			const firstStarted = eventRows.find((row) => row.type === "session.llm.started.1")!;
 			const firstEnded = eventRows.find((row) => row.type === "session.llm.ended.1")!;
-			expect(path[1]!.entry.seq).toBe(firstStarted.seq);
-			expect(path[1]!.entry.seq).toBeLessThan(firstEnded.seq);
+			expect(path[2]!.entry.seq).toBe(firstStarted.seq);
+			expect(path[2]!.entry.seq).toBeLessThan(firstEnded.seq);
 			expect(path.filter((item) => item.entry.id === "assistant_1")).toHaveLength(1);
 		}),
 	);
@@ -505,9 +512,10 @@ describe("runner loop — tool interruption", () => {
 				expect(interrupted.data.reason).toBe("user");
 
 			const path = yield* threads.line(threadId);
-			expect(path[1]!.entry.state).toBe("committed");
-			expect(path[1]!.parts.map((part) => Option.getOrThrow(part.status))).toEqual(["aborted", "aborted"]);
-			for (const part of path[1]!.parts) {
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path[2]!.entry.state).toBe("committed");
+			expect(path[2]!.parts.map((part) => Option.getOrThrow(part.status))).toEqual(["aborted", "aborted"]);
+			for (const part of path[2]!.parts) {
 				expect(JSON.parse(part.data)).toMatchObject({
 					status: "aborted",
 					result: { content: [{ type: "text", text: "Tool Execution Interrupted" }], isError: true },
@@ -570,10 +578,10 @@ describe("runner loop — provider interruption", () => {
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
 			const path = yield* threads.line(threadId);
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
-			expect(path[1]!.entry.state).toBe("aborted");
-			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({ stopReason: "aborted" });
-			expect(path[1]!.parts).toEqual([]);
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path[2]!.entry.state).toBe("aborted");
+			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({ stopReason: "aborted" });
+			expect(path[2]!.parts).toEqual([]);
 			expect(Array.from(yield* execution.active)).toEqual([]);
 		}),
 		{ timeout: 10_000 },
@@ -627,10 +635,10 @@ describe("runner loop — provider failure", () => {
 			}
 
 			const path = yield* threads.line(threadId);
-			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
-			expect(path[1]!.entry.state).toBe("aborted");
-			expect(path[1]!.parts).toEqual([]);
-			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
+			expect(path[2]!.entry.state).toBe("aborted");
+			expect(path[2]!.parts).toEqual([]);
+			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({
 				stopReason: "error",
 				errorMessage: "provider failed",
 				failure: { _tag: "Authentication", reason: "missing", retryable: false },
@@ -721,6 +729,8 @@ describe("runner loop — retry", () => {
 			Effect.sync(() => {
 				if (!event.type.startsWith("session.")) return;
 				if (event.type.startsWith("session.prompt.") || event.type.startsWith("session.execution.")) return;
+				// A system entry's id is random.
+				if (event.type === EventList.SystemChanged.type) return void seen.push({ type: event.type });
 				const data = event.data as Record<string, unknown>;
 				const picked = Object.fromEntries(
 					["messageId", "attempt", "maxRetries", "delayMs", "success", "reason", "cause", "message"]
@@ -736,7 +746,7 @@ describe("runner loop — retry", () => {
 	const pathOf = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
 		const threads = yield* Thread.Service;
 		return (yield* threads.line(threadId)).map((item) => ({
-			id: item.entry.id,
+			id: item.entry.type === "system" ? "system" : item.entry.id,
 			type: item.entry.type,
 			state: item.entry.state,
 			parts: item.parts.length,
@@ -765,7 +775,13 @@ describe("runner loop — retry", () => {
 				yield* execution.resume(threadId);
 
 				const path = yield* pathOf(threadId);
-				expect(path.map((entry) => entry.state)).toEqual(["committed", "aborted", "aborted", "committed"]);
+				expect(path.map((entry) => entry.state)).toEqual([
+					"committed",
+					"committed",
+					"aborted",
+					"aborted",
+					"committed",
+				]);
 				// Every attempt is sent the original context: the failed drafts and their partial text never leak in.
 				expect(contexts).toHaveLength(3);
 				expect(contexts[1]).toEqual(contexts[0]);
@@ -804,7 +820,11 @@ describe("runner loop — retry", () => {
 				const exit = yield* Fiber.await(waiting);
 				expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
 
-				expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+				expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual([
+					"committed",
+					"committed",
+					"aborted",
+				]);
 				expect(seen.slice(-2)).toEqual([
 					{ type: EventList.RetryFinished.type, attempt: 1, success: false, message: "interrupted" },
 					{ type: EventList.TurnAborted.type, cause: { _tag: "interrupted" } },
@@ -835,7 +855,11 @@ describe("runner loop — retry", () => {
 					const exit = yield* execution.resume(threadId).pipe(Effect.exit);
 					expect(Exit.isFailure(exit)).toBe(true);
 					expect(seen.some((event) => String(event.type).startsWith("session.retry."))).toBe(false);
-					expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+					expect((yield* pathOf(threadId)).map((entry) => entry.state)).toEqual([
+						"committed",
+						"committed",
+						"aborted",
+					]);
 				}),
 			);
 		}
@@ -1254,6 +1278,7 @@ describe("runner loop — resume after restart", () => {
 			expect(path.map((entry) => [entry.entry.type, entry.entry.state])).toEqual([
 				["user", "committed"],
 				["assistant", "aborted"],
+				["system", "committed"],
 				["assistant", "committed"],
 			]);
 			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
@@ -1535,9 +1560,10 @@ describe("runner loop — lifecycle hooks", () => {
 				const path = yield* threads.line(threadId);
 				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
 					["user", "committed"],
+					["system", "committed"],
 					["assistant", "committed"],
 				]);
-				const tool = path[1]!.parts.find((part) => part.type === "toolCall");
+				const tool = path[2]!.parts.find((part) => part.type === "toolCall");
 				expect(tool).toBeDefined();
 				const rows = yield* delivered(threadId);
 				expect(rows.find((row) => row.id === "msg_queued")?.promotedSeq).toBeNull();
@@ -1545,8 +1571,14 @@ describe("runner loop — lifecycle hooks", () => {
 				// The next run answers the tool results first, then picks the queued follow-up up.
 				yield* execution.resume(threadId);
 				expect(contexts).toHaveLength(3);
-				expect(contexts[1]!.messages).toHaveLength(2);
-				expect(contexts[2]!.messages).toHaveLength(4);
+				expect(contexts[1]!.messages.map((message) => message.role)).toEqual(["user", "system", "assistant"]);
+				expect(contexts[2]!.messages.map((message) => message.role)).toEqual([
+					"user",
+					"system",
+					"assistant",
+					"assistant",
+					"user",
+				]);
 				const next = yield* delivered(threadId);
 				expect(next.find((row) => row.id === "msg_queued")?.promotedSeq).not.toBeNull();
 			}),
@@ -1661,7 +1693,8 @@ describe("runner loop — lifecycle hooks", () => {
 			runtime({
 				open: recording(contexts),
 				hooks: hooksOf({
-					prepareNextTurn: (_turn, next) => during.run.pipe(Effect.as({ ...next, systemPrompt: "replaced" })),
+					prepareNextTurn: (_turn, next) =>
+						during.run.pipe(Effect.as({ ...next, prompt: { ...next.prompt, foundation: "replaced" } })),
 				}),
 				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
 			}),
@@ -1831,9 +1864,11 @@ describe("runner loop — tool exposure", () => {
 
 			expect(contexts).toHaveLength(2);
 			const section = (name: string) =>
-				new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(contexts[0]!.systemPrompt ?? "")?.[1];
-			const reply = contexts[1]!.messages[1]!;
-			const call = reply.role === "assistant" ? reply.parts.find((part) => part.type === "toolCall") : undefined;
+				new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(
+					Transcript.getCurrentSystemPrompt(contexts[0]!),
+				)?.[1];
+			const reply = contexts[1]!.messages.find((message) => message.role === "assistant");
+			const call = reply?.role === "assistant" ? reply.parts.find((part) => part.type === "toolCall") : undefined;
 			const result = {
 				requestTools: contexts.map((context) => (context.tools ?? []).map((tool) => tool.name)),
 				tools: section("tools"),

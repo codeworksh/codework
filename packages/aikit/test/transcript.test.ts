@@ -1,11 +1,12 @@
-/** Prompt and tool changes carried by transcript system messages, from the context down to the Responses wire. */
+/** Prompt and tool changes carried by transcript system messages, from the context down to the Responses and Anthropic wires. */
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
 import * as Message from "../src/message/message.ts";
 import * as Transcript from "../src/message/transcript.ts";
 import type * as Model from "../src/model/model.ts";
 import { stream } from "../src/stream.ts";
-import { makeUserMessage } from "./utils/fixtures.ts";
+import { fakeAnthropic, textReply } from "./utils/anthropic.ts";
+import { makeAssistantMessage, makeCompletedToolCall, makeModel, makeUserMessage } from "./utils/fixtures.ts";
 import {
 	createOpenAICodexMockFetch,
 	OPENAI_CODEX_TEST_API_KEY,
@@ -361,5 +362,124 @@ describe("Transcript", () => {
 				],
 			}),
 		).toEqual([changed, lateTool]);
+	});
+});
+
+describe("transcript prompt changes on the Anthropic wire", () => {
+	type AnthropicBody = {
+		system?: Array<{ text: string }>;
+		messages: Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+	};
+	const claude = (inPlace: boolean) =>
+		makeModel({ npm: "@ai-sdk/anthropic", compat: { supportsMidConvoSystemMessages: inPlace } });
+	const wire = async (model: Model.Info) => {
+		const server = fakeAnthropic(textReply);
+		await stream(
+			model,
+			{
+				systemPrompt: "base prompt",
+				messages: [
+					makeUserMessage("first"),
+					system({ sections: { codeword: "<codeword>alpha</codeword>" } }),
+					makeAssistantMessage(model, { stopReason: "toolUse", parts: [makeCompletedToolCall("call-1")] }),
+					system({ sections: { codeword: "<codeword>bravo</codeword>" } }),
+					makeUserMessage("second"),
+				],
+			},
+			{ apiKey: "test-key", factoryOptions: { fetch: server.fetch } },
+		).result();
+		const body = server.body() as AnthropicBody;
+		return {
+			system: body.system?.map((part) => part.text),
+			messages: body.messages.map((message) => [
+				message.role,
+				message.content.map((part) => part.text ?? part.type).join(" | "),
+			]),
+		};
+	};
+
+	it("joins a declaration before the first reply to the leading prompt and holds a later one past the tool result and prompt", async () => {
+		expect(await wire(claude(true))).toEqual({
+			system: ["base prompt", 'Updated system prompt section "codeword":\n\n<codeword>alpha</codeword>'],
+			messages: [
+				["user", "first"],
+				["assistant", "tool_use"],
+				["user", "tool_result | second"],
+				["system", 'Updated system prompt section "codeword":\n\n<codeword>bravo</codeword>'],
+			],
+		});
+	});
+
+	it("folds every change into the leading prompt on a model without mid-conversation system messages", async () => {
+		expect(await wire(claude(false))).toEqual({
+			system: ["base prompt\n\n<codeword>bravo</codeword>"],
+			messages: [
+				["user", "first"],
+				["assistant", "tool_use"],
+				["user", "tool_result | second"],
+			],
+		});
+	});
+});
+
+describe("transcript tool changes on the Anthropic wire", () => {
+	type ToolsBody = {
+		tools?: Array<{ name: string; defer_loading?: boolean }>;
+		messages: Array<{ role: string; content: Array<{ type: string; text?: string; tool?: { name: string } }> }>;
+	};
+	const claude = makeModel({
+		npm: "@ai-sdk/anthropic",
+		compat: { supportsMidConvoSystemMessages: true, supportsAdditionalTools: true },
+	});
+	const capture = async (messages: Message.Message[]) => {
+		const server = fakeAnthropic(textReply);
+		await stream(
+			claude,
+			{
+				systemPrompt: "base prompt",
+				tools: [baseTool, dropTool],
+				deferredTools: [lateTool, tool("spare_tool")],
+				messages,
+			},
+			{ apiKey: "test-key", factoryOptions: { fetch: server.fetch } },
+		).result();
+		const body = server.body() as ToolsBody;
+		return {
+			tools: body.tools?.map((one) => `${one.name}${one.defer_loading ? " (deferred)" : ""}`),
+			messages: body.messages.map((message) => [
+				message.role,
+				message.content
+					.map((part) => (part.tool ? `${part.type} ${part.tool.name}` : (part.text ?? part.type)))
+					.join(" | "),
+			]),
+		};
+	};
+	const first = [makeUserMessage("first"), system({ toolsAdded: [tool("early_tool")] })];
+	const toolTurn = makeAssistantMessage(claude, { stopReason: "toolUse", parts: [makeCompletedToolCall("call-1")] });
+	const later = [
+		toolTurn,
+		system({ toolsAdded: [lateTool], toolsRemoved: [{ name: "drop_tool" }] }),
+		makeUserMessage("second"),
+	];
+
+	it("declares the catalog deferred up front and references a later change", async () => {
+		const before = await capture(first);
+		const after = await capture([...first, ...later]);
+
+		// Every tool is declared from the first request on, so a later change keeps the list as it was.
+		expect(after.tools).toEqual(before.tools);
+		expect(after.tools).toEqual([
+			"base_tool",
+			"drop_tool",
+			"early_tool",
+			"late_tool (deferred)",
+			"spare_tool (deferred)",
+		]);
+		expect(after.messages).toEqual([
+			["user", "first"],
+			["assistant", "tool_use"],
+			["user", "tool_result | second"],
+			["system", "tool_removal drop_tool | tool_addition late_tool"],
+		]);
 	});
 });

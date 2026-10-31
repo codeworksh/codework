@@ -39,6 +39,8 @@ export interface Resolved {
 	readonly wire: ReadonlyArray<Message.Tool>;
 	/** The offered tools' wire view: the tool state the transcript's system messages bring `wire` to. */
 	readonly offered: ReadonlyArray<Message.Tool>;
+	/** Every deferred tool in the catalog, loaded or not: what a transcript system message may add. */
+	readonly deferred: ReadonlyArray<Message.Tool>;
 	/**
 	 * Transform one complete pending tool-call part into a complete terminal part. The **only**
 	 * execution entry point — the
@@ -86,6 +88,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 	const defs = Object.freeze(effective.map((entry) => entry.tool.definition));
 	const names = Object.freeze(effective.map((entry) => entry.tool.definition.name));
 	const isDeferred = (entry: ToolRegistration) => entry.tool.definition.exposure === "deferred";
+	const catalog = Object.freeze(effective.filter(isDeferred).map((entry) => toAikitTool(entry.tool.definition)));
 
 	const resolve = (selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>): Resolved => {
 		const removed = new Set(selection?.remove);
@@ -113,6 +116,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 			defs: Object.freeze(offered.map((entry) => entry.tool.definition)),
 			wire: Object.freeze(declaredSet.map((entry) => toAikitTool(entry.tool.definition))),
 			offered: Object.freeze([...executor.wire]),
+			deferred: catalog,
 			handle: executor.handle,
 		});
 	};

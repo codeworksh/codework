@@ -1,3 +1,4 @@
+import { Transcript } from "@codeworksh/aikit";
 import "./utils/env.ts";
 import { Effect, Option } from "effect";
 import { createHash } from "node:crypto";
@@ -108,7 +109,7 @@ describe("a running session", () => {
 							hostCwd: project,
 							database: ":memory:",
 							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
+								prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 								return open(request, signal);
 							},
 						}),
@@ -280,7 +281,7 @@ describe("a running session and the store", () => {
 							hostCwd: project,
 							database: ":memory:",
 							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
+								prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 								return open(request, signal);
 							},
 						}),
@@ -349,7 +350,7 @@ describe("boot", () => {
 							hostCwd: project,
 							database: ":memory:",
 							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
+								prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 								return open(request, signal);
 							},
 						}),
@@ -407,7 +408,7 @@ describe("boot", () => {
 							hostCwd: bin,
 							database: ":memory:",
 							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
+								prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 								return open(request, signal);
 							},
 						}),
@@ -464,7 +465,7 @@ describe("reload", () => {
 						hostCwd: input.hostCwd ?? input.project,
 						database: ":memory:",
 						llm: (request, signal) => {
-							input.prompts.push(request.context.systemPrompt ?? "");
+							input.prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 							return open(request, signal);
 						},
 					}),
@@ -717,7 +718,7 @@ describe("linking a session to a host directory", () => {
 							hostCwd: elsewhere,
 							database: ":memory:",
 							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
+								prompts.push(Transcript.getCurrentSystemPrompt(request.context));
 								return open(request, signal);
 							},
 						}),
