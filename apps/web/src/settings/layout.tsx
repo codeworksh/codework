@@ -26,7 +26,7 @@ export function SettingsSidebar() {
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
-				<h1 className="flex h-8 items-center px-2.5 text-sm font-semibold text-ink">Settings</h1>
+				<h1 className="flex h-7 items-center px-2.5 text-ui font-medium text-ink">Settings</h1>
 				<div className="relative">
 					<Search
 						className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted"
@@ -37,7 +37,7 @@ export function SettingsSidebar() {
 						placeholder="Search"
 						aria-label="Search settings"
 						value={query}
-						className="h-8 rounded-lg border-transparent bg-transparent pl-8 text-sm shadow-none focus-visible:bg-ink/5"
+						className="h-7 rounded-md border-transparent bg-transparent pl-8 text-ui shadow-none focus-visible:bg-selection-subtle"
 						onChange={(event) => setQuery(event.target.value)}
 						onKeyDown={(event) => {
 							const first = matches[0];
@@ -65,7 +65,7 @@ export function SettingsSidebar() {
 												<SidebarMenuButton
 													asChild
 													isActive={current}
-													className="h-8 rounded-lg px-2.5 text-sm text-ink-muted data-[active=true]:bg-ink/8 data-[active=true]:text-ink"
+													className="h-7 rounded-md px-2.5 text-ui text-ink-muted data-[active=true]:bg-selection data-[active=true]:text-ink"
 												>
 													<Link to={to} aria-current={current ? "page" : undefined}>
 														<Icon className="size-4" strokeWidth={1.5} aria-hidden />

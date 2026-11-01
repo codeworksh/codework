@@ -16,10 +16,10 @@ export function Page({
 	children: ReactNode;
 }) {
 	return (
-		<div className="mx-auto flex w-full max-w-248 flex-col gap-8 px-5 py-8 text-sm sm:px-8 sm:py-10">
+		<div className="@container mx-auto flex w-full max-w-conversation flex-col gap-6 px-5 py-8 text-ui sm:px-8">
 			<header className="flex flex-col gap-2">
 				<div className="flex items-center gap-4">
-					<h1 className="min-w-0 flex-1 text-2xl/tight font-semibold tracking-tight">{title}</h1>
+					<h1 className="min-w-0 flex-1 text-[22px]/tight font-semibold tracking-tight">{title}</h1>
 					{actions}
 				</div>
 				{description !== undefined && <p className="text-ink-muted">{description}</p>}
@@ -31,8 +31,8 @@ export function Page({
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
-		<section className="flex flex-col gap-3">
-			<h2 className="text-sm font-semibold">{title}</h2>
+		<section className="flex flex-col gap-2">
+			<h2 className="flex min-h-7 items-center text-ui font-medium text-ink-muted">{title}</h2>
 			{children}
 		</section>
 	);
@@ -54,10 +54,10 @@ export function Row({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4">
+		<div className="flex flex-col items-start gap-3 px-4 py-3 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:gap-4">
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<span className="font-medium">{title}</span>
-				{description !== undefined && <span className="text-sm text-ink-muted">{description}</span>}
+				{description !== undefined && <span className="text-ui text-ink-muted">{description}</span>}
 			</div>
 			{children}
 		</div>

@@ -99,10 +99,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	});
 
 	return (
-		<nav
-			aria-label="Workspaces"
-			className="ml-3 flex min-w-0 items-center rounded-xl bg-ink/5 p-1 [-webkit-app-region:no-drag]"
-		>
+		<nav aria-label="Workspaces" className="flex min-w-0 items-center gap-1 [-webkit-app-region:no-drag]">
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
@@ -113,19 +110,19 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 						{index > 0 && (
 							<span aria-hidden className={`mx-0.5 h-4 w-px shrink-0 bg-ink/12 ${divider ? "" : "invisible"}`} />
 						)}
-						<div className="group relative flex h-8 w-56 min-w-16 shrink basis-56">
+						<div className="group relative flex h-tab w-56 min-w-16 shrink basis-56">
 							<Link
 								{...workspaceRoute(workspace)}
 								aria-current={current ? "page" : undefined}
 								title={`${tab}\n${shortcutLabel(index + 1)}`}
-								className={`flex size-full min-w-0 items-center gap-2 rounded-lg pr-3 pl-1.5 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+								className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-3 pl-2 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 									current
-										? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
-										: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
+										? "bg-selection text-ink"
+										: "bg-ink/4 text-ink-muted hover:bg-selection-subtle hover:text-ink"
 								}`}
 							>
 								<span
-									className={`grid size-6 shrink-0 place-items-center rounded-md border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
+									className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
 								>
 									<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
 								</span>

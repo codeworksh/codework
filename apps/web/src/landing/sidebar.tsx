@@ -75,20 +75,23 @@ export function SessionsSidebar() {
 							aria-label="Search sessions"
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							className="h-8 rounded-lg border-transparent bg-transparent pl-8 text-sm shadow-none focus-visible:bg-ink/5"
+							className="h-7 rounded-md border-transparent bg-transparent pl-8 text-ui shadow-none focus-visible:bg-selection-subtle"
 						/>
 					</div>
 					<button
 						type="button"
 						onClick={startNew}
-						className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-ink transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+						className="mt-1 flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-ui text-ink outline-none hover:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring press"
 					>
 						<SquarePen className="size-3.5 text-ink-muted" aria-hidden />
-						New
+						New session
 					</button>
 				</div>
 			</SidebarHeader>
-			<SidebarContent className="px-2 pt-2 pb-2">
+			<SidebarContent className="gap-0 px-2 pb-2">
+				<h2 className="flex h-7 shrink-0 items-center px-2.5 text-2xs font-medium text-ink-muted">
+					Recent sessions
+				</h2>
 				{problem !== undefined ? (
 					<OpenProviderSettings
 						problem={problem}
@@ -103,18 +106,18 @@ export function SessionsSidebar() {
 						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
 								<>
-									<span>No Projects Yet</span>
+									<span>No projects yet</span>
 									{addProject !== undefined && (
 										<EmptyAction
 											icon={<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
 											onClick={addProject}
 										>
-											Add Project
+											Add project
 										</EmptyAction>
 									)}
 								</>
 							) : (
-								<span>No Sessions Yet</span>
+								<span>No sessions yet</span>
 							)}
 						</Empty>
 					)
@@ -126,16 +129,16 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="block w-full rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-current:bg-ink/8"
+									className="block w-full rounded-md px-2.5 py-2 text-left outline-none hover:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
-									<div className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+									<div className="flex h-4 min-w-0 items-center gap-1.5 text-2xs text-ink-muted">
 										<Monogram id={session.project.id} name={session.project.name} />
 										<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
 										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
 									</div>
-									<div className="mt-1 truncate text-sm text-ink">{session.title}</div>
+									<div className="mt-1 truncate text-ui text-ink">{session.title}</div>
 								</button>
 							</li>
 						))}

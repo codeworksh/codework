@@ -13,7 +13,7 @@ export const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
 export const chromeButton =
-	"grid size-7 shrink-0 place-items-center rounded-lg text-ink-muted press [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+	"grid size-6 shrink-0 place-items-center rounded-md text-ink-muted press [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 /** Window-level navigation remains available on Home, workspaces, and settings. */
 export function NavigationControls() {
@@ -28,10 +28,10 @@ export function NavigationControls() {
 	const index = useLocation({ select: (location) => location.state.__TSR_index });
 	const canGoForward = index < router.history.length - 1;
 	return (
-		<header className="flex h-12 w-full shrink-0 items-center border-b border-edge/50 bg-desktop pr-2 select-none [-webkit-app-region:drag]">
+		<header className="flex h-titlebar w-full shrink-0 items-center bg-desktop pr-2 select-none [-webkit-app-region:drag]">
 			<div
 				className={`flex shrink-0 items-center gap-1 px-2 ${insetTitleBar ? "min-w-44 pl-20" : "min-w-28"}`}
-				style={{ width: withSidebar ? "calc(52px + var(--sidebar-width))" : undefined }}
+				style={{ width: withSidebar ? "calc(var(--cw-rail-width) + var(--sidebar-width))" : undefined }}
 			>
 				<button
 					type="button"

@@ -24,7 +24,7 @@ const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 const PAGE = 60;
 
 // Shared reading width for the transcript and floating composer.
-const contentWidth = "mx-auto w-full max-w-[62rem]";
+const contentWidth = "mx-auto w-full max-w-conversation";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const thread = useMemo(() => threadRef(address), [address]);
@@ -309,7 +309,7 @@ function Transcript({
 	if (turns.length === 0)
 		return (
 			<div className="flex min-h-0 flex-1 items-center justify-center p-3">
-				<p className="text-center text-sm text-ink-muted/40">Send a message to start the conversation.</p>
+				<p className="text-center text-body text-ink-muted">Send a message to start the conversation.</p>
 			</div>
 		);
 	return (
@@ -384,7 +384,7 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
-		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-sm leading-relaxed`}>
+		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-body`}>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
 			{(work.length > 0 || thinking || answer.length > 0 || interrupted) && (
 				<Message role="assistant" at={turn.replies[0]?.createdAt}>
@@ -426,7 +426,7 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	return (
 		<Message role="user" at={entry.createdAt}>
 			{text !== "" && <p className="whitespace-pre-wrap">{text}</p>}
-			{images > 0 && <p className="text-xs text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>}
+			{images > 0 && <p className="text-xs text-message-ink/65">{images === 1 ? "1 image" : `${images} images`}</p>}
 		</Message>
 	);
 }

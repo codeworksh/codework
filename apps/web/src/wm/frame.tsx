@@ -88,7 +88,7 @@ export function Frame(props: FrameProps) {
 			<div
 				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
 			>
-				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
+				<header className="flex h-pane shrink-0 items-center gap-1 border-b border-edge pr-2 pl-1.5 select-none">
 					<div
 						ref={handleRef}
 						className={`flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}

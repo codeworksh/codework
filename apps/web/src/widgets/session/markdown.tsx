@@ -78,8 +78,8 @@ function CodeBlock(props: ComponentProps<"pre"> & ExtraProps) {
 	);
 }
 
-const preClass = "overflow-x-auto px-3 py-2 font-mono text-xs leading-relaxed";
-const Table = styled("table", "border-collapse text-sm");
+const preClass = "overflow-x-auto px-3 py-2 font-mono text-code";
+const Table = styled("table", "border-collapse text-body");
 
 // GitHub-flavoured markdown at reading size.
 const components: Components = {
@@ -87,9 +87,9 @@ const components: Components = {
 	ul: styled("ul", "my-2 list-disc pl-5"),
 	ol: styled("ol", "my-2 list-decimal pl-5"),
 	li: styled("li", "my-0.5"),
-	h1: styled("h1", "mt-4 mb-2 text-[17px] font-semibold"),
-	h2: styled("h2", "mt-4 mb-2 text-base font-semibold"),
-	h3: styled("h3", "mt-3 mb-1.5 font-semibold"),
+	h1: styled("h1", "mt-4 mb-2 text-[22px] font-semibold tracking-tight"),
+	h2: styled("h2", "mt-4 mb-2 text-lg font-semibold tracking-tight"),
+	h3: styled("h3", "mt-3 mb-1.5 text-2xs font-semibold tracking-[0.08em] uppercase"),
 	strong: styled("strong", "font-semibold text-ink"),
 	blockquote: styled("blockquote", "my-2 border-l-2 border-edge pl-3 text-ink-muted"),
 	pre: CodeBlock,

@@ -5,21 +5,47 @@
 /* `--cw-*` are the theme contract widgets style against. They map onto the site palette's `--t-*`
    tokens, so switching data-theme restyles everything; light-dark() follows the theme's color-scheme. */
 :root {
-	/* A quiet shell tint keeps even White and near-black palettes spatially legible. */
-	--cw-desktop: color-mix(in oklab, var(--t-bg) 96%, var(--t-text));
+	--cw-desktop: var(--t-bg);
 	--cw-frame: var(--t-surface);
 	/* A touch lighter than the frame (whiter in light palettes), for the panel's top-down gradient. */
 	--cw-frame-top: light-dark(
 		color-mix(in oklab, var(--t-surface) 88%, white),
 		color-mix(in oklab, var(--t-surface) 97%, var(--t-text))
 	);
-	--cw-edge: color-mix(in oklab, var(--t-surface) 88%, var(--t-text));
-	--cw-edge-focus: color-mix(in oklab, var(--t-surface) 76%, var(--t-text));
-	--cw-ink: color-mix(in oklab, var(--t-text) 96%, var(--t-surface));
-	--cw-ink-secondary: color-mix(in oklab, var(--t-text) 85%, var(--t-surface));
-	--cw-ink-muted: color-mix(in oklab, var(--t-text) 75%, var(--t-surface));
-	--cw-brand: light-dark(color-mix(in oklab, var(--t-brand) 85%, var(--t-text)), var(--t-brand));
+	--cw-edge: color-mix(in srgb, var(--t-text) 7%, transparent);
+	--cw-edge-focus: color-mix(in srgb, var(--t-text) 20%, transparent);
+	--cw-ink: var(--t-text);
+	--cw-ink-secondary: var(--t-text-secondary);
+	--cw-ink-muted: var(--t-text-muted);
+	--cw-brand: var(--t-brand);
 	--cw-brand-ink: var(--t-brand-ink);
+	/* Shared dimensions keep native chrome, fixed navigation and the sidebar aligned. */
+	--cw-titlebar-height: 40px;
+	--cw-rail-width: 52px;
+	--cw-content-width: 832px;
+	--cw-selection-subtle: light-dark(
+		color-mix(in srgb, var(--cw-ink) 5%, transparent),
+		color-mix(in srgb, var(--cw-ink) 8%, transparent)
+	);
+	--cw-selection: light-dark(
+		color-mix(in srgb, var(--cw-ink) 6%, transparent),
+		color-mix(in srgb, var(--cw-ink) 10%, transparent)
+	);
+	--cw-selection-strong: light-dark(
+		color-mix(in srgb, var(--cw-ink) 7%, transparent),
+		color-mix(in srgb, var(--cw-ink) 12%, transparent)
+	);
+	--cw-selection-hover: light-dark(
+		color-mix(in srgb, var(--cw-ink) 10%, transparent),
+		color-mix(in srgb, var(--cw-ink) 15%, transparent)
+	);
+	--cw-primary: var(--cw-ink);
+	--cw-primary-ink: var(--cw-frame);
+	--cw-message: light-dark(#0a0a0a, var(--cw-selection));
+	--cw-message-ink: light-dark(#ffffff, var(--cw-ink));
+	--cw-composer: light-dark(var(--cw-frame), color-mix(in srgb, var(--cw-frame) 94%, transparent));
+	--cw-sidebar: light-dark(var(--cw-desktop), color-mix(in srgb, var(--cw-desktop) 85%, transparent));
+	--cw-composer-shadow: 0 2px 6px var(--cw-shadow-near), 0 6px 24px var(--cw-shadow-far);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
 	--cw-warning: light-dark(#d97706, #fbbf24);
@@ -38,7 +64,7 @@
 	--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 	/* Tailwind's built-in curves are too weak for UI motion. */
-	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 	/* Sizes below Tailwind's xs, for dense chrome: badges, kbd hints, metadata. */
 	--text-2xs: 0.6875rem;
@@ -47,9 +73,26 @@
 	--text-3xs--line-height: calc(0.875 / 0.625);
 	--text-4xs: 0.5rem;
 	--text-4xs--line-height: 1;
+	--text-ui: 0.75rem;
+	--text-ui--line-height: 1.4;
+	--text-body: 0.8125rem;
+	--text-body--line-height: 1.6;
+	--text-code: 0.78125rem;
+	--text-code--line-height: 1.6;
 }
 
 @theme inline {
+	--spacing-titlebar: var(--cw-titlebar-height);
+	--spacing-rail: var(--cw-rail-width);
+	--spacing-tab: 27px;
+	--spacing-pane: 36px;
+	--container-conversation: var(--cw-content-width);
+	--color-selection-subtle: var(--cw-selection-subtle);
+	--color-selection: var(--cw-selection);
+	--color-selection-strong: var(--cw-selection-strong);
+	--color-selection-hover: var(--cw-selection-hover);
+	--color-message: var(--cw-message);
+	--color-message-ink: var(--cw-message-ink);
 	--color-desktop: var(--cw-desktop);
 	--color-frame: var(--cw-frame);
 	--color-frame-top: var(--cw-frame-top);
@@ -68,13 +111,13 @@
 	--color-card-foreground: var(--cw-ink);
 	--color-popover: var(--cw-frame-top);
 	--color-popover-foreground: var(--cw-ink);
-	--color-primary: var(--cw-brand);
-	--color-primary-foreground: var(--cw-brand-ink);
-	--color-secondary: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-primary: var(--cw-primary);
+	--color-primary-foreground: var(--cw-primary-ink);
+	--color-secondary: var(--cw-selection-subtle);
 	--color-secondary-foreground: var(--cw-ink);
 	--color-muted: color-mix(in oklab, var(--cw-ink) 6%, transparent);
 	--color-muted-foreground: var(--cw-ink-muted);
-	--color-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-accent: var(--cw-selection-subtle);
 	--color-accent-foreground: var(--cw-ink);
 	--color-destructive: var(--cw-danger);
 	--color-warning: var(--cw-warning);
@@ -83,11 +126,11 @@
 	--color-border: var(--cw-edge);
 	--color-input: var(--cw-edge-focus);
 	--color-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
-	--color-sidebar: var(--cw-frame);
+	--color-sidebar: var(--cw-sidebar);
 	--color-sidebar-foreground: var(--cw-ink);
 	--color-sidebar-primary: var(--cw-ink);
 	--color-sidebar-primary-foreground: var(--cw-frame);
-	--color-sidebar-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-sidebar-accent: var(--cw-selection-subtle);
 	--color-sidebar-accent-foreground: var(--cw-ink);
 	--color-sidebar-border: var(--cw-edge);
 	--color-sidebar-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
@@ -98,18 +141,23 @@
 
 /* The raised card every frame and settings pane sits on. */
 @utility panel {
-	@apply rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)];
+	@apply rounded-xl border border-edge bg-frame shadow-xs;
+}
+
+@utility composer-surface {
+	@apply rounded-xl border border-ink/10 bg-(--cw-composer) backdrop-blur-xl;
+	box-shadow: var(--cw-composer-shadow);
 }
 
 /* Dialogs float over a blurred desktop: a translucent card with a deep, soft shadow. */
 @utility dialog-glass {
-	@apply rounded-2xl border border-edge bg-frame/85 backdrop-blur-xl backdrop-saturate-150;
+	@apply rounded-xl border border-edge bg-(--cw-composer) backdrop-blur-xl;
 	box-shadow: var(--cw-dialog-shadow);
 }
 
 /* Pressable icon and trigger buttons: a slight press-in on top of their hover colors. */
 @utility press {
-	@apply transition-[background-color,color,scale] duration-150 active:scale-[0.97];
+	@apply transition-[background-color,color,scale] duration-120 ease-out active:scale-[0.97];
 }
 
 @utility dialog-backdrop {
@@ -147,7 +195,11 @@
 	}
 
 	body {
-		@apply bg-desktop font-sans text-[13px]/[1.4] text-ink antialiased;
+		@apply bg-desktop font-sans text-ui text-ink antialiased;
+	}
+
+	::selection {
+		background: color-mix(in srgb, var(--cw-brand) 35%, transparent);
 	}
 
 	h1,
@@ -178,20 +230,25 @@
 
 /* The navigation rail stays put when the shadcn sessions sidebar folds away. */
 .app-shell [data-slot="sidebar"] > .shell-sidebar {
-	left: 52px;
-	top: 48px;
-	height: calc(100svh - 56px);
+	left: var(--cw-rail-width);
+	top: var(--cw-titlebar-height);
+	height: calc(100svh - var(--cw-titlebar-height) - 8px);
 	border: 0;
-	border-right: 1px solid color-mix(in oklab, var(--cw-edge) 60%, transparent);
+	border-right: 1px solid var(--cw-edge);
 	border-radius: 12px 0 0 12px;
-	background: var(--cw-frame);
+	background: var(--cw-sidebar);
+	backdrop-filter: blur(24px);
 }
 .app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
-	left: calc(52px - var(--sidebar-width));
+	left: calc(var(--cw-rail-width) - var(--sidebar-width));
 	visibility: hidden;
 }
 .app-shell .shell-sidebar [data-slot="sidebar-inner"] {
 	background: transparent;
+}
+
+[data-theme="light"] :is(.composer-surface, .dialog-glass, .shell-sidebar) {
+	backdrop-filter: none;
 }
 
 /* Sidebar and title-bar tabs follow the same width without trailing one another. */
