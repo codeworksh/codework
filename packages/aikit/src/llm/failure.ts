@@ -228,6 +228,32 @@ export function normalize(error: unknown): Failure {
 	return { _tag: "Unknown", message: errorMessage(error), retryable: false };
 }
 
+/**
+ * Claude rejects a request whose strict tools exceed its limits with one of these messages. Observed limits:
+ * 20 strict tools, and 16 optional or union-typed parameters across all strict tools.
+ */
+const STRICT_TOOL_LIMIT_MESSAGES = [
+	"The compiled grammar is too large",
+	"Too many strict tools (",
+	"Schemas contains too many parameters with union types (",
+];
+
+/** The provider's own message when it rejected the request for exceeding its strict-tool limits. */
+export function strictToolLimitMessage(error: unknown): string | undefined {
+	if (RetryError.isInstance(error)) return strictToolLimitMessage(error.lastError);
+	if (!APICallError.isInstance(error) || error.statusCode !== 400) return;
+	const data = record(error.data) ?? record(parseJson(error.responseBody));
+	// Anthropic's body is `{ type: "error", error: { type, message } }`, so the top-level type is not the code.
+	const nested = record(data?.error);
+	if (nested?.type !== "invalid_request_error") return;
+	const message = nonEmptyString(nested.message) ?? error.message;
+	return STRICT_TOOL_LIMIT_MESSAGES.some((limit) => message.includes(limit)) ? message : undefined;
+}
+
+export function isStrictToolLimitError(error: unknown): boolean {
+	return strictToolLimitMessage(error) !== undefined;
+}
+
 /** Best-effort compatibility for terminal messages written before structured failures existed. */
 export function fromMessage(message: string): Failure {
 	const normalized = normalizeMessage(message);

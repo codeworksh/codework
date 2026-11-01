@@ -9,12 +9,14 @@ import { Options, type ProviderOptionBag, type RuntimeOptions } from "./options.
 import * as Pricing from "./pricing.ts";
 import * as Protocol from "./protocol.ts";
 import { resolveAISDKLanguageModel } from "./provider.ts";
+import { resolveMethod } from "./registry.ts";
 import { formatThrownError } from "./runtime.ts";
 import { applyDefaultMaxTokens } from "./shared.ts";
 import * as Thinking from "./thinking.ts";
 import {
 	googleThoughtSignature,
 	convertMessages,
+	isAnthropicWire,
 	isOwnResponses,
 	convertTools,
 	requestTools,
@@ -417,7 +419,6 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
 			// Every tool callable now, so calls to tools declared in place still parse.
 			const declared = requestTools(context, model, runtimeOptions.method, runtimeOptions.activeTools);
-			const tools = convertTools(declared.tools, model, runtimeOptions.method, declared.deferred);
 			const messages = convertMessages(context, model, runtimeOptions.method, runtimeOptions.activeTools);
 			const providerOptions = resolveProviderOptions(model, context, runtimeOptions, plan) as Parameters<
 				typeof streamText<ToolSet>
@@ -429,45 +430,91 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 					providerOptions as ProviderOptionBag,
 				),
 			};
-			const activeTools = runtimeOptions.activeTools?.filter((name) => !tools || name in tools);
 
-			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
-				model: languageModel,
-				// Our own Responses transport receives the system prompt among the messages.
-				system: isOwnResponses(model, runtimeOptions.method)
-					? undefined
-					: leadingSystemPrompt(context, model, runtimeOptions.method),
-				messages,
-				// Prompt and tool changes sent in place travel as system messages.
-				allowSystemInMessages: messages.some((message) => message.role === "system") || undefined,
-				tools,
-				toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],
-				activeTools,
-				maxOutputTokens: resolveMaxOutputTokens(model, plan),
-				temperature: model.compat?.supportsTemperature === false ? undefined : runtimeOptions.temperature,
-				providerOptions,
-				// The exact body is where `providerThinkingLevel` is read from.
-				include: { requestBody: true },
-				abortSignal: runtimeOptions.signal,
-				timeout: resolveTimeout(runtimeOptions),
-				maxRetries: runtimeOptions.maxRetries,
-				headers: runtimeOptions.headers,
-				// Aikit owns error normalization and emits one terminal error event.
-				// AI SDK's default callback logs the raw exception (including request
-				// payloads) before that event can reach an SDK or CLI consumer.
-				onError: () => {},
-			});
+			const buildParams = async (preferNonStrict: boolean) => {
+				const tools = convertTools(
+					declared.tools,
+					model,
+					runtimeOptions.method,
+					declared.deferred,
+					preferNonStrict,
+				);
+				const sentPreferStrict =
+					declared.tools?.some(
+						(tool) =>
+							tool.constrainedSampling &&
+							tool.constrainedSampling.type === "json_schema" &&
+							tool.constrainedSampling.strict === "prefer" &&
+							tools?.[tool.name]?.strict === true,
+					) ?? false;
+				const activeTools = runtimeOptions.activeTools?.filter((name) => !tools || name in tools);
 
-			const payload = await runtimeOptions.onPayload?.(params, model);
-			if (payload !== undefined) {
-				params = payload as Parameters<typeof streamText<ToolSet>>[0];
-			}
+				let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
+					model: languageModel,
+					// Our own Responses transport receives the system prompt among the messages.
+					system: isOwnResponses(model, runtimeOptions.method)
+						? undefined
+						: leadingSystemPrompt(context, model, runtimeOptions.method),
+					messages,
+					// Prompt and tool changes sent in place travel as system messages.
+					allowSystemInMessages: messages.some((message) => message.role === "system") || undefined,
+					tools,
+					toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],
+					activeTools,
+					maxOutputTokens: resolveMaxOutputTokens(model, plan),
+					temperature: model.compat?.supportsTemperature === false ? undefined : runtimeOptions.temperature,
+					providerOptions,
+					// The exact body is where `providerThinkingLevel` is read from.
+					include: { requestBody: true },
+					abortSignal: runtimeOptions.signal,
+					timeout: resolveTimeout(runtimeOptions),
+					maxRetries: runtimeOptions.maxRetries,
+					headers: runtimeOptions.headers,
+					// Aikit owns error normalization and emits one terminal error event.
+					// AI SDK's default callback logs the raw exception (including request
+					// payloads) before that event can reach an SDK or CLI consumer.
+					onError: () => {},
+				});
 
-			const result = streamText(params);
+				const payload = await runtimeOptions.onPayload?.(params, model);
+				if (payload !== undefined) {
+					params = payload as Parameters<typeof streamText<ToolSet>>[0];
+				}
+				return { params, sentPreferStrict };
+			};
+
+			let preferNonStrict = false;
+			let built = await buildParams(preferNonStrict);
 			stream.push({ type: "start", partial: output });
-
-			for await (const part of result.fullStream) {
-				handlePart(part, output, model, stream, pricing);
+			for (;;) {
+				try {
+					for await (const part of streamText(built.params).fullStream) {
+						handlePart(part, output, model, stream, pricing);
+					}
+					break;
+				} catch (error) {
+					// Claude refuses the whole request when strict tools exceed its limits, and `prefer` tools
+					// can go non-strict instead. Only a request refused before anything streamed is retried, once.
+					const limitMessage = Failure.strictToolLimitMessage(error);
+					if (
+						preferNonStrict ||
+						runtimeOptions.signal?.aborted ||
+						output.parts.length > 0 ||
+						!built.sentPreferStrict ||
+						!isAnthropicWire(model, resolveMethod(model, runtimeOptions.method)) ||
+						limitMessage === undefined
+					) {
+						throw error;
+					}
+					(output.diagnostics ??= []).push({
+						type: "strictToolsFallback",
+						timestamp: Date.now(),
+						error: { message: limitMessage },
+						details: { reason: "strictToolLimits" },
+					});
+					preferNonStrict = true;
+					built = await buildParams(preferNonStrict);
+				}
 			}
 
 			if (runtimeOptions.signal?.aborted || output.stopReason === "aborted") {

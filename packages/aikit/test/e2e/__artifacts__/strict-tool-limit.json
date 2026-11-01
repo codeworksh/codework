@@ -1,0 +1,84 @@
+{
+  "toolCount": {
+    "attempts": [
+      {
+        "count_tool_1": true,
+        "count_tool_2": true,
+        "count_tool_3": true,
+        "count_tool_4": true,
+        "count_tool_5": true,
+        "count_tool_6": true,
+        "count_tool_7": true,
+        "count_tool_8": true,
+        "count_tool_9": true,
+        "count_tool_10": true,
+        "count_tool_11": true,
+        "count_tool_12": true,
+        "count_tool_13": true,
+        "count_tool_14": true,
+        "count_tool_15": true,
+        "count_tool_16": true,
+        "count_tool_17": true,
+        "count_tool_18": true,
+        "count_tool_19": true,
+        "count_tool_20": true,
+        "count_tool_21": true,
+        "required_tool": true
+      },
+      {
+        "count_tool_1": false,
+        "count_tool_2": false,
+        "count_tool_3": false,
+        "count_tool_4": false,
+        "count_tool_5": false,
+        "count_tool_6": false,
+        "count_tool_7": false,
+        "count_tool_8": false,
+        "count_tool_9": false,
+        "count_tool_10": false,
+        "count_tool_11": false,
+        "count_tool_12": false,
+        "count_tool_13": false,
+        "count_tool_14": false,
+        "count_tool_15": false,
+        "count_tool_16": false,
+        "count_tool_17": false,
+        "count_tool_18": false,
+        "count_tool_19": false,
+        "count_tool_20": false,
+        "count_tool_21": false,
+        "required_tool": true
+      }
+    ],
+    "stopReason": "stop",
+    "diagnostics": [
+      {
+        "type": "strictToolsFallback",
+        "reason": "strictToolLimits"
+      }
+    ]
+  },
+  "unionCount": {
+    "attempts": [
+      {
+        "required_tool": true,
+        "union_tool_1": true,
+        "union_tool_2": true,
+        "union_tool_3": true
+      },
+      {
+        "required_tool": true,
+        "union_tool_1": false,
+        "union_tool_2": false,
+        "union_tool_3": false
+      }
+    ],
+    "stopReason": "stop",
+    "diagnostics": [
+      {
+        "type": "strictToolsFallback",
+        "reason": "strictToolLimits"
+      }
+    ]
+  }
+}

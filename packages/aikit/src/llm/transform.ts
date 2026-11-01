@@ -102,7 +102,7 @@ type MovedImages = "anthropicError" | "chat" | "gemini";
 
 const COPILOT = "@codeworksh/ai-sdk-github-copilot";
 
-function isAnthropicWire(model: Model.Info, method: Model.APIMethodEnum): boolean {
+export function isAnthropicWire(model: Model.Info, method: Model.APIMethodEnum): boolean {
 	if (packageForModel(model) === COPILOT) return method === Model.APIMethodEnum.messages;
 	return isAnthropicMessagesModel(model);
 }
@@ -698,8 +698,8 @@ export function grammarToolInputProperties(
 }
 
 /** The parameter schema, strict flag and grammar a tool goes out with on this model. */
-function toolWire(tool: Message.Tool, model?: Model.Info, method?: Model.APIMethodEnum) {
-	const strictParameters = resolveStrictParameters(tool, model);
+function toolWire(tool: Message.Tool, model?: Model.Info, method?: Model.APIMethodEnum, preferNonStrict = false) {
+	const strictParameters = resolveStrictParameters(tool, model, preferNonStrict);
 	const grammarConstraint =
 		model && isOwnResponses(model, method) ? resolveToolGrammar(tool, model.compat) : undefined;
 	return {
@@ -715,12 +715,13 @@ export function convertTools(
 	model?: Model.Info,
 	method?: Model.APIMethodEnum,
 	deferred: ReadonlySet<string> = new Set(),
+	preferNonStrict = false,
 ): ToolSet | undefined {
 	if (!tools || tools.length === 0) return;
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
-		const { inputSchema, strict, providerOptions } = toolWire(tool, model, method);
+		const { inputSchema, strict, providerOptions } = toolWire(tool, model, method, preferNonStrict);
 		const key = model && deferred.has(tool.name) ? Model.optionsKey(model) : undefined;
 		const options =
 			key === undefined

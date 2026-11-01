@@ -29,13 +29,22 @@ export interface FakeAnthropic {
 
 /**
  * Stream `events`, then close -- or, with `stall`, keep the connection open without
- * sending anything more until the SDK aborts it.
+ * sending anything more until the SDK aborts it. With `rejectFirst`, the first request
+ * is refused with a 400 `invalid_request_error` carrying that message.
  */
-export function fakeAnthropic(events: ReadonlyArray<Event>, options: { stall?: boolean } = {}): FakeAnthropic {
+export function fakeAnthropic(
+	events: ReadonlyArray<Event>,
+	options: { stall?: boolean; rejectFirst?: string } = {},
+): FakeAnthropic {
 	let body: unknown;
+	let requests = 0;
 	const fetch: typeof globalThis.fetch = async (_input, init) => {
 		if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
 		body = JSON.parse(init.body);
+		if (requests++ === 0 && options.rejectFirst !== undefined) {
+			const error = { type: "error", error: { type: "invalid_request_error", message: options.rejectFirst } };
+			return new Response(JSON.stringify(error), { status: 400, headers: { "content-type": "application/json" } });
+		}
 		const stream = new ReadableStream<Uint8Array>({
 			start(controller) {
 				for (const event of events) controller.enqueue(sse(event));
