@@ -55,8 +55,8 @@ export interface PromptInput extends ThreadRef {
 export type ResolveError = Session.SessionNotFoundError | Thread.ThreadNotFoundError;
 
 /**
- * Times a run may be cut off by a dying process before the thread is parked instead of resumed.
- * A committed turn starts the count over.
+ * Times in a row a run may be cut off by a dying process before it ends (`session.run.failed`,
+ * `crashloop`) instead of resuming. A committed turn starts the count over.
  */
 export const RESTART_LIMIT = 5;
 
@@ -100,8 +100,9 @@ export interface Interface {
 	readonly active: Effect.Effect<ReadonlySet<ThreadSchema.ID>>;
 	/**
 	 * Resumes the runs the last process left unfinished, as the server starts. One a crash cut off
-	 * counts a restart, one a shutdown closed does not; at {@link RESTART_LIMIT} the thread is parked
-	 * and waits for its next prompt. Resolves once every resumed run has settled.
+	 * counts a restart, one a shutdown closed does not; at {@link RESTART_LIMIT} the run ends visibly
+	 * instead, the thread idle with its queue kept for the next prompt. Resolves once every resumed
+	 * run has settled.
 	 */
 	readonly resumeUnfinished: Effect.Effect<void>;
 	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
@@ -271,8 +272,15 @@ export const layer = Layer.effect(
 					// Claimed again here, not from the list: a stop since then cleared it, and must stand.
 					// Counted before resuming, so a crash inside the resumed run is counted too.
 					const restarts = yield* threads.claimRestart(threadId);
-					if (Option.isNone(restarts) || restarts.value >= RESTART_LIMIT) return;
-					yield* execution.recover(threadId).pipe(
+					if (Option.isNone(restarts)) return;
+					const recovery =
+						restarts.value >= RESTART_LIMIT
+							? execution.abandon(
+									threadId,
+									`The run was interrupted ${restarts.value} times in a row; it is not resumed again`,
+								)
+							: execution.recover(threadId);
+					yield* recovery.pipe(
 						Effect.tapCause((cause) =>
 							Effect.logWarning("Resuming an unfinished thread failed", cause).pipe(
 								Effect.annotateLogs({ threadId }),

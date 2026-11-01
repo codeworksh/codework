@@ -114,7 +114,7 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 	);
 
 	liveIt(
-		"bridges Effect interruption to a partless aborted tombstone",
+		"bridges Effect interruption to an aborted entry keeping what streamed",
 		Effect.gen(function* () {
 			const { threads, sessionId, threadId } = yield* setup;
 			const events = yield* Event.Service;
@@ -149,8 +149,8 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 			const stored = yield* ContextCodec.decodeMessage(path[0]!);
 			if (stored.role !== "assistant") return yield* Effect.die(`stored message is ${stored.role}, not assistant`);
 			expect(stored.stopReason).toBe("aborted");
-			expect(stored.parts).toEqual([]);
 			expect(["thinking", "text"]).toContain(interruptedPart);
+			expect(stored.parts.map((part) => part.type)).toContain(interruptedPart);
 		}),
 		{ timeout: 180_000 },
 	);

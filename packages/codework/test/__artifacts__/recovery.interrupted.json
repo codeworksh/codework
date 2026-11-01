@@ -1,0 +1,89 @@
+{
+	"log": [
+		{
+			"type": "session.created"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "First."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "First."
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "followUp",
+			"text": "Then this."
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 1",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 2",
+			"parts": []
+		},
+		{
+			"type": "session.run.failed",
+			"reason": "interrupted",
+			"message": "The host stopped while the model was answering, on attempt 2"
+		}
+	],
+	"history": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "First."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		}
+	],
+	"queue": [
+		{
+			"delivery": "followUp",
+			"text": "Then this."
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "First."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "First."
+			}
+		]
+	]
+}

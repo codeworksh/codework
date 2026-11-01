@@ -30,8 +30,6 @@ const read = (request: IncomingMessage) =>
 		request.on("error", reject);
 	});
 
-const sse = (chunks: ReadonlyArray<object>) =>
-	`${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`;
 const chunk = (choice: object) => ({
 	id: "chatcmpl-mcp",
 	object: "chat.completion.chunk",
@@ -40,56 +38,86 @@ const chunk = (choice: object) => ({
 	choices: [{ index: 0, ...choice }],
 });
 
+/** One provider response as it streams: `send` writes a chunk carrying `delta`, `finish` ends it. */
+export interface Reply {
+	readonly send: (delta: object) => void;
+	readonly finish: (reason: string) => void;
+}
+
 /**
- * An OpenAI-compatible provider. A request without tool results makes the calls `calls()` names,
- * all in one turn; the request carrying their results answers with them, joined by ` | `.
+ * An OpenAI-compatible provider whose `reply` writes each response (`index` counts requests from
+ * 0). A response it never finishes hangs until the client goes away.
  */
-export const provider = async (calls: () => ReadonlyArray<ToolCall>) => {
+export const streaming = async (reply: (body: ChatRequest, response: Reply, index: number) => void) => {
 	const requests: ChatRequest[] = [];
 	const server = createServer(async (request, response) => {
 		const body = JSON.parse(await read(request)) as ChatRequest;
 		requests.push(body);
 		response.writeHead(200, { "content-type": "text/event-stream" });
+		reply(
+			body,
+			{
+				send: (delta) => response.write(`data: ${JSON.stringify(chunk({ delta }))}\n\n`),
+				finish: (reason) =>
+					response.end(`data: ${JSON.stringify(chunk({ delta: {}, finish_reason: reason }))}\n\ndata: [DONE]\n\n`),
+			},
+			requests.length - 1,
+		);
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	onTestFinished(
+		() =>
+			new Promise<void>((resolve) => {
+				server.closeAllConnections();
+				server.close(() => resolve());
+			}),
+	);
+	return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requests };
+};
+
+/** The assistant delta making `calls`, all in one turn. */
+export const toolCalls = (calls: ReadonlyArray<ToolCall>) => ({
+	role: "assistant",
+	tool_calls: calls.map((call, index) => ({
+		index,
+		id: `call_${index}`,
+		type: "function",
+		function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+	})),
+});
+
+/**
+ * A request without tool results makes the calls `calls()` names, all in one turn; the request
+ * carrying their results answers with them, joined by ` | `.
+ */
+export const provider = (calls: () => ReadonlyArray<ToolCall>) =>
+	streaming((body, response) => {
 		const results = body.messages.filter((message) => message.role === "tool");
 		if (results.length > 0) {
 			const text = results
 				.map((result) => (typeof result.content === "string" ? result.content : JSON.stringify(result.content)))
 				.join(" | ");
-			response.end(
-				sse([
-					chunk({ delta: { role: "assistant", content: `Tool said: ${text}` } }),
-					chunk({ delta: {}, finish_reason: "stop" }),
-				]),
-			);
+			response.send({ role: "assistant", content: `Tool said: ${text}` });
+			response.finish("stop");
 			return;
 		}
-		response.end(
-			sse([
-				chunk({
-					delta: {
-						role: "assistant",
-						tool_calls: calls().map((call, index) => ({
-							index,
-							id: `call_${index}`,
-							type: "function",
-							function: { name: call.name, arguments: JSON.stringify(call.arguments) },
-						})),
-					},
-				}),
-				chunk({ delta: {}, finish_reason: "tool_calls" }),
-			]),
-		);
+		response.send(toolCalls(calls()));
+		response.finish("tool_calls");
 	});
-	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-	onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
-	return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requests };
-};
 
-/** `settings.jsonc` in `directory`, choosing the fake provider's one model. */
-export const writeSettings = (directory: string, url: string) =>
+/** Answers every request with `text`, cut off at the output token limit. */
+export const truncating = (text: string) =>
+	streaming((_body, response) => {
+		response.send({ role: "assistant", content: text });
+		response.finish("length");
+	});
+
+/** `settings.jsonc` in `directory`, choosing the fake provider's one model; `extra` adds settings. */
+export const writeSettings = (directory: string, url: string, extra: object = {}) =>
 	writeFileSync(
 		join(directory, "settings.jsonc"),
 		JSON.stringify({
+			...extra,
 			model: { provider: "mcp", id: "mcp-model" },
 			models: [
 				{
@@ -143,5 +171,49 @@ export const runCli = (
 		child.on("close", (status) => {
 			clearTimeout(deadline);
 			resolve({ status, stdout, stderr });
+		});
+	});
+
+export interface Served {
+	/** The RPC endpoint the server announced. */
+	readonly url: string;
+	/** SIGKILLs the server, as a host dying would, and resolves once it is gone. */
+	readonly kill: () => Promise<void>;
+}
+
+/** Starts `codework serve` from source on an ephemeral port; resolves once it listens. */
+export const serveCli = (
+	args: ReadonlyArray<string>,
+	options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
+) =>
+	new Promise<Served>((resolve, reject) => {
+		const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "serve", "--port", "0"], {
+			cwd: options.cwd,
+			env: options.env,
+		});
+		const exited = new Promise<void>((done) => child.on("exit", () => done()));
+		const kill = () => {
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			return exited;
+		};
+		onTestFinished(kill);
+		let output = "";
+		const deadline = setTimeout(() => {
+			void kill();
+			reject(new Error(`codework serve did not start:\n${output}`));
+		}, 30_000);
+		const listen = (data: Buffer) => {
+			output += data.toString("utf8");
+			const url = /listening on (ws:\/\/\S+)/.exec(output)?.[1];
+			if (url === undefined) return;
+			clearTimeout(deadline);
+			resolve({ url, kill });
+		};
+		child.stdout.on("data", listen);
+		child.stderr.on("data", (data: Buffer) => (output += data.toString("utf8")));
+		child.on("error", reject);
+		child.on("exit", () => {
+			clearTimeout(deadline);
+			reject(new Error(`codework serve exited:\n${output}`));
 		});
 	});

@@ -7,6 +7,7 @@
 
 import { type Message, Transcript } from "@codeworksh/aikit";
 import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
+import type { ContextAssembly } from "../context/assemble.ts";
 import { ContextCodec } from "../context/codec.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
@@ -14,6 +15,7 @@ import { EventList } from "../event/list.ts";
 import { Inbox } from "../inbox/inbox.ts";
 import { McpSection } from "../mcp/section.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
+import { SessionSchema } from "../session/schema.ts";
 import type { ThreadSchema } from "../thread/schema.ts";
 import { Thread } from "../thread/thread.ts";
 import { State } from "../state/state.ts";
@@ -23,28 +25,29 @@ import { Hash } from "../util/hash.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Hooks } from "./hooks.ts";
 import { LLM } from "./llm.ts";
+import { RunnerPart } from "./part.ts";
 import { Retry } from "./retry.ts";
 import { Runner } from "./run.ts";
 
 export type Promotion = "steer" | "followUp" | undefined;
 
 /** A turn that committed an assistant message; `undefined` when it sent no request. */
-export type TurnResult = Pick<Hooks.Completed, "messageId" | "reason"> | undefined;
+export type TurnResult =
+	| (Pick<Hooks.Completed, "messageId" | "reason"> & {
+			/** Whether the reply called tools, every one of them settled by now. */
+			readonly toolCalls: boolean;
+	  })
+	| undefined;
 
 export interface Options {
 	/** Deterministic provider seam for tests. */
 	readonly request?: LLM.Request;
 }
 
-const terminalResult = (text: string) => ({
-	content: [{ type: "text" as const, text }],
-	isError: true as const,
-});
+const { abortedPart, endTime, terminalResult } = RunnerPart;
 
 const encodeJson = (value: unknown) =>
 	Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(value).pipe(Effect.orDie);
-
-const endTime = (call: Message.ToolCallPendingPart, now: number) => Math.max(call.time.end, now);
 
 const skippedPart = (call: Message.ToolCallPendingPart, message: string, now: number): Message.ToolCallSkippedPart => ({
 	...call,
@@ -53,12 +56,37 @@ const skippedPart = (call: Message.ToolCallPendingPart, message: string, now: nu
 	time: { ...call.time, end: endTime(call, now) },
 });
 
-const abortedPart = (call: Message.ToolCallPendingPart, now: number): Message.ToolCallAbortedPart => ({
-	...call,
-	status: "aborted",
-	result: terminalResult("Tool Execution Interrupted"),
-	time: { ...call.time, end: endTime(call, now) },
-});
+const truncatedCall = (name: string) =>
+	`Tool call "${name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`;
+
+/** Replies in a row cut off at the output limit with tool calls before the run ends. */
+const TRUNCATION_LIMIT = 2;
+
+const hasToolCalls = (message: Message.AssistantMessage) => message.parts.some((part) => part.type === "toolCall");
+
+/** Whether the leaf is a reply the model finished: a cut-off one with tool calls is answered once their results are in. */
+const leafAnswered = (assembled: ContextAssembly.Snapshot) => {
+	const leaf =
+		assembled.lastAssistant?.entryId === assembled.leafEntryId ? assembled.lastAssistant.message : undefined;
+	return leaf !== undefined && (leaf.stopReason === "stop" || (leaf.stopReason === "length" && !hasToolCalls(leaf)));
+};
+
+/**
+ * A request the host died with in flight counts as a failed attempt, retried like a transient
+ * provider failure.
+ */
+const hostStopped = (snapshot: State.Snapshot, message: string) =>
+	new Runner.ProviderError({
+		provider: snapshot.provider,
+		model: snapshot.model,
+		reason: new Runner.ProviderTransportError({ message, isRetryable: true }),
+	});
+
+/** A request still in flight when the host died, as recovery finds it. */
+interface Crashed {
+	readonly attempt: number;
+	readonly message: string;
+}
 
 const errorPart = (
 	call: Message.ToolCallPendingPart,
@@ -109,26 +137,37 @@ export const layer = (options: Options = {}) =>
 			const state = yield* State.Service;
 			const requestLLM = options.request ?? LLM.run;
 
+			const decodeDraft = Effect.fn("Loop.decodeDraft")(function* (draft: Thread.HydratedEntry) {
+				const decoded = yield* ContextCodec.decodeMessage(draft).pipe(Effect.orDie);
+				if (decoded.role !== "assistant") return yield* Effect.die(`draft ${draft.entry.id} is not an assistant`);
+				return decoded;
+			});
+
+			/** The aborted entry: what streamed (`partial`, else what the draft holds), its tool calls never run. */
 			const failureStub = Effect.fn("Loop.failureStub")(function* (
 				draft: Thread.HydratedEntry,
 				reason: "aborted" | "error",
 				message: string,
+				partial: Message.AssistantMessage | undefined,
 			) {
-				const decoded = yield* ContextCodec.decodeMessage(draft).pipe(Effect.orDie);
-				if (decoded.role !== "assistant") return yield* Effect.die(`draft ${draft.entry.id} is not an assistant`);
+				const decoded = yield* decodeDraft(draft);
 				const completed = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-				return {
-					...decoded,
-					stopReason: reason,
-					errorMessage: message,
-					time: { ...decoded.time, completed },
-					parts: [],
-				} satisfies Message.AssistantMessage;
+				return RunnerPart.abortCalls(
+					{
+						...decoded,
+						stopReason: reason,
+						errorMessage: message,
+						time: { ...decoded.time, completed },
+						parts: (partial ?? decoded).parts,
+					},
+					completed,
+				);
 			});
 
 			const publishFailure = Effect.fn("Loop.publishFailure")(function* (
 				draft: Thread.HydratedEntry,
 				cause: EventList.TurnAbortCause,
+				partial?: Message.AssistantMessage,
 			) {
 				const reason = cause._tag === "interrupted" ? "aborted" : "error";
 				const message = cause._tag === "interrupted" ? "turn interrupted before commit" : cause.message;
@@ -138,14 +177,106 @@ export const layer = (options: Options = {}) =>
 					threadId: draft.entry.threadId,
 					messageId: SessionMessageSchema.ID.from(draft.entry.id),
 					reason,
-					message: yield* failureStub(draft, reason, message),
+					message: yield* failureStub(draft, reason, message, partial),
 				});
 			});
 
-			const healDanglingDraft = Effect.fn("Loop.healDanglingDraft")(function* (threadId: ThreadSchema.ID) {
+			const publishSettled = Effect.fn("Loop.publishSettled")(function* (
+				ids: { readonly sessionId: SessionSchema.ID; readonly threadId: ThreadSchema.ID },
+				messageId: SessionMessageSchema.ID,
+				part: Message.ToolCallTerminalPart,
+			) {
+				yield* events.publish(EventList.ToolSettled, {
+					timestamp: yield* DateTime.now,
+					sessionId: ids.sessionId,
+					threadId: ids.threadId,
+					messageId,
+					callID: part.callID,
+					part,
+				});
+			});
+
+			const publishCommit = Effect.fn("Loop.publishCommit")(function* (
+				ids: { readonly sessionId: SessionSchema.ID; readonly threadId: ThreadSchema.ID },
+				messageId: SessionMessageSchema.ID,
+				recovered?: true,
+			) {
+				yield* events.publish(EventList.TurnEnded, {
+					timestamp: yield* DateTime.now,
+					sessionId: ids.sessionId,
+					threadId: ids.threadId,
+					messageId,
+					...(recovered === undefined ? {} : { recovered }),
+				});
+			});
+
+			/**
+			 * Settles the draft a dead process left. One whose request was in flight (`inFlight`, its
+			 * failure) is aborted with what streamed. One whose response ended with tool calls had them
+			 * running: those not settled are aborted, never run again, and the turn commits so the model
+			 * sees what ran. Anything else is aborted as interrupted.
+			 */
+			const healDraft = Effect.fn("Loop.healDraft")(function* (
+				threadId: ThreadSchema.ID,
+				inFlight: string | undefined,
+			) {
 				const draft = yield* threads.draft(threadId);
 				if (Option.isNone(draft)) return;
-				yield* publishFailure(draft.value, { _tag: "interrupted" });
+				if (inFlight !== undefined) return yield* publishFailure(draft.value, { _tag: "error", message: inFlight });
+				const decoded = yield* decodeDraft(draft.value);
+				if (!hasToolCalls(decoded)) return yield* publishFailure(draft.value, { _tag: "interrupted" });
+				const ids = { sessionId: draft.value.entry.sessionId, threadId };
+				const messageId = SessionMessageSchema.ID.from(decoded.messageId);
+				yield* Effect.uninterruptible(
+					Effect.gen(function* () {
+						for (const part of decoded.parts) {
+							if (part.type !== "toolCall" || (part.status !== "pending" && part.status !== "running")) continue;
+							const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+							yield* publishSettled(ids, messageId, abortedPart(part, now));
+						}
+						yield* publishCommit(ids, messageId, true);
+					}),
+				);
+			});
+
+			/** Announces a retry of a failed request, then waits it out. */
+			const scheduleRetry = Effect.fn("Loop.scheduleRetry")(function* (
+				snapshot: State.Snapshot,
+				attempt: number,
+				delayMs: number,
+				message: string,
+			) {
+				yield* events.publish(EventList.RetryScheduled, {
+					timestamp: yield* DateTime.now,
+					sessionId: snapshot.sessionId,
+					threadId: snapshot.threadId,
+					attempt,
+					maxRetries: snapshot.retry.maxRetries,
+					delayMs,
+					message,
+				});
+				yield* Effect.sleep(Duration.millis(delayMs));
+			});
+
+			/** Ends a run that is not resumed, leaving the thread idle with its queue kept. */
+			const endRun = Effect.fn("Loop.endRun")(function* (
+				sessionId: SessionSchema.ID,
+				threadId: ThreadSchema.ID,
+				reason: EventList.RunFailed["data"]["reason"],
+				message: string,
+			) {
+				yield* Effect.uninterruptible(
+					Effect.gen(function* () {
+						yield* events.publish(EventList.RunFailed, {
+							timestamp: yield* DateTime.now,
+							sessionId,
+							threadId,
+							reason,
+							message,
+						});
+						yield* threads.idle(threadId);
+					}),
+				);
 			});
 
 			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
@@ -160,35 +291,16 @@ export const layer = (options: Options = {}) =>
 				let interruptedCause: Cause.Cause<never> | undefined;
 				const messageId = SessionMessageSchema.ID.from(message.messageId);
 
-				const settle = Effect.fn("Loop.settleTool")(function* (
-					call: Message.ToolCallPendingPart,
-					part: Message.ToolCallTerminalPart,
-				) {
-					yield* events.publish(EventList.ToolSettled, {
-						timestamp: yield* DateTime.now,
-						sessionId: snapshot.sessionId,
-						threadId: snapshot.threadId,
-						messageId,
-						callID: call.callID,
-						part,
-					});
-				});
-				const commit = Effect.fn("Loop.commitTurn")(function* () {
-					yield* events.publish(EventList.TurnEnded, {
-						timestamp: yield* DateTime.now,
-						sessionId: snapshot.sessionId,
-						threadId: snapshot.threadId,
-						messageId,
-					});
-					markCommitted();
-				});
+				const settle = (part: Message.ToolCallTerminalPart) => publishSettled(snapshot, messageId, part);
+				const commit = () => publishCommit(snapshot, messageId).pipe(Effect.tap(() => Effect.sync(markCommitted)));
 
 				yield* Effect.uninterruptibleMask((restore) =>
 					Effect.gen(function* () {
+						// The model re-issues them from these results: the drain continues as after tool use.
 						if (reason === "length") {
 							for (const call of pending) {
 								const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-								yield* settle(call, skippedPart(call, "tool call arguments were truncated", now));
+								yield* settle(skippedPart(call, truncatedCall(call.name), now));
 							}
 							yield* commit();
 							return;
@@ -197,7 +309,7 @@ export const layer = (options: Options = {}) =>
 						if (reason !== "toolUse") {
 							for (const call of pending) {
 								const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-								yield* settle(call, skippedPart(call, "unexpected tool call for terminal response", now));
+								yield* settle(skippedPart(call, "unexpected tool call for terminal response", now));
 							}
 							yield* commit();
 							return;
@@ -258,7 +370,7 @@ export const layer = (options: Options = {}) =>
 							// cleanup publish a second terminal transition for the same call.
 							yield* Effect.uninterruptible(
 								Effect.gen(function* () {
-									yield* settle(call, handled);
+									yield* settle(handled);
 									yield* Effect.sync(() => settled.add(call.callID));
 								}),
 							);
@@ -275,7 +387,7 @@ export const layer = (options: Options = {}) =>
 							for (const call of pending) {
 								if (settled.has(call.callID)) continue;
 								const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-								yield* settle(call, abortedPart(call, now));
+								yield* settle(abortedPart(call, now));
 							}
 						}
 						yield* commit();
@@ -323,6 +435,7 @@ export const layer = (options: Options = {}) =>
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 				continuing: boolean,
+				carried: Crashed | undefined,
 			) {
 				const { sessionId, threadId } = snapshot;
 				if (promotion !== undefined) {
@@ -335,26 +448,25 @@ export const layer = (options: Options = {}) =>
 				}
 
 				const assembled = yield* context.assemble(threadId);
-				const leaf =
-					assembled.lastAssistant?.entryId === assembled.leafEntryId ? assembled.lastAssistant.message : undefined;
-				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
-					return undefined;
-				}
+				if (leafAnswered(assembled)) return undefined;
 				const messages = [...assembled.messages, ...(yield* declareSystemChanges(snapshot, assembled.messages))];
 
 				// The latest attempt's publisher; a retried turn has one per provider request.
 				let publisher: LLMEventPublisher.Publisher | undefined;
 				let committed = false;
-				let retries = 0;
-				let failed: string | undefined;
+				// A recovered run goes on counting from the request the host died with.
+				let retries = carried?.attempt ?? 0;
+				let failed: string | undefined = carried?.message;
 
 				/** Abort the latest attempt's draft, unless its own terminal event already did. */
 				const settleDraft = (cause: EventList.TurnAbortCause) =>
 					Effect.gen(function* () {
-						if (publisher?.startedMessageId === undefined) return;
+						if (publisher === undefined) return;
+						yield* publisher.stop;
+						if (publisher.startedMessageId === undefined) return;
 						const stored = yield* threads.entry(publisher.startedMessageId);
 						if (Option.isSome(stored) && stored.value.entry.state === "draft") {
-							yield* publishFailure(stored.value, cause);
+							yield* publishFailure(stored.value, cause, publisher.partial);
 						}
 					});
 
@@ -379,6 +491,7 @@ export const layer = (options: Options = {}) =>
 						},
 						{ retry: retries, ...(failed === undefined ? {} : { failed }) },
 					);
+					yield* threads.setAttempt(threadId, retries + 1);
 					const terminal = yield* requestLLM({ threadId, ...prepared, publisher });
 
 					if (terminal.outcome === "failed") {
@@ -410,16 +523,7 @@ export const layer = (options: Options = {}) =>
 								retries += 1;
 								failed = error.message;
 								yield* Effect.uninterruptible(settleDraft({ _tag: "error", message: error.message }));
-								yield* events.publish(EventList.RetryScheduled, {
-									timestamp: yield* DateTime.now,
-									sessionId,
-									threadId,
-									attempt: retries,
-									maxRetries: snapshot.retry.maxRetries,
-									delayMs,
-									message: error.message,
-								});
-								yield* Effect.sleep(Duration.millis(delayMs));
+								yield* scheduleRetry(snapshot, retries, delayMs, error.message);
 								return yield* request();
 							});
 						}),
@@ -454,7 +558,11 @@ export const layer = (options: Options = {}) =>
 						committed = true;
 					});
 					if (interrupted !== undefined) return yield* Effect.failCause(interrupted);
-					return { messageId: terminal.message.messageId, reason: terminal.reason } satisfies TurnResult;
+					return {
+						messageId: terminal.message.messageId,
+						reason: terminal.reason,
+						toolCalls: hasToolCalls(terminal.message),
+					} satisfies TurnResult;
 				});
 
 				// `onError`, not `catchCause`: a catch handler never runs on an interrupted fiber, and
@@ -483,8 +591,9 @@ export const layer = (options: Options = {}) =>
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 				continuing: boolean,
+				carried: Crashed | undefined,
 			) {
-				return yield* runTurnAttempt(promotion, snapshot, continuing);
+				return yield* runTurnAttempt(promotion, snapshot, continuing, carried);
 			});
 
 			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
@@ -492,7 +601,18 @@ export const layer = (options: Options = {}) =>
 				readonly force: boolean;
 				readonly recovered?: boolean;
 			}) {
-				yield* healDanglingDraft(input.threadId);
+				// Only a dead host leaves a request marked in flight: every run that ends clears it.
+				const crashed = Option.getOrUndefined(
+					Option.flatMap(yield* threads.get(input.threadId), (row) => row.attempt),
+				);
+				const carried: Crashed | undefined =
+					crashed === undefined
+						? undefined
+						: {
+								attempt: crashed,
+								message: `The host stopped while the model was answering, on attempt ${crashed}`,
+							};
+				yield* healDraft(input.threadId, carried?.message);
 
 				const hasSteer = yield* inputs.hasPending(input.threadId, "steer");
 				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.threadId, "followUp");
@@ -510,17 +630,9 @@ export const layer = (options: Options = {}) =>
 					(input.recovered === true || input.force) &&
 					!hasSteer &&
 					hasFollowUp &&
-					(yield* context.assemble(input.threadId).pipe(
-						Effect.map((assembled) => {
-							const leaf =
-								assembled.lastAssistant?.entryId === assembled.leafEntryId
-									? assembled.lastAssistant.message
-									: undefined;
-							return (
-								assembled.messages.length > 0 && leaf?.stopReason !== "stop" && leaf?.stopReason !== "length"
-							);
-						}),
-					));
+					(yield* context
+						.assemble(input.threadId)
+						.pipe(Effect.map((assembled) => assembled.messages.length > 0 && !leafAnswered(assembled))));
 				// A cut-off run still promotes steers that land while it loads: they join the reply being answered.
 				let promotion: Promotion = hasSteer || cutOff ? "steer" : hasFollowUp ? "followUp" : undefined;
 				/** Steers when there are any, else the oldest follow-up: what a run promotes first. */
@@ -532,19 +644,45 @@ export const layer = (options: Options = {}) =>
 
 				const drain = Effect.gen(function* () {
 					const start = yield* state.snapshot(input.threadId);
+					if (carried !== undefined) {
+						const delayMs = Retry.delay(start.retry, carried.attempt, hostStopped(start, carried.message));
+						if (delayMs === undefined) {
+							return yield* endRun(start.sessionId, input.threadId, "interrupted", carried.message);
+						}
+						yield* scheduleRetry(start, carried.attempt, delayMs, carried.message);
+					}
 					let snapshot = start;
 					let continuing = input.force;
+					let resent = carried;
+					let truncations = 0;
 					// Tool results and steers continue first; a follow-up only once both are exhausted.
 					while (true) {
-						const result: TurnResult = yield* runTurn(promotion, snapshot, continuing);
-						const toolUse = result?.reason === "toolUse";
+						const result: TurnResult = yield* runTurn(promotion, snapshot, continuing, resent);
+						resent = undefined;
+						// A reply cut off at the output limit gets its tool calls back as errors to re-issue.
+						const truncated = result?.reason === "length" && result.toolCalls;
+						const toolUse = result?.reason === "toolUse" || truncated;
+						truncations = truncated ? truncations + 1 : 0;
 						const completed: Hooks.Completed | undefined =
 							result === undefined
 								? undefined
-								: { ...result, snapshot, pending: yield* peekPending(input.threadId) };
+								: {
+										messageId: result.messageId,
+										reason: result.reason,
+										snapshot,
+										pending: yield* peekPending(input.threadId),
+									};
 						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
 						// Queued steers and follow-ups stay for the next run.
 						if (decision === "end") return;
+						if (truncations >= TRUNCATION_LIMIT) {
+							return yield* endRun(
+								snapshot.sessionId,
+								input.threadId,
+								"truncated",
+								`The response hit the output token limit with tool calls ${truncations} times in a row; the run is ended`,
+							);
+						}
 
 						// A forced continuation after a finished reply sends nothing: the leaf guard in
 						// `runTurnAttempt` ends the turn unless something was appended after it.
@@ -565,7 +703,17 @@ export const layer = (options: Options = {}) =>
 				);
 			});
 
-			return Runner.Service.of({ run });
+			const abandon = Effect.fn("Loop.abandon")(function* (input: {
+				readonly threadId: ThreadSchema.ID;
+				readonly message: string;
+			}) {
+				const thread = yield* threads.get(input.threadId);
+				if (Option.isNone(thread)) return;
+				yield* healDraft(input.threadId, Option.isSome(thread.value.attempt) ? input.message : undefined);
+				yield* endRun(SessionSchema.ID.make(thread.value.sessionId), input.threadId, "crashloop", input.message);
+			});
+
+			return Runner.Service.of({ run, abandon });
 		}),
 	);
 

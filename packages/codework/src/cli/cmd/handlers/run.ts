@@ -21,6 +21,7 @@ interface RenderState {
 	readonly usage: UsageSummary;
 	readonly textSeen: boolean;
 	readonly textEndsWithNewline: boolean;
+	readonly reason?: EventList.LLMEnded["data"]["reason"];
 }
 
 const initialRenderState: RenderState = {
@@ -47,7 +48,11 @@ const render = (state: Ref.Ref<RenderState>, ended?: Queue.Queue<string>) =>
 			return;
 		}
 		if (isLLMEnded(event)) {
-			yield* Ref.update(state, (current) => ({ ...current, usage: addUsage(current.usage, event.data.message) }));
+			yield* Ref.update(state, (current) => ({
+				...current,
+				usage: addUsage(current.usage, event.data.message),
+				reason: event.data.reason,
+			}));
 			return;
 		}
 		if (ended !== undefined && isTurnEnded(event)) {
@@ -59,6 +64,12 @@ const finish = Effect.fn("CLI.finish")(function* (state: Ref.Ref<RenderState>, c
 	const rendered = yield* Ref.get(state);
 	if (rendered.textSeen && !rendered.textEndsWithNewline) yield* writeOut("\n");
 	yield* writeError(usage(rendered.usage, columns));
+	if (rendered.reason === "length") {
+		yield* writeError("Response was truncated: the model reached its output token limit.\n");
+		yield* Effect.sync(() => {
+			process.exitCode = 1;
+		});
+	}
 });
 
 const awaitMessage = Effect.fn("CLI.awaitMessage")(function* (ended: Queue.Queue<string>, messageId: string) {

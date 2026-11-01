@@ -1,3 +1,4 @@
+import { useAtomRefresh } from "@effect/atom-react";
 import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import type { HistoryEntry, Part, QueuedPrompt, ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
@@ -13,7 +14,7 @@ import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
-import { useListedSession } from "./projects";
+import { projectsAtom, useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -184,6 +185,12 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
+	// A first prompt names the session after the list was fetched; the main thread's title is the listed one.
+	const refreshProjects = useAtomRefresh(projectsAtom);
+	const stale = thread.threadId === undefined && state.status === "ready" && listed?.title !== title;
+	useEffect(() => {
+		if (stale) refreshProjects();
+	}, [stale, title, refreshProjects]);
 	const project = state.status === "ready" ? state.info.project : listed?.project;
 	const projectId = project?.id;
 	const projectName = project?.name;

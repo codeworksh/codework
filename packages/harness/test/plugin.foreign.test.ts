@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { glob, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,7 +84,10 @@ describe("plugins built against another Effect instance", () => {
 			const assistant = path.at(-1);
 			expect(assistant?.entry.type).toBe("assistant");
 			expect(assistant?.entry.state).toBe("aborted");
-			expect(assistant?.parts).toEqual([]);
+			// The reply's tool call is kept, aborted: it never ran.
+			expect(assistant?.parts.map((part) => [part.toolName, part.status])).toEqual([
+				[Option.some("foreign_echo"), Option.some("aborted")],
+			]);
 		}));
 
 	it("pins one Effect version, declared and resolved alike, across the workspace", async () => {

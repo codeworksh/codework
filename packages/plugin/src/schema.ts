@@ -41,6 +41,9 @@ export const validateAikitUserMessage = (value: unknown, label: string): Message
 export const validateAikitAssistantMessage = (value: unknown, label: string): Message.AssistantMessage =>
 	validateAikitSchema(Message.AssistantMessageSchema, value, label);
 
+export const validateAikitAssistantPart = (value: unknown, label: string): Message.AssistantMessage["parts"][number] =>
+	validateAikitSchema(Message.AssistantMessageSchema.properties.parts.items, value, label);
+
 export const validateAikitToolCallTerminalPart = (value: unknown, label: string): Message.ToolCallTerminalPart =>
 	validateAikitSchema(Message.ToolCallTerminalPartSchema, value, label);
 
@@ -51,6 +54,9 @@ export const isAikitModelInfo = (value: unknown): value is Model.Info => aikitVa
 
 export const isAikitAssistantMessage = (value: unknown): value is Message.AssistantMessage =>
 	aikitValidatorFor(Message.AssistantMessageSchema).Check(value);
+
+export const isAikitAssistantPart = (value: unknown): value is Message.AssistantMessage["parts"][number] =>
+	aikitValidatorFor(Message.AssistantMessageSchema.properties.parts.items).Check(value);
 
 export const isAikitToolCallTerminalPart = (value: unknown): value is Message.ToolCallTerminalPart =>
 	aikitValidatorFor(Message.ToolCallTerminalPartSchema).Check(value);

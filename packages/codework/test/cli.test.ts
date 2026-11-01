@@ -5,7 +5,8 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, onTestFinished } from "vite-plus/test";
+import { runCli, truncating, writeSettings } from "./fixtures/cli.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -458,6 +459,26 @@ describe("codework CLI", () => {
 			rmSync(home, { recursive: true, force: true });
 		}
 	});
+
+	it("prints a response cut off at the output token limit, warns, and exits 1", async () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-cli-truncated-"));
+		onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+		const fake = await truncating("The answer starts here and");
+		writeSettings(home, fake.url);
+
+		const result = await runCli(
+			["--home", home, "--database", ":memory:", "--user-config-dir", home, "run", "Answer at length."],
+			{ cwd: home, env: { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models } },
+		);
+
+		expect(result.status, result.stderr).toBe(1);
+		expect(result.stdout, result.stderr).toBe("The answer starts here and\n");
+		const warning = "Response was truncated: the model reached its output token limit.\n";
+		expect(result.stderr.endsWith(warning), result.stderr).toBe(true);
+		await expect(
+			`${JSON.stringify({ status: result.status, stdout: result.stdout, warning }, null, "\t")}\n`,
+		).toMatchFileSnapshot("./__artifacts__/cli.truncated.json");
+	}, 60_000);
 
 	it("reports a failed refresh", () => {
 		const result = runIsolated(

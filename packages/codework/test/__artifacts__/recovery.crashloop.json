@@ -1,0 +1,191 @@
+{
+	"log": [
+		{
+			"type": "session.created"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Keep crashing."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Keep crashing."
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 1",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 2",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 3",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 4",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The run was interrupted 5 times in a row; it is not resumed again",
+			"parts": []
+		},
+		{
+			"type": "session.run.failed",
+			"reason": "crashloop",
+			"message": "The run was interrupted 5 times in a row; it is not resumed again"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Try again."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Try again."
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "stop",
+			"parts": [
+				{
+					"text": "Back to normal."
+				}
+			]
+		},
+		{
+			"type": "session.turn.ended"
+		}
+	],
+	"history": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "Keep crashing."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "assistant",
+			"state": "aborted",
+			"parts": []
+		},
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "Try again."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "Back to normal."
+				}
+			]
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Keep crashing."
+			},
+			{
+				"role": "user",
+				"text": "Try again."
+			}
+		]
+	]
+}

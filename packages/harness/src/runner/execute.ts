@@ -80,6 +80,8 @@ export const layer = Layer.effect(
 
 		// Threads being recovered: their run neither marks the thread nor runs once it is unmarked.
 		const recovering = new Set<ThreadId>();
+		// Recovered threads whose run is ended instead of resumed, with the message it ends with.
+		const abandoning = new Map<ThreadId, string>();
 		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
 		const stoppedAt = new Map<ThreadId, number>();
 
@@ -133,6 +135,9 @@ export const layer = Layer.effect(
 				const sessionId = thread.value.sessionId;
 				const recovered = recovering.delete(threadId);
 				if (recovered && Option.isNone(thread.value.execution)) return;
+				// Only the drain the abandon itself started: one it joined is a live run, which must stand.
+				const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
+				if (abandoned !== undefined) return yield* runner.abandon({ threadId, message: abandoned });
 				// The thread's placement, else the session's space and directory. A placement names its
 				// space in a document no FK guards, so a space gone since is typed: `relink --thread`
 				// is the repair.
@@ -201,14 +206,18 @@ export const layer = Layer.effect(
 				return accepted;
 			});
 
-		const recover = (threadId: ThreadId) =>
+		// Under the thread's execution like any run, so a prompt that wakes it meanwhile cannot heal
+		// the same draft.
+		const recover = (threadId: ThreadId, abandon?: string) =>
 			Effect.suspend(() => {
 				recovering.add(threadId);
+				if (abandon !== undefined) abandoning.set(threadId, abandon);
 				return coordinator.run(threadId);
 			}).pipe(
 				Effect.ensuring(
 					Effect.sync(() => {
 						recovering.delete(threadId);
+						abandoning.delete(threadId);
 					}),
 				),
 			);
@@ -217,7 +226,8 @@ export const layer = Layer.effect(
 			active: coordinator.active,
 			interrupt,
 			resume: coordinator.run,
-			recover,
+			recover: (threadId) => recover(threadId),
+			abandon: recover,
 			wake: coordinator.wake,
 			awaitIdle: coordinator.awaitIdle,
 		});

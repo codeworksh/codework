@@ -16,18 +16,56 @@
  * events carry only fragments, so it has to reassemble text across deltas before
  * it can persist a block. Every aikit event already carries a complete assistant
  * message, and the terminal one carries the whole response. Successful output
- * can therefore replace the draft in one write; failed output becomes a
- * partless tombstone without needing a fragment buffer.
+ * can therefore replace the draft in one write, and failed output keeps the
+ * latest partial without needing a fragment buffer. While streaming, that
+ * partial is checkpointed into the draft (`LLMProgress`) so a dead host leaves it.
  */
 
 import type { Event as AikitEvent, Message } from "@codeworksh/aikit";
-import { DateTime, Effect } from "effect";
+import { DateTime, Duration, Effect, Fiber, Option, Schema } from "effect";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
+import { EventSchema } from "../event/schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import type { ThreadSchema } from "../thread/schema.ts";
+import { RunnerPart } from "./part.ts";
 import { Runner } from "./run.ts";
+
+type Part = Message.AssistantMessage["parts"][number];
+
+const CHECKPOINT_INTERVAL = Duration.seconds(1);
+
+const decodePartial = Schema.decodeUnknownEffect(EventSchema.AikitAssistantMessage);
+
+const textOf = (part: Part) =>
+	part.type === "text" ? part.text : part.type === "thinking" ? part.thinking : undefined;
+const withoutText = (part: Part): Part =>
+	part.type === "text" ? { ...part, text: "" } : part.type === "thinking" ? { ...part, thinking: "" } : part;
+
+/** What `after` changed since `before`: grown text appends, every other difference writes the part whole. */
+const changesSince = (before: ReadonlyArray<Part>, after: ReadonlyArray<Part>) => {
+	const changes: Array<EventList.LLMProgressChange> = [];
+	for (const [partIndex, part] of after.entries()) {
+		const previous = before[partIndex];
+		const was = previous === undefined ? undefined : textOf(previous);
+		const now = textOf(part);
+		if (
+			previous !== undefined &&
+			was !== undefined &&
+			now !== undefined &&
+			now.startsWith(was) &&
+			JSON.stringify(withoutText(previous)) === JSON.stringify(withoutText(part))
+		) {
+			if (now.length > was.length) changes.push({ _tag: "append", partIndex, text: now.slice(was.length) });
+			continue;
+		}
+		if (previous === undefined || JSON.stringify(previous) !== JSON.stringify(part)) {
+			changes.push({ _tag: "set", partIndex, part });
+		}
+	}
+	return changes;
+};
 
 /** How the response settled. The loop branches on this, never on `result()`. */
 export type Terminal =
@@ -45,6 +83,10 @@ export type Terminal =
 export interface Publisher {
 	/** Set only after LLMStarted committed its draft row. */
 	readonly startedMessageId: SessionMessageSchema.ID | undefined;
+	/** A copy of the latest streamed message until the response settles: what a failure it did not report keeps. */
+	readonly partial: Message.AssistantMessage | undefined;
+	/** Ends checkpointing, waiting out one in flight: no checkpoint lands after this returns. */
+	readonly stop: Effect.Effect<void>;
 	/** Interpret one provider event. Durable ones commit before this returns. */
 	readonly publish: (event: AikitEvent.LLMMessageEvent) => Effect.Effect<void, Runner.LLMStreamError>;
 	/** How the response settled; fails if the stream ended without terminating. */
@@ -61,6 +103,69 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 	let startedMessageId: SessionMessageSchema.ID | undefined;
 	let settled: Terminal | undefined;
 	const clone = (message: Message.AssistantMessage): Message.AssistantMessage => structuredClone(message);
+
+	// aikit rewrites one partial object in place, so this is a live view: copied when read.
+	let latest: Message.AssistantMessage | undefined;
+	let checkpointed: ReadonlyArray<Part> = [];
+	let dirty = false;
+	let stopped = false;
+	let ticker: Fiber.Fiber<void> | undefined;
+
+	const checkpoint = Effect.gen(function* () {
+		dirty = false;
+		if (latest === undefined || startedMessageId === undefined) return;
+		// A partial mid-way through a part may not be a valid message yet; the next checkpoint takes it.
+		const decoded = yield* decodePartial(clone(latest)).pipe(Effect.option);
+		if (Option.isNone(decoded)) return;
+		const parts = decoded.value.parts;
+		const changes = changesSince(checkpointed, parts);
+		if (changes.length === 0) return;
+		yield* events.publish(EventList.LLMProgress, {
+			sessionId: input.sessionId,
+			threadId: input.threadId,
+			timestamp: yield* DateTime.now,
+			messageId: startedMessageId,
+			changes,
+		});
+		checkpointed = parts;
+	});
+
+	// One checkpoint a second at most, one in flight; the ticker ends once a checkpoint finds nothing new.
+	const tick = Effect.gen(function* () {
+		while (true) {
+			yield* Effect.sleep(CHECKPOINT_INTERVAL);
+			yield* Effect.uninterruptible(checkpoint);
+			// Cleared with the decision, no yield between: an `observe` after it forks a fresh ticker.
+			if (!dirty) {
+				ticker = undefined;
+				return;
+			}
+		}
+	}).pipe(
+		// Not `ensuring`: after a normal exit `ticker` may already be the fresh one.
+		Effect.onError(() =>
+			Effect.sync(() => {
+				ticker = undefined;
+			}),
+		),
+	);
+
+	const observe = (partial: Message.AssistantMessage) =>
+		Effect.suspend(() => {
+			// A partial without content, such as the opening one, shows nothing worth keeping.
+			if (stopped || partial.parts.length === 0) return Effect.void;
+			latest = partial;
+			dirty = true;
+			if (ticker !== undefined) return Effect.void;
+			return Effect.map(Effect.forkDetach(tick), (fiber) => {
+				ticker = fiber;
+			});
+		});
+
+	const stop = Effect.suspend(() => {
+		stopped = true;
+		return ticker === undefined ? Effect.void : Fiber.interrupt(ticker);
+	});
 
 	const fault = (reason: string) => new Runner.LLMStreamError({ threadId: input.threadId, reason });
 
@@ -95,6 +200,14 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 			}
 			const timestamp = yield* DateTime.now;
 			const base = { sessionId: input.sessionId, threadId: input.threadId, timestamp };
+			if (
+				event.type !== "start" &&
+				event.type !== "done" &&
+				event.type !== "error" &&
+				event.partial.messageId === startedMessageId
+			) {
+				yield* observe(event.partial);
+			}
 
 			switch (event.type) {
 				case "start": {
@@ -116,9 +229,8 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 
 				/*
 				 * Live only, all of them. The terminal message contains every finished
-				 * block, so persisting these would write the same text twice and, worse,
-				 * leave an entry that a crash could strand mid-response -- which
-				 * `Context.assemble` would then replay to the model as a complete turn.
+				 * block; what a crash would lose is kept by the throttled checkpoints of
+				 * the draft instead, which stays out of the model's context.
 				 *
 				 * Only scalars computed at push time are carried. `partial` is excluded
 				 * deliberately: it is one object aikit rewrites in place and pushes by
@@ -193,6 +305,7 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 					if (startedMessageId === undefined) return yield* fault("received done before start");
 					const message = clone(event.message);
 					const identified = yield* identify(message.messageId);
+					yield* stop;
 					yield* Effect.uninterruptible(
 						Effect.gen(function* () {
 							yield* events.publish(EventList.LLMEnded, {
@@ -211,12 +324,13 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 
 				/*
 				 * aikit calls the payload `error`, but it is a complete assistant
-				 * message. LLMFailed uses its envelope as an aborted tombstone and the
-				 * projector deliberately discards every partial part.
+				 * message, with whatever streamed before the failure. LLMFailed keeps it
+				 * as the aborted entry; a tool call in it never runs.
 				 */
 				case "error": {
-					const message = clone(event.error);
+					const message = RunnerPart.abortCalls(clone(event.error), DateTime.toEpochMillis(timestamp));
 					const identified = yield* identify(message.messageId);
+					yield* stop;
 					yield* Effect.uninterruptible(
 						Effect.gen(function* () {
 							if (startedMessageId !== undefined) {
@@ -245,6 +359,10 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 		get startedMessageId() {
 			return startedMessageId;
 		},
+		get partial() {
+			return settled !== undefined || latest === undefined ? undefined : clone(latest);
+		},
+		stop,
 		publish,
 		terminal,
 	} satisfies Publisher;

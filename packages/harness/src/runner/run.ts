@@ -193,6 +193,11 @@ export interface Interface {
 		/** Resuming a run a previous process left unfinished: its cut-off reply is answered first. */
 		readonly recovered?: boolean;
 	}) => Effect.Effect<void, RunError, SandboxIO.Provides | Location.Service>;
+	/**
+	 * Ends a run the server no longer resumes: settles what the dead process left of its reply,
+	 * records `session.run.failed` with `message`, and leaves the thread idle, its queue kept.
+	 */
+	readonly abandon: (input: { readonly threadId: ThreadSchema.ID; readonly message: string }) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/runner/run/Service") {}
