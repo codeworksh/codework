@@ -3,7 +3,7 @@ import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@huge
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { type MouseEvent, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
 
 import {
 	Sidebar,
@@ -64,12 +64,16 @@ export function SessionsSidebar() {
 	};
 
 	const needle = query.trim().toLowerCase();
-	const sessions = AsyncResult.isSuccess(result)
-		? result.value
-				.flatMap((project) => project.sessions.map((session) => ({ ...session, project })))
-				.filter(({ title, project }) => `${title} ${project.name}`.toLowerCase().includes(needle))
-				.sort((a, b) => b.updated - a.updated)
-		: [];
+	const sessions = useMemo(
+		() =>
+			AsyncResult.isSuccess(result)
+				? result.value
+						.flatMap((project) => project.sessions.map((session) => ({ ...session, project })))
+						.filter(({ title, project }) => `${title} ${project.name}`.toLowerCase().includes(needle))
+						.sort((a, b) => b.updated - a.updated)
+				: [],
+		[result, needle],
+	);
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
@@ -146,7 +150,7 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="group relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection aria-current:text-ink"
+									className="group/row relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:text-ink"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
@@ -165,7 +169,7 @@ export function SessionsSidebar() {
 										</span>
 										{session.model !== undefined && (
 											<span className="flex shrink-0 items-center text-2xs text-ink-muted">
-												<span className="max-w-0 truncate pr-0 opacity-0 transition-[max-width,opacity,padding] duration-200 ease-out group-focus-within:max-w-32 group-focus-within:pr-1.5 group-focus-within:opacity-100 group-hover:max-w-32 group-hover:pr-1.5 group-hover:opacity-100">
+												<span className="max-w-32 truncate pr-1.5 opacity-0 transition-opacity duration-150 ease-out group-hover/row:opacity-100 group-focus-visible/row:opacity-100">
 													{session.model.id}
 												</span>
 												<ProviderIcon

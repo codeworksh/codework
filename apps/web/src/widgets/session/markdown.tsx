@@ -11,13 +11,13 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import type { Components, ExtraProps } from "react-markdown";
+import type { Components, ExtraProps, Options } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { themeAtom } from "../../theme";
 import { HighlightedCode, languageOf, useHighlight } from "./highlight";
-import { incrementalMarkdown } from "./incremental";
+import { incrementalMarkdown, splitMarkdownBlocks } from "./incremental";
 
 /** An element with fixed classes; react-markdown's `node` prop is dropped so it never reaches the DOM. */
 function styled<Tag extends keyof JSX.IntrinsicElements>(tag: Tag, className: string) {
@@ -117,10 +117,25 @@ const components: Components = {
 
 const plugins = [remarkGfm];
 
+// One finished block of a streaming reply: it keeps its render while later blocks grow.
+const Block = memo(function Block({
+	source,
+	remarkPlugins = plugins,
+}: {
+	readonly source: string;
+	readonly remarkPlugins?: Options["remarkPlugins"];
+}) {
+	return (
+		<ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+			{source}
+		</ReactMarkdown>
+	);
+});
+
 /**
  * A message's markdown, rendered as text: raw HTML in it stays escaped. It re-renders only when its
- * text changes. While a reply streams, text with code fences parses incrementally, so a long code
- * block is not parsed again on every delta.
+ * text changes. While a reply streams, it renders block by block, so only the growing block is
+ * parsed again on each delta; text that can't be split but has code fences parses incrementally.
  */
 export const Markdown = memo(function Markdown({
 	text,
@@ -132,13 +147,18 @@ export const Markdown = memo(function Markdown({
 	readonly className?: string;
 }) {
 	const incremental = useMemo(() => incrementalMarkdown(), []);
+	const blocks = streaming ? splitMarkdownBlocks(text) : null;
 	const fenced = streaming && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
 	const remarkPlugins = useMemo(() => (fenced ? [remarkGfm, incremental] : plugins), [fenced, incremental]);
 	return (
 		<div className={`agent-markdown min-w-0 ${className ?? ""}`}>
-			<ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-				{text}
-			</ReactMarkdown>
+			{/* react-markdown renders a Fragment, so the blocks' elements sit in this div as one document's would.
+			    Whole text stays block 0, so a finished reply reuses its first block rather than remounting. */}
+			{blocks === null ? (
+				<Block key={0} source={text} remarkPlugins={remarkPlugins} />
+			) : (
+				blocks.map((source, index) => <Block key={index} source={source} />)
+			)}
 		</div>
 	);
 });

@@ -110,15 +110,15 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 						{index > 0 && (
 							<span aria-hidden className={`mx-0.5 h-4 w-px shrink-0 bg-ink/12 ${divider ? "" : "invisible"}`} />
 						)}
-						<div className="group relative flex h-tab w-56 min-w-16 shrink basis-56">
+						<div className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
 							<Link
 								{...workspaceRoute(workspace)}
 								aria-current={current ? "page" : undefined}
 								title={`${tab}\n${shortcutLabel(index + 1)}`}
-								className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-3 pl-2 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+								className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-8 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 									current
-										? "bg-selection text-ink"
-										: "bg-ink/4 text-ink-muted hover:bg-selection-subtle hover:text-ink"
+										? "bg-selection-current text-ink"
+										: "bg-ink/4 text-ink-muted hover:bg-selection hover:text-ink"
 								}`}
 							>
 								<span
@@ -133,7 +133,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 								aria-label={`Close ${workspace.name}`}
 								title={`Close ${workspace.name}`}
 								onClick={() => void close(workspace, index)}
-								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
+								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
 							>
 								<X className="size-3" strokeWidth={2} aria-hidden />
 							</button>

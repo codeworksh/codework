@@ -1,7 +1,7 @@
 import { useBus, useKv } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import { Composer, ComposerButton, ComposerSubmit, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
@@ -28,12 +28,14 @@ const unreachable = "The CodeWork server is not reachable.";
  * The model and reasoning pickers show the thread's own choice, which CodeWork keeps with the
  * thread; a pick shows at once and is sent as a configure request, applying from the next exchange.
  */
-export function SessionComposer({
+export const SessionComposer = memo(function SessionComposer({
 	thread,
 	instanceId,
 	running,
 	info,
 	onError,
+	onSending,
+	onUnsent,
 	restored,
 }: {
 	readonly thread: ThreadRef;
@@ -42,6 +44,10 @@ export function SessionComposer({
 	readonly info: Info;
 	/** A send or configure the backend refused, or undefined as a new one starts; the view shows it. */
 	readonly onError: (message: string | undefined) => void;
+	/** A prompt sent while idle, so the view shows it before the backend echoes it. */
+	readonly onSending: (prompt: { readonly id: string; readonly text: string; readonly createdAt: number }) => void;
+	/** That prompt was refused; the view drops it again. */
+	readonly onUnsent: (id: string) => void;
 	/** A queued prompt taken back: its text goes above the draft, once per `key`. */
 	readonly restored?: { readonly text: string; readonly key: number } | undefined;
 }) {
@@ -103,18 +109,26 @@ export function SessionComposer({
 		const prompt = text.trim();
 		if (prompt === "" || pending) return;
 		const delivery = deliveryFor(running, submit);
+		const messageId = crypto.randomUUID();
+		// An idle send shows in the conversation at once, so it moves out of the composer with it; a
+		// steer or follow-up waits in the queue, so its text stays until the backend accepts it.
+		const immediate = delivery === undefined;
+		if (immediate) {
+			onSending({ id: messageId, text: prompt, createdAt: Date.now() });
+			setText("");
+		}
 		setPending(true);
 		const sent = await ask(
 			topics.prompt,
-			encodePrompt({
-				...thread,
-				messageId: crypto.randomUUID(),
-				text: prompt,
-				...(delivery === undefined ? {} : { delivery }),
-			}),
+			encodePrompt({ ...thread, messageId, text: prompt, ...(delivery === undefined ? {} : { delivery }) }),
 		);
 		setPending(false);
-		if (sent) setText("");
+		if (sent) {
+			if (!immediate) setText("");
+		} else if (immediate) {
+			onUnsent(messageId);
+			setText((current) => (current.trim() === "" ? text : `${text}\n\n${current}`));
+		}
 	};
 
 	const configure = (change: { model?: ModelRef; thinkingLevel?: ThinkingLevel }) => {
@@ -157,4 +171,4 @@ export function SessionComposer({
 			}
 		/>
 	);
-}
+});

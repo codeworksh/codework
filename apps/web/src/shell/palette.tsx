@@ -104,7 +104,6 @@ export function Palette() {
 						value={OPEN_PROJECTS}
 						keywords={["open projects", "sessions"]}
 						onSelect={() => run(openProjects)}
-						className="hover:bg-accent/50"
 					>
 						<FolderKanban strokeWidth={1.75} />
 						Open Projects
@@ -115,7 +114,6 @@ export function Palette() {
 						value={THEME_SETTINGS}
 						keywords={["change theme", "appearance", "colors"]}
 						onSelect={() => run(() => void navigate({ to: "/settings/themes" }))}
-						className="hover:bg-accent/50"
 					>
 						<Settings strokeWidth={1.75} />
 						Change theme…
@@ -126,7 +124,6 @@ export function Palette() {
 							value={theme.id}
 							keywords={["change theme", theme.name]}
 							onSelect={() => run(() => setTheme(theme.id))}
-							className="hover:bg-accent/50"
 						>
 							<Swatch theme={theme.id} />
 							<span className="text-ink-muted">Change theme</span>

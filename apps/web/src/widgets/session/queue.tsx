@@ -2,7 +2,7 @@ import type { Delivery, QueuedPrompt } from "@codeworksh/widget/codework";
 import { useBus } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { CornerDownRight, ListEnd, type LucideIcon, Pencil, SendHorizontal, Trash2, Undo2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 
 import { Json, type ThreadRef, topics } from "./schema";
 
@@ -20,7 +20,7 @@ const unreachable = "The CodeWork server is not reachable.";
  * composer, or is removed. Every action is a request on the session backend; the row changes when
  * the queue next updates.
  */
-export function Queue({
+export const Queue = memo(function Queue({
 	thread,
 	queued,
 	running,
@@ -177,7 +177,7 @@ export function Queue({
 			</ol>
 		</div>
 	);
-}
+});
 
 function Action({
 	label,

@@ -75,7 +75,7 @@
 	--text-3xs--line-height: calc(0.875 / 0.625);
 	--text-4xs: 0.5rem;
 	--text-4xs--line-height: 1;
-	--text-ui: 0.75rem;
+	--text-ui: 0.8125rem;
 	--text-ui--line-height: 1.4;
 	--text-body: 0.8125rem;
 	--text-body--line-height: 1.6;
@@ -92,6 +92,7 @@
 	--color-selection: var(--cw-selection);
 	--color-selection-strong: var(--cw-selection-strong);
 	--color-selection-hover: var(--cw-selection-hover);
+	--color-selection-current: var(--cw-selection-hover);
 	--color-message: var(--cw-message);
 	--color-message-ink: var(--cw-message-ink);
 	--color-desktop: var(--cw-desktop);

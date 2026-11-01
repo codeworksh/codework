@@ -1,5 +1,5 @@
 import { useAtomRefresh } from "@effect/atom-react";
-import type { HistoryEntry, Part, QueuedPrompt, ToolCall } from "@codeworksh/widget/codework";
+import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
@@ -20,6 +20,7 @@ import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
 const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
+const samePart = Schema.toEquivalence(Part);
 
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
@@ -90,17 +91,32 @@ const apply = (state: State, update: Update): State => {
 		case "Failed":
 			return { ...state, failure: noticeOf(update.kind, update.message, state.info.sandbox) };
 		case "Message": {
-			const index = state.messages.findIndex((message) => message.id === update.message.id);
+			const { id } = update.message;
+			const index = state.messages.findIndex((message) => message.id === id);
 			const oldest = state.messages[0];
 			// A message older than the window has not been paged in; its page will carry it.
 			if (index === -1 && state.more && oldest !== undefined && update.message.seq < oldest.seq) return state;
 			// A streamed draft can land just after the reply it belongs to ended; an ended reply stays ended.
-			if (index !== -1 && update.message.state === "draft" && state.messages[index]?.state !== "draft") return state;
+			const previous = state.messages[index];
+			if (previous !== undefined && update.message.state === "draft" && previous.state !== "draft") return state;
+			// Unchanged parts keep their objects, so their rows skip re-rendering as the message streams.
+			const message =
+				previous === undefined
+					? update.message
+					: {
+							...update.message,
+							parts: update.message.parts.map((part, at) => {
+								const old = previous.parts[at];
+								return old !== undefined && samePart(old, part) ? old : part;
+							}),
+						};
 			return {
 				...state,
-				messages: index === -1 ? [...state.messages, update.message] : state.messages.with(index, update.message),
+				messages: previous === undefined ? [...state.messages, message] : state.messages.with(index, message),
 				// Promoted: it is in the conversation now, whatever the next queue update says.
-				queued: state.queued.filter((prompt) => prompt.id !== update.message.id),
+				queued: state.queued.some((prompt) => prompt.id === id)
+					? state.queued.filter((prompt) => prompt.id !== id)
+					: state.queued,
 			};
 		}
 	}
@@ -185,7 +201,52 @@ function useConversation(thread: ThreadRef) {
 
 function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; readonly instanceId: string }) {
 	const { setTitle, setIcon, setTab } = useFrame();
-	const { state, loadOlder } = useConversation(thread);
+	const { state: loaded, loadOlder } = useConversation(thread);
+	// Prompts sent while idle, shown before the backend echoes them: it queues a prompt before the
+	// conversation takes it in, which would otherwise flash a queue row. Each leaves once echoed.
+	const [sent, setSent] = useState<readonly HistoryEntry[]>([]);
+	if (loaded.status === "ready" && sent.length > 0) {
+		const echoed = new Set(loaded.messages.map((message) => message.id));
+		if (sent.some((message) => echoed.has(message.id))) setSent(sent.filter((message) => !echoed.has(message.id)));
+	}
+	// A run that stops or fails before taking a prompt in leaves it queued for the next wake: its
+	// stand-in goes, so the queue row and its actions show again.
+	const run = loaded.status === "ready" ? loaded : undefined;
+	const outcome = `${run?.running}|${run?.failure?.title ?? ""}|${run?.failure?.description ?? ""}`;
+	const [seenOutcome, setSeenOutcome] = useState(outcome);
+	if (outcome !== seenOutcome) {
+		setSeenOutcome(outcome);
+		if (sent.length > 0 && (run?.running === false || run?.failure !== undefined)) setSent([]);
+	}
+	const state = useMemo<State>(() => {
+		if (loaded.status !== "ready" || sent.length === 0) return loaded;
+		const ids = new Set(sent.map((message) => message.id));
+		return {
+			...loaded,
+			messages: [...loaded.messages, ...sent],
+			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
+				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
+				: loaded.queued,
+		};
+	}, [loaded, sent]);
+	const sending = useCallback(
+		(prompt: { readonly id: string; readonly text: string; readonly createdAt: number }) =>
+			setSent((current) => [
+				...current,
+				{
+					id: prompt.id,
+					threadId: thread.threadId ?? thread.sessionId,
+					seq: Number.MAX_SAFE_INTEGER,
+					role: "user",
+					state: "committed",
+					createdAt: prompt.createdAt,
+					updatedAt: prompt.createdAt,
+					parts: [{ type: "text", text: prompt.text }],
+				},
+			]),
+		[thread],
+	);
+	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
@@ -215,6 +276,10 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 	const [sendError, setSendError] = useState<string>();
 	// A queued prompt taken back to edit; the composer puts its text above the draft.
 	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
+	const restore = useCallback(
+		(text: string) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 })),
+		[],
+	);
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
@@ -273,7 +338,7 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 						queued={state.queued}
 						running={running}
 						onError={setSendError}
-						onRestore={(text) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 }))}
+						onRestore={restore}
 					/>
 				)}
 				<SessionComposer
@@ -282,6 +347,8 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 					running={running}
 					info={state.info}
 					onError={setSendError}
+					onSending={sending}
+					onUnsent={unsent}
 					restored={restored}
 				/>
 			</div>
@@ -715,6 +782,22 @@ function useElapsedFrom(startedAt: number | undefined, active: boolean): number 
 	return active && startedAt !== undefined ? Math.max(0, now - startedAt) : undefined;
 }
 
+// A leaf of its own, so the live tick re-renders only the label's text.
+function WorkLabel({
+	started,
+	ended,
+	modelName,
+}: {
+	readonly started: number | undefined;
+	readonly ended: number | undefined;
+	readonly modelName: string | undefined;
+}) {
+	const live = ended === undefined;
+	const liveElapsed = useElapsedFrom(started, live);
+	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
+	return formatWorkingDuration(elapsedMs, modelName, !live);
+}
+
 /** Flags the edges with more to scroll to, so only those fade. */
 function markScrollEdges(el: HTMLElement) {
 	const below = el.scrollHeight - el.clientHeight - el.scrollTop;
@@ -819,19 +902,21 @@ function WorkLog({
 	const expandable = parts.length > 0;
 	const open = expandable && (override ?? working);
 	useLivePhaseScroll(liveScroller, open, parts);
-	const liveElapsed = useElapsedFrom(started, live);
-	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
-	const label = formatWorkingDuration(elapsedMs, modelName, !live);
+	const label = <WorkLabel started={started} ended={ended} modelName={modelName} />;
 	const icon = (
 		<span className="relative flex size-3.5 shrink-0 items-center justify-center">
 			{open && expandable ? (
 				<ChevronRight className="size-3.5 rotate-90 text-ink-muted" strokeWidth={1.75} aria-hidden />
 			) : (
 				<>
-					<img src={brand} alt="" className={`size-3.5 shrink-0 ${expandable ? "group-hover:opacity-0" : ""}`} />
+					<img
+						src={brand}
+						alt=""
+						className={`size-3.5 shrink-0 ${expandable ? "transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0" : ""}`}
+					/>
 					{expandable && (
 						<ChevronRight
-							className="absolute size-3.5 text-ink-muted opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+							className="absolute size-3.5 text-ink-muted opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100"
 							strokeWidth={1.75}
 							aria-hidden
 						/>
@@ -843,13 +928,15 @@ function WorkLog({
 	const text = live ? (
 		<span className="shimmer-text min-w-0 truncate text-body">{label}</span>
 	) : (
-		<span className="min-w-0 flex-1 truncate text-body text-ink-muted transition-colors duration-200 group-hover:text-ink">
+		<span
+			className={`min-w-0 flex-1 truncate text-body text-ink-muted ${expandable ? "transition-colors duration-200 group-hover:text-ink" : ""}`}
+		>
 			{label}
 		</span>
 	);
 	if (!expandable) {
 		return (
-			<div className="group flex w-full min-w-0 items-center gap-1.5 px-4 py-1 text-left">
+			<div className="flex w-full min-w-0 items-center gap-1.5 px-4 py-1 text-left">
 				{icon}
 				{text}
 			</div>
@@ -909,7 +996,7 @@ function proseSummary(text: string) {
 		.trim();
 }
 
-function WorkRow({ part, live = false }: { readonly part: Part; readonly live?: boolean }) {
+const WorkRow = memo(function WorkRow({ part, live = false }: { readonly part: Part; readonly live?: boolean }) {
 	switch (part.type) {
 		case "toolCall":
 			return <ToolRow call={part} />;
@@ -922,11 +1009,11 @@ function WorkRow({ part, live = false }: { readonly part: Part; readonly live?: 
 		case "image":
 			return null;
 	}
-}
+});
 
 function ThinkingWorkRow({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
 	const [open, setOpen] = useState(false);
-	const summary = proseSummary(text) || "Thinking";
+	const summary = useMemo(() => proseSummary(text) || "Thinking", [text]);
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button
@@ -954,7 +1041,7 @@ function ThinkingWorkRow({ text, live = false }: { readonly text: string; readon
 
 function NoteWorkRow({ text }: { readonly text: string }) {
 	const [open, setOpen] = useState(false);
-	const summary = proseSummary(text);
+	const summary = useMemo(() => proseSummary(text), [text]);
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button

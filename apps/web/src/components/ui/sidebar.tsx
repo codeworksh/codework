@@ -19,6 +19,9 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
+// A dragged width never takes more than this share of the window, so narrowing the window keeps the main area usable.
+const SIDEBAR_MAX_SHARE = 0.4;
+const draggedWidth = (px: number) => `min(${px}px, ${SIDEBAR_MAX_SHARE * 100}vw)`;
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 /** Drag-to-resize, when the provider was given a storage key; widths are pixels. */
@@ -170,7 +173,7 @@ function SidebarProvider({
 							"--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
 							...style,
 							// A remembered width wins over the default the caller passed.
-							...(width === undefined ? {} : { "--sidebar-width": `${width}px` }),
+							...(width === undefined ? {} : { "--sidebar-width": draggedWidth(width) }),
 						} as React.CSSProperties
 					}
 					className={cn(
@@ -348,9 +351,10 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 				if (current === null || resize === undefined) return;
 				const delta = event.clientX - current.x;
 				if (Math.abs(delta) > 2) dragged.current = true;
-				current.width = Math.round(Math.min(resize.max, Math.max(resize.min, current.from + delta)));
+				const max = Math.min(resize.max, window.innerWidth * SIDEBAR_MAX_SHARE);
+				current.width = Math.round(Math.min(max, Math.max(resize.min, current.from + delta)));
 				// Straight to the CSS variable: committing to React state every frame would re-render the app.
-				current.wrapper.style.setProperty("--sidebar-width", `${current.width}px`);
+				current.wrapper.style.setProperty("--sidebar-width", draggedWidth(current.width));
 			}}
 			onPointerUp={end}
 			onPointerCancel={end}

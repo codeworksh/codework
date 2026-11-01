@@ -78,7 +78,8 @@ export function Frame(props: FrameProps) {
 	return (
 		<article
 			// Settling into a new slot animates; the dragged frame follows the pointer directly.
-			className={`group absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
+			// Named so a widget's own `group-hover` rows never react to the pointer anywhere in the frame.
+			className={`group/frame absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
 			data-focused={focused}
 			data-collapsed={collapsed}
 			hidden={props.hidden}
@@ -86,7 +87,7 @@ export function Frame(props: FrameProps) {
 			onPointerDown={props.onFocus}
 		>
 			<div
-				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
+				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]/frame:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
 			>
 				<header className="flex h-pane shrink-0 items-center gap-1 border-b border-edge pr-2 pl-1.5 select-none">
 					<div
@@ -99,7 +100,10 @@ export function Frame(props: FrameProps) {
 						/>
 						{icon !== undefined && <IconOf icon={icon} className="mr-0.5 size-4 shrink-0 text-ink-muted" />}
 						{lead !== undefined && <Lead text={lead} />}
-						<Title text={title} className="font-semibold text-ink-muted group-data-[focused=true]:text-ink" />
+						<Title
+							text={title}
+							className="font-semibold text-ink-muted group-data-[focused=true]/frame:text-ink"
+						/>
 					</div>
 					<Action
 						icon={pinned ? PinOff : Pin}
