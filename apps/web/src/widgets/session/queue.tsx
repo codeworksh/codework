@@ -4,7 +4,7 @@ import { Option, Schema } from "effect";
 import { CornerDownRight, ListEnd, type LucideIcon, Pencil, SendHorizontal, Trash2, Undo2 } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { Json, topics } from "./schema";
+import { Json, type ThreadRef, topics } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
 const decodeCancelled = Schema.decodeUnknownOption(Json.Cancelled);
@@ -21,13 +21,13 @@ const unreachable = "The CodeWork server is not reachable.";
  * the queue next updates.
  */
 export function Queue({
-	sessionId,
+	thread,
 	queued,
 	running,
 	onError,
 	onRestore,
 }: {
-	readonly sessionId: string;
+	readonly thread: ThreadRef;
 	readonly queued: readonly QueuedPrompt[];
 	readonly running: boolean;
 	readonly onError: (message: string | undefined) => void;
@@ -70,7 +70,7 @@ export function Queue({
 		act(prompt.id, async () => {
 			const answer = await bus.request({
 				topic: topics.change,
-				payload: { sessionId, messageId: prompt.id, ...patch },
+				payload: { ...thread, messageId: prompt.id, ...patch },
 			});
 			const reply = decodeReply(answer.payload);
 			if (Option.isSome(reply) && reply.value._tag === "Failed") onError(reply.value.message);
@@ -79,7 +79,7 @@ export function Queue({
 	// Undo restores only what it took back: a prompt the agent already took in stays in the conversation.
 	const cancel = (prompt: QueuedPrompt, restore: boolean) =>
 		act(prompt.id, async () => {
-			const answer = await bus.request({ topic: topics.cancel, payload: { sessionId, messageId: prompt.id } });
+			const answer = await bus.request({ topic: topics.cancel, payload: { ...thread, messageId: prompt.id } });
 			const reply = Option.getOrUndefined(decodeCancelled(answer.payload));
 			if (reply?._tag === "Failed") onError(reply.message);
 			else if (reply?._tag === "Cancelled" && restore) onRestore(prompt.text);

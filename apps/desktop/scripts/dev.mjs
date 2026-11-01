@@ -65,7 +65,10 @@ while (!(await ready())) await sleep(100);
 
 let electron;
 function startElectron() {
-	electron = run("node", ["scripts/start-electron.mjs"], {
+	// pnpm inserts a lone `--` before arguments meant for the script.
+	const extra = process.argv.slice(2);
+	if (extra[0] === "--") extra.shift();
+	electron = run("node", ["scripts/start-electron.mjs", ...extra], {
 		cwd: desktopDir,
 		env: { ...process.env, CODEWORK_WEB_URL: WEB_URL },
 	});

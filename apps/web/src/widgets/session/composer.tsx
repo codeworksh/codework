@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { PromptComposer, ComposerHeader, ComposerSubmit, ComposerButton, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
-import { type Info, Json, topics } from "./schema";
+import { type Info, Json, type ThreadRef, topics } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
 const encodePrompt = Schema.encodeSync(Json.Prompt);
@@ -25,18 +25,18 @@ const unreachable = "The CodeWork server is not reachable.";
  * an id the view chooses for the user message it becomes; the message itself arrives as an update.
  * The text stays until the backend accepts it, and the unsent draft survives a remount.
  *
- * The model and reasoning pickers show the session's own choice, which CodeWork keeps with the
- * session; a pick shows at once and is sent as a configure request, applying from the next exchange.
+ * The model and reasoning pickers show the thread's own choice, which CodeWork keeps with the
+ * thread; a pick shows at once and is sent as a configure request, applying from the next exchange.
  */
 export function SessionComposer({
-	sessionId,
+	thread,
 	instanceId,
 	running,
 	info,
 	onError,
 	restored,
 }: {
-	readonly sessionId: string;
+	readonly thread: ThreadRef;
 	readonly instanceId: string;
 	readonly running: boolean;
 	readonly info: Info;
@@ -164,7 +164,7 @@ export function SessionComposer({
 		const sent = await ask(
 			topics.prompt,
 			encodePrompt({
-				sessionId,
+				...thread,
 				messageId: crypto.randomUUID(),
 				text: prompt,
 				...(delivery === undefined ? {} : { delivery }),
@@ -176,7 +176,7 @@ export function SessionComposer({
 
 	const configure = (change: { model?: ModelRef; thinkingLevel?: ThinkingLevel }) => {
 		setPicked((current) => ({ ...current, ...change }));
-		void ask(topics.configure, encodeConfigure({ sessionId, ...change }));
+		void ask(topics.configure, encodeConfigure({ ...thread, ...change }));
 	};
 
 	const empty = text.trim() === "";
@@ -230,7 +230,7 @@ export function SessionComposer({
 					actions={
 						<>
 							{running && (
-								<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { sessionId })}>
+								<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { ...thread })}>
 									<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
 								</ComposerButton>
 							)}

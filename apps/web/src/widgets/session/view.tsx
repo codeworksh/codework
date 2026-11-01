@@ -8,13 +8,13 @@ import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import { ComposerNotice, type Notice } from "@/components/banner";
 import { Monogram } from "@/components/monogram";
 import { useModelsNotice } from "@/components/model";
-import { sessionId } from "./address";
+import { threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { useListedSession } from "./projects";
-import { type Info, Json, topics, type Update } from "./schema";
+import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
 const decodeWindow = Schema.decodeUnknownOption(Json.Window);
@@ -27,9 +27,9 @@ const PAGE = 60;
 const contentWidth = "mx-auto w-full max-w-[62rem]";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
-	const id = sessionId(address);
-	if (id === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
-	return <Conversation key={id} id={id} instanceId={instanceId} />;
+	const thread = useMemo(() => threadRef(address), [address]);
+	if (thread === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
+	return <Conversation key={threadKey(thread)} thread={thread} instanceId={instanceId} />;
 }
 
 type State =
@@ -106,11 +106,11 @@ const apply = (state: State, update: Update): State => {
 };
 
 /**
- * Asks the session backend to follow the session, loads its newest page, then applies every update
+ * Asks the session backend to follow the thread, loads its newest page, then applies every update
  * published after that page. Older pages load on demand. A dropped connection resumes where it
  * left off.
  */
-function useConversation(id: string) {
+function useConversation(thread: ThreadRef) {
 	const bus = useBus();
 	const [state, setState] = useState<State>({ status: "loading" });
 	const paging = useRef(false);
@@ -121,13 +121,13 @@ function useConversation(id: string) {
 				(
 					await bus.request({
 						topic: topics.page,
-						payload: { sessionId: id, limit: PAGE, ...(before === undefined ? {} : { before }) },
+						payload: { ...thread, limit: PAGE, ...(before === undefined ? {} : { before }) },
 					})
 				).payload,
 			);
 			return Option.getOrUndefined(reply);
 		},
-		[bus, id],
+		[bus, thread],
 	);
 
 	useEffect(() => {
@@ -136,10 +136,10 @@ function useConversation(id: string) {
 			if (active) setState({ status: "failed", message });
 		};
 		void (async () => {
-			const reply = decodeReply((await bus.request({ topic: topics.follow, payload: { sessionId: id } })).payload);
+			const reply = decodeReply((await bus.request({ topic: topics.follow, payload: thread })).payload);
 			if (Option.isSome(reply) && reply.value._tag === "Failed") return fail(reply.value.message);
 			const window = await page(undefined);
-			if (window === undefined) return fail(`Could not load session ${id}.`);
+			if (window === undefined) return fail(`Could not load session ${threadKey(thread)}.`);
 			if (window._tag === "Failed") return fail(window.message);
 			const { info, messages, more, queued, seq } = window;
 			if (active) setState({ status: "ready", info, messages, more, queued, after: seq, running: undefined });
@@ -147,10 +147,10 @@ function useConversation(id: string) {
 		return () => {
 			active = false;
 		};
-	}, [bus, id, page]);
+	}, [bus, thread, page]);
 
 	const after = state.status === "ready" ? state.after : undefined;
-	useEvents(after === undefined ? undefined : { topics: [topics.session(id)], after }, (item) => {
+	useEvents(after === undefined ? undefined : { topics: [topics.thread(threadKey(thread))], after }, (item) => {
 		if ("_tag" in item) return;
 		const update = decodeUpdate(item.payload);
 		if (Option.isSome(update)) setState((current) => apply(current, update.value));
@@ -178,11 +178,11 @@ function useConversation(id: string) {
 	return { state, loadOlder };
 }
 
-function Conversation({ id, instanceId }: { readonly id: string; readonly instanceId: string }) {
+function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; readonly instanceId: string }) {
 	const { setTitle, setIcon, setTab } = useFrame();
-	const { state, loadOlder } = useConversation(id);
+	const { state, loadOlder } = useConversation(thread);
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
-	const listed = useListedSession(id);
+	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
 	const project = state.status === "ready" ? state.info.project : listed?.project;
 	const projectId = project?.id;
@@ -253,7 +253,7 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 				{/* Idle too: prompts left waiting by a stop or a failure run with the next message, so they stay in view. */}
 				{state.queued.length > 0 && (
 					<Queue
-						sessionId={id}
+						thread={thread}
 						queued={state.queued}
 						running={running}
 						onError={setSendError}
@@ -261,7 +261,7 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 					/>
 				)}
 				<SessionComposer
-					sessionId={id}
+					thread={thread}
 					instanceId={instanceId}
 					running={running}
 					info={state.info}
