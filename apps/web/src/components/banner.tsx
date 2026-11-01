@@ -50,7 +50,7 @@ export function ComposerNotice({
 	return (
 		<div
 			role="alert"
-			className={`mx-5.5 -mb-4 flex items-center gap-2.5 rounded-t-2xl border border-b-0 ${surface} px-3 pt-2.5 pb-6 text-xs leading-snug`}
+			className={`mx-3 flex items-center gap-2.5 rounded-t-xl border border-b-0 ${surface} px-3 py-2 text-xs leading-snug`}
 		>
 			<Icon className={`size-4 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
 			<div className="min-w-0 flex-1">

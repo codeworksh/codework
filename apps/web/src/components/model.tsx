@@ -3,14 +3,13 @@ import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
 import { Cause, Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { Brain, ChevronDown, FileSearch, Search } from "lucide-react";
+import { Check, ChevronDown, FileSearch, Gauge, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -81,9 +80,9 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 	};
 }
 
-// The composer row's pickers: muted text that brightens on hover, like the prompt's own controls.
+// The composer toolbar pills share `bg-selection` and its hover.
 const trigger =
-	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-lg px-2.5 outline-none press hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
+	"group flex h-6.5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-selection px-1.5 text-2xs text-ink outline-none press hover:bg-selection-hover focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-selection";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {
@@ -109,7 +108,7 @@ export function ModelPicker(props: ModelPickerProps) {
 	return problem === undefined ? (
 		<Models {...props} />
 	) : (
-		<OpenProviderSettings problem={problem} className="shrink-0" />
+		<OpenProviderSettings problem={problem} className="h-6.5 shrink-0 rounded-md bg-selection px-1.5 text-2xs" />
 	);
 }
 
@@ -185,17 +184,21 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 						? undefined
 						: `${current.provider}/${current.id}${unavailable ? " — no credentials on this server" : ""}`
 				}
-				className={`${trigger} max-w-60 disabled:cursor-default disabled:text-ink-muted/60 disabled:hover:bg-transparent`}
+				className={`${trigger} max-w-56`}
 			>
 				{current !== undefined && !failed && (
 					<ProviderIcon
 						id={current.provider}
 						name={found?.provider.name ?? current.provider}
-						className="size-4 text-ink-muted"
+						className="size-4 shrink-0"
 					/>
 				)}
 				<span className={`truncate ${unavailable ? "text-ink-muted/60" : ""}`}>{label}</span>
-				<ChevronDown className="size-3.5 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
+				<ChevronDown
+					className="size-3 shrink-0 text-ink-muted transition-transform group-data-[state=open]:rotate-180"
+					strokeWidth={1.75}
+					aria-hidden
+				/>
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
@@ -208,100 +211,90 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 					event.preventDefault();
 					search.current?.focus();
 				}}
-				className="w-90 overflow-hidden rounded-lg border-ink/10 bg-popover/85 p-0 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
+				className="w-80 overflow-hidden rounded-xl border-ink/10 bg-popover/90 p-0 shadow-(--cw-menu-shadow) backdrop-blur-xl"
 			>
 				<div className="flex max-h-62 min-h-0 flex-row">
 					<div
 						role="toolbar"
 						aria-label="Providers"
 						aria-orientation="vertical"
-						className="w-11 shrink-0 overflow-y-auto bg-ink/1.5 p-1 scrollbar-none"
+						className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-edge p-1.5 scrollbar-none"
 					>
-						<div className="flex flex-col gap-1">
-							{providers.map((provider) => {
-								const selected = needle === "" && provider.id === shown;
-								return (
-									<button
-										key={provider.id}
-										type="button"
-										title={
-											provider.available ? provider.name : `${provider.name} — no credentials on this server`
-										}
-										aria-label={provider.name}
-										aria-pressed={selected}
-										onClick={() => {
-											setRail(provider.id);
-											setQuery("");
-											search.current?.focus();
-										}}
-										className={`relative flex aspect-square w-full items-center justify-center rounded-lg text-ink transition-colors outline-none hover:bg-ink/10 focus-visible:bg-ink/10 ${provider.available ? "" : "opacity-50"}`}
-									>
-										<ProviderIcon id={provider.id} name={provider.name} className="size-5" large />
-										{selected && (
-											<span className="pointer-events-none absolute top-1/2 -right-1 h-5 w-0.75 -translate-y-1/2 rounded-l-full bg-brand" />
-										)}
-									</button>
-								);
-							})}
-						</div>
+						{providers.map((provider) => {
+							const selected = needle === "" && provider.id === shown;
+							return (
+								<button
+									key={provider.id}
+									type="button"
+									title={
+										provider.available ? provider.name : `${provider.name} — no credentials on this server`
+									}
+									aria-label={provider.name}
+									aria-pressed={selected}
+									onClick={() => {
+										setRail(provider.id);
+										setQuery("");
+										search.current?.focus();
+									}}
+									className={`grid size-8 shrink-0 place-items-center rounded-md transition-colors outline-none ${selected ? "bg-selection-strong text-ink" : "text-ink-muted hover:bg-selection-subtle hover:text-ink"} ${provider.available ? "" : "opacity-50"}`}
+								>
+									<ProviderIcon id={provider.id} name={provider.name} className="size-4" large />
+								</button>
+							);
+						})}
 					</div>
 					<CommandPrimitive
 						shouldFilter={false}
 						// Opens on the current model, as the highlighted row.
 						{...(current === undefined ? {} : { defaultValue: `${current.provider}/${current.id}` })}
-						className="flex min-w-0 flex-1 flex-col border-l border-edge/70 bg-ink/2.5"
+						className="flex min-w-0 flex-1 flex-col"
 					>
-						<div className="px-3 pt-2.5">
-							<div className="relative border-b border-edge/70 pb-1.5 transition-colors focus-within:border-brand">
-								<Search
-									className="pointer-events-none absolute top-1.5 left-0 size-3.5 text-ink-muted"
-									strokeWidth={2}
-									aria-hidden
-								/>
-								<CommandPrimitive.Input
-									ref={search}
-									placeholder="Search models..."
-									value={query}
-									onValueChange={setQuery}
-									className="h-6.5 w-full bg-transparent pl-5 text-sm leading-6.5 text-ink outline-none placeholder:text-ink-muted/70"
-								/>
-							</div>
+						<div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2 text-ink-muted">
+							<Search className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+							<CommandPrimitive.Input
+								ref={search}
+								placeholder="Search models"
+								value={query}
+								onValueChange={setQuery}
+								className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-muted/70"
+							/>
 						</div>
-						<CommandPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-1.5 pr-1.5 pl-2 scrollbar-thin">
-							<CommandPrimitive.Empty className="py-6 text-center text-xs text-ink-muted">
+						<CommandPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-1 scrollbar-thin">
+							<CommandPrimitive.Empty className="px-2 py-3 text-ui text-ink-muted">
 								{empty}
 							</CommandPrimitive.Empty>
 							<div className="flex flex-col gap-0.5">
-								{rows.map(({ provider, model }) => (
-									<CommandPrimitive.Item
-										key={`${provider.id}/${model.id}`}
-										value={`${provider.id}/${model.id}`}
-										// Shown so the default stays in view, but a session on it would fail.
-										disabled={!provider.available}
-										title={
-											provider.available ? undefined : `${provider.name} has no credentials on this server`
-										}
-										onSelect={() => {
-											onChange({ provider: provider.id, id: model.id });
-											setOpen(false);
-										}}
-										className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1 outline-none select-none data-[disabled=true]:cursor-not-allowed data-[selected=true]:bg-ink/8"
-									>
-										<div className="min-w-0 flex-1">
-											<div className="flex min-w-0 items-center gap-2">
-												<div
-													className={`truncate text-xs leading-snug font-medium ${provider.available ? "text-ink" : "text-ink-muted/60"}`}
-												>
-													{model.name}
-												</div>
-											</div>
-											<div className="mt-1 flex items-center gap-1.5 text-ink-muted/70">
-												<ProviderIcon id={provider.id} name={provider.name} className="size-3" />
-												<span className="truncate text-xs leading-snug">{provider.name}</span>
-											</div>
-										</div>
-									</CommandPrimitive.Item>
-								))}
+								{rows.map(({ provider, model }) => {
+									const isCurrent = current?.provider === provider.id && current.id === model.id;
+									return (
+										<CommandPrimitive.Item
+											key={`${provider.id}/${model.id}`}
+											value={`${provider.id}/${model.id}`}
+											// Shown so the default stays in view, but a session on it would fail.
+											disabled={!provider.available}
+											title={
+												provider.available
+													? undefined
+													: `${provider.name} has no credentials on this server`
+											}
+											onSelect={() => {
+												onChange({ provider: provider.id, id: model.id });
+												setOpen(false);
+											}}
+											className="flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-body text-ink outline-none select-none data-[disabled=true]:cursor-not-allowed data-[disabled=true]:text-ink-muted/40 data-[selected=true]:bg-selection"
+										>
+											<span className="min-w-0 flex-1 truncate">{model.name}</span>
+											{needle !== "" && (
+												<span className="max-w-24 shrink-0 truncate text-3xs text-ink-muted">
+													{provider.name}
+												</span>
+											)}
+											{isCurrent && (
+												<Check className="size-3.5 shrink-0 text-ink-muted" strokeWidth={2} aria-hidden />
+											)}
+										</CommandPrimitive.Item>
+									);
+								})}
 							</div>
 						</CommandPrimitive.List>
 					</CommandPrimitive>
@@ -367,52 +360,53 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 	const choosable = shown !== undefined && levels.some((level) => level !== "off");
 
 	return (
-		<>
-			<span className="mx-0.5 h-4 w-px shrink-0 bg-edge" aria-hidden />
-			<DropdownMenu
-				// Focus moves to the current level once the menu opens, so it is the one row that reads as picked.
-				onOpenChange={(open) => {
-					if (open) requestAnimationFrame(() => picked.current?.focus());
-				}}
+		<DropdownMenu
+			// Focus moves to the current level once the menu opens, so it is the one row that reads as picked.
+			onOpenChange={(open) => {
+				if (open) requestAnimationFrame(() => picked.current?.focus());
+			}}
+		>
+			<DropdownMenuTrigger
+				disabled={!choosable}
+				className={`${trigger} max-w-28`}
+				title={
+					choosable
+						? `Reasoning: ${levelLabels[shown]}`
+						: levels.length === 0
+							? "Pick an available model to choose its reasoning"
+							: "This model does not reason"
+				}
 			>
-				<DropdownMenuTrigger
-					disabled={!choosable}
-					className={`${trigger} disabled:cursor-default disabled:text-ink-muted/60 disabled:hover:bg-transparent`}
-					title={
-						choosable
-							? "Reasoning"
-							: levels.length === 0
-								? "Pick an available model to choose its reasoning"
-								: "This model does not reason"
-					}
-				>
-					<Brain className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
-					<span className="truncate">{choosable ? levelLabels[shown] : "Reasoning"}</span>
-					<ChevronDown className="size-3.5 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
-				</DropdownMenuTrigger>
-				<DropdownMenuContent
-					align="start"
-					side="bottom"
-					sideOffset={4}
-					collisionPadding={5}
-					className="min-w-36 rounded-lg border-ink/10 bg-popover/85 p-1 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
-				>
-					<DropdownMenuLabel className="px-2 pt-1 pb-0.5 text-xs font-normal text-ink-muted">
-						Reasoning
-					</DropdownMenuLabel>
-					{levels.map((level) => (
-						<DropdownMenuItem
-							key={level}
-							onSelect={() => onChange(level)}
-							aria-current={level === shown}
-							{...(level === shown ? { ref: picked } : {})}
-							className="gap-1.5 rounded-md py-1 text-sm aria-current:bg-ink/8"
-						>
-							{levelLabels[level]}
-						</DropdownMenuItem>
-					))}
-				</DropdownMenuContent>
-			</DropdownMenu>
-		</>
+				<Gauge className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+				<span className="truncate">{choosable ? levelLabels[shown] : "Reasoning"}</span>
+				<ChevronDown
+					className="size-3 shrink-0 text-ink-muted transition-transform group-data-[state=open]:rotate-180"
+					strokeWidth={1.75}
+					aria-hidden
+				/>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent
+				align="start"
+				side="bottom"
+				sideOffset={4}
+				collisionPadding={5}
+				className="min-w-44 rounded-xl border-ink/10 bg-popover/90 p-1 shadow-(--cw-menu-shadow) backdrop-blur-xl"
+			>
+				{levels.map((level) => (
+					<DropdownMenuItem
+						key={level}
+						onSelect={() => onChange(level)}
+						aria-current={level === shown}
+						{...(level === shown ? { ref: picked } : {})}
+						className="flex h-8 items-center justify-between gap-2 rounded-lg px-2 text-body text-ink focus:bg-selection aria-current:bg-selection/60"
+					>
+						<span className="min-w-0 flex-1 truncate">{levelLabels[level]}</span>
+						{level === shown && (
+							<Check className="size-3.5 shrink-0 text-ink-muted" strokeWidth={2} aria-hidden />
+						)}
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

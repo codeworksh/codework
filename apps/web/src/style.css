@@ -21,7 +21,6 @@
 	--cw-brand-ink: var(--t-brand-ink);
 	/* Shared dimensions keep native chrome, fixed navigation and the sidebar aligned. */
 	--cw-titlebar-height: 40px;
-	--cw-rail-width: 52px;
 	--cw-content-width: 832px;
 	--cw-selection-subtle: light-dark(
 		color-mix(in srgb, var(--cw-ink) 5%, transparent),
@@ -43,9 +42,11 @@
 	--cw-primary-ink: var(--cw-frame);
 	--cw-message: light-dark(#0a0a0a, var(--cw-selection));
 	--cw-message-ink: light-dark(#ffffff, var(--cw-ink));
-	--cw-composer: light-dark(var(--cw-frame), color-mix(in srgb, var(--cw-frame) 94%, transparent));
+	--cw-composer: light-dark(var(--cw-frame), color-mix(in srgb, var(--cw-ink) 3%, transparent));
 	--cw-sidebar: light-dark(var(--cw-desktop), color-mix(in srgb, var(--cw-desktop) 85%, transparent));
-	--cw-composer-shadow: 0 2px 6px var(--cw-shadow-near), 0 6px 24px var(--cw-shadow-far);
+	--cw-composer-shadow:
+		0 2px 6px light-dark(color-mix(in srgb, var(--cw-ink) 6%, transparent), transparent),
+		0 6px 24px light-dark(color-mix(in srgb, var(--cw-ink) 9%, transparent), transparent);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
 	--cw-warning: light-dark(#d97706, #fbbf24);
@@ -83,7 +84,6 @@
 
 @theme inline {
 	--spacing-titlebar: var(--cw-titlebar-height);
-	--spacing-rail: var(--cw-rail-width);
 	--spacing-tab: 27px;
 	--spacing-pane: 36px;
 	--container-conversation: var(--cw-content-width);
@@ -228,9 +228,9 @@
 	}
 }
 
-/* The navigation rail stays put when the shadcn sessions sidebar folds away. */
+/* The sidebar sits inside the app frame beneath the title bar. */
 .app-shell [data-slot="sidebar"] > .shell-sidebar {
-	left: var(--cw-rail-width);
+	left: 8px;
 	top: var(--cw-titlebar-height);
 	height: calc(100svh - var(--cw-titlebar-height) - 8px);
 	border: 0;
@@ -240,7 +240,7 @@
 	backdrop-filter: blur(24px);
 }
 .app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
-	left: calc(var(--cw-rail-width) - var(--sidebar-width));
+	left: calc(8px - var(--sidebar-width));
 	visibility: hidden;
 }
 .app-shell .shell-sidebar [data-slot="sidebar-inner"] {

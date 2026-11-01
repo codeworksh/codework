@@ -1,10 +1,17 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { Plus, Search, SquarePen } from "lucide-react";
+import { Plus, Search, Settings, SquarePen } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
-import { Sidebar, SidebarContent, SidebarHeader, SidebarInput, SidebarRail } from "@/components/ui/sidebar";
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarHeader,
+	SidebarInput,
+	SidebarRail,
+} from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
@@ -145,6 +152,15 @@ export function SessionsSidebar() {
 					</ul>
 				)}
 			</SidebarContent>
+			<SidebarFooter className="p-2">
+				<Link
+					to="/settings/workspaces"
+					className="flex h-7 items-center gap-2 rounded-md px-2.5 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
+				>
+					<Settings className="size-3.5" aria-hidden />
+					Settings
+				</Link>
+			</SidebarFooter>
 			<SidebarRail />
 		</Sidebar>
 	);

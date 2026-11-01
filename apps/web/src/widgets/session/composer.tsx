@@ -3,7 +3,7 @@ import { Option, Schema } from "effect";
 import { Reply, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { PromptComposer, ComposerHeader, ComposerSubmit, ComposerButton, type Submit } from "@/components/composer";
+import { Composer, ComposerHeader, ComposerSubmit, ComposerButton, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
 import { type Info, Json, type ThreadRef, topics } from "./schema";
@@ -203,7 +203,7 @@ export function SessionComposer({
 					<kbd className="rounded border border-edge px-1 text-[10px]">R</kbd>
 				</button>
 			) : (
-				<PromptComposer
+				<Composer
 					inputRef={input}
 					onEscape={collapse}
 					header={<ComposerHeader title="Reply" icon={Reply} onClose={collapse} />}
@@ -231,7 +231,7 @@ export function SessionComposer({
 						<>
 							{running && (
 								<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { ...thread })}>
-									<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
+									<Square className="size-2.5" fill="currentColor" strokeWidth={0} aria-hidden />
 								</ComposerButton>
 							)}
 							<ComposerSubmit
