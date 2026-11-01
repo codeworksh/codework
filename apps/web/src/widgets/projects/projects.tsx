@@ -5,15 +5,13 @@ import type { MouseEvent } from "react";
 
 import { isMac, openMode, useShell } from "@codeworksh/widget/view";
 
-import { Server } from "../../kernel/rpc";
 import { sessionAddress } from "../session/address";
+import { projectsAtom } from "../session/projects";
 import { ago } from "../time";
-
-const list = Server.query("projects.list", undefined);
 
 export function Projects() {
 	const shell = useShell();
-	const result = useAtomValue(list);
+	const result = useAtomValue(projectsAtom);
 	// Primary and middle clicks open; a right click is left to the context menu.
 	const open = (id: string, event: MouseEvent) => {
 		if (event.button <= 1) shell.open(sessionAddress(id), { mode: openMode(event) });

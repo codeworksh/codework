@@ -50,18 +50,20 @@ export function problemOf(status: ServerStatus): Problem | undefined {
 
 /**
  * Every server's status, as the app server last checked it, kept current as it checks again. When
- * the default server becomes usable, whatever failed while it was not loads again.
+ * the default server becomes usable or its home changes, its queries load again.
  */
 export const serversAtom = Server.runtime
 	.atom(
 		Stream.suspend(() => {
-			let wasUsable: boolean | undefined;
+			let previous: { readonly home: string | undefined; readonly usable: boolean } | undefined;
 			return Stream.unwrap(Server.use((client) => Effect.succeed(client("servers.watch", undefined)))).pipe(
 				Stream.tap((statuses) => {
-					const now = statuses.some((status) => status.isDefault && problemOf(status) === undefined);
-					const recovered = wasUsable === false && now;
-					wasUsable = now;
-					return recovered ? Reactivity.invalidate(codeworkKey) : Effect.void;
+					const current = statuses.find((status) => status.isDefault);
+					const home = current?.home.path;
+					const usable = current !== undefined && problemOf(current) === undefined;
+					const refresh = usable && previous !== undefined && (!previous.usable || previous.home !== home);
+					previous = { home, usable };
+					return refresh ? Reactivity.invalidate(codeworkKey) : Effect.void;
 				}),
 				// The app server is local, so a dropped stream is only a moment's gap.
 				Stream.retry(Schedule.spaced("1 second")),
