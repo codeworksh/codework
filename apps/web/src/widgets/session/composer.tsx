@@ -231,7 +231,7 @@ export function SessionComposer({
 						<>
 							{running && (
 								<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { ...thread })}>
-									<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
+									<Square className="size-2.5" fill="currentColor" strokeWidth={0} aria-hidden />
 								</ComposerButton>
 							)}
 							<ComposerSubmit

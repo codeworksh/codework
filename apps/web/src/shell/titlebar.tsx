@@ -31,7 +31,7 @@ export function NavigationControls() {
 		<header className="flex h-titlebar w-full shrink-0 items-center bg-desktop pr-2 select-none [-webkit-app-region:drag]">
 			<div
 				className={`flex shrink-0 items-center gap-1 px-2 ${insetTitleBar ? "min-w-44 pl-20" : "min-w-28"}`}
-				style={{ width: withSidebar ? "calc(var(--cw-rail-width) + var(--sidebar-width))" : undefined }}
+				style={{ width: withSidebar ? "calc(8px + var(--sidebar-width))" : undefined }}
 			>
 				<button
 					type="button"

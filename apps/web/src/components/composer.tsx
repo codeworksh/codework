@@ -1,4 +1,4 @@
-import { CornerDownLeft, X, type LucideIcon } from "lucide-react";
+import { ArrowUp, X, type LucideIcon } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
@@ -59,12 +59,14 @@ export function Composer({
 			>
 				{header}
 				<div
-					className={compact ? "px-3.5 pt-2.5 pb-0.5" : header !== undefined ? "px-4 pt-2 pb-2" : "px-4 pt-4 pb-2"}
+					className={
+						compact ? "px-3 pt-2.5 pb-1" : header !== undefined ? "px-3 pt-1.5 pb-1.5" : "px-3 pt-3.5 pb-1.5"
+					}
 				>
 					<textarea
 						ref={inputRef}
 						autoFocus={autoFocus}
-						rows={1}
+						rows={compact ? 1 : 2}
 						value={value}
 						onChange={(event) => onChange(event.target.value)}
 						onKeyDown={(event) => {
@@ -81,21 +83,17 @@ export function Composer({
 						}}
 						placeholder={placeholder}
 						aria-label="Prompt"
-						// Grows with its text, from four lines (one when compact) up to about nine, then scrolls.
-						className={`block max-h-52 w-full resize-none bg-transparent text-body text-ink outline-none [field-sizing:content] placeholder:text-ink-muted ${compact ? "min-h-6" : "min-h-19.5"}`}
+						// Grows with its text, from two lines (one when compact) up to about seven, then scrolls.
+						className={`block max-h-40 w-full resize-none bg-transparent text-sm leading-5.5 text-ink outline-none [field-sizing:content] placeholder:overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:text-ink-muted/70 ${compact ? "min-h-5.5" : "min-h-11"}`}
 					/>
 				</div>
-				<div className={`flex items-center gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>
-					{/* Pulled left by a control's padding, so the first one's icon lines up with the prompt's text. */}
-					<div className="-ml-2.5 flex min-w-0 flex-1 flex-wrap items-center gap-1 text-ui font-medium text-ink-muted">
-						{controls}
-					</div>
-					{actions}
+				<div className="flex items-center gap-1 px-2 pb-2.5">
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-2xs text-ink">{controls}</div>
+					<div className="flex shrink-0 items-center gap-1">{actions}</div>
 				</div>
 			</form>
 			{tray !== undefined && (
-				// Inset from the card's rounded corners, tucked under its bottom edge.
-				<div className="mx-3 -mt-3 flex items-center gap-2 rounded-b-lg border border-edge bg-selection-subtle px-2 pt-4 pb-1 text-ui text-ink-muted">
+				<div className="flex min-w-0 items-center gap-2.5 overflow-hidden px-[15px] pt-1.5 text-ui text-ink-muted">
 					{tray}
 				</div>
 			)}
@@ -116,7 +114,7 @@ export function ComposerHeader({
 	readonly onClose?: () => void;
 }) {
 	return (
-		<div className="flex h-pane items-center gap-2 px-4 text-ui text-ink-muted">
+		<div className="flex h-pane items-center gap-2 px-3 text-ui text-ink-muted">
 			<Icon className="size-3.5" aria-hidden />
 			<span className="flex-1 font-medium">{title}</span>
 			{onClose !== undefined && (
@@ -146,12 +144,12 @@ export function ComposerSubmit({
 	return (
 		<button
 			type="submit"
+			aria-label={label}
 			disabled={disabled}
-			className="flex h-7 shrink-0 items-center gap-2 rounded-md bg-primary px-2.5 text-ui font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:bg-primary/25 disabled:text-primary-foreground/60"
+			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:bg-primary/30 disabled:text-primary-foreground/40"
 			title={title ?? `${label} (Enter)`}
 		>
-			{label}
-			<CornerDownLeft className="size-3.5 opacity-70" aria-hidden />
+			<ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
 		</button>
 	);
 }
@@ -176,7 +174,7 @@ export function ComposerButton({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="grid size-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring press enabled:hover:bg-primary/90 disabled:bg-primary/25 disabled:text-primary-foreground/60"
+			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring press enabled:hover:bg-primary/90 disabled:bg-primary/30 disabled:text-primary-foreground/40"
 		>
 			{children}
 		</button>

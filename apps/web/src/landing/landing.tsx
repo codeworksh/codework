@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { ChevronDown, Folder, FolderPlus, SquarePen } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus } from "lucide-react";
 import { useContext, useMemo, useState } from "react";
 
 import {
@@ -11,7 +11,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ComposerNotice } from "@/components/banner";
-import { PromptComposer, ComposerHeader, ComposerSubmit } from "@/components/composer";
+import { PromptComposer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
@@ -19,7 +19,6 @@ import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
 import { placeAtom, placeLabel, usePickFolder } from "./place";
 import { projectsAtom } from "../widgets/session/projects";
-import { Wordmark } from "./wordmark";
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
@@ -75,17 +74,21 @@ export function Landing() {
 	};
 
 	const pickFolder = usePickFolder();
+	const title =
+		place.kind === "folder" ? `What should we work on in ${placeLabel(place)}?` : "What should we work on?";
 
 	return (
-		<div className="flex h-full min-w-0 flex-col select-none">
-			<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
-				<div className="flex-[0.8]" />
-				<Wordmark className="pointer-events-none w-[min(60%,22rem)] shrink-0 text-ink opacity-20" />
-				<p className="mt-5 text-body text-ink-muted">What would you like to work on?</p>
-				<div className="mt-6 w-full max-w-2xl shrink-0">
+		<div className="relative flex h-full min-h-0 flex-col overflow-y-auto overscroll-none select-none">
+			<main className="relative z-10 mx-auto flex w-full max-w-conversation flex-1 flex-col overflow-clip px-2.5 pt-6 pb-1.5">
+				<div aria-hidden className="flex-[1_1_0px]" />
+				<div className="mb-4 shrink-0 px-2.5">
+					<h1 className="truncate text-lg text-ink" title={place.kind === "folder" ? place.path : undefined}>
+						{title}
+					</h1>
+				</div>
+				<div className="w-full shrink-0">
 					{notice !== undefined && <ComposerNotice {...notice} />}
 					<PromptComposer
-						header={<ComposerHeader title="New session" icon={SquarePen} />}
 						autoFocus
 						value={query}
 						onChange={setQuery}
@@ -112,11 +115,15 @@ export function Landing() {
 								<DropdownMenu>
 									<DropdownMenuTrigger
 										title={place.kind === "folder" ? place.path : undefined}
-										className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
+										className="group -ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none press hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection data-[state=open]:text-ink"
 									>
-										<Folder className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
+										<Folder className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
 										<span className="truncate">{placeLabel(place)}</span>
-										<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
+										<ChevronDown
+											className="size-3 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+											strokeWidth={1.75}
+											aria-hidden
+										/>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="start" className="min-w-44">
 										<DropdownMenuLabel>Project</DropdownMenuLabel>
@@ -129,12 +136,14 @@ export function Landing() {
 										</DropdownMenuItem>
 									</DropdownMenuContent>
 								</DropdownMenu>
-								{error !== undefined && <span className="truncate px-1.75 py-1 text-destructive">{error}</span>}
+								{error !== undefined && (
+									<span className="ml-auto truncate text-2xs text-destructive">{error}</span>
+								)}
 							</>
 						}
 					/>
 				</div>
-				<div className="flex-1" />
+				<div aria-hidden className="flex-[1_1_1.125rem]" />
 			</main>
 		</div>
 	);

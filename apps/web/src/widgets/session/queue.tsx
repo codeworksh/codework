@@ -96,7 +96,7 @@ export function Queue({
 
 	const many = queued.length > 4;
 	return (
-		<div className="mx-5.5 -mb-4 rounded-t-2xl border border-b-0 border-edge bg-frame px-3 pt-2 pb-6 text-xs leading-snug">
+		<div className="mx-3 rounded-t-xl border border-b-0 border-edge bg-(--cw-composer) px-3 py-1.5 text-xs leading-snug backdrop-blur-xl">
 			{queued.length > 3 && <p className="pb-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
 			<ol
 				aria-label="Queued messages"
