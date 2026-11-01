@@ -3,13 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ARCADE_MODES,
 	type ArcadeMode,
-	createDinoArcade,
-	type DinoArcade,
-	type DinoSprite,
-	type DinoSpriteKind,
+	type ArcadeSprite,
+	type ArcadeSpriteKind,
+	GRID_GAMES,
+	type GridArcade,
+	type GridGame,
+	SLIDE_HOLD_MS,
 	SPRITE_PATHS,
 	SPRITE_UNIT,
-} from "./dino";
+	stepSlider,
+} from "./games";
 
 const CELL = 6;
 const GAP = 1;
@@ -18,9 +21,10 @@ const BORDER_OPACITY = 0.06;
 const PEAK_OPACITY = 0.72;
 const SPRITE_OPACITY = 0.92;
 const BUBBLE_OPACITY = 0.9;
-const IDLE_DIM = 0.55;
 const BUBBLE_EASE = 0.22;
 const FRAME_MS = 33;
+/** The slide transition, plus a frame of slack, while both boards show. */
+const SLIDE_MS = 800;
 
 /** One "pixel" of the speech bubble art, in CSS px. */
 const UNIT = 2;
@@ -37,6 +41,14 @@ const snap = (value: number) => Math.round(value / UNIT) * UNIT;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 type Point = readonly [number, number];
+
+type Board = {
+	game: GridGame;
+	arcade: GridArcade;
+	canvas: HTMLCanvasElement;
+	ctx: CanvasRenderingContext2D;
+	bubbleAt: { x: number; y: number } | null;
+};
 
 function outline(x: number, y: number, w: number, h: number, tailX: number, below: boolean): Point[] {
 	const points: Point[] = [];
@@ -137,9 +149,9 @@ function drawSpeechBubble(
 	ctx.restore();
 }
 
-const spritePaths = new Map<DinoSpriteKind, Path2D>();
+const spritePaths = new Map<ArcadeSpriteKind, Path2D>();
 
-function getSpritePath(kind: DinoSpriteKind): Path2D {
+function getSpritePath(kind: ArcadeSpriteKind): Path2D {
 	const cached = spritePaths.get(kind);
 	if (cached !== undefined) return cached;
 	const path = new Path2D(SPRITE_PATHS[kind]);
@@ -147,7 +159,7 @@ function getSpritePath(kind: DinoSpriteKind): Path2D {
 	return path;
 }
 
-function drawSprite(ctx: CanvasRenderingContext2D, sprite: DinoSprite, fill: string) {
+function drawSprite(ctx: CanvasRenderingContext2D, sprite: ArcadeSprite, fill: string) {
 	const path = getSpritePath(sprite.kind);
 	const unit = SPRITE_UNIT * PITCH;
 	const left = sprite.x * PITCH;
@@ -175,36 +187,57 @@ function parseSurfaceRgb() {
 	return parseRgb(getComputedStyle(document.body).backgroundColor, "23, 23, 23");
 }
 
-const JUMP_KEYS = new Set([" ", "Spacebar", "ArrowUp", "w", "W"]);
-const DUCK_KEYS = new Set(["ArrowDown", "s", "S"]);
-
 export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean) => void }) {
 	const rootRef = useRef<HTMLDivElement>(null);
 	const startRef = useRef<HTMLButtonElement>(null);
 	const returnFocusRef = useRef<HTMLElement | null>(null);
-	const canvasRef = useRef<HTMLCanvasElement>(null);
-	const arcadeRef = useRef<DinoArcade | null>(null);
+	const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+	const boardsRef = useRef<Board[] | null>(null);
+	const indexRef = useRef(0);
 	const playingRef = useRef(false);
 	const scoreRef = useRef(0);
 	const highScoreRef = useRef(0);
+	const livesRef = useRef(0);
 	const gameOverRef = useRef(false);
+	const slideAtRef = useRef(0);
 
 	const [playing, setPlaying] = useState(false);
 	const [score, setScore] = useState(0);
 	const [highScore, setHighScore] = useState(0);
+	const [lives, setLives] = useState(3);
 	const [gameOver, setGameOver] = useState(false);
 	const [mode, setMode] = useState<ArcadeMode>("mid");
+	const [slide, setSlide] = useState<{ index: number; dir: 1 | -1 }>({
+		index: 0,
+		dir: 1,
+	});
+	const [hovered, setHovered] = useState(false);
+	const [focused, setFocused] = useState(false);
 
+	indexRef.current = slide.index;
 	playingRef.current = playing;
+
+	const game = GRID_GAMES[slide.index] ?? GRID_GAMES[0]!;
 
 	useEffect(() => {
 		const root = rootRef.current;
-		const canvas = canvasRef.current;
-		const ctx = canvas?.getContext("2d");
-		if (!root || !canvas || !ctx) return;
+		if (!root) return;
 
-		const arcade = createDinoArcade();
-		arcadeRef.current = arcade;
+		const boards: Board[] = [];
+		for (let i = 0; i < GRID_GAMES.length; i++) {
+			const canvas = canvasRefs.current[i];
+			const ctx = canvas?.getContext("2d");
+			const spec = GRID_GAMES[i];
+			if (!canvas || !ctx || !spec) return;
+			boards.push({
+				game: spec,
+				arcade: spec.create(),
+				canvas,
+				ctx,
+				bubbleAt: null,
+			});
+		}
+		boardsRef.current = boards;
 
 		const gridCanvas = document.createElement("canvas");
 		const gridCtx = gridCanvas.getContext("2d");
@@ -218,7 +251,6 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		let rgb = parseContentRgb();
 		let surfaceRgb = parseSurfaceRgb();
 		let lastFrame = 0;
-		let bubbleAt: { x: number; y: number } | null = null;
 
 		const drawGrid = () => {
 			if (!gridCtx || width <= 0 || height <= 0) return;
@@ -251,12 +283,14 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 			const nextCols = Math.ceil(width / PITCH);
 			const nextRows = Math.ceil(height / PITCH);
 
-			canvas.width = Math.floor(width * dpr);
-			canvas.height = Math.floor(height * dpr);
-			canvas.style.width = `${width}px`;
-			canvas.style.height = `${height}px`;
-			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-			arcade.resize(nextCols, nextRows);
+			for (const board of boards) {
+				board.canvas.width = Math.floor(width * dpr);
+				board.canvas.height = Math.floor(height * dpr);
+				board.canvas.style.width = `${width}px`;
+				board.canvas.style.height = `${height}px`;
+				board.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+				board.arcade.resize(nextCols, nextRows);
+			}
 
 			cols = nextCols;
 			rows = nextRows;
@@ -264,8 +298,9 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 			start();
 		};
 
-		const paint = () => {
-			const dim = arcade.controlled() ? 1 : IDLE_DIM;
+		const paint = (board: Board, width: number, height: number) => {
+			const { ctx, arcade } = board;
+			const dim = arcade.controlled() ? 1 : board.game.idleDim;
 			if (stamp.length === cols * rows) stamp.fill(0);
 			else stamp = new Float32Array(cols * rows);
 			arcade.stamp(stamp, cols, rows);
@@ -298,23 +333,23 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 
 			const bubble = arcade.speechBubble();
 			if (!bubble) {
-				bubbleAt = null;
+				board.bubbleAt = null;
 				return;
 			}
 
 			const target = { x: bubble.x * PITCH, y: bubble.y * PITCH };
-			bubbleAt = !bubbleAt
+			board.bubbleAt = !board.bubbleAt
 				? target
 				: {
-						x: bubbleAt.x + (target.x - bubbleAt.x) * BUBBLE_EASE,
-						y: bubbleAt.y + (target.y - bubbleAt.y) * BUBBLE_EASE,
+						x: board.bubbleAt.x + (target.x - board.bubbleAt.x) * BUBBLE_EASE,
+						y: board.bubbleAt.y + (target.y - board.bubbleAt.y) * BUBBLE_EASE,
 					};
 
 			drawSpeechBubble(
 				ctx,
 				bubble.text,
-				bubbleAt.x,
-				bubbleAt.y,
+				board.bubbleAt.x,
+				board.bubbleAt.y,
 				CELL,
 				{ width, height },
 				bubble.alpha * BUBBLE_OPACITY * dim,
@@ -332,22 +367,37 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 			const dt = lastFrame ? time - lastFrame : FRAME_MS;
 			lastFrame = time;
 
-			arcade.step(dt);
-			paint();
+			const current = indexRef.current;
+			const controlled = playingRef.current;
+			const sliding = time - slideAtRef.current < SLIDE_MS;
 
-			if (!playingRef.current) return;
+			for (let i = 0; i < boards.length; i++) {
+				const board = boards[i];
+				if (!board) continue;
+				if (controlled && i !== current) continue;
+				board.arcade.step(dt);
+				if (i === current || sliding) paint(board, width, height);
+			}
 
-			const nextScore = arcade.score();
+			const active = boards[current];
+			if (!active || !controlled) return;
+
+			const nextScore = active.arcade.score();
 			if (nextScore !== scoreRef.current) {
 				scoreRef.current = nextScore;
 				setScore(nextScore);
 			}
-			const nextHigh = arcade.highScore();
+			const nextHigh = active.arcade.highScore();
 			if (nextHigh !== highScoreRef.current) {
 				highScoreRef.current = nextHigh;
 				setHighScore(nextHigh);
 			}
-			const nextOver = arcade.gameOver();
+			const nextLives = active.arcade.lives();
+			if (nextLives !== livesRef.current) {
+				livesRef.current = nextLives;
+				setLives(nextLives);
+			}
+			const nextOver = active.arcade.gameOver();
 			if (nextOver !== gameOverRef.current) {
 				gameOverRef.current = nextOver;
 				setGameOver(nextOver);
@@ -378,17 +428,21 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 			document.removeEventListener("visibilitychange", start);
 			resizeObserver.disconnect();
 			themeObserver.disconnect();
-			arcadeRef.current = null;
+			boardsRef.current = null;
 		};
 	}, []);
 
 	const takeControl = useCallback(() => {
-		const arcade = arcadeRef.current;
-		arcade?.setMode(mode);
-		arcade?.takeControl();
+		const board = boardsRef.current?.[indexRef.current];
+		board?.arcade.setMode(mode);
+		board?.arcade.takeControl();
 		scoreRef.current = 0;
+		highScoreRef.current = board?.arcade.highScore() ?? 0;
+		livesRef.current = board?.arcade.lives() ?? 0;
 		gameOverRef.current = false;
 		setScore(0);
+		setHighScore(highScoreRef.current);
+		setLives(livesRef.current);
 		setGameOver(false);
 		returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		setPlaying(true);
@@ -396,12 +450,12 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 	}, [mode, onPlayingChange]);
 
 	const pickMode = useCallback((next: ArcadeMode) => {
-		arcadeRef.current?.setMode(next);
+		boardsRef.current?.[indexRef.current]?.arcade.setMode(next);
 		setMode(next);
 	}, []);
 
 	const releaseControl = useCallback(() => {
-		arcadeRef.current?.releaseControl();
+		boardsRef.current?.[indexRef.current]?.arcade.releaseControl();
 		scoreRef.current = 0;
 		gameOverRef.current = false;
 		setScore(0);
@@ -409,6 +463,28 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		setPlaying(false);
 		onPlayingChange(false);
 	}, [onPlayingChange]);
+
+	useEffect(() => {
+		slideAtRef.current = performance.now();
+	}, [slide.index]);
+
+	const showGame = useCallback((next: number) => {
+		if (next === indexRef.current) return;
+		setSlide({
+			index: next,
+			dir: next > indexRef.current ? 1 : -1,
+		});
+	}, []);
+
+	useEffect(() => {
+		if (playing || hovered || focused || GRID_GAMES.length < 2) return;
+
+		const id = window.setInterval(() => {
+			if (document.hidden || !rootRef.current?.offsetParent) return;
+			setSlide((current) => stepSlider(current.index, current.dir, GRID_GAMES.length));
+		}, SLIDE_HOLD_MS);
+		return () => window.clearInterval(id);
+	}, [playing, hovered, focused, slide.index]);
 
 	useEffect(() => {
 		if (!playing) {
@@ -435,27 +511,20 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 				return;
 			}
 			if (active instanceof Element && active.closest("button")) return;
-			if (JUMP_KEYS.has(event.key)) {
+
+			const handled = boardsRef.current?.[indexRef.current]?.arcade.keyDown(event.key, event.repeat);
+			if (handled) {
 				event.preventDefault();
 				event.stopPropagation();
-				if (!event.repeat) arcadeRef.current?.jump();
-				return;
-			}
-			if (DUCK_KEYS.has(event.key)) {
-				event.preventDefault();
-				event.stopPropagation();
-				arcadeRef.current?.setDuck(true);
 			}
 		};
 
 		const onKeyUp = (event: KeyboardEvent) => {
-			if (DUCK_KEYS.has(event.key)) {
-				arcadeRef.current?.setDuck(false);
-			}
+			boardsRef.current?.[indexRef.current]?.arcade.keyUp(event.key);
 		};
 
 		const onBlur = () => {
-			arcadeRef.current?.setDuck(false);
+			boardsRef.current?.[indexRef.current]?.arcade.blur();
 		};
 
 		window.addEventListener("keydown", onKeyDown, true);
@@ -473,14 +542,23 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		<div
 			ref={rootRef}
 			tabIndex={playing ? 0 : -1}
+			onPointerEnter={() => setHovered(true)}
+			onPointerLeave={() => setHovered(false)}
+			onFocusCapture={() => setFocused(true)}
+			onBlurCapture={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+			}}
 			onPointerDown={(event) => {
 				if (!playing || event.button !== 0 || (event.target instanceof Element && event.target.closest("button")))
 					return;
 				event.preventDefault();
-				rootRef.current?.focus();
-				arcadeRef.current?.jump();
+				const root = rootRef.current;
+				root?.focus();
+				const rect = root?.getBoundingClientRect();
+				const xRatio = rect && rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
+				boardsRef.current?.[indexRef.current]?.arcade.pointerDown(xRatio);
 			}}
-			aria-label={playing ? "Dino runner. Space or Up to jump, Down to duck, Escape to release." : undefined}
+			aria-label={playing ? game.playLabel : undefined}
 			className={
 				playing
 					? "absolute inset-0 z-20 touch-none overflow-hidden bg-frame outline-none"
@@ -494,7 +572,24 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 						: "absolute inset-0 overflow-hidden [mask-image:linear-gradient(to_bottom,#000_65%,transparent_100%)]"
 				}
 			>
-				<canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden />
+				<div
+					className={`flex h-full motion-reduce:transition-none ${
+						playing ? "" : "transition-transform duration-700 ease-in-out"
+					}`}
+					style={{ transform: `translateX(-${slide.index * 100}%)` }}
+				>
+					{GRID_GAMES.map((item, i) => (
+						<div key={item.id} className="relative h-full w-full min-w-full shrink-0">
+							<canvas
+								ref={(el) => {
+									canvasRefs.current[i] = el;
+								}}
+								className="absolute inset-0 h-full w-full"
+								aria-hidden
+							/>
+						</div>
+					))}
+				</div>
 			</div>
 
 			{playing ? (
@@ -504,7 +599,11 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 						{highScore > 0 ? (
 							<span className="ml-3 text-ink/35">hi {String(highScore).padStart(5, "0")}</span>
 						) : null}
-						{gameOver ? <span className="ml-3 text-ink/35">game over</span> : null}
+						{game.lives ? (
+							<span className="ml-3 text-ink/35">{lives > 0 ? "•".repeat(lives) : "game over"}</span>
+						) : gameOver ? (
+							<span className="ml-3 text-ink/35">game over</span>
+						) : null}
 					</span>
 					<div className="pointer-events-auto flex justify-center gap-1">
 						{ARCADE_MODES.map((id) => {
@@ -537,28 +636,49 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 					</div>
 				</div>
 			) : (
-				<div className="pointer-events-none absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-					<button
-						ref={startRef}
-						type="button"
-						onClick={takeControl}
-						className="pointer-events-auto flex cursor-pointer items-center gap-2 border border-ink/25 bg-frame/80 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-ink/85 shadow-lg backdrop-blur-sm hover:border-ink/45 hover:bg-ink/10 hover:text-ink focus-visible:outline focus-visible:outline-ink"
-					>
-						<span className="text-ink/40">[</span>
-						take control
-						<span className="text-ink/25">·</span>
-						dino
-						<span
-							className="inline-block h-3 w-1.5 bg-ink/75 motion-safe:group-hover:animate-pulse"
-							aria-hidden
-						/>
-						<span className="text-ink/40">]</span>
-					</button>
-				</div>
+				<>
+					<div className="pointer-events-none absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+						<button
+							ref={startRef}
+							type="button"
+							onClick={takeControl}
+							className="pointer-events-auto flex cursor-pointer items-center gap-2 border border-ink/25 bg-frame/80 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-ink/85 shadow-lg backdrop-blur-sm hover:border-ink/45 hover:bg-ink/10 hover:text-ink focus-visible:outline focus-visible:outline-ink"
+						>
+							<span className="text-ink/40">[</span>
+							take control
+							<span className="text-ink/25">·</span>
+							{game.label}
+							<span
+								className="inline-block h-3 w-1.5 bg-ink/75 motion-safe:group-hover:animate-pulse"
+								aria-hidden
+							/>
+							<span className="text-ink/40">]</span>
+						</button>
+					</div>
+					{GRID_GAMES.length > 1 ? (
+						<div className="pointer-events-none absolute inset-x-0 bottom-1.5 z-10 flex justify-center">
+							{GRID_GAMES.map((item, i) => {
+								const on = i === slide.index;
+								return (
+									<button
+										key={item.id}
+										type="button"
+										aria-label={item.label}
+										aria-pressed={on}
+										onClick={() => showGame(i)}
+										className="pointer-events-auto flex h-6 w-6 cursor-pointer items-center justify-center focus-visible:outline focus-visible:outline-ink"
+									>
+										<span className={`block h-1.5 w-1.5 ${on ? "bg-ink/45" : "bg-ink/15 hover:bg-ink/30"}`} />
+									</button>
+								);
+							})}
+						</div>
+					) : null}
+				</>
 			)}
 			{playing ? (
 				<p className="pointer-events-none absolute inset-x-0 bottom-3 px-3 text-center font-mono text-[11px] text-ink/50">
-					{gameOver ? "Space or tap to restart" : "Space / ↑ / tap to jump · ↓ to duck"} · Esc to release
+					{gameOver ? game.overHint : game.playHint} · Esc to release
 				</p>
 			) : null}
 		</div>
