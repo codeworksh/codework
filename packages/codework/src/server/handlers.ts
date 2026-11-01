@@ -17,7 +17,7 @@ import {
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option, Stream } from "effect";
+import { DateTime, Effect, Option, Schema, Stream } from "effect";
 import {
 	Contract,
 	type HistoryEntry,
@@ -76,6 +76,20 @@ const runtimeInput = (runtime: RuntimeConfig | undefined): Session.RuntimeInput 
 	...(runtime?.thinkingLevel == null ? {} : { thinkingLevel: runtime.thinkingLevel }),
 	...(runtime?.foundation == null ? {} : { foundation: runtime.foundation }),
 });
+
+// A failed reply's envelope keeps the provider's reason; it reads as the live failure does.
+const decodeFailedReply = Schema.decodeUnknownOption(
+	Schema.fromJsonString(
+		Schema.Struct({
+			stopReason: Schema.Literal("error"),
+			errorMessage: Schema.String,
+			provider: Schema.Struct({ id: Schema.String }),
+			model: Schema.String,
+		}),
+	),
+);
+const replyError = (data: string) =>
+	Option.map(decodeFailedReply(data), (reply) => `${reply.provider.id}/${reply.model}: ${reply.errorMessage}`);
 
 const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
 
@@ -278,6 +292,10 @@ export const layer = Contract.Api.toLayer(
 									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
 									// A part this schema does not render (a future aikit type) is skipped, not fatal.
 									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+									...Option.match(entry.type === "assistant" ? replyError(entry.data) : Option.none(), {
+										onNone: () => ({}),
+										onSome: (error) => ({ error }),
+									}),
 								},
 							]
 						: [],

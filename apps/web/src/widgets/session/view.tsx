@@ -387,13 +387,14 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 		.flatMap((reply) => reply.parts.filter((part) => !(reply === last && part.type === "text")))
 		.filter(isWork);
 	const interrupted = last?.state === "aborted";
+	const failed = last?.error !== undefined;
 	// While the agent works and no answer is streaming, it is thinking or running a tool.
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
 		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-body`}>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
-			{(work.length > 0 || thinking || answer.length > 0 || interrupted) && (
+			{(work.length > 0 || thinking || answer.length > 0 || interrupted || failed) && (
 				<Message role="assistant" at={turn.replies[0]?.createdAt}>
 					{work.length > 0 && (
 						<WorkLog
@@ -408,7 +409,11 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 							<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
 						</div>
 					)}
-					{interrupted && <p className="text-xs text-ink-muted">Interrupted</p>}
+					{last?.error !== undefined ? (
+						<p className="text-xs text-destructive">{last.error}</p>
+					) : (
+						interrupted && <p className="text-xs text-ink-muted">Interrupted</p>
+					)}
 				</Message>
 			)}
 		</section>
