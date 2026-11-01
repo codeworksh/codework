@@ -681,8 +681,8 @@ describe("mcp client", () => {
 				tag: "Mcp.RequestError",
 				message: "Invalid result for tools/list: nextCursor: Invalid input: expected string, received null",
 			});
-			// An empty cursor is followed as a real one, so the pages cycle until the SDK's cap.
-			expect(outcome(emptyCursor).error?.message).toContain("exceeded listMaxPages");
+			// An empty cursor ends the listing, as the absent one would.
+			expect(outcome(emptyCursor)).toEqual({ tools: ["first", "second"] });
 			// The SDK stops quietly at a repeated cursor and returns the pages it has.
 			expect(outcome(duplicate)).toEqual({ tools: ["t-start", "t-again"] });
 			for (const run of [emptyCursor, duplicate]) expect(run.elapsed).toBeLessThan(5_000);
