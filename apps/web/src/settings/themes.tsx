@@ -20,7 +20,7 @@ export function ThemesSettings() {
 			}
 		>
 			<Section title="Theme">
-				<div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+				<div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-3">
 					{THEMES.map((theme) => {
 						const selected = theme.id === current;
 						return (

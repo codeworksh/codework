@@ -25,14 +25,16 @@ import {
 	type Reply,
 	type Snapshot,
 	snapshotKey,
+	threadKey,
 	topics,
+	type ThreadRef,
 	type Update,
 	type Window,
 } from "./schema.ts";
 
-// A session shows as its main thread until threads get a view of their own.
-const toInfo = (info: ThreadInfo): Info => ({
-	title: info.title ?? UNTITLED,
+// Metadata follows the addressed thread; placement and project belong to its session.
+const toInfo = (info: ThreadInfo, title: string | undefined): Info => ({
+	title: title ?? UNTITLED,
 	updated: info.updatedAt,
 	...(info.session.hostDir === undefined ? {} : { hostDir: info.session.hostDir }),
 	...(info.session.sandbox === undefined ? {} : { sandbox: info.session.sandbox.driver }),
@@ -72,18 +74,21 @@ const changes = (
 	];
 };
 
+/** Every thread-scoped event names its thread, and the session it belongs to. */
+const OfThread = { sessionId: Schema.String, threadId: Schema.String };
+
 /** A live text or thinking delta, as `event.subscribe` carries it. */
 const Delta = Schema.Struct({
-	sessionId: Schema.String,
+	...OfThread,
 	messageId: Schema.String,
 	partIndex: Schema.Int,
 	delta: Schema.String,
 	timestamp: Schema.Number,
 });
 const decodeDelta = Schema.decodeUnknownOption(Delta);
-const decodeOfSession = Schema.decodeUnknownOption(Schema.Struct({ sessionId: Schema.String }));
+const decodeOfThread = Schema.decodeUnknownOption(Schema.Struct(OfThread));
 const decodeFailed = Schema.decodeUnknownOption(
-	Schema.Struct({ sessionId: Schema.String, error: Schema.Struct({ type: Schema.String, message: Schema.String }) }),
+	Schema.Struct({ ...OfThread, error: Schema.Struct({ type: Schema.String, message: Schema.String }) }),
 );
 
 /** Appends a delta to the part it belongs to; a part not seen yet starts with it. */
@@ -96,10 +101,19 @@ const fold = (current: Part | undefined, kind: "text" | "thinking", delta: strin
 			? { ...current, thinking: current.thinking + delta }
 			: { type: "thinking", thinking: delta };
 
+/** Overlays live text at its original index, preserving tools and other stored parts. */
+const mergeParts = (stored: ReadonlyArray<Part>, streamed: ReadonlyMap<number, Part>): Part[] => {
+	const parts = new Map(stored.map((part, index) => [index, part]));
+	for (const [index, part] of streamed) parts.set(index, part);
+	return [...parts.entries()].sort(([a], [b]) => a - b).map(([, part]) => part);
+};
+
 const describe = (error: { readonly _tag: string }) => {
 	switch (error._tag) {
 		case "SessionNotFoundError":
 			return "This session no longer exists.";
+		case "ThreadNotFoundError":
+			return "This thread no longer exists.";
 		case "PromptConflictError":
 			return "That message was already sent.";
 		case "Location.DirectoryNotFoundError":
@@ -122,10 +136,11 @@ const encodeSnapshot = Schema.encodeEffect(Json.Snapshot);
 const decodeSnapshot = Schema.decodeUnknownEffect(Json.Snapshot);
 
 /**
- * Keeps a copy of each followed session in kv and publishes what changes on the session's topic.
- * The copy is CodeWork's own conversation (`session.history`), refetched whenever the session's
- * durable log moves, so this backend never folds the stored events itself. What CodeWork only says
- * live, a reply's text as it streams and whether the agent works, it relays as it happens.
+ * Keeps a copy of each followed thread in kv and publishes what changes on that thread's topic.
+ * The copy is that thread's conversation (`thread.history`), refetched whenever its durable log
+ * moves, so this backend never folds the stored events itself. What CodeWork only says live, a
+ * reply's text as it streams and whether the agent works, it relays as it happens, for that thread
+ * alone. A follow that names no thread is the session's main thread.
  */
 export const session = defineBackend({
 	package: "codework",
@@ -136,8 +151,8 @@ export const session = defineBackend({
 		const scope = yield* Effect.scope;
 
 		// A snapshot that no longer decodes was stored by an older build: it is seeded again.
-		const load = (id: string) =>
-			kv.get(snapshotKey(id)).pipe(
+		const load = (key: string) =>
+			kv.get(snapshotKey(key)).pipe(
 				Effect.flatMap(
 					Option.match({
 						onNone: () => Effect.succeed(undefined),
@@ -154,6 +169,7 @@ export const session = defineBackend({
 			string,
 			{
 				readonly sessionId: string;
+				readonly threadId: string;
 				message: HistoryEntry;
 				// Keyed by the part index deltas carry, which can skip parts that stream no text.
 				readonly parts: Map<number, Part>;
@@ -161,33 +177,61 @@ export const session = defineBackend({
 		>();
 		// Drafts changed since they were last published.
 		const dirty = new Set<string>();
-		// Each session's latest snapshot, so a delta can start from the draft CodeWork stored.
+		// Each followed thread's latest snapshot, by its {@link threadKey}.
 		const latest = new Map<string, Snapshot>();
+		// The concrete thread id `thread.info` named for each follow. Live events match this, not the address.
+		const open = new Map<string, { readonly sessionId: string; readonly threadId: string }>();
+
+		const keysFor = (event: { readonly sessionId: string; readonly threadId: string }) =>
+			[...open.entries()]
+				.filter(([, followed]) => followed.sessionId === event.sessionId && followed.threadId === event.threadId)
+				.map(([key]) => key);
+
+		/** The RPC address: the concrete thread once known, else the request (`threadId` absent is the main thread). */
+		const addressed = (ref: ThreadRef) => {
+			const threadId = ref.threadId ?? open.get(threadKey(ref))?.threadId;
+			return threadId === undefined ? { sessionId: ref.sessionId } : { sessionId: ref.sessionId, threadId };
+		};
 
 		/** A draft reads as streamed so far; a reply that has ended stops streaming. */
 		const withStreamed = (entries: ReadonlyArray<HistoryEntry>) =>
 			entries.map((entry) => {
 				const streamed = streaming.get(entry.id);
-				if (streamed === undefined) return entry;
+				if (streamed === undefined || streamed.threadId !== entry.threadId) return entry;
 				if (entry.state !== "draft") {
 					streaming.delete(entry.id);
 					dirty.delete(entry.id);
 					return entry;
 				}
-				streamed.message = { ...entry, parts: streamed.message.parts };
+				streamed.message = { ...entry, parts: mergeParts(entry.parts, streamed.parts) };
 				return streamed.message;
 			});
 
+		/** A fork or subagent reads as its source until its first own prompt names it. */
+		const titleOf = Effect.fn("Session.titleOf")(function* (info: ThreadInfo) {
+			let current = info;
+			while (current.title === undefined && current.origin.kind !== "main") {
+				const source = yield* codework("thread.info", {
+					sessionId: info.session.id,
+					threadId: current.origin.threadId,
+				}).pipe(Effect.option);
+				if (Option.isNone(source)) return undefined;
+				current = source.value;
+			}
+			return current.title;
+		});
+
 		/** Refetches the conversation, publishes what changed, then stores the snapshot. */
-		const refresh = Effect.fn("Session.refresh")(function* (id: string, cursor: number | undefined) {
+		const refresh = Effect.fn("Session.refresh")(function* (ref: ThreadRef, cursor: number | undefined) {
+			const key = threadKey(ref);
+			const target = addressed(ref);
 			// In this order: a prompt promoted between the queue and history reads is then in both, never in neither.
-			const { info, queue, history } = yield* Effect.all({
-				info: codework("thread.info", { sessionId: id }),
-				queue: codework("thread.queue", { sessionId: id }),
-				history: codework("thread.history", { sessionId: id }),
-			});
-			const before = yield* load(id);
-			const next = toInfo(info);
+			const info = yield* codework("thread.info", target);
+			open.set(key, { sessionId: ref.sessionId, threadId: info.id });
+			const queue = yield* codework("thread.queue", target);
+			const history = yield* codework("thread.history", target);
+			const before = yield* load(key);
+			const next = toInfo(info, yield* titleOf(info));
 			const messages = withStreamed(history.entries);
 			// One that is in both has been promoted: the conversation wins.
 			const listed = new Set(messages.map((message) => message.id));
@@ -196,7 +240,7 @@ export const session = defineBackend({
 			// Published before the snapshot is stored, so a view never holds a snapshot newer than its cursor.
 			for (const update of changes(before, next, messages, queued)) {
 				const payload = yield* encodeUpdate(update).pipe(Effect.orDie);
-				seq = (yield* bus.publish({ topic: topics.session(id), payload })).seq ?? seq;
+				seq = (yield* bus.publish({ topic: topics.thread(key), payload })).seq ?? seq;
 			}
 			// A history entry's seq is its place in the durable log, so the newest one is where to resume.
 			const resume = cursor ?? before?.cursor ?? history.entries.at(-1)?.seq;
@@ -207,18 +251,21 @@ export const session = defineBackend({
 				seq,
 				...(resume === undefined ? {} : { cursor: resume }),
 			};
-			yield* kv.set(snapshotKey(id), yield* encodeSnapshot(snapshot).pipe(Effect.orDie));
-			latest.set(id, snapshot);
+			yield* kv.set(snapshotKey(key), yield* encodeSnapshot(snapshot).pipe(Effect.orDie));
+			latest.set(key, snapshot);
 			return snapshot;
 		});
 
-		/** Publishes to the session's live subscribers without storing it. */
-		const publishLive = (sessionId: string, update: Update) =>
+		/** Publishes to the thread's live subscribers without storing it. */
+		const publishLive = (key: string, update: Update) =>
 			encodeUpdate(update).pipe(
 				Effect.orDie,
-				Effect.flatMap((payload) => bus.publish({ topic: topics.session(sessionId), payload, ephemeral: true })),
+				Effect.flatMap((payload) => bus.publish({ topic: topics.thread(key), payload, ephemeral: true })),
 				Effect.asVoid,
 			);
+
+		const publishEach = (event: { readonly sessionId: string; readonly threadId: string }, update: Update) =>
+			Effect.forEach(keysFor(event), (key) => publishLive(key, update), { discard: true });
 
 		/** Folds what CodeWork only says live: deltas into their drafts, and whether the agent works. */
 		const observe = (envelope: EventEnvelope): Effect.Effect<void> => {
@@ -226,15 +273,20 @@ export const session = defineBackend({
 				case "session.llm.text.delta":
 				case "session.llm.thinking.delta": {
 					const delta = Option.getOrUndefined(decodeDelta(envelope.data));
-					if (delta === undefined || !following.has(delta.sessionId)) return Effect.void;
+					const keys = delta === undefined ? [] : keysFor(delta);
+					if (delta === undefined || keys.length === 0) return Effect.void;
 					return Effect.sync(() => {
 						const streamed = streaming.get(delta.messageId);
+						// Until the conversation lists the reply, only its parts are kept: it is not published before then.
 						const draft = streamed?.message ??
-							latest.get(delta.sessionId)?.messages.find((message) => message.id === delta.messageId) ?? {
+							keys
+								.map((key) => latest.get(key)?.messages.find((message) => message.id === delta.messageId))
+								.find((message) => message !== undefined) ?? {
 								id: delta.messageId,
-								seq: latest.get(delta.sessionId)?.cursor ?? 0,
-								role: "assistant",
-								state: "draft",
+								threadId: delta.threadId,
+								seq: latest.get(keys[0] ?? "")?.cursor ?? 0,
+								role: "assistant" as const,
+								state: "draft" as const,
 								createdAt: delta.timestamp,
 								updatedAt: delta.timestamp,
 								parts: [],
@@ -242,10 +294,11 @@ export const session = defineBackend({
 						const kind = envelope.type === "session.llm.text.delta" ? "text" : "thinking";
 						const parts = streamed?.parts ?? new Map<number, Part>();
 						parts.set(delta.partIndex, fold(parts.get(delta.partIndex), kind, delta.delta));
-						const ordered = [...parts.entries()].sort(([a], [b]) => a - b).map(([, part]) => part);
+						const ordered = mergeParts(draft.parts, parts);
 						streaming.set(delta.messageId, {
 							sessionId: delta.sessionId,
-							message: { ...draft, parts: ordered },
+							threadId: delta.threadId,
+							message: { ...draft, threadId: delta.threadId, parts: ordered },
 							parts,
 						});
 						dirty.add(delta.messageId);
@@ -255,10 +308,10 @@ export const session = defineBackend({
 				// in the session's log records it: this is the only place the reason shows.
 				case "session.execution.failed": {
 					const failed = Option.getOrUndefined(decodeFailed(envelope.data));
-					if (failed === undefined || !following.has(failed.sessionId)) return Effect.void;
-					return publishLive(failed.sessionId, { _tag: "Running", running: false }).pipe(
+					if (failed === undefined || keysFor(failed).length === 0) return Effect.void;
+					return publishEach(failed, { _tag: "Running", running: false }).pipe(
 						Effect.andThen(
-							publishLive(failed.sessionId, {
+							publishEach(failed, {
 								_tag: "Failed",
 								kind: failed.error.type,
 								message: failed.error.message,
@@ -269,9 +322,9 @@ export const session = defineBackend({
 				case "session.execution.started":
 				case "session.execution.succeeded":
 				case "session.execution.interrupted": {
-					const sessionId = Option.getOrUndefined(decodeOfSession(envelope.data))?.sessionId;
-					if (sessionId === undefined || !following.has(sessionId)) return Effect.void;
-					return publishLive(sessionId, {
+					const event = Option.getOrUndefined(decodeOfThread(envelope.data));
+					if (event === undefined || keysFor(event).length === 0) return Effect.void;
+					return publishEach(event, {
 						_tag: "Running",
 						running: envelope.type === "session.execution.started",
 					});
@@ -281,17 +334,31 @@ export const session = defineBackend({
 			}
 		};
 
-		// Drafts go out at most every 50ms, however fast the deltas arrive.
+		// Drafts go out at most every 50ms, however fast the deltas arrive. A draft waits until the
+		// conversation lists it, so a view never has it ahead of the prompt it answers.
 		const flush = Effect.suspend(() => {
-			const ids = [...dirty];
-			dirty.clear();
+			const ids = [...dirty].filter((id) => {
+				const streamed = streaming.get(id);
+				return (
+					streamed !== undefined &&
+					keysFor(streamed).some((key) => latest.get(key)?.messages.some((message) => message.id === id))
+				);
+			});
 			return Effect.forEach(
 				ids,
 				(id) => {
 					const streamed = streaming.get(id);
-					return streamed === undefined
-						? Effect.void
-						: publishLive(streamed.sessionId, { _tag: "Message", message: streamed.message });
+					if (streamed === undefined) return Effect.void;
+					const keys = keysFor(streamed).filter((key) =>
+						latest.get(key)?.messages.some((message) => message.id === id),
+					);
+					const waiting = keysFor(streamed).some(
+						(key) => !latest.get(key)?.messages.some((message) => message.id === id),
+					);
+					if (!waiting) dirty.delete(id);
+					return Effect.forEach(keys, (key) => publishLive(key, { _tag: "Message", message: streamed.message }), {
+						discard: true,
+					});
 				},
 				{ discard: true },
 			);
@@ -299,31 +366,38 @@ export const session = defineBackend({
 
 		const following = new Map<string, Deferred.Deferred<Reply>>();
 
-		/** Seeds, answers `ready`, then refreshes on every move of the session's durable log. */
-		const sync = (id: string, ready: Deferred.Deferred<Reply>) =>
-			Effect.gen(function* () {
-				const seeded = yield* refresh(id, undefined);
+		/** Seeds, answers `ready`, then refreshes on every move of this thread's durable log. */
+		const sync = (ref: ThreadRef, ready: Deferred.Deferred<Reply>) => {
+			const key = threadKey(ref);
+			const missed = (error: { readonly _tag: string }) =>
+				Deferred.succeed(ready, { _tag: "Failed" as const, message: describe(error) }).pipe(
+					Effect.andThen(Effect.sync(() => following.delete(key))),
+				);
+			return Effect.gen(function* () {
+				const seeded = yield* refresh(ref, undefined);
+				const threadId = open.get(key)?.threadId;
 				yield* Deferred.succeed(ready, { _tag: "Done" });
 				yield* codework("session.log", {
-					sessionId: id,
+					sessionId: ref.sessionId,
+					...(threadId === undefined ? {} : { threadId }),
 					follow: true,
 					...(seeded.cursor === undefined ? {} : { after: seeded.cursor }),
 				}).pipe(
 					Stream.map((item) => ("id" in item ? item.durable?.seq : item.seq)),
 					// A turn commits several events at once; one refetch covers them all.
 					Stream.debounce("50 millis"),
-					Stream.runForEach((seq) => refresh(id, seq)),
+					Stream.runForEach((seq) => refresh(ref, seq)),
 				);
 			}).pipe(
-				Effect.catchTag("SessionNotFoundError", (error) =>
-					Deferred.succeed(ready, { _tag: "Failed", message: describe(error) }).pipe(
-						Effect.andThen(Effect.sync(() => following.delete(id))),
-					),
-				),
+				Effect.catchTags({
+					SessionNotFoundError: missed,
+					ThreadNotFoundError: missed,
+				}),
 				// The connection dropped: start over from the stored cursor once it is back.
 				Effect.retry(Schedule.spaced("1 second")),
-				Effect.repeat({ while: () => following.has(id), schedule: Schedule.spaced("1 second") }),
+				Effect.repeat({ while: () => following.has(key), schedule: Schedule.spaced("1 second") }),
 			);
+		};
 
 		// Both loops outlive anything that stops them, a defect included, and say what it was: one that
 		// stopped quietly would freeze every view's live updates while sends still went through.
@@ -341,22 +415,29 @@ export const session = defineBackend({
 		);
 
 		/**
-		 * Stops following a session once no view has watched its topic for a while: a view watches
+		 * Stops following a thread once no view has watched its topic for a while: a view watches
 		 * from just after it follows until its frame closes, and a closed window stops watching too.
 		 * The snapshot stays in kv, so the next follow refreshes it rather than seeding again.
 		 */
-		const release = (sessionId: string, syncing: Fiber.Fiber<unknown, unknown>) =>
-			bus.watchers(topics.session(sessionId)).pipe(
+		const release = (key: string, syncing: Fiber.Fiber<unknown, unknown>) =>
+			bus.watchers(topics.thread(key)).pipe(
 				// Long enough to cover a view between its follow and its subscription, or a quick reopen.
 				Stream.debounce("30 seconds"),
 				Stream.filter((count) => count === 0),
 				Stream.runHead,
 				Effect.andThen(
 					Effect.sync(() => {
-						following.delete(sessionId);
-						latest.delete(sessionId);
+						const followed = open.get(key);
+						following.delete(key);
+						latest.delete(key);
+						open.delete(key);
+						if (followed === undefined) return;
+						const still = [...open.values()].some(
+							(item) => item.sessionId === followed.sessionId && item.threadId === followed.threadId,
+						);
+						if (still) return;
 						for (const [id, streamed] of streaming) {
-							if (streamed.sessionId !== sessionId) continue;
+							if (streamed.sessionId !== followed.sessionId || streamed.threadId !== followed.threadId) continue;
 							streaming.delete(id);
 							dirty.delete(id);
 						}
@@ -365,14 +446,15 @@ export const session = defineBackend({
 				Effect.andThen(Fiber.interrupt(syncing)),
 			);
 
-		yield* handle(topics.follow, Follow, ({ sessionId }) =>
+		yield* handle(topics.follow, Follow, (ref) =>
 			Effect.gen(function* () {
-				let ready = following.get(sessionId);
+				const key = threadKey(ref);
+				let ready = following.get(key);
 				if (ready === undefined) {
 					ready = yield* Deferred.make<Reply>();
-					following.set(sessionId, ready);
-					const syncing = yield* Effect.forkIn(sync(sessionId, ready), scope);
-					yield* Effect.forkIn(release(sessionId, syncing), scope);
+					following.set(key, ready);
+					const syncing = yield* Effect.forkIn(sync(ref, ready), scope);
+					yield* Effect.forkIn(release(key, syncing), scope);
 				}
 				return yield* encodeReply(yield* Deferred.await(ready)).pipe(Effect.orDie);
 			}),
@@ -382,9 +464,11 @@ export const session = defineBackend({
 		yield* handle(
 			topics.page,
 			Page,
-			({ sessionId, before, limit }) =>
+			(ref) =>
 				Effect.gen(function* () {
-					const snapshot = latest.get(sessionId) ?? (yield* load(sessionId));
+					const { before, limit } = ref;
+					const key = threadKey(ref);
+					const snapshot = latest.get(key) ?? (yield* load(key));
 					if (snapshot === undefined) {
 						return yield* encodeWindow({ _tag: "Failed", message: "Follow the session before paging it." }).pipe(
 							Effect.orDie,
@@ -411,9 +495,9 @@ export const session = defineBackend({
 			{ ephemeral: true },
 		);
 
-		const prompt = ({ sessionId, messageId, text, delivery }: Prompt) =>
+		const prompt = ({ messageId, text, delivery, ...ref }: Prompt) =>
 			codework("thread.prompt", {
-				sessionId,
+				...addressed(ref),
 				text,
 				id: messageId,
 				...(delivery === undefined ? {} : { delivery }),
@@ -448,10 +532,10 @@ export const session = defineBackend({
 			),
 		);
 
-		// The session's own log moves with the change, so the refresh that follows publishes the new info.
-		yield* handle(topics.configure, Configure, ({ sessionId, model, thinkingLevel }) =>
+		// The thread's log moves with the change, so the refresh that follows publishes the new info.
+		yield* handle(topics.configure, Configure, ({ model, thinkingLevel, ...ref }) =>
 			codework("thread.configure", {
-				sessionId,
+				...addressed(ref),
 				runtime: {
 					...(model === undefined ? {} : { model }),
 					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
@@ -465,17 +549,17 @@ export const session = defineBackend({
 
 		// A cancel that lost to promotion answers `Sent`: the prompt is in the conversation, and the
 		// refresh that follows the log moving shows it there.
-		yield* handle(topics.cancel, Cancel, ({ sessionId, messageId }) =>
-			codework("thread.cancel", { sessionId, messageId }).pipe(
+		yield* handle(topics.cancel, Cancel, ({ messageId, ...ref }) =>
+			codework("thread.cancel", { ...addressed(ref), messageId }).pipe(
 				Effect.map(({ cancelled }): Cancelled => (cancelled ? { _tag: "Cancelled" } : { _tag: "Sent" })),
 				Effect.catch((error) => Effect.succeed<Cancelled>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeCancelled(reply).pipe(Effect.orDie)),
 			),
 		);
 
-		yield* handle(topics.change, Change, ({ sessionId, messageId, delivery, text }) =>
+		yield* handle(topics.change, Change, ({ messageId, delivery, text, ...ref }) =>
 			codework("thread.update", {
-				sessionId,
+				...addressed(ref),
 				messageId,
 				...(delivery === undefined ? {} : { delivery }),
 				...(text === undefined ? {} : { text }),
@@ -488,8 +572,8 @@ export const session = defineBackend({
 			),
 		);
 
-		yield* handle(topics.interrupt, Interrupt, ({ sessionId }) =>
-			codework("session.interrupt", { sessionId }).pipe(
+		yield* handle(topics.interrupt, Interrupt, (ref) =>
+			codework("thread.interrupt", addressed(ref)).pipe(
 				Effect.as<Reply>({ _tag: "Done" }),
 				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),

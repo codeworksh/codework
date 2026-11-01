@@ -1,0 +1,70 @@
+{
+	"main": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "Main prompt"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "response 1"
+				}
+			]
+		}
+	],
+	"fork": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "Main prompt"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "response 1"
+				}
+			]
+		},
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "Fork prompt"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"type": "text",
+					"text": "response 2"
+				}
+			]
+		}
+	],
+	"missing": {
+		"_tag": "Failed",
+		"message": "This thread no longer exists."
+	}
+}

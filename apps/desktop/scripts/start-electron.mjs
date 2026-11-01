@@ -40,7 +40,8 @@ const electronPath = process.platform === "darwin" ? brandedElectron() : electro
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(electronPath, ["."], {
+// Extra arguments reach Electron, `--remote-debugging-port=9222` say.
+const child = spawn(electronPath, [".", ...process.argv.slice(2)], {
 	stdio: "inherit",
 	cwd: desktopDir,
 	env,

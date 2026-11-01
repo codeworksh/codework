@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,7 +7,8 @@
 		<!-- The saved theme (src/theme.ts) lands before first paint; an unknown id falls back to the default. -->
 		<script>
 			try {
-				document.documentElement.dataset.theme = localStorage.getItem("codework-theme") ?? "tokyo-night";
+				const saved = localStorage.getItem("codework-theme");
+				document.documentElement.dataset.theme = saved === "light" ? "light" : "dark";
 			} catch {}
 		</script>
 		<!-- Linked here rather than imported by style.css, so the splash paints in the theme before the app's JS runs. -->

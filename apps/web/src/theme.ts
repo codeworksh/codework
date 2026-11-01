@@ -1,37 +1,14 @@
 import { Atom } from "effect/reactivity";
 
-/**
- * Colour themes: the codework.sh palettes in themes.css, keyed by id. The choice is saved per
- * device; index.html applies it before first paint under the same storage key.
- */
+/** Light and dark themes, saved per device and applied before first paint by index.html. */
 export const THEMES = [
-	{ id: "catppuccin", name: "Catppuccin" },
-	{ id: "catppuccin-latte", name: "Catppuccin Latte" },
-	{ id: "ethereal", name: "Ethereal" },
-	{ id: "everforest", name: "Everforest" },
-	{ id: "flexoki-light", name: "Flexoki Light" },
-	{ id: "gruvbox", name: "Gruvbox" },
-	{ id: "hackerman", name: "Hackerman" },
-	{ id: "kanagawa", name: "Kanagawa" },
-	{ id: "last-horizon", name: "Last Horizon" },
-	{ id: "lumon", name: "Lumon" },
-	{ id: "lupine", name: "Lupine" },
-	{ id: "matte-black", name: "Matte Black" },
-	{ id: "miasma", name: "Miasma" },
-	{ id: "nord", name: "Nord" },
-	{ id: "osaka-jade", name: "Osaka Jade" },
-	{ id: "retro-82", name: "Retro 82" },
-	{ id: "ristretto", name: "Ristretto" },
-	{ id: "rose-pine", name: "Rosé Pine" },
-	{ id: "solitude", name: "Solitude" },
-	{ id: "tokyo-night", name: "Tokyo Night" },
-	{ id: "vantablack", name: "Vantablack" },
-	{ id: "white", name: "White" },
+	{ id: "light", name: "Light" },
+	{ id: "dark", name: "Dark" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
 
-const DEFAULT_THEME: ThemeId = "tokyo-night";
+const DEFAULT_THEME: ThemeId = "dark";
 const STORAGE_KEY = "codework-theme";
 
 export const isTheme = (id: string): id is ThemeId => THEMES.some((theme) => theme.id === id);

@@ -47,6 +47,8 @@ export type Part = typeof Part.Type;
 /** One message in a thread's line, inherited ones first, oldest first. */
 export const HistoryEntry = Schema.Struct({
 	id: Schema.String,
+	/** The thread that wrote it: this one, or a source it was forked from. */
+	threadId: Schema.String,
 	seq: Schema.Int,
 	role: Schema.Literals(["user", "assistant"]),
 	/** `draft` is a reply still streaming; `aborted` one that was interrupted. */
@@ -76,16 +78,46 @@ export const SessionInfo = Schema.Struct({
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
+export const ThreadOrigin = Schema.Union([
+	Schema.Struct({ kind: Schema.Literal("main") }),
+	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String }),
+	Schema.Struct({
+		kind: Schema.Literal("subagent"),
+		threadId: Schema.String,
+		callId: Schema.String,
+		entryId: Schema.optionalKey(Schema.String),
+	}),
+]);
+export type ThreadOrigin = typeof ThreadOrigin.Type;
+
+/** Billed usage of a thread's own entries; a fork's inherited entries count for their source. */
+export const ThreadUsage = Schema.Struct({
+	/** Total cost in US dollars. */
+	cost: Schema.Finite,
+	input: Schema.Int,
+	output: Schema.Int,
+	cacheRead: Schema.Int,
+	cacheWrite: Schema.Int,
+});
+export type ThreadUsage = typeof ThreadUsage.Type;
+
 /** One linear transcript of a session, with the session embedded. */
 export const ThreadInfo = Schema.Struct({
 	id: Schema.String,
-	origin: Schema.Struct({ kind: Schema.Literals(["main", "fork", "subagent"]) }),
-	/** Absent until its first prompt. */
+	origin: ThreadOrigin,
+	/** Absent until its first own prompt; a fork shows its source's title until then. */
 	title: Schema.optionalKey(Schema.String),
 	updatedAt: Schema.Finite,
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	/** The thinking level chosen for this thread; absent when settings decide. */
 	thinkingLevel: Schema.optionalKey(ThinkingLevel),
+	/** The prompt foundation chosen for this thread; absent when prompt plugins render it. */
+	foundation: Schema.optionalKey(Schema.String),
+	/** Where it runs instead of the session's space and directory. */
+	placement: Schema.optionalKey(Schema.Struct({ spaceId: Schema.String, directory: Schema.String })),
+	/** Its unfinished run was cut off by restarts too often to resume on its own. */
+	parked: Schema.optionalKey(Schema.Boolean),
+	usage: ThreadUsage,
 	session: SessionInfo,
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
@@ -292,15 +324,19 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
 		error: ThreadError,
 	}),
-	/** Durable events of every thread after `after` (exclusive), then `log.synced`; with `follow`, each new one as it commits. */
+	/**
+	 * Durable events after `after` (exclusive), then `log.synced`; with `follow`, each new one as it
+	 * commits. Every thread's, or only `threadId`'s; the marker names the session's head either way.
+	 */
 	Rpc.make("session.log", {
 		payload: {
 			sessionId: Schema.String,
+			threadId: Schema.optionalKey(Schema.String),
 			after: Schema.optionalKey(Schema.Int),
 			follow: Schema.optionalKey(Schema.Boolean),
 		},
 		success: Schema.Union([EventEnvelope, LogSynced]),
-		error: SessionNotFoundError,
+		error: Schema.Union([SessionNotFoundError, EventEncodingError]),
 		stream: true,
 	}),
 	/** `id` names the user message the prompt becomes; it is the prompt's correlation id. */
@@ -335,6 +371,12 @@ export const Api = RpcGroup.make(
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Schema.String },
 		success: Schema.Struct({ interrupted: Schema.Boolean }),
+	}),
+	/** Stops the thread; the session's other threads keep running. The main thread when `threadId` is absent. */
+	Rpc.make("thread.interrupt", {
+		payload: ThreadRef,
+		success: Schema.Struct({ interrupted: Schema.Boolean }),
+		error: ThreadError,
 	}),
 	/**
 	 * Every event as it happens, durable and live-only alike (text deltas, execution state), after a

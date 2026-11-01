@@ -6,32 +6,43 @@ import { Schema } from "effect";
  * halves import this file, so it stays free of React and the DOM.
  */
 
+/** A thread of a session: `threadId`, or the session's main thread when absent. */
+export const ThreadRef = Schema.Struct({ sessionId: Schema.String, threadId: Schema.optionalKey(Schema.String) });
+export type ThreadRef = typeof ThreadRef.Type;
+
+/**
+ * What names a thread in addresses, topics and kv: its session's id for the main thread, else
+ * `<session>/<thread>`. The main thread is never named by its own id, so it has one key.
+ */
+export const threadKey = ({ sessionId, threadId }: ThreadRef) =>
+	threadId === undefined ? sessionId : `${sessionId}/${threadId}`;
+
 export const topics = {
-	/** Requests: start following a session; answered once its snapshot is stored. */
+	/** Requests: start following a thread; answered once its snapshot is stored. */
 	follow: "codework/session.follow",
 	/** Requests: create a session and send its first prompt; answered with its id. */
 	create: "codework/session.create",
 	prompt: "codework/session.prompt",
-	/** Requests: choose a session's model or thinking level; they apply from its next turn. */
+	/** Requests: choose a thread's model or thinking level; they apply from its next turn. */
 	configure: "codework/session.configure",
 	interrupt: "codework/session.interrupt",
 	/** Requests: withdraw a queued prompt before the agent takes it in; answered with `Cancelled`. */
 	cancel: "codework/session.cancel",
 	/** Requests: move a queued prompt to the other lane, or rewrite it, in place. */
 	change: "codework/session.change",
-	/** Requests: a window of a followed session's conversation, newest first back from `before`. */
+	/** Requests: a window of a followed thread's conversation, newest first back from `before`. */
 	page: "codework/session.page",
-	/** Updates to one session's conversation. */
-	session: (id: string) => `codework/session/${id}`,
+	/** Updates to one thread's conversation, by its {@link threadKey}. */
+	thread: (key: string) => `codework/session/${key}`,
 };
 
-/** The kv key of a session's snapshot. */
-export const snapshotKey = (id: string) => `session/${id}`;
+/** The kv key of a thread's snapshot, by its {@link threadKey}. */
+export const snapshotKey = (key: string) => `session/${key}`;
 
-export const Follow = Schema.Struct({ sessionId: Schema.String });
+export const Follow = ThreadRef;
 
 export const Prompt = Schema.Struct({
-	sessionId: Schema.String,
+	...ThreadRef.fields,
 	/** Chosen by the view: the id of the user message this prompt becomes. */
 	messageId: Schema.String,
 	text: Schema.String,
@@ -65,9 +76,9 @@ export const Created = Schema.Union([
 ]);
 export type Created = typeof Created.Type;
 
-export const Interrupt = Schema.Struct({ sessionId: Schema.String });
+export const Interrupt = ThreadRef;
 
-export const Cancel = Schema.Struct({ sessionId: Schema.String, messageId: Schema.String });
+export const Cancel = Schema.Struct({ ...ThreadRef.fields, messageId: Schema.String });
 
 /** The answer to a cancel: withdrawn, already in the conversation, or why neither is known. */
 export const Cancelled = Schema.Union([
@@ -79,22 +90,22 @@ export type Cancelled = typeof Cancelled.Type;
 
 /** A queued prompt moved to `delivery`, or given new `text`; an absent key is left as it is. */
 export const Change = Schema.Struct({
-	sessionId: Schema.String,
+	...ThreadRef.fields,
 	messageId: Schema.String,
 	delivery: Schema.optionalKey(Delivery),
 	text: Schema.optionalKey(Schema.String),
 });
 
-/** A model or thinking level chosen for a session; an absent key is left as it is. */
+/** A model or thinking level chosen for a thread; an absent key is left as it is. */
 export const Configure = Schema.Struct({
-	sessionId: Schema.String,
+	...ThreadRef.fields,
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
 export type Configure = typeof Configure.Type;
 
 export const Page = Schema.Struct({
-	sessionId: Schema.String,
+	...ThreadRef.fields,
 	/** The oldest message the view holds; omitted asks for the newest messages. */
 	before: Schema.optionalKey(Schema.String),
 	limit: Schema.Int,
