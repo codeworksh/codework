@@ -1,0 +1,76 @@
+{
+	"declared": [
+		"mcp__paged__first",
+		"mcp__paged__second",
+		"list_mcp_resources",
+		"list_mcp_resource_templates",
+		"read_mcp_resource"
+	],
+	"calls": {
+		"resources-page": "{\"server\":\"paged\",\"resources\":[{\"server\":\"paged\",\"name\":\"one\",\"uri\":\"fixture://one\"}],\"nextCursor\":\"page-2\"}",
+		"resources-next": "{\"server\":\"paged\",\"resources\":[{\"server\":\"paged\",\"name\":\"two\",\"uri\":\"fixture://two\"}]}",
+		"resources-all": "{\"resources\":[{\"server\":\"paged\",\"name\":\"one\",\"uri\":\"fixture://one\"},{\"server\":\"paged\",\"name\":\"two\",\"uri\":\"fixture://two\"}]}",
+		"templates-page": "{\"server\":\"paged\",\"resourceTemplates\":[{\"server\":\"paged\",\"name\":\"one\",\"uriTemplate\":\"fixture://one/{id}\"}],\"nextCursor\":\"page-2\"}",
+		"templates-next": "{\"server\":\"paged\",\"resourceTemplates\":[{\"server\":\"paged\",\"name\":\"two\",\"uriTemplate\":\"fixture://two/{id}\"}]}",
+		"templates-all": "{\"resourceTemplates\":[{\"server\":\"paged\",\"name\":\"one\",\"uriTemplate\":\"fixture://one/{id}\"},{\"server\":\"paged\",\"name\":\"two\",\"uriTemplate\":\"fixture://two/{id}\"}]}",
+		"bad-resources": "MCP server \"bad\" has no resources. Servers with resources: paged"
+	},
+	"status": [
+		{
+			"server": "paged",
+			"state": "connected",
+			"tools": [
+				{
+					"name": "first",
+					"exposure": "direct"
+				},
+				{
+					"name": "second",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
+		},
+		{
+			"server": "bad",
+			"state": "failed",
+			"error": "invalid request (TypeError)",
+			"tools": [],
+			"resources": false
+		}
+	],
+	"events": {
+		"main": {
+			"bad": [
+				{
+					"server": "bad",
+					"state": "connecting"
+				},
+				{
+					"server": "bad",
+					"state": "failed",
+					"error": "invalid request (TypeError)"
+				}
+			],
+			"paged": [
+				{
+					"server": "paged",
+					"state": "connecting"
+				},
+				{
+					"server": "paged",
+					"state": "connected",
+					"tools": [
+						"first",
+						"second"
+					]
+				}
+			]
+		}
+	},
+	"log": [],
+	"warnings": [
+		"[\"mcp transport error\",{\"server\":\"bad\",\"error\":\"invalid request (TypeError)\"}]",
+		"[\"mcp connect failed\",{\"server\":\"bad\",\"error\":\"invalid request (TypeError)\"}]"
+	]
+}

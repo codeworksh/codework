@@ -443,10 +443,10 @@ second line",
       ],
     },
     "emptyCursor": {
-      "error": {
-        "message": "tools/list: exceeded listMaxPages (64); server pagination did not terminate",
-        "tag": "Mcp.RequestError",
-      },
+      "tools": [
+        "first",
+        "second",
+      ],
     },
     "nullCursor": {
       "error": {

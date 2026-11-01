@@ -196,6 +196,8 @@ const isInvalidResult = (error: unknown) => error instanceof SdkError && error.c
 const describe = (error: unknown) => {
 	if (!(error instanceof Error)) return String(error);
 	if (isInvalidResult(error)) return condense(error.message);
+	// The runtime's own TypeErrors (a bad header, say) may quote what they rejected.
+	if (error instanceof TypeError && systemCode(error) === undefined) return "invalid request (TypeError)";
 	const detail =
 		error instanceof SdkHttpError
 			? `HTTP ${error.status}`
@@ -410,6 +412,8 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		};
 		const receive = transport.onmessage;
 		transport.onmessage = (message, extra) => {
+			// A blank cursor ends the list: following it restarts most servers' paging.
+			if (isJSONRPCResultResponse(message) && message.result.nextCursor === "") delete message.result.nextCursor;
 			if (isJSONRPCResultResponse(message) && listings.has(message.id)) {
 				const page = screen(client, message.result);
 				if (page !== undefined) pages.set(listings.get(message.id)!, page);
