@@ -198,14 +198,16 @@ function makeStrictJsonSchema(schema: unknown, isUnsupportedKeyword?: Unsupporte
 /**
  * The strict parameter schema to send for a JSON-schema constrained tool, or `undefined` to send it non-strict.
  * A `"prefer"` tool whose schema the model's strict mode cannot express falls back to non-strict; a `"require"`
- * tool throws instead.
+ * tool throws instead. `preferNonStrict` sends every `"prefer"` tool non-strict.
  */
 export function resolveStrictParameters(
 	tool: Message.Tool,
 	model?: Pick<Model.Info, "protocol" | "compat">,
+	preferNonStrict = false,
 ): Record<string, unknown> | undefined {
 	const config = tool.constrainedSampling;
 	if (!config || config.type !== "json_schema") return;
+	if (preferNonStrict && config.strict === "prefer") return;
 
 	if (model?.compat?.supportsStrictMode ?? true) {
 		const isAnthropic =

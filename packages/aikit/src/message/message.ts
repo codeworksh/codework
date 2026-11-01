@@ -167,6 +167,22 @@ export const UserMessageSchema = Type.Object({
 });
 export type UserMessage = Static<typeof UserMessageSchema>;
 
+/** Something aikit did on the caller's behalf while producing a message, such as a request retried in another shape. */
+export const AssistantMessageDiagnosticSchema = Type.Object({
+	type: Type.String(),
+	timestamp: Type.Number(),
+	error: Type.Optional(
+		Type.Object({
+			name: Type.Optional(Type.String()),
+			message: Type.String(),
+			stack: Type.Optional(Type.String()),
+			code: Type.Optional(Type.Union([Type.String(), Type.Number()])),
+		}),
+	),
+	details: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type AssistantMessageDiagnostic = Static<typeof AssistantMessageDiagnosticSchema>;
+
 export const AssistantMessageSchema = Type.Object({
 	role: Type.Literal("assistant"),
 	protocol: Model.KnownProviderEnumSchema,
@@ -185,6 +201,7 @@ export const AssistantMessageSchema = Type.Object({
 	 * Depends on ai-sdk
 	 */
 	failure: Type.Optional(Failure.FailureSchema),
+	diagnostics: Type.Optional(Type.Array(AssistantMessageDiagnosticSchema)),
 	time: Type.Object({
 		created: Type.Number(),
 		completed: Type.Number(),
