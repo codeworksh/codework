@@ -58,6 +58,8 @@ export const HistoryEntry = Schema.Struct({
 	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
 	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
+	/** Why a reply failed, as `provider/model: reason`; absent for one that ended normally or was stopped. */
+	error: Schema.optionalKey(Schema.String),
 });
 export type HistoryEntry = typeof HistoryEntry.Type;
 
