@@ -96,11 +96,11 @@ export function Queue({
 
 	const many = queued.length > 4;
 	return (
-		<div className="mx-3 rounded-t-xl border border-b-0 border-edge bg-(--cw-composer) px-3 py-1.5 text-xs leading-snug backdrop-blur-xl">
-			{queued.length > 3 && <p className="pb-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
+		<div className="mx-2 rounded-t-lg border border-b-0 border-ink/10 bg-(--cw-composer) px-2.5 py-0.5 text-ui leading-snug text-ink-muted backdrop-blur-xl">
+			{queued.length > 3 && <p className="py-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
 			<ol
 				aria-label="Queued messages"
-				className={`flex flex-col gap-0.5 ${many ? "max-h-[97px] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]" : ""}`}
+				className={`flex flex-col ${many ? "max-h-[97px] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]" : ""}`}
 			>
 				{queued.map((prompt) => {
 					const steer = prompt.delivery === "steer";
@@ -116,7 +116,7 @@ export function Queue({
 					return (
 						<li
 							key={prompt.id}
-							className={`group flex min-w-0 items-center gap-2 ${pending ? "opacity-50" : ""}`}
+							className={`group flex min-h-8 min-w-0 items-center gap-2.5 border-t border-ink/5 first:border-t-0 ${pending ? "opacity-50" : ""}`}
 						>
 							<Icon className="size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />
 							<span className="shrink-0 font-medium text-ink-muted">{steer ? "Steer" : "Follow-up"}</span>
@@ -137,10 +137,10 @@ export function Queue({
 										}
 									}}
 									onBlur={() => save(prompt, draft)}
-									className="h-5 min-w-0 flex-1 rounded-md border border-edge bg-frame-top px-1.5 text-ink outline-none focus-visible:border-edge-focus"
+									className="h-6 min-w-0 flex-1 rounded-md border border-ink/15 bg-ink/5 px-1.5 text-ink outline-none focus-visible:border-edge-focus"
 								/>
 							) : (
-								<span title={prompt.text} className="min-w-0 flex-1 truncate text-ink">
+								<span title={prompt.text} className="min-w-0 flex-1 truncate py-1 text-ink-secondary">
 									{prompt.text}
 								</span>
 							)}
@@ -199,9 +199,9 @@ function Action({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className={`grid size-5 place-items-center rounded-md text-ink-muted transition-colors outline-none hover:bg-ink/8 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none ${danger ? "hover:text-destructive" : "hover:text-ink"}`}
+			className={`grid size-6 shrink-0 place-items-center rounded-md text-ink-muted transition-colors outline-none hover:bg-ink/8 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none ${danger ? "hover:text-destructive" : "hover:text-ink"}`}
 		>
-			<Icon className="size-3" strokeWidth={1.75} aria-hidden />
+			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
 		</button>
 	);
 }

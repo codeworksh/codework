@@ -22,6 +22,7 @@ import { useOpenElsewhere } from "../wm/open";
 import { ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
 import { OpenProviderSettings } from "@/components/offline";
+import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { placeAtom, usePickFolder } from "./place";
@@ -145,16 +146,36 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="block w-full rounded-md px-2.5 py-2 text-left outline-none hover:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection"
+									className="group relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection aria-current:text-ink"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
-									<div className="flex h-4 min-w-0 items-center gap-1.5 text-2xs text-ink-muted">
-										<Monogram id={session.project.id} name={session.project.name} />
-										<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
-										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
-									</div>
-									<div className="mt-1 truncate text-ui text-ink">{session.title}</div>
+									<span className="flex min-w-0 items-center gap-1.5">
+										<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
+											{session.title}
+										</span>
+										<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
+											{ago(session.updated)}
+										</span>
+									</span>
+									<span className="mt-1 flex min-w-0 items-center gap-2 text-2xs text-ink-muted">
+										<span className="flex min-w-0 flex-1 items-center gap-1.5">
+											<Monogram id={session.project.id} name={session.project.name} />
+											<span className="min-w-0 truncate">{session.project.name}</span>
+										</span>
+										{session.model !== undefined && (
+											<span className="flex shrink-0 items-center text-2xs text-ink-muted">
+												<span className="max-w-0 truncate pr-0 opacity-0 transition-[max-width,opacity,padding] duration-200 ease-out group-focus-within:max-w-32 group-focus-within:pr-1.5 group-focus-within:opacity-100 group-hover:max-w-32 group-hover:pr-1.5 group-hover:opacity-100">
+													{session.model.id}
+												</span>
+												<ProviderIcon
+													id={session.model.provider}
+													name={session.model.provider}
+													className="size-3.5 shrink-0"
+												/>
+											</span>
+										)}
+									</span>
 								</button>
 							</li>
 						))}
