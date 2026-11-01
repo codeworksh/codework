@@ -11,7 +11,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ComposerNotice } from "@/components/banner";
-import { PromptComposer, ComposerSubmit } from "@/components/composer";
+import { Composer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
@@ -88,7 +88,7 @@ export function Landing() {
 				</div>
 				<div className="w-full shrink-0">
 					{notice !== undefined && <ComposerNotice {...notice} />}
-					<PromptComposer
+					<Composer
 						autoFocus
 						value={query}
 						onChange={setQuery}

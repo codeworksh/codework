@@ -101,9 +101,6 @@ export function Composer({
 	);
 }
 
-/** Shared expanded surface for starting a session and replying to one. */
-export const PromptComposer = Composer;
-
 export function ComposerHeader({
 	title,
 	icon: Icon,
