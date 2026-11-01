@@ -91,6 +91,26 @@ const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: Model
 	return provider === undefined || model === undefined ? undefined : { provider, model };
 };
 
+/** Display name of `value` (or the settings default when `value` is absent), once `models.list` has loaded. */
+export function useModelName(hostDir: string | undefined, value: ModelRef | undefined): string | undefined {
+	const result = useAtomValue(modelsAtom(hostDir));
+	const list = AsyncResult.isSuccess(result) ? result.value : undefined;
+	const current = value ?? list?.default;
+	if (current === undefined) return undefined;
+	if (list !== undefined) {
+		const found = lookup(list.providers, current);
+		if (found !== undefined) return found.model.name;
+		if (
+			current.provider === list.default.provider &&
+			current.id === list.default.id &&
+			list.default.name !== undefined
+		) {
+			return list.default.name;
+		}
+	}
+	return current.id;
+}
+
 /**
  * Picks the model a new session uses: providers down a rail on the left, their models on the
  * right, and a search across all of them. `value` undefined means settings decide; the trigger

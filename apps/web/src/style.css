@@ -52,6 +52,7 @@
 	--cw-warning: light-dark(#d97706, #fbbf24);
 	--cw-success: light-dark(#16a34a, #4ade80);
 	--cw-info: light-dark(#2563eb, #60a5fa);
+	--cw-link: light-dark(hsl(211 92% 40%), #7dd3fc);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
 	--cw-drop-shadow: color-mix(in oklab, var(--t-text) 20%, transparent);
 	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.22));
@@ -103,6 +104,7 @@
 	--color-ink-muted: var(--cw-ink-muted);
 	--color-brand: var(--cw-brand);
 	--color-brand-ink: var(--cw-brand-ink);
+	--color-link: var(--cw-link);
 
 	/* shadcn/ui's color names, mapped onto the --cw-* contract. */
 	--color-background: var(--cw-frame);
@@ -269,6 +271,267 @@
 
 .session-transcript-scrolled {
 	--transcript-top: transparent;
+}
+
+/* After a send, the live turn fills the transcript viewport so the prompt sits
+   at the top, then follows the reply when it outgrows the viewport. */
+.transcript-turn-anchor {
+	min-height: var(--transcript-viewport, 0px);
+}
+
+/* While a sent prompt rises into place, the rest of its turn waits for it. */
+.transcript-turn[data-prompt-rise="rising"] > [data-assistant-reply] {
+	opacity: 0;
+}
+
+.transcript-turn[data-prompt-rise="revealing"] > [data-assistant-reply] {
+	animation: prompt-turn-reveal 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes prompt-turn-reveal {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* Touch layouts keep actions in flow. Desktop places them in the existing
+   turn gap so revealing the controls never shifts or over-spaces the chat. */
+.user-message-actions {
+	width: fit-content;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.user-message-hover-zone {
+		position: relative;
+		isolation: isolate;
+	}
+
+	.user-message-actions {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		z-index: 1;
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.user-message-row:hover .user-message-actions,
+	.user-message-row:focus-within .user-message-actions {
+		opacity: 1;
+	}
+}
+
+/* The connector: a line dropping out of the chevron and curving into each
+   step the fold holds, so opened work reads as hanging off that line.
+   23px is the chevron's centre (16px row padding + half a 14px icon). */
+.zen-fold-drop,
+.zen-fold-rail {
+	position: relative;
+	--zen-rail: color-mix(in srgb, var(--cw-ink) 14%, var(--cw-frame));
+}
+
+.zen-fold-drop::after {
+	content: "";
+	position: absolute;
+	left: 23px;
+	top: 22px;
+	bottom: -4px;
+	width: 1px;
+	background: var(--zen-rail);
+}
+
+.zen-fold-rail::before {
+	content: "";
+	position: absolute;
+	left: 23px;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: var(--zen-rail);
+}
+
+.zen-fold-tail::before {
+	bottom: auto;
+	height: 7px;
+}
+
+.zen-fold-rail::after {
+	content: "";
+	position: absolute;
+	left: 23px;
+	top: 6px;
+	width: 8px;
+	height: 8px;
+	border-left: 1px solid var(--zen-rail);
+	border-bottom: 1px solid var(--zen-rail);
+	border-bottom-left-radius: 8px;
+}
+
+.zen-phase-body {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition:
+		grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1),
+		opacity 220ms ease;
+}
+
+.zen-phase-body[data-open="false"] {
+	grid-template-rows: 0fr;
+	opacity: 0;
+}
+
+.zen-phase-body > * {
+	min-height: 0;
+	overflow: hidden;
+}
+
+/* Live work stays in a bounded scrolling window so a long tool run never pushes
+   the turn off screen; settling collapses from this window without flashing full height. */
+.zen-phase-body > .zen-phase-live {
+	max-height: min(17.5rem, 45vh);
+}
+
+.zen-phase-body[data-open="true"] > .zen-phase-live {
+	overflow: auto;
+	overscroll-behavior: contain;
+	overflow-anchor: none;
+	scrollbar-width: none;
+}
+
+.zen-phase-body > .zen-phase-live::-webkit-scrollbar {
+	display: none;
+}
+
+@property --zen-phase-fade-top {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+
+@property --zen-phase-fade-bottom {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+
+.zen-phase-body[data-open="true"] > .zen-phase-live {
+	--zen-phase-mask: linear-gradient(
+		to bottom,
+		transparent,
+		#000 var(--zen-phase-fade-top),
+		#000 calc(100% - var(--zen-phase-fade-bottom)),
+		transparent
+	);
+	-webkit-mask-image: var(--zen-phase-mask);
+	mask-image: var(--zen-phase-mask);
+	transition:
+		--zen-phase-fade-top 160ms ease-out,
+		--zen-phase-fade-bottom 160ms ease-out;
+}
+
+.zen-phase-live[data-fade-top="true"] {
+	--zen-phase-fade-top: 1.5rem;
+}
+
+.zen-phase-live[data-fade-bottom="true"] {
+	--zen-phase-fade-bottom: 2rem;
+}
+
+@keyframes zen-thinking-pulse {
+	0%,
+	100% {
+		opacity: 0.35;
+	}
+	50% {
+		opacity: 0.9;
+	}
+}
+
+.zen-thinking-pulse {
+	animation: zen-thinking-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer-text {
+	0% {
+		background-position: 100% center;
+	}
+	100% {
+		background-position: 0% center;
+	}
+}
+
+.shimmer-text {
+	--spread: 24px;
+	background-image:
+		linear-gradient(
+			90deg,
+			transparent calc(50% - var(--spread)),
+			var(--cw-ink) 50%,
+			transparent calc(50% + var(--spread))
+		),
+		linear-gradient(
+			color-mix(in srgb, var(--cw-ink) 45%, transparent),
+			color-mix(in srgb, var(--cw-ink) 45%, transparent)
+		);
+	background-size:
+		250% 100%,
+		auto;
+	background-repeat: no-repeat, padding-box;
+	background-clip: text;
+	-webkit-background-clip: text;
+	color: transparent;
+	animation: shimmer-text 1.6s linear infinite;
+}
+
+@keyframes zen-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.zen-tool-spin {
+	animation: zen-spin 3.6s linear infinite;
+}
+
+.agent-markdown p,
+.agent-markdown li {
+	color: color-mix(in srgb, var(--cw-ink) 78%, transparent);
+}
+
+.agent-markdown p strong,
+.agent-markdown p em,
+.agent-markdown li strong,
+.agent-markdown li em {
+	color: var(--cw-ink);
+}
+
+.agent-reasoning.agent-markdown p,
+.agent-reasoning.agent-markdown li {
+	color: color-mix(in srgb, var(--cw-ink) 48%, transparent);
+}
+
+.agent-reasoning.agent-markdown p strong,
+.agent-reasoning.agent-markdown p em,
+.agent-reasoning.agent-markdown li strong,
+.agent-reasoning.agent-markdown li em {
+	color: color-mix(in srgb, var(--cw-ink) 62%, transparent);
+}
+
+.zen-fold-prose .agent-markdown p,
+.zen-fold-prose .agent-markdown li {
+	color: color-mix(in srgb, var(--cw-ink) 65%, transparent);
+}
+
+.zen-fold-prose .agent-markdown p strong,
+.zen-fold-prose .agent-markdown p em,
+.zen-fold-prose .agent-markdown li strong,
+.zen-fold-prose .agent-markdown li em {
+	color: color-mix(in srgb, var(--cw-ink) 80%, transparent);
 }
 
 /* Only soften edges that have more settings content beyond them. */

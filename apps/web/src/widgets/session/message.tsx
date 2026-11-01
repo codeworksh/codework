@@ -1,43 +1,116 @@
-import type { ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 
-import { ago } from "../time";
+/** Wall-clock stamp for a message or finished turn, in the reader's own locale. */
+function clockTime(epochMs: number) {
+	return new Date(epochMs).toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
+}
 
-/** Both speakers share one reading edge; a quiet tint distinguishes the user's messages. */
+function CopyButton({ text, label }: { readonly text: string; readonly label: string }) {
+	const [copied, setCopied] = useState(false);
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 2000);
+		return () => clearTimeout(timer);
+	}, [copied]);
+	const Icon = copied ? Check : Copy;
+	return (
+		<button
+			type="button"
+			title={copied ? "Copied" : label}
+			aria-label={copied ? "Copied" : label}
+			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+			className="-ml-1 rounded-md p-1 text-ink-muted hover:bg-ink/8 hover:text-ink"
+		>
+			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
+		</button>
+	);
+}
+
+/**
+ * A user message sits in a right-aligned bubble with its actions and timestamp tucked beneath; an
+ * assistant reply flows directly down the reading column and signs off with its copy action and time.
+ */
 export function Message({
 	role,
+	promptId,
 	at,
+	ended,
+	copyText,
 	children,
 }: {
 	readonly role: "user" | "assistant";
+	readonly promptId?: string | undefined;
 	readonly at: number | undefined;
+	readonly ended?: number | undefined;
+	readonly copyText?: string | undefined;
 	readonly children: ReactNode;
 }) {
-	const user = role === "user";
-	return (
-		<article aria-label={user ? "Your message" : "Assistant message"} className="flex min-w-0 items-start gap-2.5">
-			<div
-				aria-hidden
-				className={`grid size-6 shrink-0 place-items-center rounded-md text-2xs font-medium select-none ${user ? "bg-selection text-ink" : "bg-selection-subtle text-ink-muted"}`}
+	if (role === "user") {
+		const hasCopy = copyText !== undefined && copyText !== "";
+		return (
+			<article
+				aria-label="Your message"
+				data-prompt-anchor={promptId}
+				className="user-message-row flex flex-col items-end pt-1.5 pr-4 pb-5 pl-14"
 			>
-				{user ? "U" : "A"}
-			</div>
-			<div
-				className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 ${user ? "bg-message text-message-ink" : "text-ink-secondary"}`}
-			>
-				<header className="mb-2 flex min-h-4 items-center gap-2 text-2xs leading-4">
-					<span className="font-medium">{user ? "You" : "Assistant"}</span>
-					{at !== undefined && (
-						<time
-							dateTime={new Date(at).toISOString()}
-							title={new Date(at).toLocaleString()}
-							className={user ? "text-message-ink/65" : "text-ink-muted"}
-						>
-							{ago(at)}
-						</time>
+				<div className="user-message-hover-zone flex w-fit max-w-full min-w-0 flex-col items-end">
+					<div className="w-fit max-w-full min-w-0 rounded-xl bg-message px-3 py-2 text-body text-message-ink transition-colors duration-200 sm:max-w-xl">
+						{children}
+					</div>
+					{(hasCopy || at !== undefined) && (
+						<div className="user-message-actions flex items-center gap-1 px-3 pt-1">
+							{hasCopy && <CopyButton text={copyText} label="Copy message" />}
+							{at !== undefined && (
+								<time
+									dateTime={new Date(at).toISOString()}
+									title={new Date(at).toLocaleString()}
+									className="ml-1 text-xs text-ink-muted"
+								>
+									{clockTime(at)}
+								</time>
+							)}
+						</div>
 					)}
-				</header>
-				<div className="flex min-w-0 flex-col gap-3 text-body wrap-anywhere">{children}</div>
-			</div>
+				</div>
+			</article>
+		);
+	}
+
+	const hasCopy = copyText !== undefined && copyText !== "";
+	return (
+		<article
+			aria-label="Assistant message"
+			data-assistant-reply=""
+			className="flex min-w-0 flex-col text-body wrap-anywhere"
+		>
+			{children}
+			{ended !== undefined && (
+				<div className="flex w-full min-w-0 items-center gap-2.5 px-4 pt-1 pb-3 text-body text-ink-muted">
+					<span className="flex shrink-0 items-center gap-1">
+						{hasCopy ? (
+							<CopyButton text={copyText} label="Copy response" />
+						) : (
+							<Check className="size-3.5 text-ink-muted" strokeWidth={1.75} aria-hidden />
+						)}
+					</span>
+					{ended > 0 && (
+						<span className="flex shrink-0 items-center gap-2.5">
+							<span aria-hidden className="size-1 shrink-0 rounded-full bg-ink/25" />
+							<time
+								dateTime={new Date(ended).toISOString()}
+								title={new Date(ended).toLocaleString()}
+								className="shrink-0 text-xs text-ink-muted"
+							>
+								{clockTime(ended)}
+							</time>
+						</span>
+					)}
+				</div>
+			)}
 		</article>
 	);
 }

@@ -1,10 +1,74 @@
 import type { ReactNode } from "react";
 
+const GRID_W = 16;
+
+const TERMINAL = [
+	"..############..",
+	".##..........##.",
+	".#............#.",
+	".#..#.........#.",
+	".#...#...###..#.",
+	".#..#....###..#.",
+	".#............#.",
+	".#............#.",
+	".##..........##.",
+	"..############..",
+	"......####......",
+	"....########....",
+] as const;
+
+const GLOW = [
+	"#.#..........#.#",
+	"................",
+	"#..............#",
+	"................",
+	"................",
+	"................",
+	"................",
+	"#..............#",
+	"................",
+	"#.#..........#.#",
+	"................",
+	"..#..........#..",
+] as const;
+
+/** Merges each row's filled runs into one rect so the path stays short. */
+function spritePath(rows: readonly string[]) {
+	let path = "";
+	rows.forEach((row, y) => {
+		let x = 0;
+		while (x < row.length) {
+			if (row[x] !== "#") {
+				x += 1;
+				continue;
+			}
+			let run = 1;
+			while (row[x + run] === "#") run += 1;
+			path += `M${x} ${y}h${run}v1h-${run}z`;
+			x += run;
+		}
+	});
+	return path;
+}
+
+const TERMINAL_PATH = spritePath(TERMINAL);
+const GLOW_PATH = spritePath(GLOW);
+
 /** The sidebar's message when it has nothing to list: a few quiet lines, centered, and what to do next. */
 export function Empty({ children }: { children: ReactNode }) {
 	return (
-		<div className="flex w-full min-w-0 flex-col items-center gap-2 px-2 py-6 text-center text-xs text-ink-muted/70">
-			{children}
+		<div className="flex min-h-full w-full min-w-0 flex-col items-center justify-center gap-5 px-6 py-10 text-center text-body leading-relaxed text-ink-muted/70">
+			<div className="flex flex-col items-center gap-2">{children}</div>
+			<svg
+				aria-hidden
+				viewBox={`0 0 ${GRID_W} ${TERMINAL.length}`}
+				shapeRendering="crispEdges"
+				className="w-24 text-ink-muted/35"
+				fill="currentColor"
+			>
+				<path d={GLOW_PATH} opacity={0.4} />
+				<path d={TERMINAL_PATH} />
+			</svg>
 		</div>
 	);
 }
