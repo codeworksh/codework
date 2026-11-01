@@ -30,14 +30,6 @@ const migrations = {
 				created INTEGER NOT NULL
 			)
 		`;
-		const created = yield* Clock.currentTimeMillis;
-		yield* sql`INSERT INTO workspaces ${sql.insert(
-			[
-				{ id: "main", name: "Main", icon: "layout-dashboard" },
-				{ id: "code", name: "Code", icon: "code" },
-				{ id: "notes", name: "Notes", icon: "notebook-pen" },
-			].map((workspace, index) => ({ ...workspace, bit: index, pos: index, layout: "tile", mfact: 0.6, created })),
-		)}`;
 		// AUTOINCREMENT so a seq is never reused, even after the newest rows are deleted.
 		yield* sql`
 			CREATE TABLE event (
