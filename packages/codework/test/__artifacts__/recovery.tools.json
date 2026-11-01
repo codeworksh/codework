@@ -1,0 +1,136 @@
+{
+	"log": [
+		{
+			"type": "session.created"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Find the echo tool."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Find the echo tool."
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "toolsearch",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "toolsearch",
+				"status": "completed",
+				"result": "Loaded 1 tool. They are available from your next call:\n- mcp__fixture__echo: Echo text back, with the directory the server runs in."
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 1",
+			"parts": []
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "stop",
+			"parts": [
+				{
+					"text": "Resumed with the loaded tool."
+				}
+			]
+		},
+		{
+			"type": "session.turn.ended"
+		}
+	],
+	"tools": [
+		[
+			"bash",
+			"edit",
+			"read",
+			"toolsearch",
+			"write"
+		],
+		[
+			"bash",
+			"edit",
+			"mcp__fixture__echo",
+			"read",
+			"toolsearch",
+			"write"
+		],
+		[
+			"bash",
+			"edit",
+			"mcp__fixture__echo",
+			"read",
+			"toolsearch",
+			"write"
+		]
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Find the echo tool."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Find the echo tool."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"toolsearch"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Loaded 1 tool. They are available from your next call:\n- mcp__fixture__echo: Echo text back, with the directory the server runs in."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Find the echo tool."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"toolsearch"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Loaded 1 tool. They are available from your next call:\n- mcp__fixture__echo: Echo text back, with the directory the server runs in."
+			}
+		]
+	]
+}

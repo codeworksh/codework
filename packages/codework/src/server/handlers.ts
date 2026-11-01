@@ -65,7 +65,6 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
 	...(info.foundation === undefined ? {} : { foundation: info.foundation }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
-	...(info.parked ? { parked: true } : {}),
 	usage: info.usage,
 	session: toSessionInfo(info.session),
 });

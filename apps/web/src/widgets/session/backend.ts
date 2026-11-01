@@ -33,8 +33,8 @@ import {
 } from "./schema.ts";
 
 // Metadata follows the addressed thread; placement and project belong to its session.
-const toInfo = (info: ThreadInfo): Info => ({
-	title: info.title ?? UNTITLED,
+const toInfo = (info: ThreadInfo, title: string | undefined): Info => ({
+	title: title ?? UNTITLED,
 	updated: info.updatedAt,
 	...(info.session.hostDir === undefined ? {} : { hostDir: info.session.hostDir }),
 	...(info.session.sandbox === undefined ? {} : { sandbox: info.session.sandbox.driver }),
@@ -207,6 +207,20 @@ export const session = defineBackend({
 				return streamed.message;
 			});
 
+		/** A fork or subagent reads as its source until its first own prompt names it. */
+		const titleOf = Effect.fn("Session.titleOf")(function* (info: ThreadInfo) {
+			let current = info;
+			while (current.title === undefined && current.origin.kind !== "main") {
+				const source = yield* codework("thread.info", {
+					sessionId: info.session.id,
+					threadId: current.origin.threadId,
+				}).pipe(Effect.option);
+				if (Option.isNone(source)) return undefined;
+				current = source.value;
+			}
+			return current.title;
+		});
+
 		/** Refetches the conversation, publishes what changed, then stores the snapshot. */
 		const refresh = Effect.fn("Session.refresh")(function* (ref: ThreadRef, cursor: number | undefined) {
 			const key = threadKey(ref);
@@ -217,7 +231,7 @@ export const session = defineBackend({
 			const queue = yield* codework("thread.queue", target);
 			const history = yield* codework("thread.history", target);
 			const before = yield* load(key);
-			const next = toInfo(info);
+			const next = toInfo(info, yield* titleOf(info));
 			const messages = withStreamed(history.entries);
 			// One that is in both has been promoted: the conversation wins.
 			const listed = new Set(messages.map((message) => message.id));

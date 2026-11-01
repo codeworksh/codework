@@ -60,14 +60,17 @@ it("desk round-trips and follows workspace deletion", async () => {
 		const rpc = yield* RpcClient.make(Contract.Api);
 		const empty = yield* rpc["desk.get"]();
 
+		// Two workspaces, so a frame on both outlives deleting one of them.
+		const other = yield* rpc["workspaces.create"]({ name: "Other" });
 		const workspace = yield* rpc["workspaces.create"]({ name: "Scratch" });
 		const bit = 1 << workspace.bit;
+		const otherBit = 1 << other.bit;
 		const saved: Contract.Desk = {
 			instances: [
 				{
 					id: "browser-1",
 					kind: "browser",
-					tags: bit | 1,
+					tags: bit | otherBit,
 					props: {},
 					pinned: false,
 					title: "Docs",
@@ -105,6 +108,7 @@ it("desk round-trips and follows workspace deletion", async () => {
 
 		return {
 			empty,
+			other: { ...other, id: "<other>" },
 			workspace: { ...workspace, id: "<workspace>" },
 			saved,
 			roundTrip,
@@ -114,7 +118,7 @@ it("desk round-trips and follows workspace deletion", async () => {
 	}).pipe(Effect.scoped, Effect.provide(protocol()), Effect.runPromise);
 
 	expect(steps.roundTrip).toEqual(steps.saved);
-	expect(steps.afterDelete.instances).toEqual([{ ...steps.saved.instances[0], tags: 1 }]);
+	expect(steps.afterDelete.instances).toEqual([{ ...steps.saved.instances[0], tags: 1 << steps.other.bit }]);
 
 	// A restart sweeps the empty auto workspace and keeps the one with a frame.
 	await stop();
@@ -125,14 +129,9 @@ it("desk round-trips and follows workspace deletion", async () => {
 		const desk = yield* rpc["desk.get"]();
 		return { workspaces: workspaces.map(({ name, auto, pos, tab }) => ({ name, auto, pos, tab })), desk };
 	}).pipe(Effect.scoped, Effect.provide(protocol()), Effect.runPromise);
-	expect(afterRestart.workspaces.map((workspace) => workspace.name)).toEqual(["Main", "Code", "Notes", "Kept"]);
+	expect(afterRestart.workspaces.map((workspace) => workspace.name)).toEqual(["Other", "Kept"]);
 	// A workspace's last tab survives the restart, so it names what it shows before its frame loads.
-	expect(afterRestart.workspaces.map((workspace) => workspace.tab)).toEqual([
-		undefined,
-		undefined,
-		undefined,
-		"Kept / A session",
-	]);
+	expect(afterRestart.workspaces.map((workspace) => workspace.tab)).toEqual([undefined, "Kept / A session"]);
 
 	await expect(`${JSON.stringify({ ...steps, afterRestart }, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/desk.json",

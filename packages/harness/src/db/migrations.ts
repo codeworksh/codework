@@ -124,6 +124,7 @@ export const migrations = {
 				title              TEXT,
 				execution          TEXT,
 				restarts           INTEGER NOT NULL DEFAULT 0,
+				attempt            INTEGER,
 				cost               REAL NOT NULL DEFAULT 0,
 				tokens_input       INTEGER NOT NULL DEFAULT 0,
 				tokens_output      INTEGER NOT NULL DEFAULT 0,

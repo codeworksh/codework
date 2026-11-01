@@ -4,10 +4,19 @@
 		"tileOrder": [],
 		"focusOrder": []
 	},
+	"other": {
+		"id": "<other>",
+		"bit": 0,
+		"pos": 0,
+		"name": "Other",
+		"layout": "tile",
+		"mfact": 0.6,
+		"auto": false
+	},
 	"workspace": {
 		"id": "<workspace>",
-		"bit": 3,
-		"pos": 3,
+		"bit": 1,
+		"pos": 1,
 		"name": "Scratch",
 		"layout": "tile",
 		"mfact": 0.6,
@@ -18,7 +27,7 @@
 			{
 				"id": "browser-1",
 				"kind": "browser",
-				"tags": 9,
+				"tags": 3,
 				"props": {},
 				"pinned": false,
 				"title": "Docs",
@@ -35,7 +44,7 @@
 			{
 				"id": "notes-1",
 				"kind": "notes",
-				"tags": 8,
+				"tags": 2,
 				"props": {
 					"text": "hello"
 				},
@@ -56,7 +65,7 @@
 			{
 				"id": "browser-1",
 				"kind": "browser",
-				"tags": 9,
+				"tags": 3,
 				"props": {},
 				"pinned": false,
 				"title": "Docs",
@@ -73,7 +82,7 @@
 			{
 				"id": "notes-1",
 				"kind": "notes",
-				"tags": 8,
+				"tags": 2,
 				"props": {
 					"text": "hello"
 				},
@@ -129,24 +138,14 @@
 	"afterRestart": {
 		"workspaces": [
 			{
-				"name": "Main",
+				"name": "Other",
 				"auto": false,
 				"pos": 0
 			},
 			{
-				"name": "Code",
-				"auto": false,
-				"pos": 1
-			},
-			{
-				"name": "Notes",
-				"auto": false,
-				"pos": 2
-			},
-			{
 				"name": "Kept",
 				"auto": true,
-				"pos": 3,
+				"pos": 1,
 				"tab": "Kept / A session"
 			}
 		],
@@ -155,7 +154,7 @@
 				{
 					"id": "notes-2",
 					"kind": "notes",
-					"tags": 8,
+					"tags": 2,
 					"props": {},
 					"pinned": false
 				}
