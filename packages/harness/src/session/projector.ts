@@ -174,6 +174,24 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
+		yield* events.project(EventList.LLMProgress, (event) =>
+			Effect.gen(function* () {
+				const changes = yield* Effect.forEach(event.data.changes, (change) =>
+					change._tag === "append"
+						? Effect.succeed<Thread.ProgressChange>(change)
+						: ContextCodec.encodePart(change.part).pipe(
+								Effect.orDie,
+								Effect.map((part): Thread.ProgressChange => ({
+									_tag: "set",
+									partIndex: change.partIndex,
+									part,
+								})),
+							),
+				);
+				yield* threads.progress({ id: event.data.messageId, threadId: event.data.threadId, changes });
+			}),
+		);
+
 		yield* events.project(EventList.LLMEnded, (event) =>
 			Effect.gen(function* () {
 				const encoded = yield* encodeAssistant(event.data);
@@ -183,6 +201,7 @@ export const layer = Layer.effectDiscard(
 					data: encoded.data,
 					parts: encoded.parts,
 				});
+				yield* threads.setAttempt(event.data.threadId, null);
 			}),
 		);
 
@@ -194,6 +213,7 @@ export const layer = Layer.effectDiscard(
 					threadId: event.data.threadId,
 					seq: yield* seqOf(event),
 					data: encoded.data,
+					parts: encoded.parts,
 				});
 			}),
 		);
@@ -255,7 +275,8 @@ export const layer = Layer.effectDiscard(
 					threadId: event.data.threadId,
 					seq: yield* seqOf(event),
 				});
-				yield* threads.resetRestarts(event.data.threadId);
+				if (event.data.recovered !== true) yield* threads.resetRestarts(event.data.threadId);
+				yield* threads.setAttempt(event.data.threadId, null);
 			}),
 		);
 	}),

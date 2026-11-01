@@ -98,12 +98,23 @@ export interface ReplaceAssistant {
 	readonly parts: ReadonlyArray<AppendPart>;
 }
 
-/** Ends a draft assistant: committed once every tool part is settled, or aborted (parts dropped). */
+/** Ends a draft assistant: committed once every tool part is settled, or aborted. */
 export interface EndAssistant {
 	readonly id: string;
 	readonly threadId: ThreadSchema.ID;
 	/** The event that ends it; becomes its `committedSeq`. */
 	readonly seq: number;
+}
+
+/** One part change of a streaming draft: `append` extends a text or thinking part, `set` writes one whole. */
+export type ProgressChange =
+	| { readonly _tag: "append"; readonly partIndex: number; readonly text: string }
+	| { readonly _tag: "set"; readonly partIndex: number; readonly part: AppendPart };
+
+export interface ProgressAssistant {
+	readonly id: string;
+	readonly threadId: ThreadSchema.ID;
+	readonly changes: ReadonlyArray<ProgressChange>;
 }
 
 export interface ForkInput {
@@ -158,12 +169,14 @@ export interface Interface {
 	) => Effect.Effect<EntryRow, ThreadNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	/** Projector-only: replace the payload of an existing draft assistant in place. */
 	readonly replaceAssistant: (input: ReplaceAssistant) => Effect.Effect<void>;
+	/** Projector-only: apply a streaming checkpoint to a draft assistant's parts. */
+	readonly progress: (input: ProgressAssistant) => Effect.Effect<void>;
 	/** Projector-only: settle one pending/running tool part on a draft assistant. */
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void>;
 	/** Projector-only: commit a draft after every tool part is terminal. */
 	readonly commit: (input: EndAssistant) => Effect.Effect<void>;
-	/** Projector-only: turn a draft into a partless aborted tombstone. */
-	readonly abort: (input: EndAssistant & { readonly data: string }) => Effect.Effect<void>;
+	/** Projector-only: end a draft as aborted with the payload and parts given. */
+	readonly abort: (input: ReplaceAssistant & EndAssistant) => Effect.Effect<void>;
 	/** Cut a new thread off `threadId`'s line at a committed entry. */
 	readonly fork: (input: ForkInput) => Effect.Effect<Forked, ThreadNotFoundError | ForkError>;
 	/** Projector of `session.thread.forked`: the thread and its copied documents, at the event's seq. */
@@ -191,6 +204,13 @@ export interface Interface {
 	readonly claimRestart: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<number>>;
 	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
 	readonly resetRestarts: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
+	/** Records the 1-based provider request now in flight, or none (null) once its response ended. */
+	readonly setAttempt: (threadId: ThreadSchema.ID, attempt: number | null) => Effect.Effect<void>;
+	/**
+	 * Leaves a run that is not resumed idle: no mark, no restarts, no request in flight, whatever is
+	 * queued. Its queued prompts wait for the next prompt to wake the thread.
+	 */
+	readonly idle: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/** Root threads with a run left unfinished, oldest first. */
 	readonly unfinished: Effect.Effect<ReadonlyArray<ThreadRow>>;
 	/** Set or clear (null) the bookmark label on an entry of the thread. */
@@ -211,6 +231,7 @@ const decodeEnvelopeUsage = Schema.decodeUnknownEffect(SessionSchema.AssistantEn
 const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(SessionSchema.MessageEnvelopeIdentity);
 const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
 const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
+const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
 const decodeUserText = Schema.decodeUnknownOption(
 	Schema.fromJsonString(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
 );
@@ -395,30 +416,38 @@ export const layer = Layer.effect(
 				originCallId: origin.kind === "subagent" ? Option.some(origin.callId) : Option.none(),
 				title: Option.fromUndefinedOr(input.title),
 				execution: Option.none(),
+				attempt: Option.none(),
 				createdSeq: input.seq,
 			});
 			yield* insertThread(row);
 		}, Effect.orDie);
+
+		const writePart = Effect.fnUntraced(function* (
+			entryId: string,
+			threadId: ThreadSchema.ID,
+			partIndex: number,
+			part: AppendPart,
+		) {
+			const partRow = yield* EntryPartRow.insert.makeEffect({
+				id: part.id ?? uuidv7(),
+				entryId,
+				threadId,
+				partIndex,
+				type: part.type,
+				status: Option.fromUndefinedOr(part.status),
+				callId: Option.fromUndefinedOr(part.callId),
+				toolName: Option.fromUndefinedOr(part.toolName),
+				data: part.data,
+			});
+			yield* insertPart(partRow);
+		});
 
 		const writeParts = Effect.fnUntraced(function* (
 			entryId: string,
 			threadId: ThreadSchema.ID,
 			parts: ReadonlyArray<AppendPart>,
 		) {
-			for (const [partIndex, part] of parts.entries()) {
-				const partRow = yield* EntryPartRow.insert.makeEffect({
-					id: part.id ?? uuidv7(),
-					entryId,
-					threadId,
-					partIndex,
-					type: part.type,
-					status: Option.fromUndefinedOr(part.status),
-					callId: Option.fromUndefinedOr(part.callId),
-					toolName: Option.fromUndefinedOr(part.toolName),
-					data: part.data,
-				});
-				yield* insertPart(partRow);
-			}
+			for (const [partIndex, part] of parts.entries()) yield* writePart(entryId, threadId, partIndex, part);
 		});
 
 		// Usage lives on the thread and moves with the envelope stored; the session's last activity
@@ -605,6 +634,38 @@ export const layer = Layer.effect(
 			);
 		}, Effect.orDie);
 
+		const progress = Effect.fn("Thread.progress")(function* (input: ProgressAssistant) {
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					yield* requireDraft(input.id, input.threadId, "progress");
+					const now = yield* epochNow;
+					for (const change of input.changes) {
+						if (change._tag === "set") {
+							yield* sql`DELETE FROM part WHERE entry_id = ${input.id} AND part_index = ${change.partIndex}`;
+							yield* writePart(input.id, input.threadId, change.partIndex, change.part);
+							continue;
+						}
+						const [row] = yield* sql<{ readonly data: string }>`
+							SELECT data FROM part WHERE entry_id = ${input.id} AND part_index = ${change.partIndex}
+						`;
+						const data = row === undefined ? undefined : yield* decodeJsonObject(row.data);
+						const field =
+							data?.["type"] === "text" ? "text" : data?.["type"] === "thinking" ? "thinking" : undefined;
+						const text = field === undefined ? undefined : data?.[field];
+						if (data === undefined || field === undefined || typeof text !== "string") {
+							return yield* Effect.die(`progress cannot append to part ${change.partIndex} of ${input.id}`);
+						}
+						const next = yield* encodeJsonObject({ ...data, [field]: text + change.text });
+						yield* sql`
+							UPDATE part SET data = ${next}, updated_at = ${now}
+							WHERE entry_id = ${input.id} AND part_index = ${change.partIndex}
+						`;
+					}
+					yield* sql`UPDATE entry SET updated_at = ${now} WHERE id = ${input.id}`;
+				}),
+			);
+		}, Effect.orDie);
+
 		const settleToolCall = Effect.fn("Thread.settleToolCall")(function* (input: SettleToolCall) {
 			const data = yield* decodeJsonObject(input.data).pipe(Effect.orDie);
 			if (data["type"] !== "toolCall" || data["callID"] !== input.callId || data["status"] !== input.status) {
@@ -643,13 +704,14 @@ export const layer = Layer.effect(
 			yield* sql`UPDATE thread SET updated_at = ${now} WHERE id = ${input.threadId}`;
 		}, Effect.orDie);
 
-		const abort = Effect.fn("Thread.abort")(function* (input: EndAssistant & { readonly data: string }) {
+		const abort = Effect.fn("Thread.abort")(function* (input: ReplaceAssistant & EndAssistant) {
 			yield* sql.withTransaction(
 				Effect.gen(function* () {
 					const { entry, thread } = yield* requireDraft(input.id, input.threadId, "abort");
 					const delta = yield* usageDelta(entry.data, input.data);
 					const now = yield* epochNow;
 					yield* sql`DELETE FROM part WHERE entry_id = ${input.id}`;
+					yield* writeParts(input.id, input.threadId, input.parts);
 					yield* sql`
 						UPDATE entry
 						SET state = 'aborted', committed_seq = ${input.seq}, data = ${input.data}, updated_at = ${now}
@@ -778,10 +840,12 @@ export const layer = Layer.effect(
 			end: "finished" | "stopped" | "closed",
 			stoppedAt?: number,
 		) {
+			// A run that ended in this process has no request in flight: only a dead host leaves one.
 			if (end === "closed") {
-				yield* sql`UPDATE thread SET execution = 'closed' WHERE id = ${threadId}`;
+				yield* sql`UPDATE thread SET execution = 'closed', attempt = NULL WHERE id = ${threadId}`;
 				return;
 			}
+			yield* sql`UPDATE thread SET attempt = NULL WHERE id = ${threadId}`;
 			// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
 			// after it, since what was queued before it stays parked by the user's choice.
 			const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
@@ -807,6 +871,14 @@ export const layer = Layer.effect(
 
 		const resetRestarts = Effect.fn("Thread.resetRestarts")(function* (threadId: ThreadSchema.ID) {
 			yield* sql`UPDATE thread SET restarts = 0 WHERE id = ${threadId} AND restarts > 0`;
+		}, Effect.orDie);
+
+		const setAttempt = Effect.fn("Thread.setAttempt")(function* (threadId: ThreadSchema.ID, attempt: number | null) {
+			yield* sql`UPDATE thread SET attempt = ${attempt} WHERE id = ${threadId}`;
+		}, Effect.orDie);
+
+		const idle = Effect.fn("Thread.idle")(function* (threadId: ThreadSchema.ID) {
+			yield* sql`UPDATE thread SET execution = NULL, restarts = 0, attempt = NULL WHERE id = ${threadId}`;
 		}, Effect.orDie);
 
 		const findUnfinished = SqlSchema.findAll({
@@ -845,6 +917,7 @@ export const layer = Layer.effect(
 			insert,
 			append,
 			replaceAssistant,
+			progress,
 			settleToolCall,
 			commit,
 			abort,
@@ -855,6 +928,8 @@ export const layer = Layer.effect(
 			endExecution,
 			claimRestart,
 			resetRestarts,
+			setAttempt,
+			idle,
 			unfinished,
 			setLabel,
 		});

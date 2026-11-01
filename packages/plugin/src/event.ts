@@ -3,17 +3,19 @@ import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effec
 import { uuidv7 } from "uuidv7";
 import {
 	isAikitAssistantMessage,
+	isAikitAssistantPart,
 	isAikitToolCallTerminalPart,
 	optional,
 	validateAikitAssistantMessage,
+	validateAikitAssistantPart,
 	validateAikitToolCallTerminalPart,
 	withStatics,
 } from "./schema.ts";
 
-type AikitAssistantPart = Message.AssistantMessage["parts"][number];
+type AssistantPart = Message.AssistantMessage["parts"][number];
 
 /** Undeclared fields used only while aikit is assembling a streamed part. */
-const aikitTransientFields: Readonly<Record<AikitAssistantPart["type"], ReadonlyArray<string>>> = {
+const aikitTransientFields: Readonly<Record<AssistantPart["type"], ReadonlyArray<string>>> = {
 	text: ["streamId"],
 	image: [],
 	thinking: ["streamId"],
@@ -27,9 +29,12 @@ const omit = <T extends object>(value: T, keys: ReadonlyArray<string>): T => {
 	return copy;
 };
 
+const canonicalizeAikitAssistantPart = (part: AssistantPart): AssistantPart =>
+	omit(part, aikitTransientFields[part.type]);
+
 const canonicalizeAikitAssistantMessage = (message: Message.AssistantMessage): Message.AssistantMessage => ({
 	...message,
-	parts: message.parts.map((part) => omit(part, aikitTransientFields[part.type])),
+	parts: message.parts.map(canonicalizeAikitAssistantPart),
 });
 
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
@@ -55,6 +60,25 @@ export const AikitAssistantMessage = Schema.Unknown.pipe(
 	}),
 );
 export type AikitAssistantMessage = typeof AikitAssistantMessage.Type;
+
+const decodeAikitAssistantPart = (value: unknown, options: SchemaAST.ParseOptions) =>
+	Effect.try({
+		try: () => canonicalizeAikitAssistantPart(validateAikitAssistantPart(value, "aikit assistant part")),
+		catch: (cause) => new SchemaIssue.InvalidValue({ message: reasonOf(cause) }, value, options),
+	});
+
+const aikitAssistantPartDeclared = Schema.declare<AssistantPart>(isAikitAssistantPart, {
+	expected: "aikit assistant part",
+});
+
+/** One part of an aikit assistant message, streaming-only fields stripped like {@link AikitAssistantMessage}. */
+export const AikitAssistantPart = Schema.Unknown.pipe(
+	Schema.decodeTo(aikitAssistantPartDeclared, {
+		decode: SchemaGetter.transformEffect(decodeAikitAssistantPart),
+		encode: SchemaGetter.transformEffect(decodeAikitAssistantPart),
+	}),
+);
+export type AikitAssistantPart = typeof AikitAssistantPart.Type;
 
 const decodeAikitToolCallTerminalPart = (value: unknown, options: SchemaAST.ParseOptions) =>
 	Effect.try({

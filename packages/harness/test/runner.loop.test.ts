@@ -10,7 +10,6 @@ import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";
-import { Session as SessionApi } from "../src/effect/session.ts";
 import { Database } from "../src/db/db.ts";
 import { InboxRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
@@ -556,7 +555,7 @@ describe("runner loop — provider interruption", () => {
 	const { live: it } = testEffect(runtime({ open }));
 
 	it(
-		"aborts the whole draft as a partless tombstone, then propagates interruption",
+		"aborts the draft keeping what streamed, then propagates interruption",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
 			const events = yield* Event.Service;
@@ -581,7 +580,7 @@ describe("runner loop — provider interruption", () => {
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
 			expect(path[2]!.entry.state).toBe("aborted");
 			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({ stopReason: "aborted" });
-			expect(path[2]!.parts).toEqual([]);
+			expect(path[2]!.parts.map((part) => JSON.parse(part.data))).toEqual([{ type: "text", text: "partial" }]);
 			expect(Array.from(yield* execution.active)).toEqual([]);
 		}),
 		{ timeout: 10_000 },
@@ -637,7 +636,7 @@ describe("runner loop — provider failure", () => {
 			const path = yield* threads.line(threadId);
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "system", "assistant"]);
 			expect(path[2]!.entry.state).toBe("aborted");
-			expect(path[2]!.parts).toEqual([]);
+			expect(path[2]!.parts.map((part) => JSON.parse(part.data))).toEqual([{ type: "text", text: "partial" }]);
 			expect(JSON.parse(path[2]!.entry.data)).toMatchObject({
 				stopReason: "error",
 				errorMessage: "provider failed",
@@ -1305,31 +1304,41 @@ describe("runner loop — resume after restart", () => {
 	);
 
 	it(
-		"parks a session at the restart limit, and its next prompt runs it again",
+		"ends a run at the restart limit visibly, and its next prompt runs it again",
 		Effect.gen(function* () {
 			yield* provider.reset;
 			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const threads = yield* Thread.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const { sessionId, threadId } = yield* seedSession();
+			const { threadId } = yield* seedSession();
+			const failures: Array<EventList.RunFailed["data"]> = [];
+			yield* events.listen((event) =>
+				Schema.is(EventList.RunFailed)(event)
+					? Effect.sync(() => {
+							failures.push(event.data);
+						})
+					: Effect.void,
+			);
 			yield* crashedMidReply(threadId, "A");
 			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${threadId}`;
 
 			yield* control.resumeUnfinished;
 
 			expect(contexts).toEqual([]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: "running", restarts: Control.RESTART_LIMIT });
-			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).main.info).parked).toBe(
-				true,
-			);
+			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(failures.map((failure) => [failure.reason, failure.message])).toEqual([
+				["crashloop", `The run was interrupted ${Control.RESTART_LIMIT} times in a row; it is not resumed again`],
+			]);
+			const [, healed] = yield* threads.line(threadId);
+			expect(healed!.entry.state).toBe("aborted");
+			expect(healed!.parts.map((part) => JSON.parse(part.data).text)).toEqual(["half a reply"]);
 
 			yield* send(threadId, "B");
 			yield* settle(threadId);
 
 			expect(contexts.map(texts)).toEqual([["A", "B"]]);
 			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
-			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).main.info).parked).toBe(
-				false,
-			);
 		}),
 	);
 

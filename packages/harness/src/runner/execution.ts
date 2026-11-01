@@ -19,6 +19,11 @@ export interface Interface {
 	 * recovery chose the thread stands.
 	 */
 	readonly recover: (threadId: ThreadSchema.ID) => Effect.Effect<void, Runner.RunError>;
+	/**
+	 * Ends a run the last process left unfinished instead of resuming it, under the thread's execution
+	 * like `recover`; see `Runner.Interface.abandon`.
+	 */
+	readonly abandon: (threadId: ThreadSchema.ID, message: string) => Effect.Effect<void, Runner.RunError>;
 	/** Registers newly recorded work. Repeated wakeups may coalesce. */
 	readonly wake: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/**
@@ -43,6 +48,7 @@ export const noopLayer = Layer.succeed(
 		active: Effect.succeed(new Set()),
 		resume: () => Effect.void,
 		recover: () => Effect.void,
+		abandon: () => Effect.void,
 		wake: () => Effect.void,
 		interrupt: () => Effect.succeed(false),
 		awaitIdle: () => Effect.void,

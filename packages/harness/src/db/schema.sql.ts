@@ -143,6 +143,9 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	title: Model.FieldOption(Schema.String),
 	execution: Model.FieldOption(ThreadSchema.Execution),
 	restarts: Model.GeneratedByDb(Schema.Int),
+	// The 1-based number of the provider request in flight, from its start until its response ends, the
+	// turn commits or the run ends: still set on recovery, the host died with that request out.
+	attempt: Model.FieldOption(Schema.Int),
 	// Billed usage of own entries only, never the inherited prefix. A cache: assistant envelopes are truth.
 	cost: Model.GeneratedByDb(Schema.Finite),
 	tokensInput: Model.GeneratedByDb(Schema.Int),
