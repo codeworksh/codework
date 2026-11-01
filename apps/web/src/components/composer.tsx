@@ -1,5 +1,5 @@
 import { CornerDownLeft, X, type LucideIcon } from "lucide-react";
-import type { ComponentProps, ReactNode, Ref } from "react";
+import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
@@ -48,10 +48,8 @@ export function Composer({
 	return (
 		<div className="w-full">
 			<form
-				// Raised like a frame (the theme's top-down gradient, top highlight and shadows), with a deeper
-				// drop so it still floats when it sits inside one.
 				className={cn(
-					"relative z-10 flex flex-col rounded-[22px] border border-edge bg-linear-to-b from-frame-top to-frame to-60% shadow-[inset_0_1px_0_var(--cw-highlight),0_1px_2px_var(--cw-shadow-near),0_14px_36px_-12px_var(--cw-shadow-far)] transition-colors focus-within:border-edge-focus",
+					"composer-surface relative z-10 flex flex-col transition-colors duration-120 focus-within:border-edge-focus",
 					className,
 				)}
 				onSubmit={(event) => {
@@ -84,12 +82,12 @@ export function Composer({
 						placeholder={placeholder}
 						aria-label="Prompt"
 						// Grows with its text, from four lines (one when compact) up to about nine, then scrolls.
-						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted ${compact ? "min-h-6" : "min-h-19.5"}`}
+						className={`block max-h-52 w-full resize-none bg-transparent text-body text-ink outline-none [field-sizing:content] placeholder:text-ink-muted ${compact ? "min-h-6" : "min-h-19.5"}`}
 					/>
 				</div>
 				<div className={`flex items-center gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>
 					{/* Pulled left by a control's padding, so the first one's icon lines up with the prompt's text. */}
-					<div className="-ml-2.5 flex min-w-0 flex-1 items-center gap-1 text-[14px] font-medium text-ink-muted">
+					<div className="-ml-2.5 flex min-w-0 flex-1 flex-wrap items-center gap-1 text-ui font-medium text-ink-muted">
 						{controls}
 					</div>
 					{actions}
@@ -97,7 +95,7 @@ export function Composer({
 			</form>
 			{tray !== undefined && (
 				// Inset from the card's rounded corners, tucked under its bottom edge.
-				<div className="mx-5.5 -mt-4 flex items-center gap-2 rounded-b-[16px] border border-edge bg-frame/60 px-2 pt-5 pb-1 text-[12px] text-ink-muted/70">
+				<div className="mx-3 -mt-3 flex items-center gap-2 rounded-b-lg border border-edge bg-selection-subtle px-2 pt-4 pb-1 text-ui text-ink-muted">
 					{tray}
 				</div>
 			)}
@@ -106,17 +104,7 @@ export function Composer({
 }
 
 /** Shared expanded surface for starting a session and replying to one. */
-export function PromptComposer(props: ComponentProps<typeof Composer>) {
-	return (
-		<Composer
-			{...props}
-			className={cn(
-				"rounded-xl bg-frame-top [&_textarea]:rounded-lg [&_textarea]:bg-ink/4 [&_textarea]:px-3 [&_textarea]:py-2",
-				props.className,
-			)}
-		/>
-	);
-}
+export const PromptComposer = Composer;
 
 export function ComposerHeader({
 	title,
@@ -128,9 +116,9 @@ export function ComposerHeader({
 	readonly onClose?: () => void;
 }) {
 	return (
-		<div className="flex h-10 items-center gap-2 px-4 text-[12px] text-ink-muted">
-			<Icon className="size-3.5 text-brand" aria-hidden />
-			<span className="flex-1 font-medium text-ink">{title}</span>
+		<div className="flex h-pane items-center gap-2 px-4 text-ui text-ink-muted">
+			<Icon className="size-3.5" aria-hidden />
+			<span className="flex-1 font-medium">{title}</span>
 			{onClose !== undefined && (
 				<button
 					type="button"
@@ -159,7 +147,7 @@ export function ComposerSubmit({
 		<button
 			type="submit"
 			disabled={disabled}
-			className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-brand px-3 text-[12px] font-medium text-brand-ink outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:opacity-50"
+			className="flex h-7 shrink-0 items-center gap-2 rounded-md bg-primary px-2.5 text-ui font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:bg-primary/25 disabled:text-primary-foreground/60"
 			title={title ?? `${label} (Enter)`}
 		>
 			{label}
@@ -188,7 +176,7 @@ export function ComposerButton({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale,filter] duration-150 ease-out enabled:hover:brightness-110 enabled:active:scale-[0.97] disabled:opacity-64"
+			className="grid size-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring press enabled:hover:bg-primary/90 disabled:bg-primary/25 disabled:text-primary-foreground/60"
 		>
 			{children}
 		</button>

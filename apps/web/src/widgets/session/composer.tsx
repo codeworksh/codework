@@ -196,7 +196,7 @@ export function SessionComposer({
 					type="button"
 					onClick={expand}
 					aria-label="Write a reply"
-					className="flex h-12 w-full items-center gap-2 rounded-xl border border-edge bg-frame-top/95 px-4 text-left text-[13px] text-ink-muted shadow-frame outline-none hover:border-edge-focus focus-visible:ring-2 focus-visible:ring-ring"
+					className="composer-surface flex h-11 w-full items-center gap-2 px-4 text-left text-body text-ink-muted outline-none hover:border-ink/30 focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<Reply className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
 					<span className="min-w-0 flex-1 truncate">{text || "Write a reply…"}</span>

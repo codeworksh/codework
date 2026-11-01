@@ -17,24 +17,26 @@ export function Message({
 		<article aria-label={user ? "Your message" : "Assistant message"} className="flex min-w-0 items-start gap-2.5">
 			<div
 				aria-hidden
-				className={`grid size-7 shrink-0 place-items-center rounded-md text-xs font-medium select-none ${user ? "bg-brand/15 text-brand" : "bg-ink/8 text-ink-secondary"}`}
+				className={`grid size-6 shrink-0 place-items-center rounded-md text-2xs font-medium select-none ${user ? "bg-selection text-ink" : "bg-selection-subtle text-ink-muted"}`}
 			>
 				{user ? "U" : "A"}
 			</div>
-			<div className={`min-w-0 flex-1 rounded-lg px-3.5 py-3 ${user ? "bg-brand/8" : "bg-ink/3"}`}>
-				<header className="mb-2 flex min-h-4 items-center gap-2 text-xs leading-4">
-					{user && <span className="font-medium text-ink">You</span>}
+			<div
+				className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 ${user ? "bg-message text-message-ink" : "text-ink-secondary"}`}
+			>
+				<header className="mb-2 flex min-h-4 items-center gap-2 text-2xs leading-4">
+					<span className="font-medium">{user ? "You" : "Assistant"}</span>
 					{at !== undefined && (
 						<time
 							dateTime={new Date(at).toISOString()}
 							title={new Date(at).toLocaleString()}
-							className="text-ink-muted"
+							className={user ? "text-message-ink/65" : "text-ink-muted"}
 						>
 							{ago(at)}
 						</time>
 					)}
 				</header>
-				<div className="flex min-w-0 flex-col gap-3 wrap-anywhere text-ink">{children}</div>
+				<div className="flex min-w-0 flex-col gap-3 text-body wrap-anywhere">{children}</div>
 			</div>
 		</article>
 	);

@@ -15,11 +15,11 @@ function Root() {
 	return (
 		<SidebarProvider
 			className="app-shell h-full min-h-0 flex-col bg-desktop"
-			style={{ "--sidebar-width": "15rem" } as CSSProperties}
+			style={{ "--sidebar-width": "16.25rem" } as CSSProperties}
 			widthStorageKey="codework.sidebar.width"
 		>
 			<NavigationControls />
-			<div className="mb-2 mr-2 ml-[52px] flex min-h-0 flex-1 overflow-hidden rounded-xl bg-frame">
+			<div className="mb-2 mr-2 ml-rail flex min-h-0 flex-1 overflow-hidden rounded-xl border border-edge bg-frame">
 				<Navigation />
 				{inSettings ? <SettingsSidebar /> : <SessionsSidebar />}
 				<div className="flex min-w-0 flex-1 flex-col overflow-hidden">

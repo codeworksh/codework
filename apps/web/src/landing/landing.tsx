@@ -80,16 +80,17 @@ export function Landing() {
 		<div className="flex h-full min-w-0 flex-col select-none">
 			<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
 				<div className="flex-[0.8]" />
-				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
-				<div className="mt-10 w-full max-w-2xl shrink-0">
+				<Wordmark className="pointer-events-none w-[min(60%,22rem)] shrink-0 text-ink opacity-20" />
+				<p className="mt-5 text-body text-ink-muted">What would you like to work on?</p>
+				<div className="mt-6 w-full max-w-2xl shrink-0">
 					{notice !== undefined && <ComposerNotice {...notice} />}
 					<PromptComposer
-						header={<ComposerHeader title="New Session" icon={SquarePen} />}
+						header={<ComposerHeader title="New session" icon={SquarePen} />}
 						autoFocus
 						value={query}
 						onChange={setQuery}
 						onSubmit={() => void send()}
-						placeholder="Ask for changes, send follow-ups, or attach images"
+						placeholder="Describe a task or ask a question…"
 						controls={
 							<>
 								<ModelPicker
@@ -105,7 +106,7 @@ export function Landing() {
 								/>
 							</>
 						}
-						actions={<ComposerSubmit label="Start Session" disabled={!canSend} />}
+						actions={<ComposerSubmit label="Start session" disabled={!canSend} />}
 						tray={
 							<>
 								<DropdownMenu>

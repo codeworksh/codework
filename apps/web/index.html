@@ -23,10 +23,10 @@
 
 			/* The app's desktop tint (--cw-desktop in style.css), so the swap to the app does not shift colour. */
 			body {
-				background: color-mix(in oklab, var(--t-bg) 96%, var(--t-text));
+				background: var(--cw-desktop, var(--t-bg));
 				color: var(--t-text);
 				font:
-					13px/1.4 system-ui,
+					var(--text-ui, 12px) / 1.4 var(--font-sans, system-ui),
 					-apple-system,
 					"Segoe UI",
 					sans-serif;

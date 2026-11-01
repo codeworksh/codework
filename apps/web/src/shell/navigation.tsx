@@ -9,7 +9,7 @@ export function Navigation() {
 	return (
 		<nav
 			aria-label="Main navigation"
-			className="fixed top-12 bottom-0 left-0 z-20 flex w-[52px] flex-col items-center gap-2 bg-desktop pt-2 pb-3 select-none"
+			className="fixed top-titlebar bottom-0 left-0 z-20 flex w-rail flex-col items-center gap-2 bg-desktop pt-2 pb-3 select-none"
 		>
 			<Tooltip>
 				<TooltipTrigger asChild>
@@ -47,4 +47,4 @@ export function Navigation() {
 }
 
 const destination =
-	"grid size-8 place-items-center rounded-lg text-ink-muted outline-none hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink press [-webkit-app-region:no-drag]";
+	"grid size-8 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection aria-[current=page]:text-ink press [-webkit-app-region:no-drag]";
