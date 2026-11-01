@@ -17,6 +17,7 @@ import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
+import { Arcade } from "./arcade";
 import { placeAtom, placeLabel, usePickFolder } from "./place";
 import { projectsAtom } from "../widgets/session/projects";
 
@@ -34,6 +35,7 @@ export function Landing() {
 	const openElsewhere = useOpenElsewhere();
 	const refreshProjects = useAtomRefresh(projectsAtom);
 	const [query, setQuery] = useState("");
+	const [playing, setPlaying] = useState(false);
 	const place = useAtomValue(placeAtom);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
@@ -79,14 +81,18 @@ export function Landing() {
 
 	return (
 		<div className="relative flex h-full min-h-0 flex-col overflow-y-auto overscroll-none select-none">
-			<main className="relative z-10 mx-auto flex w-full max-w-conversation flex-1 flex-col overflow-clip px-2.5 pt-6 pb-1.5">
+			<Arcade onPlayingChange={setPlaying} />
+			<main
+				inert={playing}
+				className="pointer-events-none relative z-10 mx-auto flex w-full max-w-conversation flex-1 flex-col overflow-clip px-2.5 pt-6 pb-1.5"
+			>
 				<div aria-hidden className="flex-[1_1_0px]" />
-				<div className="mb-4 shrink-0 px-2.5">
+				<div className="pointer-events-auto mb-4 shrink-0 px-2.5">
 					<h1 className="truncate text-lg text-ink" title={place.kind === "folder" ? place.path : undefined}>
 						{title}
 					</h1>
 				</div>
-				<div className="w-full shrink-0">
+				<div className="pointer-events-auto w-full shrink-0">
 					{notice !== undefined && <ComposerNotice {...notice} />}
 					<Composer
 						autoFocus
