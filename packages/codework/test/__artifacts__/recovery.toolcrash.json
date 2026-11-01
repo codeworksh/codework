@@ -1,0 +1,344 @@
+{
+	"log": [
+		{
+			"type": "session.created"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Run the slow command."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Run the slow command."
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.run.failed",
+			"reason": "crashloop",
+			"message": "The run was interrupted 5 times in a row; it is not resumed again"
+		}
+	],
+	"history": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "Run the slow command."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "aborted",
+					"result": "Tool Execution Interrupted"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "aborted",
+					"result": "Tool Execution Interrupted"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "aborted",
+					"result": "Tool Execution Interrupted"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "aborted",
+					"result": "Tool Execution Interrupted"
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "aborted",
+					"result": "Tool Execution Interrupted"
+				}
+			]
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Run the slow command."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run the slow command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run the slow command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run the slow command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run the slow command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			}
+		]
+	],
+	"ran": "ran\nran\nran\nran\nran\n"
+}

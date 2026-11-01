@@ -1,0 +1,130 @@
+{
+	"log": [
+		{
+			"type": "session.created"
+		},
+		{
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Run a long command."
+		},
+		{
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Run a long command."
+		},
+		{
+			"type": "session.thread.system.changed"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "length",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "skipped",
+				"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "length",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "skipped",
+				"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.run.failed",
+			"reason": "truncated",
+			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
+		}
+	],
+	"history": [
+		{
+			"role": "user",
+			"state": "committed",
+			"parts": [
+				{
+					"text": "Run a long command."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "skipped",
+					"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+				}
+			]
+		},
+		{
+			"role": "assistant",
+			"state": "committed",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "skipped",
+					"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+				}
+			]
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		]
+	]
+}

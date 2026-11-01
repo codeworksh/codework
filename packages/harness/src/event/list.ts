@@ -147,10 +147,14 @@ export const TurnStarted = EventSchema.define({
 });
 export type TurnStarted = typeof TurnStarted.Type;
 
+/**
+ * A draft committed. `recovered` marks the commit a restart makes of a turn the host died in while
+ * its tools ran: no progress, so the restart count keeps counting.
+ */
 export const TurnEnded = EventSchema.define({
 	type: "session.turn.ended",
 	...durableOptions,
-	schema: LLMFields,
+	schema: { ...LLMFields, recovered: optional(Schema.Literal(true)) },
 });
 export type TurnEnded = typeof TurnEnded.Type;
 
@@ -232,6 +236,27 @@ export const LLMThinkingEnd = EventSchema.define({
 });
 export type LLMThinkingEnd = typeof LLMThinkingEnd.Type;
 
+/**
+ * What one streamed part gained since the draft's last checkpoint: `append` extends a text or
+ * thinking part's text, `set` writes a new or otherwise changed part whole.
+ */
+export const LLMProgressChange = Schema.Union([
+	Schema.TaggedStruct("append", { partIndex: NonNegativeInt, text: Schema.String }),
+	Schema.TaggedStruct("set", { partIndex: NonNegativeInt, part: EventSchema.AikitAssistantPart }),
+]);
+export type LLMProgressChange = typeof LLMProgressChange.Type;
+
+/**
+ * A checkpoint of the streaming reply into its draft, at most one a second, so a host that dies
+ * mid-reply leaves what was streamed. Carries only what changed since the previous checkpoint.
+ */
+export const LLMProgress = EventSchema.define({
+	type: "session.llm.progress",
+	...durableOptions,
+	schema: { ...LLMFields, changes: Schema.Array(LLMProgressChange) },
+});
+export type LLMProgress = typeof LLMProgress.Type;
+
 /** aikit `done`: replace the LLMStarted payload in place; state stays draft. */
 export const LLMEnded = EventSchema.define({
 	type: "session.llm.ended",
@@ -244,7 +269,10 @@ export const LLMEnded = EventSchema.define({
 });
 export type LLMEnded = typeof LLMEnded.Type;
 
-/** Abort the whole draft and discard every part. */
+/**
+ * End the draft as aborted, keeping the output it streamed. Its unfinished tool calls are aborted,
+ * never run. An aborted entry stays out of the model's context.
+ */
 export const LLMFailed = EventSchema.define({
 	type: "session.llm.failed",
 	...durableOptions,
@@ -316,6 +344,22 @@ export const ExecutionInterrupted = EventSchema.define({
 	schema: { ...baseOptions, reason: SessionSchema.InterruptReason },
 });
 export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
+
+/**
+ * A run ended without its answer and is not resumed: the host died in it too often (`crashloop`),
+ * with no retry left for the request it cut off (`interrupted`), or replies kept hitting the output
+ * limit with tool calls (`truncated`). Queued prompts stay queued.
+ */
+export const RunFailed = EventSchema.define({
+	type: "session.run.failed",
+	...durableOptions,
+	schema: {
+		...baseOptions,
+		reason: Schema.Literals(["crashloop", "interrupted", "truncated"]),
+		message: Schema.String,
+	},
+});
+export type RunFailed = typeof RunFailed.Type;
 
 /**
  * Kernel lifecycle notice for one plugin module.
@@ -411,8 +455,10 @@ export const Definitions = EventSchema.inventory(
 	LLMThinkingStart,
 	LLMThinkingDelta,
 	LLMThinkingEnd,
+	LLMProgress,
 	LLMEnded,
 	LLMFailed,
+	RunFailed,
 	ToolStarted,
 	ToolProgress,
 	ToolSettled,
@@ -438,8 +484,10 @@ export const DurableDefinitions = EventSchema.inventory(
 	SystemChanged,
 	TurnEnded,
 	LLMStarted,
+	LLMProgress,
 	LLMEnded,
 	LLMFailed,
+	RunFailed,
 	ToolSettled,
 );
 

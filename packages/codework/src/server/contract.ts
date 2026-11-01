@@ -93,8 +93,6 @@ export const ThreadInfo = Schema.Struct({
 	foundation: optional(Schema.String),
 	/** Where it runs instead of the session's space and directory. */
 	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
-	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
-	parked: optional(Schema.Boolean),
 	usage: ThreadUsage,
 	session: SessionInfo,
 });

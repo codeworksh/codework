@@ -128,11 +128,6 @@ export interface ThreadInfo {
 	readonly foundation?: string;
 	/** Where it runs instead of the session's space and directory. */
 	readonly placement?: DocumentSchema.Placement;
-	/**
-	 * Its unfinished run was cut off {@link Control.RESTART_LIMIT} times, so the server no longer
-	 * resumes it; the next prompt runs it again.
-	 */
-	readonly parked: boolean;
 	/** Billed usage of its own entries; what it inherits through a fork point counts for its source. */
 	readonly usage: Usage;
 	readonly session: Info;
@@ -279,14 +274,11 @@ const originOf = (row: ThreadRow): ThreadSchema.Origin => {
 export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadSchema.ID) {
 	const threads = yield* Thread.Service;
 	const documents = yield* Document.Service;
-	const control = yield* Control.Service;
 	const found = yield* threads.get(id);
 	if (Option.isNone(found)) return yield* new Thread.ThreadNotFoundError({ threadId: id });
 	const row = found.value;
 	const agent = yield* documents.agent(id);
 	const title = Option.getOrUndefined(row.title);
-	const parked =
-		Option.isSome(row.execution) && row.restarts >= Control.RESTART_LIMIT && !(yield* control.active).has(id);
 	return {
 		id,
 		sessionId: SessionSchema.ID.make(row.sessionId),
@@ -297,7 +289,6 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 		...(agent.thinkingLevel === undefined ? {} : { thinkingLevel: agent.thinkingLevel }),
 		...(agent.foundation === undefined ? {} : { foundation: agent.foundation }),
 		...(agent.placement === undefined ? {} : { placement: agent.placement }),
-		parked,
 		usage: {
 			cost: row.cost,
 			input: row.tokensInput,

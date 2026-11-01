@@ -87,7 +87,7 @@
 			"id": "assistant_2",
 			"type": "assistant",
 			"state": "aborted",
-			"parts": 0
+			"parts": 1
 		},
 		{
 			"id": "assistant_3",
