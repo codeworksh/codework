@@ -17,6 +17,8 @@ export interface Problem {
 /** The default server's problem from its status; undefined while the app can work with it. */
 export function problemOf(status: ServerStatus): Problem | undefined {
 	const { cli, server } = status;
+	// An already running, compatible server is usable even without a local CLI.
+	if (server._tag === "Running") return undefined;
 	if (cli === null)
 		return {
 			title: "CodeWork Isn't Installed",
@@ -43,8 +45,6 @@ export function problemOf(status: ServerStatus): Problem | undefined {
 				title: "Incompatible Server Version",
 				line: `${status.name} runs codework v${server.version}, which this app can't read.`,
 			};
-		case "Running":
-			return undefined;
 	}
 }
 
