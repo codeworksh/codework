@@ -6,242 +6,9 @@
  * hands jump (Space / Up / W) and duck (Down / S) over to the player.
  */
 
-export const ARCADE_MODES = ["low", "mid", "hard"] as const;
-export type ArcadeMode = (typeof ARCADE_MODES)[number];
+import type { ArcadeMode, ArcadeSprite, ArcadeSpriteKind, GridArcade, SpeechBubble } from "./games";
 
-/** One pixel of a sprite in grid-cell units (`PITCH = 7px`, so `0.36 * 7 ≈ 2.5px`). */
-export const SPRITE_UNIT = 0.36;
-
-export type SpeechBubble = {
-	text: string;
-	/** Grid cell the tail points at. */
-	x: number;
-	y: number;
-	alpha: number;
-};
-
-export type DinoSpriteKind =
-	| "dino-jump"
-	| "dino-run-a"
-	| "dino-run-b"
-	| "dino-duck-a"
-	| "dino-duck-b"
-	| "dino-crash"
-	| "cactus-small"
-	| "cactus-tall"
-	| "ptero-up"
-	| "ptero-down"
-	| "star-face"
-	| "star-edge";
-
-export type DinoSprite = {
-	kind: DinoSpriteKind;
-	/** Left edge in grid cells. */
-	x: number;
-	/** Top edge in grid cells. */
-	y: number;
-	/** Width in sprite pixels. */
-	width: number;
-	/** Height in sprite pixels. */
-	height: number;
-	alpha: number;
-};
-
-const SPRITE_ROWS: Record<DinoSpriteKind, readonly string[]> = {
-	"dino-jump": [
-		"........#######.",
-		".......#########",
-		".......##.######",
-		".......#########",
-		".......#####....",
-		".......########.",
-		"#.....######....",
-		"##...########...",
-		"###.###########.",
-		"############..#.",
-		".###########....",
-		"..#########.....",
-		"...#######......",
-		"....##..##......",
-		"....#....#......",
-		"....##...##.....",
-	],
-	"dino-run-a": [
-		"........#######.",
-		".......#########",
-		".......##.######",
-		".......#########",
-		".......#####....",
-		".......########.",
-		"#.....######....",
-		"##...########...",
-		"###.###########.",
-		"############..#.",
-		".###########....",
-		"..#########.....",
-		"...#######......",
-		"....##..###.....",
-		"....#...........",
-		"....##..........",
-	],
-	"dino-run-b": [
-		"........#######.",
-		".......#########",
-		".......##.######",
-		".......#########",
-		".......#####....",
-		".......########.",
-		"#.....######....",
-		"##...########...",
-		"###.###########.",
-		"############..#.",
-		".###########....",
-		"..#########.....",
-		"...#######......",
-		"....###..##.....",
-		".........#......",
-		".........##.....",
-	],
-	"dino-duck-a": [
-		"............#######.",
-		"#..........#########",
-		"##..#########.######",
-		"####################",
-		".############.#####.",
-		"..##########..#####.",
-		"...########...#.....",
-		"....##..###.........",
-		"....#...............",
-		"....##..............",
-	],
-	"dino-duck-b": [
-		"............#######.",
-		"#..........#########",
-		"##..#########.######",
-		"####################",
-		".############.#####.",
-		"..##########..#####.",
-		"...########...#.....",
-		"....###..##.........",
-		".........#..........",
-		".........##.........",
-	],
-	"dino-crash": [
-		"........#######.",
-		".......#########",
-		".......#...#####",
-		".......#.#.#####",
-		".......#...#....",
-		".......########.",
-		"#.....######....",
-		"##...########...",
-		"###.###########.",
-		"############..#.",
-		".###########....",
-		"..#########.....",
-		"...#######......",
-		"....##..##......",
-		"....#....#......",
-		"....##...##.....",
-	],
-	"cactus-small": [
-		"...##...",
-		"...##...",
-		"#..##...",
-		"#..##..#",
-		"#..##..#",
-		"#####..#",
-		".######.",
-		"...##...",
-		"...##...",
-		"...##...",
-		"...##...",
-		"...##...",
-	],
-	"cactus-tall": [
-		"....##....",
-		"....##....",
-		"#...##....",
-		"##..##..#.",
-		"##..##..##",
-		"##..##..##",
-		"######..##",
-		".#####..##",
-		"....######",
-		"....#####.",
-		"....##....",
-		"....##....",
-		"....##....",
-		"....##....",
-		"....##....",
-		"....##....",
-	],
-	"ptero-up": [
-		"......##........",
-		".....###........",
-		"....####........",
-		"..###.#####.....",
-		".##########.....",
-		"############....",
-		"...##########...",
-		".....##########.",
-		"......####..##..",
-		"................",
-		"................",
-		"................",
-	],
-	"ptero-down": [
-		"................",
-		"................",
-		"................",
-		"..###...........",
-		".#####..........",
-		"############....",
-		"...#############",
-		".....#########..",
-		".....####...##..",
-		".....###........",
-		"......##........",
-		"......#.........",
-	],
-	"star-face": ["...##...", "...##...", "..####..", "########", "########", "..####..", "...##...", "...##..."],
-	"star-edge": ["........", "...##...", "...##...", "..####..", "..####..", "...##...", "...##...", "........"],
-};
-
-/** Merges each row's filled runs into one SVG path so each sprite paints in a single fill. */
-function traceRows(rows: readonly string[]): string {
-	let path = "";
-	rows.forEach((row, y) => {
-		let x = 0;
-		while (x < row.length) {
-			if (row[x] !== "#") {
-				x += 1;
-				continue;
-			}
-			let run = 1;
-			while (row[x + run] === "#") run += 1;
-			path += `M${x} ${y}h${run}v1h-${run}z`;
-			x += run;
-		}
-	});
-	return path;
-}
-
-export const SPRITE_PATHS: Record<DinoSpriteKind, string> = {
-	"dino-jump": traceRows(SPRITE_ROWS["dino-jump"]),
-	"dino-run-a": traceRows(SPRITE_ROWS["dino-run-a"]),
-	"dino-run-b": traceRows(SPRITE_ROWS["dino-run-b"]),
-	"dino-duck-a": traceRows(SPRITE_ROWS["dino-duck-a"]),
-	"dino-duck-b": traceRows(SPRITE_ROWS["dino-duck-b"]),
-	"dino-crash": traceRows(SPRITE_ROWS["dino-crash"]),
-	"cactus-small": traceRows(SPRITE_ROWS["cactus-small"]),
-	"cactus-tall": traceRows(SPRITE_ROWS["cactus-tall"]),
-	"ptero-up": traceRows(SPRITE_ROWS["ptero-up"]),
-	"ptero-down": traceRows(SPRITE_ROWS["ptero-down"]),
-	"star-face": traceRows(SPRITE_ROWS["star-face"]),
-	"star-edge": traceRows(SPRITE_ROWS["star-edge"]),
-};
-
+const SPRITE_UNIT = 0.36;
 const BOOT_FADE_MS = 420;
 const LEG_STEP_MS = 95;
 const WING_FLAP_MS = 160;
@@ -347,26 +114,10 @@ function groundHash(worldCol: number): number {
 	return ((n ^ (n >>> 13)) >>> 0) / 0xffffffff;
 }
 
-export type DinoArcade = {
-	resize(nextCols: number, nextRows: number): void;
-	takeControl(): void;
-	releaseControl(): void;
-	jump(): void;
-	setDuck(active: boolean): void;
-	setMode(next: ArcadeMode): void;
-	mode(): ArcadeMode;
-	controlled(): boolean;
-	score(): number;
-	highScore(): number;
-	gameOver(): boolean;
-	step(dt: number): void;
-	speechBubble(): SpeechBubble | null;
-	sprites(): DinoSprite[];
-	fade(): number;
-	stamp(out: Float32Array, stampCols: number, stampRows: number): void;
-};
+const JUMP_KEYS = new Set([" ", "Spacebar", "ArrowUp", "w", "W"]);
+const DUCK_KEYS = new Set(["ArrowDown", "s", "S"]);
 
-export function createDinoArcade(): DinoArcade {
+export function createDinoArcade(): GridArcade {
 	let cols = 0;
 	let rows = 0;
 	let groundRow = 0;
@@ -553,6 +304,20 @@ export function createDinoArcade(): DinoArcade {
 		return false;
 	};
 
+	const jumpInput = () => {
+		if (!player) return;
+		if (status === "over") {
+			if (overTimer <= OVER_AUTO_RESET_MS - OVER_RESTART_GUARD_MS) {
+				startRun();
+			}
+			return;
+		}
+		ducking = false;
+		if (!triggerJump()) {
+			jumpBuffer = JUMP_BUFFER_MS;
+		}
+	};
+
 	/** Autopilot: jumps over cacti & low pterodactyls, ducks under mid/high pterodactyls, and leaps for safe stars. */
 	const thinkDino = () => {
 		const x = dinoX();
@@ -664,23 +429,31 @@ export function createDinoArcade(): DinoArcade {
 			startRun();
 		},
 
-		jump() {
-			if (!player) return;
-			if (status === "over") {
-				if (overTimer <= OVER_AUTO_RESET_MS - OVER_RESTART_GUARD_MS) {
-					startRun();
-				}
-				return;
+		keyDown(key: string, repeat: boolean) {
+			if (!player) return false;
+			if (JUMP_KEYS.has(key)) {
+				if (!repeat) jumpInput();
+				return true;
 			}
-			ducking = false;
-			if (!triggerJump()) {
-				jumpBuffer = JUMP_BUFFER_MS;
+			if (DUCK_KEYS.has(key)) {
+				ducking = true;
+				return true;
+			}
+			return false;
+		},
+
+		keyUp(key: string) {
+			if (DUCK_KEYS.has(key)) {
+				ducking = false;
 			}
 		},
 
-		setDuck(active: boolean) {
-			if (!player) return;
-			ducking = active;
+		blur() {
+			ducking = false;
+		},
+
+		pointerDown() {
+			jumpInput();
 		},
 
 		setMode(next: ArcadeMode) {
@@ -701,6 +474,10 @@ export function createDinoArcade(): DinoArcade {
 
 		highScore() {
 			return highScore;
+		},
+
+		lives() {
+			return 0;
 		},
 
 		gameOver() {
@@ -825,11 +602,11 @@ export function createDinoArcade(): DinoArcade {
 			};
 		},
 
-		sprites(): DinoSprite[] {
+		sprites(): ArcadeSprite[] {
 			if (cols <= 0 || rows <= 0) return [];
 			const alpha = bootAlpha();
 			const dim = status === "over" ? 0.75 : 1;
-			const out: DinoSprite[] = [];
+			const out: ArcadeSprite[] = [];
 
 			if (star) {
 				const edge = Math.floor(star.age / STAR_SPIN_MS) % 2 === 1;
@@ -871,7 +648,7 @@ export function createDinoArcade(): DinoArcade {
 
 			const stepA = Math.floor(runClock / LEG_STEP_MS) % 2 === 0;
 			const isDucking = ducking && dinoY <= 0.05 && status === "run";
-			const dinoKind: DinoSpriteKind =
+			const dinoKind: ArcadeSpriteKind =
 				status === "over"
 					? "dino-crash"
 					: dinoY > 0.05
