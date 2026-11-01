@@ -18,10 +18,12 @@ function Root() {
 			widthStorageKey="codework.sidebar.width"
 		>
 			<NavigationControls />
-			<div className="mx-2 mb-2 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-edge bg-frame">
+			<div className="flex min-h-0 flex-1">
 				{inSettings ? <SettingsSidebar /> : <SessionsSidebar />}
-				<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-					<Outlet />
+				<div className="mr-2 mb-2 ml-2 flex min-h-0 flex-1 overflow-hidden rounded-xl border border-edge bg-frame md:ml-0">
+					<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+						<Outlet />
+					</div>
 				</div>
 			</div>
 			<Palette />

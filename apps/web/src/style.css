@@ -230,17 +230,16 @@
 
 /* The sidebar sits inside the app frame beneath the title bar. */
 .app-shell [data-slot="sidebar"] > .shell-sidebar {
-	left: 8px;
+	left: 0;
 	top: var(--cw-titlebar-height);
 	height: calc(100svh - var(--cw-titlebar-height) - 8px);
 	border: 0;
-	border-right: 1px solid var(--cw-edge);
 	border-radius: 12px 0 0 12px;
 	background: var(--cw-sidebar);
 	backdrop-filter: blur(24px);
 }
 .app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
-	left: calc(8px - var(--sidebar-width));
+	left: calc(0px - var(--sidebar-width));
 	visibility: hidden;
 }
 .app-shell .shell-sidebar [data-slot="sidebar-inner"] {

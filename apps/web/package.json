@@ -16,6 +16,8 @@
 		"@codeworksh/contract": "workspace:*",
 		"@codeworksh/widget": "workspace:*",
 		"@effect/atom-react": "4.0.5",
+		"@hugeicons/core-free-icons": "^4.4.0",
+		"@hugeicons/react": "^1.1.10",
 		"@legendapp/list": "3.3.5",
 		"@pierre/trees": "1.0.0-beta.6",
 		"@tanstack/react-router": "^1.161.0",

@@ -1,7 +1,8 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
+import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { Plus, Search, Settings, SquarePen } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import {
@@ -71,34 +72,34 @@ export function SessionsSidebar() {
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
-			<SidebarHeader className="gap-0 p-0">
-				<div className="px-2 pt-2 pb-2">
-					{/* The icon centers on the input alone, not on the padding below it. */}
-					<div className="relative">
-						<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted" />
-						<SidebarInput
-							type="search"
-							placeholder="Search"
-							aria-label="Search sessions"
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							className="h-7 rounded-md border-transparent bg-transparent pl-8 text-ui shadow-none focus-visible:bg-selection-subtle"
-						/>
-					</div>
-					<button
-						type="button"
-						onClick={startNew}
-						className="mt-1 flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-ui text-ink outline-none hover:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring press"
-					>
-						<SquarePen className="size-3.5 text-ink-muted" aria-hidden />
-						New session
-					</button>
+			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
+				<div className="relative">
+					<HugeiconsIcon
+						icon={Search01Icon}
+						size={16}
+						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted opacity-70"
+						aria-hidden
+					/>
+					<SidebarInput
+						type="search"
+						placeholder="Search"
+						aria-label="Search sessions"
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						className="h-8 rounded-md border-edge bg-transparent pr-2 pl-8 text-ui shadow-sm placeholder:text-ink-muted focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
+					/>
 				</div>
+				<button
+					type="button"
+					onClick={startNew}
+					className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
+				>
+					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					New session
+				</button>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
-				<h2 className="flex h-7 shrink-0 items-center px-2.5 text-2xs font-medium text-ink-muted">
-					Recent sessions
-				</h2>
+				<h2 className="flex h-7 shrink-0 items-center px-2 text-ui font-medium text-ink-muted">Sessions</h2>
 				{problem !== undefined ? (
 					<OpenProviderSettings
 						problem={problem}
@@ -116,7 +117,15 @@ export function SessionsSidebar() {
 									<span>No projects yet</span>
 									{addProject !== undefined && (
 										<EmptyAction
-											icon={<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
+											icon={
+												<HugeiconsIcon
+													icon={PlusSignIcon}
+													size={12}
+													strokeWidth={2}
+													className="-mx-0.5 size-3"
+													aria-hidden
+												/>
+											}
 											onClick={addProject}
 										>
 											Add project
@@ -155,9 +164,9 @@ export function SessionsSidebar() {
 			<SidebarFooter className="p-2">
 				<Link
 					to="/settings/workspaces"
-					className="flex h-7 items-center gap-2 rounded-md px-2.5 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
+					className="flex h-8 items-center gap-2 rounded-md px-2 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
 				>
-					<Settings className="size-3.5" aria-hidden />
+					<HugeiconsIcon icon={Settings02Icon} size={16} className="shrink-0 opacity-70" aria-hidden />
 					Settings
 				</Link>
 			</SidebarFooter>
