@@ -44,8 +44,9 @@ export const start = async (options = {}) => {
 		client: undefined,
 		pending: new Map(),
 		/**
-		 * What happens right after the next `tools/list`: `expire` the access tokens (a refresh still
-		 * works), or `revoke` them and the refresh token (it does not).
+		 * What happens right after the next `tools/list` on `/mcp`: `expire` the access tokens (a refresh
+		 * still works), or `revoke` them and the refresh token (it does not). A listing on `/keyed` leaves
+		 * it alone, or a run's keyed server, connecting first, would revoke before `/mcp` connects.
 		 */
 		afterList: undefined,
 		/** Every bearer token presented to `/mcp` or `/keyed`, accepted or not. */
@@ -123,7 +124,11 @@ export const start = async (options = {}) => {
 						? { content: [{ type: "text", text: `called with ${token}` }] }
 						: {};
 		if (body.method === "tools/call") state.log.push({ mcp: "tools/call", token });
-		if (body.method === "tools/list" && state.afterList !== undefined) {
+		if (
+			body.method === "tools/list" &&
+			new URL(request.url, base).pathname === "/mcp" &&
+			state.afterList !== undefined
+		) {
 			state.access.clear();
 			if (state.afterList === "revoke") state.refresh = undefined;
 			state.log.push({ [state.afterList]: true });
