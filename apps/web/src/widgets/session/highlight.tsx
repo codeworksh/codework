@@ -12,33 +12,10 @@ import {
 
 import type { ThemeId } from "../../theme";
 
-/**
- * The Shiki theme whose token colours go with each palette: the same theme where Shiki ships it,
- * else the closest in mood. Only token colours are used; the code block's background is ours.
- */
+/** Syntax colours follow the app's light or dark appearance. */
 const SHIKI_THEMES: Record<ThemeId, BundledTheme> = {
-	"tokyo-night": "tokyo-night",
-	catppuccin: "catppuccin-mocha",
-	"catppuccin-latte": "catppuccin-latte",
-	gruvbox: "gruvbox-dark-medium",
-	everforest: "everforest-dark",
-	kanagawa: "kanagawa-wave",
-	nord: "nord",
-	"rose-pine": "rose-pine-dawn",
-	"last-horizon": "horizon",
-	white: "github-light",
-	"flexoki-light": "vitesse-light",
-	lupine: "one-light",
-	"matte-black": "github-dark-default",
-	vantablack: "min-dark",
-	hackerman: "github-dark-high-contrast",
-	lumon: "poimandres",
-	ethereal: "one-dark-pro",
-	miasma: "gruvbox-dark-soft",
-	"osaka-jade": "vitesse-dark",
-	"retro-82": "synthwave-84",
-	ristretto: "monokai",
-	solitude: "github-dark-dimmed",
+	light: "github-light",
+	dark: "github-dark-default",
 };
 
 type Root = ReturnType<Highlighter["codeToHast"]>;
