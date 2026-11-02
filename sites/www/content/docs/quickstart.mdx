@@ -3,7 +3,7 @@ title: Quickstart
 description: Install CodeWork, connect a model, and make your first change in a few minutes.
 ---
 
-You'll install the CLI, connect a model, ask CodeWork about your codebase, have it make a small change, and review what it did.
+You'll install CodeWork, connect a model, ask about your codebase, have it make a small change, and review what it did. Use the [desktop app](/docs/desktop) or your terminal; both run on the CLI you install first.
 
 ## 1. Install CodeWork
 
@@ -15,7 +15,7 @@ curl -fsSL https://codework.sh/install | sh
 pnpm add -g @codeworksh/cli
 ```
 
-The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). The pnpm package needs Node.js 24 or later and works on other platforms too.
+The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). The pnpm package needs Node.js 24.14.1 or later and works on other platforms too.
 
 Check that it's on your path:
 
@@ -43,6 +43,18 @@ export OPENROUTER_API_KEY="..."
 
 ## 3. Ask About Your Codebase
 
+### Desktop App
+
+[Download the app](/docs/desktop#download), open **Settings → Providers**, and press **Start**. Then press **New session**, pick your project with **Select project → New…**, and ask:
+
+```text
+Explain how this repository is structured and how to run its checks.
+```
+
+![The start page, with a project picked and the prompt box ready](/images/docs/desktop/start.webp)
+
+### Terminal
+
 From your project folder, pick the provider you connected:
 
 ```bash title="ChatGPT plan"
@@ -59,15 +71,19 @@ codework run \
   "Explain how this repository is structured and how to run its checks."
 ```
 
-CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together. It streams its answer as it writes it. It prints the session ID first, and a usage summary with the run's tokens and cost when it's done.
+It prints the session ID first, streams the answer as it writes it, and ends with the run's tokens and cost.
 
-<Placeholder type="video" title="Your first CodeWork run">
-	Video: `codework run` exploring a repository, streaming its answer, then printing the usage summary.
-</Placeholder>
+CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together.
 
 ## 4. Make a Change
 
-Continue the same session with `--session`, so CodeWork keeps what it already learned:
+Ask in the same session, so CodeWork keeps what it already learned:
+
+### Desktop App
+
+Type in the session's prompt box and press Enter. While the agent works, Enter [steers](/docs/desktop/steer) it.
+
+### Terminal
 
 ```bash
 codework run \
@@ -108,8 +124,8 @@ codework run "Find and fix one flaky test"
 ## Next Steps
 
 <Cards>
-	<Card title="Use it in Zed" href="/docs/integrations/acp#zed">
-		Run the same agent and sessions from your editor.
+	<Card title="Desktop app" href="/docs/desktop">
+		Run and review many sessions side by side.
 	</Card>
 	<Card title="Catalog & Prices" href="/docs/models/catalog">
 		Compare models by price, context window, and thinking levels.

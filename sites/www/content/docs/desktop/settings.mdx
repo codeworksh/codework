@@ -1,0 +1,39 @@
+---
+title: Settings
+description: Workspaces, themes, and the CodeWork servers the app connects to.
+---
+
+Open Settings with ⌘, or the **Settings** link at the bottom of the sidebar, and close it with Esc. **Search** finds any setting; Enter opens the first match.
+
+| Section        | What it controls                                    |
+| -------------- | --------------------------------------------------- |
+| **Workspaces** | Rename, reorder, and delete your workspaces         |
+| **Themes**     | Light or Dark (the default), saved on this computer |
+| **Providers**  | The CodeWork servers the app runs your sessions on  |
+
+Deleting a workspace asks first. Frames open only in that workspace close with it.
+
+## Providers
+
+![Settings → Providers with the CodeWork server running](/images/docs/desktop/providers.webp)
+
+The app connects to the **Default** server. The built-in one, **CodeWork**, uses your CodeWork home, `~/.codework`. Press **Start**, **Restart**, or **Stop** to control it; once started, it keeps running after you quit the app.
+
+| Status                   | What to do                                         |
+| ------------------------ | -------------------------------------------------- |
+| **Not installed**        | Install the CLI, or set **Executable** to its path |
+| **Stopped**              | Press **Start**                                    |
+| **Not answering**        | Press **Restart**                                  |
+| **Incompatible version** | Update the CLI to match the app                    |
+
+### Runtime and Environment
+
+- **Executable**: the `codework` binary to run. Leave it blank to use the one the app finds.
+- **Launch Args**: extra flags for `codework service start`, such as `--port 7433`.
+- **Variables**: API keys and other settings the server starts with. They apply on the next start or restart. Lock a variable to hide its value; the app never shows it again.
+
+**Add Provider** adds another local server with its own CodeWork home. **Make Default** switches the app to it.
+
+### Advanced
+
+**Health check interval** sets how often the app checks its servers, every 300 seconds by default. Set it to 0 to stop checking.

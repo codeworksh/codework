@@ -1,0 +1,35 @@
+---
+title: Steer and Queue
+description: Change course while the agent works, or line up what's next.
+---
+
+![A session still working, with a steer waiting above the prompt box](/images/landing/app/steer.webp)
+
+## While the Agent Works
+
+| Press    | What happens                                          |
+| -------- | ----------------------------------------------------- |
+| Enter    | **Steer**: the agent reads it during the current turn |
+| ⌘Enter   | **Follow-up**: it runs after the current turn ends    |
+| **Stop** | Stops the agent                                       |
+
+On Linux, use Ctrl in place of ⌘. When the agent is idle, Enter sends a reply.
+
+## Change a Queued Message
+
+Steers and follow-ups wait above the prompt box until the agent takes them in. Hover one for its actions:
+
+| Action                                 | What it does                        |
+| -------------------------------------- | ----------------------------------- |
+| **Steer now** / **Queue as follow-up** | Moves it to the other lane          |
+| **Edit**                               | Rewrites it in place; Enter saves   |
+| **Back to composer**                   | Takes it out and puts the text back |
+| **Remove**                             | Takes it out                        |
+
+A message the agent already took in can't change; the app says "That message was already sent."
+
+## Follow the Work
+
+Each reply shows how long the agent worked. Click that line to see what it did: the commands it ran and the files it read, wrote, and edited. A failed step is marked with a red ×. Click a step to see its input and output.
+
+An unsent message stays in the prompt box, even after the app restarts.

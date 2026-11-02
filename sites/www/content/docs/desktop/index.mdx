@@ -1,0 +1,74 @@
+---
+title: Desktop App
+sidebarTitle: Overview
+description: Run and review many sessions side by side, on the CodeWork server your CLI already runs.
+---
+
+![The CodeWork desktop app with sessions from four projects, one of them writing and running tests](/images/landing/app/desktop.webp)
+
+## Download
+
+The desktop app ships as **CodeWork Canary**, rebuilt with the latest changes. Expect rough edges.
+
+| Platform              | Download                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS (Apple silicon) | [DMG](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-mac-arm64.dmg) · [ZIP](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-mac-arm64.zip)                                                                                                                                |
+| Linux (x64)           | [AppImage](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-x64.AppImage) · [DEB](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-x64.deb) · [pacman](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-x64.pacman)       |
+| Linux (ARM64)         | [AppImage](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-arm64.AppImage) · [DEB](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-arm64.deb) · [pacman](https://github.com/codeworksh/codework/releases/download/nightly/codework-desktop-linux-arm64.pacman) |
+
+There's no build for Windows or Intel Macs yet. Verify a download against the release's [SHA256SUMS](https://github.com/codeworksh/codework/releases/download/nightly/SHA256SUMS).
+
+<Callout type="warn">
+	macOS builds aren't notarized yet, so macOS blocks a downloaded copy. After moving the app to Applications, clear its
+	quarantine flag:
+
+    ```bash
+    xattr -dr com.apple.quarantine "/Applications/CodeWork Canary.app"
+    ```
+
+</Callout>
+
+## Set It Up
+
+The app runs on a CodeWork server started by the CLI. It doesn't install the CLI for you.
+
+<Steps>
+<Step>
+
+### Install the CLI
+
+```bash
+curl -fsSL https://codework.sh/install | sh
+```
+
+The app finds `codework` in `~/.codework/bin`, or on your shell's `PATH`.
+
+</Step>
+<Step>
+
+### Connect a model
+
+```bash
+codework auth login --openai-codex
+```
+
+[Models & Pricing](/docs/models) lists every other way in, from Copilot to a local model.
+
+</Step>
+<Step>
+
+### Start the server
+
+Open **Settings → Providers** and press **Start**. The server keeps running after you quit the app; `codework service stop` stops it.
+
+![Settings → Providers with the CodeWork server running](/images/docs/desktop/providers.webp)
+
+</Step>
+<Step>
+
+### Start a session
+
+Pick a project folder, describe the task, and press Enter. [Sessions](/docs/desktop/sessions) covers the rest.
+
+</Step>
+</Steps>

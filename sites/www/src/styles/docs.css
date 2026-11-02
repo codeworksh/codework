@@ -39,3 +39,11 @@
 :is(#nd-sidebar, #nd-sidebar-mobile) :is(a[data-active], [data-state] > div)::before {
 	content: none;
 }
+
+/* App screenshots read as windows: rounded, an inset white hairline (the shots are dark in every theme) and a soft drop. */
+.prose img {
+	border-radius: 0.5rem;
+	outline: 1px solid rgb(255 255 255 / 0.1);
+	outline-offset: -1px;
+	box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.6);
+}

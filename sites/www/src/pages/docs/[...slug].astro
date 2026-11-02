@@ -2,6 +2,7 @@
 import { render, type CollectionEntry } from "astro:content";
 import type { TOCItemType } from "fumadocs-core/toc";
 import defaultMdxComponents from "fumadocs-ui/mdx";
+import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Docs } from "@/components/docs";
 import { Placeholder } from "@/components/placeholder";
 import Layout from "@/components/layout.astro";
@@ -37,7 +38,7 @@ const toc: TOCItemType[] = headings.map((heading) => ({
 		<h1 class="text-3xl font-semibold">{page.data.title}</h1>
 		{page.data.description && <p class="mb-8 text-lg text-fd-muted-foreground">{page.data.description}</p>}
 		<div class="prose flex-1">
-			<Content components={{ ...defaultMdxComponents, Placeholder }} />
+			<Content components={{ ...defaultMdxComponents, Placeholder, Step, Steps }} />
 		</div>
 	</Docs>
 </Layout>
