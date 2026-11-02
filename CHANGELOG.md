@@ -13,56 +13,9 @@ This file is the canonical source for unreleased changes and published release n
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
 
-### @codeworksh/harness
+## [@codeworksh/cli@0.6.0] - 2026-11-02
 
-#### Added
-
-- Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
-- Tools declare an `exposure`. Only `"direct"` and `"model"` tools reach the request, the `<tools>` list and the tool rules, and only they run; a call to any other tool gets `Unknown tool: <name>`. The bash file-ops rule and the skills hint name only declared tools, and `<skills>` is left out when neither `read` nor `bash` is declared. A plugin registering an unknown exposure fails in its `setup`.
-- `read` tells a model without image input that the image it read is left out of the request: `[Current model does not support images. The image will be omitted from this request.]` is added to its note.
-- A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the thread is parked instead of resumed: `Session.ThreadInfo.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
-
-- `Session.ThreadInfo.usage`: the billed cost and tokens of the thread's own entries, without what it inherits from the thread it was forked from.
-- MCP servers over stdio and streamable HTTP, configured in `~/.codework/mcp.json` and `.codework/mcp.json` (a project entry replaces or patches a user one) and by `mcp` plugins. Their tools reach the model as `mcp__<server>__<tool>`, each with its exposure (`direct`, `deferred`, `codemode` or `hidden`); servers with resources add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
-- MCP state is per thread. `scope` decides who shares a running server: threads of one session in the same folder (`session`, the default), sessions in one space (`space`) or every session (`app`). A server no running session needs closes after 10 minutes.
-- An MCP server that fails to connect stays failed until its settings change or it is reconnected; a dropped connection starts again on the next call. `Mcp.Service` `connect` and `disconnect` restart or close a thread's server for every thread sharing it.
-- MCP OAuth: servers sign in with discovery, client registration and PKCE, tokens stored in `~/.codework/mcpauth.json` by server name and URL and refreshed under a lock shared across processes. A server waiting for sign-in reconnects on the next message once its sign-in changes. `auth: { provider }` sends a model provider's credential instead.
-- The ephemeral `mcp.server.status` event reports each MCP server state change (`connecting`, `connected`, `disconnected`, `failed`, `authenticate`, `disabled`) to every thread using the server. A tool the MCP SDK rejects is skipped instead of failing its server, and listed as `skipped` on the `connected` status.
-- `toolsearch` turns itself on when a thread has deferred tools or an enabled MCP server with `deferred` exposure; a settings entry still turns it off or on. A search waits up to 10 seconds for such servers still connecting.
-- A thread can have its own prompt foundation: `configure({ foundation })` records it in the thread's `agent` document, in place of the one prompt plugins render, and `foundation: null` goes back to that. Other threads keep theirs; a fork starts with the foundation of its cut, and the choice survives a restart. Each change leads the thread's next request with the new foundation, a cache miss once. `Session.create` takes `foundation` for the main thread, and `Session.ThreadInfo.foundation` reports a thread's choice.
-- The deferred tools of the catalog reach every request as `deferredTools`, so Anthropic declares them up front and loading one through `toolsearch` keeps the cached prefix.
-- Prompt sections reach the model as transcript system messages. A request sends the foundation as its system prompt; the first request of a thread appends a `system` entry declaring every tagged section (`<tools>`, `<rules>`, `<cwd>`, plugin sections), and a later request appends one only for the sections that changed, a removed section as `null`, together with any tool change. Resume and fork replay these entries, so the model sees what it saw before, and a model that takes system messages in place (OpenAI Codex, OpenAI and GitHub Copilot Responses, Anthropic and GitHub Copilot Claude) keeps its cached prefix when a section changes.
-
-#### Breaking Changes
-
-- A session is a container of threads: one event log and one default place to run, holding a `main` thread created with it and the threads forked from it. A thread is a linear transcript; `fork` at or before a committed entry is the only way to branch. Branch, clone, leaf and `parentId` are gone.
-- `Session.create` returns a session handle with `main`, `thread(id | "main")` and `threads`. Prompting, running, waiting, resuming, interrupting, configuring, forking, events and history (was `path()`) are on thread handles. `Session.attach` returns a thread handle, `main` when `threadId` is absent. `Session.relink` with `threadId` moves only that thread.
-- Title, model, thinking level, usage, execution and `parked` belong to a thread (`Session.ThreadInfo`). `Session.Info` has none of them and gains `mainThreadId`. A thread is titled by its first own prompt; a fork has no title until then.
-- `Control` addresses threads: `prompt` and `run` take an optional `threadId` (absent = `main`); `wait`, `resume`, `interrupt`, `pending`, `cancel` and `update` take a thread id. `interruptSession` stops every thread of a session.
-- Events: every thread-scoped event carries `threadId`. `session.created`, `session.thread.forked` and `session.thread.configured` are new; `session.thread.configured` replaces `session.config.changed`, and `session.next.forked` is removed. Entry types `configChange` and `branchSummary` are removed.
-- Storage starts over with a single new migration; databases from earlier versions are not carried forward.
-
-#### Fixed
-
-- A turn started for a prompt that was cancelled just before it joined the conversation no longer asks the model anything.
-- A prompt changed, cancelled or sent again while it was being taken in no longer fails the run; the run takes in the prompt as it now stands.
-- GitHub Copilot lists only the models its login can reach, by the `availableModelIds` recorded at login. A settings model that aliases another is matched by its API id.
-
-#### Internal
-
-- Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
-- Stored context messages are user and assistant messages only; a stored system message fails to decode with "system messages are not stored as entries".
-- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
-- `session.thread.tools.changed` (`ToolsChanged`) is now `session.thread.system.changed` (`SystemChanged`), and its `system` entry data has an optional `sections` patch. `State.Snapshot.systemPrompt` is now `prompt: { foundation, sections }`.
-
-### @codeworksh/cli
-
-#### Added
-
-- Added the `thread.queue` RPC (`{ sessionId, threadId? }`): the prompts sent while the agent works and not yet taken in, steers and follow-ups, in the order they were sent.
-- Added the `thread.cancel` RPC (`{ sessionId, threadId?, messageId }`), which withdraws a queued prompt. `cancelled` is `false` when the prompt was already taken in.
-- Added the `thread.update` RPC (`{ sessionId, threadId?, messageId, delivery?, text? }`), which moves a queued prompt to the other lane or rewrites its text, keeping its place. `delivery: "steer"` also wakes the thread. `updated` is `false` when the prompt was already taken in.
-- `codework serve` resumes the sessions a crash or a shutdown cut off when it starts. Thread info carries `parked: true` for a thread that restarted too often to resume on its own; its next prompt runs it again.
+### Added
 
 - `thread.configure` and `session.create` take `runtime.foundation`, a thread's own prompt foundation; `null` on `thread.configure` goes back to the rendered one. `ThreadInfo.foundation` reports it.
 - `codework run --thread <id|main>` continues one thread of `--session`.
@@ -72,25 +25,75 @@ This file is the canonical source for unreleased changes and published release n
 - `codework mcp add`, `remove` and `list` manage and check MCP servers; `list` exits with 1 when an entry is broken or an enabled server does not connect. `codework mcp login` and `logout` sign in to and out of OAuth servers; login also takes the redirect URL pasted or piped to it.
 - `codework mcp reconnect` and `disconnect <server> --session <id> [--thread <id|main>]` restart or close a thread's MCP server in a running server, over the new `mcp.connect` and `mcp.disconnect` RPCs.
 - Commands that talk to a running server (`mcp reconnect`, `mcp disconnect`, `plugin reload`) default `--server` to `ws://127.0.0.1:7433/rpc/v1`.
+- `codework run` prints `Response was truncated: the model reached its output token limit.` and exits with 1 when the last reply hit the output limit.
 
-#### Breaking Changes
+### Breaking Changes
 
 - The RPC is split by what it addresses. `session.*` keeps `create`, `link`, `relink`, `delete`, `interrupt` (every thread) and `log`. `list`, `info`, `history`, `queue`, `configure`, `prompt`, `cancel`, `update`, `interrupt`, `message` and `wait` move to `thread.*`, with `fork` new there; they take `{ sessionId, threadId? }`, and an absent `threadId` means the session's `main` thread.
 - `session.create` and `session.relink` return the addressed thread's `ThreadInfo`, with its session embedded. `SessionInfo` has no title, model, thinking level or `parked`, and gains `mainThreadId`.
+- `parked` is gone. A run cut off by 5 restarts in a row is not resumed again: it ends with a `session.run.failed` event, and the thread's queue stays for its next prompt.
 - ACP `session/cancel` stops only the thread its session names, not every thread of the CodeWork session.
 
-#### Fixed
+### Fixed
 
-- Ctrl+C on `codework run` without `--server` stops the run as a user stop, so `codework serve` does not resume it later.
 - `model.list` lists only the GitHub Copilot models the login can reach.
 
-#### Internal
+## [@codeworksh/harness@0.6.0] - 2026-11-02
 
-- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+### Added
 
-### @codeworksh/aikit
+- Tools declare an `exposure`. Only `"direct"` and `"model"` tools reach the request, the `<tools>` list and the tool rules, and only they run; a call to any other tool gets `Unknown tool: <name>`. The bash file-ops rule and the skills hint name only declared tools, and `<skills>` is left out when neither `read` nor `bash` is declared. A plugin registering an unknown exposure fails in its `setup`.
+- `read` tells a model without image input that the image it read is left out of the request: `[Current model does not support images. The image will be omitted from this request.]` is added to its note.
+- `Session.ThreadInfo.usage`: the billed cost and tokens of the thread's own entries, without what it inherits from the thread it was forked from.
+- MCP servers over stdio and streamable HTTP, configured in `~/.codework/mcp.json` and `.codework/mcp.json` (a project entry replaces or patches a user one) and by `mcp` plugins. Their tools reach the model as `mcp__<server>__<tool>`, each with its exposure (`direct`, `deferred`, `codemode` or `hidden`); servers with resources add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+- MCP state is per thread. `scope` decides who shares a running server: threads of one session in the same folder (`session`, the default), sessions in one space (`space`) or every session (`app`). A server no running session needs closes after 10 minutes.
+- An MCP server that fails to connect stays failed until its settings change or it is reconnected; a dropped connection starts again on the next call. `Mcp.Service` `connect` and `disconnect` restart or close a thread's server for every thread sharing it.
+- MCP OAuth: servers sign in with discovery, client registration and PKCE, tokens stored in `~/.codework/mcpauth.json` by server name and URL and refreshed under a lock shared across processes. A server waiting for sign-in reconnects on the next message once its sign-in changes. `auth: { provider }` sends a model provider's credential instead.
+- The ephemeral `mcp.server.status` event reports each MCP server state change (`connecting`, `connected`, `disconnected`, `failed`, `authenticate`, `disabled`) to every thread using the server. A tool the MCP SDK rejects is skipped instead of failing its server, and listed as `skipped` on the `connected` status.
+- `toolsearch` turns itself on when a thread has deferred tools or an enabled MCP server with `deferred` exposure; a settings entry still turns it off or on. A search waits up to 10 seconds for such servers still connecting.
+- `toolsearch` ranks a tool whose full name, or name after a `__`, is the whole query first, then tools matching more of the query's terms above those matching fewer, then by score, with a name match outweighing any number of mentions in the description. MCP tools are also found by their server's name, description and instructions, and text without spaces between words, such as Chinese, is split into words.
+- While `toolsearch` is declared, the `<mcpservers>` prompt section lists the enabled MCP servers with `deferred` tools, each with the first line of its configured description or, once connected, of its instructions. It is kept within 4096 characters by shortening descriptions, then counting the last servers instead of listing them. A server that connects mid-run is listed from the next run.
+- A thread can have its own prompt foundation: `configure({ foundation })` records it in the thread's `agent` document, in place of the one prompt plugins render, and `foundation: null` goes back to that. Other threads keep theirs; a fork starts with the foundation of its cut, and the choice survives a restart. Each change leads the thread's next request with the new foundation, a cache miss once. `Session.create` takes `foundation` for the main thread, and `Session.ThreadInfo.foundation` reports a thread's choice.
+- The deferred tools of the catalog reach every request as `deferredTools`, so Anthropic declares them up front and loading one through `toolsearch` keeps the cached prefix.
+- Prompt sections reach the model as transcript system messages. A request sends the foundation as its system prompt; the first request of a thread appends a `system` entry declaring every tagged section (`<tools>`, `<rules>`, `<cwd>`, plugin sections), and a later request appends one only for the sections that changed, a removed section as `null`, together with any tool change. Resume and fork replay these entries, so the model sees what it saw before, and a model that takes system messages in place (OpenAI Codex, OpenAI and GitHub Copilot Responses, Anthropic and GitHub Copilot Claude) keeps its cached prompt prefix when a section changes.
+- A streaming reply is checkpointed into its draft at most once a second (`session.llm.progress`), so a server that dies mid-reply keeps what streamed. A reply that fails or is cut off is kept as an aborted entry, out of the model's context, and its unfinished tool calls never run.
+- A provider request in flight when the server died counts as a failed attempt on restart and is retried like a transient provider failure. A turn whose tools were running commits with the results that settled, the rest aborted, so the model re-issues them.
+- `session.run.failed` ends a run that is not resumed, leaving the thread idle with its queue kept: `crashloop` after `Control.RESTART_LIMIT` restarts in a row, `interrupted` when the request a dead process left in flight has no retry left, and `truncated` when replies keep hitting the output limit with tool calls.
+- A reply cut off at the output limit gets its tool calls back as errors asking the model to re-issue them with complete arguments.
 
-#### Added
+### Breaking Changes
+
+- A session is a container of threads: one event log and one default place to run, holding a `main` thread created with it and the threads forked from it. A thread is a linear transcript; `fork` at or before a committed entry is the only way to branch. Branch, clone, leaf and `parentId` are gone.
+- `Session.create` returns a session handle with `main`, `thread(id | "main")` and `threads`. Prompting, running, waiting, resuming, interrupting, configuring, forking, events and history (was `path()`) are on thread handles. `Session.attach` returns a thread handle, `main` when `threadId` is absent. `Session.relink` with `threadId` moves only that thread.
+- Title, model, thinking level, usage and execution belong to a thread (`Session.ThreadInfo`). `Session.Info` has none of them and gains `mainThreadId`. A thread is titled by its first own prompt; a fork has no title until then.
+- `Session.Info.parked` is gone: a run cut off `Control.RESTART_LIMIT` times in a row ends with `session.run.failed` (`crashloop`) instead of being parked.
+- `Control` addresses threads: `prompt` and `run` take an optional `threadId` (absent = `main`); `wait`, `resume`, `interrupt`, `pending`, `cancel` and `update` take a thread id. `interruptSession` stops every thread of a session.
+- Events: every thread-scoped event carries `threadId`. `session.created`, `session.thread.forked` and `session.thread.configured` are new; `session.thread.configured` replaces `session.config.changed`, and `session.next.forked` is removed. Entry types `configChange` and `branchSummary` are removed.
+- Storage starts over with a single new migration; databases from earlier versions are not carried forward.
+
+### Fixed
+
+- GitHub Copilot lists only the models its login can reach, by the `availableModelIds` recorded at login. A settings model that aliases another is matched by its API id.
+- MCP: a blank `nextCursor` ends a list instead of restarting the server's paging, and a TypeError the runtime raises, such as for a bad header, reads `invalid request (TypeError)` instead of quoting what it rejected.
+
+### Internal
+
+- Stored context messages are user and assistant messages only; a stored system message fails to decode with "system messages are not stored as entries".
+- `session.thread.tools.changed` (`ToolsChanged`) is now `session.thread.system.changed` (`SystemChanged`), and its `system` entry data has an optional `sections` patch. `State.Snapshot.systemPrompt` is now `prompt: { foundation, sections }`.
+
+## [@codeworksh/plugin@0.4.0] - 2026-11-02
+
+### Added
+
+- `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
+- `ThreadID` in `@codeworksh/plugin/ids`, and `threadId` next to `sessionId` on the plugin context and the tool hooks: the thread the call belongs to.
+- `exposure` on tool definitions: `"direct"` (default), `"model"`, `"codemode"`, `"deferred"` or `"hidden"`, as the `ToolExposure` schema. `declared(def)` is true for `"direct"` and `"model"`, the tools declared to the model.
+- `mcp` plugins (`kind: "mcp"`) add, change and remove MCP servers through `ctx.plugin.mcp`, before any tool plugin runs. The `Mcp` module types server configs (`StdioServer`, `HttpServer`, `OAuthConfig`, `Exposure`, `Scope`).
+- `EventSchema.AikitAssistantPart`: one part of an aikit assistant message, streaming-only fields stripped.
+
+## [@codeworksh/aikit@0.13.0] - 2026-11-02
+
+### Added
 
 - Transcript system messages change the tools mid-conversation: `Message.createSystemMessage({ toolsAdded?, toolsRemoved?, metadata? })`. `Context.tools` is the initial set. OpenAI Codex and GitHub Copilot Responses models that support it declare every tool in place, in `additional_tools` items, and announce removals as text, so the cached prompt prefix holds across tool changes; models with tool search only get later additions as a tool search result; every other model gets the current tools top-level.
 - `Transcript` helpers: `getCurrentTools`, `getDeclaredTools`, `getToolStateChanges`, `declarationsEqual`, `toToolDeclaration` and `resolveTranscriptTools`.
@@ -100,17 +103,18 @@ This file is the canonical source for unreleased changes and published release n
 - `Transcript.getCurrentSections`: the sections a transcript declares after replaying its system messages. `Transcript.diffSections(previous, current)`: the patch between two section sets, `null` removing one.
 - `filterGitHubCopilotModels` keeps the catalog models a Copilot login can reach.
 - GitHub Copilot GPT models turn reasoning off with `reasoning.effort: "none"` where OpenAI accepts it, such as gpt-5.3-codex, gpt-5.6-luna and gpt-6-luna.
+- A Claude request refused because its strict tools exceed Claude's limits (20 strict tools, or 16 optional or union-typed parameters across them) is sent once more with its `strict: "prefer"` tools non-strict, when nothing has streamed yet. The retry is recorded as a `strictToolsFallback` diagnostic.
 
-#### Changed
+### Changed
 
 - GitHub Copilot Responses requests go through aikit's own Responses model, shared with OpenAI Codex. They carry `prompt_cache_key` from the session id, put the system prompt in a developer message, and send `max_output_tokens` of at least 16.
 - Copilot's 1M-token context list now holds claude-fable-5, claude-opus-4.8, claude-opus-5, claude-opus-5.5, claude-sonnet-4.6, claude-sonnet-5, gpt-5.3-codex, gpt-6-astra, gpt-6-luna and gpt-6-sol.
 
-#### Removed
+### Removed
 
 - `ToolCall.addedToolNames`. A system message's `toolsAdded` takes its place, and token estimates count it.
 
-#### Fixed
+### Fixed
 
 - GitHub Copilot Claude models that cannot disable thinking (Opus 5.5, Sonnet 5.5, Fable 5) no longer fail with thinking off; the request leaves thinking out.
 - A GitHub Copilot Responses tool call no longer splits into an empty call and a call with the arguments; Copilot changes the item id on every stream event.
@@ -118,24 +122,53 @@ This file is the canonical source for unreleased changes and published release n
 - A provider error the adapter cannot parse keeps its message and code, read from the response body. Copilot's Claude route reported "bad Request" for a model the account cannot use.
 - A grammar tool's earlier calls replay as grammar calls after the tool is removed.
 - A request limited by `activeTools` sends no tools outside that list.
-
-- `modelgen` leaves out providers with no models instead of writing them as empty entries.
 - Images in a failed tool result reach the model instead of being dropped. On the Anthropic wire the result is sent as text with `(image attached after the tool results)`, and the images follow the turn's tool results under `Images from the error result of tool call <id> (<name>):`. Other wires keep the images in the result; there the AI SDK sends it without an error flag.
 - On Chat Completions wires (OpenAI-compatible, Copilot chat, OpenAI with `method: chat`) and Gemini before 3, tool result images are sent in a user message after the tool results. Chat Completions sent them as JSON text, and Gemini before 3 lost the function response of a result with only images.
 - Thinking from another provider, protocol or model is dropped from the request instead of being sent as text. Text and tool calls from other models are kept.
 
-#### Internal
+## [@codeworksh/cli@0.5.0] - 2026-10-24
+
+### Added
+
+- Added the `session.queue` RPC (`{ sessionId }`): the prompts sent while the agent works and not yet taken in, steers and follow-ups, in the order they were sent.
+- Added the `session.cancel` RPC (`{ sessionId, messageId }`), which withdraws a queued prompt. `cancelled` is `false` when the prompt was already taken in.
+- Added the `session.update` RPC (`{ sessionId, messageId, delivery?, text? }`), which moves a queued prompt to the other lane or rewrites its text, keeping its place. `delivery: "steer"` also wakes the session. `updated` is `false` when the prompt was already taken in.
+- `codework serve` resumes the sessions a crash or a shutdown cut off when it starts. Session info carries `parked: true` for a session that restarted too often to resume on its own; its next prompt runs it again.
+
+### Fixed
+
+- Ctrl+C on `codework run` without `--server` stops the run as a user stop, so `codework serve` does not resume it later.
+
+### Internal
+
+- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+
+## [@codeworksh/harness@0.5.0] - 2026-10-24
+
+### Added
+
+- Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
+- A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the session is parked instead of resumed: `Session.Info.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
+
+### Fixed
+
+- A turn started for a prompt that was cancelled just before it joined the conversation no longer asks the model anything.
+- A prompt changed, cancelled or sent again while it was being taken in no longer fails the run; the run takes in the prompt as it now stands.
+
+### Internal
+
+- Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
+- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+
+## [@codeworksh/aikit@0.12.1] - 2026-10-24
+
+### Fixed
+
+- `modelgen` leaves out providers with no models instead of writing them as empty entries.
+
+### Internal
 
 - `gpt-5.5` is out of the live OpenAI test models; tests use `gpt-6-luna`.
-
-### @codeworksh/plugin
-
-#### Added
-
-- `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
-- `ThreadID` in `@codeworksh/plugin/ids`, and `threadId` next to `sessionId` on the plugin context and the tool hooks: the thread the call belongs to.
-- `exposure` on tool definitions: `"direct"` (default), `"model"`, `"codemode"`, `"deferred"` or `"hidden"`, as the `ToolExposure` schema. `declared(def)` is true for `"direct"` and `"model"`, the tools declared to the model.
-- `mcp` plugins (`kind: "mcp"`) add, change and remove MCP servers through `ctx.plugin.mcp`, before any tool plugin runs. The `Mcp` module types server configs (`StdioServer`, `HttpServer`, `OAuthConfig`, `Exposure`, `Scope`).
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 
