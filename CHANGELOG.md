@@ -13,6 +13,12 @@ This file is the canonical source for unreleased changes and published release n
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
 
+### @codeworksh/cli
+
+#### Removed
+
+- `codework tui` and the bundled terminal UI binary; the CLI no longer depends on `@codeworksh/tui`. `codework service` still starts and stops the background server.
+
 ## [@codeworksh/cli@0.6.0] - 2026-11-02
 
 ### Added

@@ -1,5 +1,5 @@
 // Publishes the package chain for one channel: `canary`, `dev` or `latest`. CI runs it (see
-// .github/workflows/publish.yml) after the TUI binaries are staged under packages/tui/dist/bin.
+// .github/workflows/publish.yml).
 //
 // canary/dev publish every package as a prerelease of its version (see scripts/version.mjs).
 // latest publishes each package whose manifest version is not on npm yet, so a release is a

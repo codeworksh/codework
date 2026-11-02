@@ -7,7 +7,7 @@ import { findPackage, repoRoot } from "./workspace.mjs";
 
 const [name, ...args] = process.argv.slice(2);
 if (!name) {
-	console.error("Usage: vp run bump <aikit|plugin|harness|tui|cli|desktop> [version] [bumpp args]");
+	console.error("Usage: vp run bump <aikit|plugin|harness|cli|desktop> [version] [bumpp args]");
 	process.exit(1);
 }
 

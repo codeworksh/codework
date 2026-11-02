@@ -30,7 +30,7 @@ const AuthParams = {
 	),
 };
 
-/** Where the background server binds when `tui` or `service` has to start one. */
+/** Where the background server binds when `service` has to start one. */
 const ServerAddress = {
 	host: Flag.String("host").pipe(
 		Flag.withDescription("Host interface the background server binds"),
@@ -350,26 +350,6 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 		}),
-		Spec.make("tui", {
-			description: "Launch the CodeWork terminal UI against the background server",
-			params: {
-				server: Flag.String("server").pipe(
-					Flag.withDescription("RPC server URL to use instead of the background server (ws://host:port/rpc/v1)"),
-					Flag.optional,
-				),
-				...ServerAddress,
-				args: Argument.variadic(
-					Argument.String("args").pipe(Argument.withDescription("Arguments forwarded to the terminal UI")),
-				),
-			},
-			examples: [
-				{ command: "codework tui", description: "Start or reuse the local server and open the terminal UI" },
-				{
-					command: "codework tui --server ws://127.0.0.1:7433/rpc/v1",
-					description: "Attach the terminal UI to a server you started yourself",
-				},
-			],
-		}),
 		Spec.make("serve", {
 			description: "Start the CodeWork RPC server",
 			params: {
@@ -384,7 +364,7 @@ export const Cmd = Spec.make("codework", {
 				),
 				service: Flag.Boolean("service").pipe(
 					Flag.withDescription(
-						"Run as the background server `codework tui` manages, logging to <home>/log/server.log",
+						"Run as the background server `codework service` manages, logging to <home>/log/server.log",
 					),
 					Flag.withDefault(false),
 				),

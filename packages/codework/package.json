@@ -49,7 +49,6 @@
 		"@agentclientprotocol/sdk": "1.5.1",
 		"@codeworksh/aikit": "workspace:^",
 		"@codeworksh/harness": "workspace:*",
-		"@codeworksh/tui": "workspace:*",
 		"@effect/platform-node": "4.0.5",
 		"@effect/platform-node-shared": "4.0.5",
 		"effect": "4.0.5",

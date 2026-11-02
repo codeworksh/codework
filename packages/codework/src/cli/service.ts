@@ -12,7 +12,7 @@ interface Shared {
 export const home = (shared: Shared) => Global.resolve(Option.isSome(shared.home) ? { home: shared.home.value } : {});
 
 /**
- * How `tui` and `service` find or start the background server: the home whose
+ * How `service` finds or starts the background server: the home whose
  * `service.json` names it, and the server-owned flags it is started with, in the
  * order `serve` parses them.
  */

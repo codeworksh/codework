@@ -1,4 +1,4 @@
-import { type Duration, Effect, FileSystem, Option, Ref, Schedule, Schema } from "effect";
+import { type Duration, Effect, FileSystem, Option, Schedule, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { Health } from "./health.ts";
 import { Identity } from "./identity.ts";
@@ -112,23 +112,16 @@ export const stop = (home: string) =>
  * port registers; the loser exits and both adopt the winner, because a caller
  * only ever believes a registration it can confirm over the wire.
  */
-export const ensure = (
-	options: Options & {
-		readonly replace: boolean;
-		readonly onStart?: (reason: "missing" | "version-mismatch") => void;
-	},
-) =>
+export const ensure = (options: Options & { readonly replace: boolean }) =>
 	Effect.gen(function* () {
 		const path = Registration.file(options.home);
 		const found = yield* registered(path);
 		if (found?.live !== undefined) {
 			if (!options.replace || found.live.version === Identity.current.version) return endpoint(found.info);
-			yield* Effect.sync(() => options.onStart?.("version-mismatch"));
 			yield* terminate(path, found.info.pid);
 		} else {
 			// A file nothing answers for, left by a crash, must not mislead the next caller.
 			if (found !== undefined && !(yield* alive(found.info.pid))) yield* remove(path);
-			yield* Effect.sync(() => options.onStart?.("missing"));
 		}
 		return yield* start(path, options);
 	});
@@ -175,30 +168,10 @@ const start = (path: string, options: Options) =>
 				`could not start a CodeWork server on ${options.host}:${options.port}`,
 				...(reason === undefined ? [] : [`reason: ${reason}`]),
 				`log: ${log}`,
-				"hint: pass --port to use another port, or point `codework tui --server` at a running server",
+				"hint: pass --port to use another port",
 			].join("\n"),
 		});
 	}).pipe(Effect.scoped);
-
-/**
- * Keep the session's server running for as long as the caller lives.
- *
- * The TUI only reconnects; it cannot start a server. If the one it uses goes
- * away, this brings one back on the same port so the reconnect lands. It never
- * replaces a running server: another invocation may have just upgraded it.
- */
-export const keepAlive = (initial: Endpoint, options: Options) =>
-	Effect.gen(function* () {
-		const current = yield* Ref.make(initial);
-		yield* Effect.gen(function* () {
-			const server = yield* Ref.get(current);
-			if (yield* alive(server.pid)) return;
-			const next = yield* ensure({ ...options, port: server.port, replace: false }).pipe(
-				Effect.orElseSucceed(() => server),
-			);
-			yield* Ref.set(current, next);
-		}).pipe(Effect.repeat(Schedule.spaced("1 second")));
-	});
 
 /** Ask `pid` to shut down, escalating to SIGKILL, and retire its registration. */
 const terminate = (path: string, pid: number) =>

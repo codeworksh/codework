@@ -10,7 +10,7 @@
 // and is marked latest. The tag is the one `vp run bump` made, or a new one at this commit.
 import { spawnSync } from "node:child_process";
 import { globSync, readFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { releaseId, releaseVersion } from "./version.mjs";
 import { publishablePackages, repoRoot as root } from "./workspace.mjs";
@@ -95,9 +95,7 @@ if (channel === "canary") {
 		`Development build ${version}, from ${sha}.`,
 	);
 } else {
-	// The platform packages under packages/tui/npm ship with the launcher, which is the one release.
 	const packages = publishablePackages()
-		.filter(({ dir }) => basename(dirname(dir)) === "packages")
 		.map(({ manifest }) => manifest)
 		// The CLI goes last so it is the newest release, the one `releases/latest` points at.
 		.sort((a, b) => (a.name === cli.name) - (b.name === cli.name));

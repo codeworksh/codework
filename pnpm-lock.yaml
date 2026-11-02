@@ -558,9 +558,6 @@ importers:
       '@codeworksh/harness':
         specifier: workspace:*
         version: link:../harness
-      '@codeworksh/tui':
-        specifier: workspace:*
-        version: link:../tui
       '@effect/platform-node':
         specifier: 4.0.5
         version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
@@ -709,37 +706,6 @@ importers:
       effect:
         specifier: 4.0.5
         version: 4.0.5
-
-  packages/tui:
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.5
-      bumpp:
-        specifier: ^12.3.0
-        version: 12.3.0
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vite-plus:
-        specifier: 'catalog:'
-        version: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)
-    optionalDependencies:
-      '@codeworksh/tui-darwin-arm64':
-        specifier: workspace:*
-        version: link:npm/darwin-arm64
-      '@codeworksh/tui-linux-arm64':
-        specifier: workspace:*
-        version: link:npm/linux-arm64
-      '@codeworksh/tui-linux-x64':
-        specifier: workspace:*
-        version: link:npm/linux-x64
-
-  packages/tui/npm/darwin-arm64: {}
-
-  packages/tui/npm/linux-arm64: {}
-
-  packages/tui/npm/linux-x64: {}
 
   sites/www:
     dependencies:

@@ -42,6 +42,7 @@ Long term maintainability is a core priority. If you add new functionality, firs
 - `packages/aikit` - Low level SDK that provides unified LLM API for multiple LLM providers.
 - `packages/harness` - Effect powered main Agent Harness application, uses `packages/aikit` under the hood.
 - `packages/plugin` - The published SDK third-party plugin and sandbox-driver packages build against. It owns the shared contract (plugin, tool, sandbox mount, event and settings types); `packages/harness` depends on it, never the other way round.
+- `packages/tui` - Paused: kept in the tree but outside the workspace; not checked, built, bundled or published.
 - `.scratch/packages` - Local, ignored reference archive for packages that are no longer developed.
 
 ## Vendored Repositories
@@ -78,13 +79,13 @@ Conventional Commit style with optional package scopes, e.g `feat(aikit): ...`, 
 
 ## Releasing
 
-Every package is published by CI from `.github/workflows/publish.yml`, which runs `vp run release <channel>` (`scripts/release.mjs`). It builds the TUI binaries, then publishes the packages in dependency order, derived from their `package.json` workspace dependencies (`scripts/workspace.mjs`), pinning each package to the exact versions uploaded in the same run. `scripts/publish.mjs` builds a single package, rewrites its manifest and publishes it from a temp dir.
+Every package is published by CI from `.github/workflows/publish.yml`, which runs `vp run release <channel>` (`scripts/release.mjs`). It publishes the packages in dependency order, derived from their `package.json` workspace dependencies (`scripts/workspace.mjs`), pinning each package to the exact versions uploaded in the same run. `scripts/publish.mjs` builds a single package, rewrites its manifest and publishes it from a temp dir.
 
 - **canary**: every push to `canary`, without `vp check` or typecheck, for quick testing. Versions are `<version>-canary.<run>.<attempt>.g<sha>`.
 - **dev**: every push to `dev`. Versions are `<version>-dev.<YYYYMMDDHHMMSS>` (UTC).
 - **latest**: run the workflow by hand on `main`. It publishes each package whose manifest version is not on npm yet and skips the rest.
 
-Versions are bumped locally with `vp run bump <aikit|plugin|harness|tui|cli> [version]`, which runs `bumpp` with the package's `bump.config.ts` and commits and tags `@codeworksh/<pkg>@<version>` without pushing. `vp run bump tui` moves the launcher and its four platform packages together.
+Versions are bumped locally with `vp run bump <aikit|plugin|harness|cli> [version]`, which runs `bumpp` with the package's `bump.config.ts` and commits and tags `@codeworksh/<pkg>@<version>` without pushing.
 
 Flow:
 
@@ -93,4 +94,4 @@ Flow:
 3. `git push && git push --tags`, then merge to `main`.
 4. Run the Publish workflow on `main`.
 
-`vp run release <channel> --dry-run` previews the chain locally; the TUI platform packages need their binaries under `packages/tui/dist/bin`.
+`vp run release <channel> --dry-run` previews the chain locally.

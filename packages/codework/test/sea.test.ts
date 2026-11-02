@@ -108,7 +108,6 @@ describe.skipIf(!existsSync(binary))("the standalone binary", () => {
 		const [unpacked, ...others] = readdirSync(cache);
 		expect(others).toEqual([]);
 		const assets = join(cache, unpacked!);
-		expect(statSync(join(assets, "codework-tui")).mode & 0o111).not.toBe(0);
 
 		expect(unpacked).toMatch(new RegExp(`^[0-9a-f]{16}-${process.platform}-${process.arch}$`));
 

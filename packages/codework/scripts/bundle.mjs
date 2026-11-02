@@ -2,27 +2,15 @@
 // embeds and unpacks. Writes `dist/sea`:
 //
 //   codework.mjs     the CLI, entry `src/sea.ts`
-//   assets/          worker.mjs, codework-tui, and node_modules/ for the packages that load
+//   assets/          worker.mjs, and node_modules/ for the packages that load
 //                    files from beside their own modules (WASM, workers, native addons)
 //
-// Run under `--conditions=development` (see `scripts/shared.mjs`). The TUI comes from
-// `CODEWORK_TUI_BIN`, else the local release build. `CODEWORK_VERSION` replaces the version the CLI
+// Run under `--conditions=development` (see `scripts/shared.mjs`). `CODEWORK_VERSION` replaces the version the CLI
 // reports, which a canary or dev release computes (scripts/version.mjs). Rebuilding xz statically
 // needs cmake.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-	chmodSync,
-	copyFileSync,
-	cpSync,
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -141,11 +129,6 @@ const [inspect, ...flags] = process.platform === "darwin" ? ["otool", "-L"] : ["
 const linked = execFileSync(inspect, [...flags, join(lzma, "build/Release/node_lzma.node")]).toString();
 if (/liblzma[.\d]*\.(dylib|so)/.test(linked))
 	throw new Error(`node-liblzma still links liblzma dynamically:\n${linked}`);
-
-const tui = process.env["CODEWORK_TUI_BIN"] ?? join(root, "../tui/target/release/codework-tui");
-if (!existsSync(tui)) throw new Error(`missing TUI binary ${tui}: set CODEWORK_TUI_BIN or run cargo build --release`);
-copyFileSync(tui, join(assets, "codework-tui"));
-chmodSync(join(assets, "codework-tui"), 0o755);
 
 const hash = createHash("sha256");
 const files = readdirSync(assets, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile());

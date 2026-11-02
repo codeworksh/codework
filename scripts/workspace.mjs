@@ -16,9 +16,8 @@ export function workspaceDependencies(manifest) {
  */
 export function publishablePackages() {
 	const byName = new Map();
-	for (const file of globSync(["packages/*/package.json", "packages/*/npm/*/package.json"], {
-		cwd: repoRoot,
-	}).sort()) {
+	// The TUI is paused: it stays in the tree but is neither built nor published.
+	for (const file of globSync("packages/*/package.json", { cwd: repoRoot, exclude: ["packages/tui/**"] }).sort()) {
 		const manifest = JSON.parse(readFileSync(resolve(repoRoot, file), "utf8"));
 		if (manifest.private || !manifest.name?.startsWith("@codeworksh/")) continue;
 		byName.set(manifest.name, { dir: resolve(repoRoot, dirname(file)), manifest });

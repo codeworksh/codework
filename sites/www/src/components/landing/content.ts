@@ -83,10 +83,7 @@ export const modes = {
 		},
 	],
 	backdrop: "/images/landing/editor.webp",
-	soon: [
-		{ title: "TUI", body: "A full-screen terminal app for long, hands-on sessions." },
-		{ title: "Desktop", body: "Run, watch and review many sessions side by side." },
-	],
+	soon: [{ title: "Desktop", body: "Run, watch and review many sessions side by side." }],
 };
 
 export const models = {

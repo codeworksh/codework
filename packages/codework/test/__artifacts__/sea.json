@@ -1,6 +1,5 @@
 {
 	"assets": [
-		"codework-tui",
 		"node_modules",
 		"worker.mjs"
 	],

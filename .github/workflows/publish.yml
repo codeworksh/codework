@@ -45,52 +45,8 @@ jobs:
          - id: release
            run: echo "id=$(node scripts/version.mjs "$CHANNEL")" >> "$GITHUB_OUTPUT"
 
-   tui:
-      needs: guard
-      name: tui (${{ matrix.package }})
-      runs-on: ${{ matrix.runner }}
-      strategy:
-         fail-fast: true
-         matrix:
-            include:
-               - package: tui-darwin-arm64
-                 runner: macos-14
-                 target: aarch64-apple-darwin
-               # Linux binaries link musl statically, so one build runs on any distro.
-               - package: tui-linux-arm64
-                 runner: ubuntu-24.04-arm
-                 target: aarch64-unknown-linux-musl
-               - package: tui-linux-x64
-                 runner: ubuntu-24.04
-                 target: x86_64-unknown-linux-musl
-      defaults:
-         run:
-            working-directory: packages/tui
-      steps:
-         - uses: actions/checkout@v6
-         - if: runner.os == 'Linux'
-           run: sudo apt-get update && sudo apt-get install -y musl-tools
-         - uses: dtolnay/rust-toolchain@stable
-           with:
-              targets: ${{ matrix.target }}
-         - uses: Swatinem/rust-cache@v2
-           with:
-              workspaces: packages/tui
-              key: ${{ matrix.target }}
-         - run: cargo build --release --locked --target ${{ matrix.target }}
-         - if: runner.os == 'Linux'
-           name: Require a static binary
-           run: file target/${{ matrix.target }}/release/codework-tui | grep -E "static(-pie)? linked|statically linked"
-         # One artifact per platform package, named after it (`tui-<os>-<arch>`).
-         - uses: actions/upload-artifact@v7
-           with:
-              name: ${{ matrix.package }}
-              path: packages/tui/target/${{ matrix.target }}/release/codework-tui
-              if-no-files-found: error
-              retention-days: 1
-
    publish:
-      needs: [guard, tui]
+      needs: guard
       runs-on: ubuntu-latest
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
@@ -106,15 +62,10 @@ jobs:
          # Canary is push-and-build for quick testing; dev and latest are checked first.
          - if: env.CHANNEL != 'canary'
            run: vp run verify
-         # One directory per platform package; each package's build stages its binary from here.
-         - uses: actions/download-artifact@v8
-           with:
-              pattern: tui-*
-              path: packages/tui/dist/bin
          - run: vp run release "$CHANNEL"
 
    binary:
-      needs: [guard, tui]
+      needs: guard
       if: github.ref_name != 'canary'
       name: binary (${{ matrix.binary }})
       runs-on: ${{ matrix.runner }}
@@ -124,13 +75,10 @@ jobs:
             # Each on its own platform: --build-sea runs that platform's Node, and macOS signs.
             include:
                - binary: cli-darwin-arm64
-                 tui: tui-darwin-arm64
                  runner: macos-14
                - binary: cli-linux-arm64
-                 tui: tui-linux-arm64
                  runner: ubuntu-24.04-arm
                - binary: cli-linux-x64
-                 tui: tui-linux-x64
                  runner: ubuntu-24.04
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
@@ -146,13 +94,7 @@ jobs:
               run-install: false
               cache: false
          - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
-         - uses: actions/download-artifact@v8
-           with:
-              name: ${{ matrix.tui }}
-              path: tui
          - run: |
-              chmod +x tui/codework-tui
-              echo "CODEWORK_TUI_BIN=$GITHUB_WORKSPACE/tui/codework-tui" >> "$GITHUB_ENV"
               echo "CODEWORK_VERSION=$(node scripts/version.mjs "$CHANNEL" packages/codework)" >> "$GITHUB_ENV"
          # The static xz build downloads xz through GitHub's API, which limits anonymous requests.
          - working-directory: packages/codework
