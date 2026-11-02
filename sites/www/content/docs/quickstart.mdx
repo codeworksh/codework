@@ -3,7 +3,7 @@ title: Quickstart
 description: Install CodeWork, connect a model, and make your first change in a few minutes.
 ---
 
-You'll install CodeWork, connect a model, ask about your codebase, have it make a small change, and review what it did. Use the [desktop app](/docs/desktop) or your terminal; both run on the CLI you install first.
+You'll install CodeWork, connect a model, ask about your codebase, have it make a small change, and review what it did. Use the [desktop app](/docs/desktop) or your terminal. Both need the CLI, so you install it first.
 
 ## 1. Install CodeWork
 
@@ -17,7 +17,7 @@ pnpm add -g @codeworksh/cli
 
 The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). The pnpm package needs Node.js 24.14.1 or later and works on other platforms too.
 
-Check that it's on your path:
+Check that it's on your `PATH`:
 
 ```bash
 codework --help
@@ -25,7 +25,7 @@ codework --help
 
 See [Installation](/docs/cli/installation) for updating and uninstalling.
 
-## 2. Connect a Model
+## 2. Connect a model
 
 Sign in with a ChatGPT Plus or Pro plan:
 
@@ -39,11 +39,11 @@ Or set an API key. OpenRouter gives you hundreds of models with one key:
 export OPENROUTER_API_KEY="..."
 ```
 
-[Models & Pricing](/docs/models) covers every provider, including Copilot, Anthropic, Gemini, and local models.
+[Models & pricing](/docs/models) covers every provider, including Copilot, Anthropic, Gemini, and local models.
 
-## 3. Ask About Your Codebase
+## 3. Ask about your codebase
 
-### Desktop App
+### Desktop app
 
 [Download the app](/docs/desktop#download), open **Settings → Providers**, and press **Start**. Then press **New session**, pick your project with **Select project → New…**, and ask:
 
@@ -71,17 +71,17 @@ codework run \
   "Explain how this repository is structured and how to run its checks."
 ```
 
-It prints the session ID first, streams the answer as it writes it, and ends with the run's tokens and cost.
+It prints the session ID first, streams the answer as it arrives, and ends with the tokens and cost of the run.
 
 CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together.
 
-## 4. Make a Change
+## 4. Make a change
 
-Ask in the same session, so CodeWork keeps what it already learned:
+Ask in the same session, so CodeWork remembers what it already learned.
 
-### Desktop App
+### Desktop app
 
-Type in the session's prompt box and press Enter. While the agent works, Enter [steers](/docs/desktop/steer) it.
+Type in the session's prompt box and press Enter. If the agent is still working, Enter [steers](/docs/desktop/steer) it: the agent reads your message during its current turn.
 
 ### Terminal
 
@@ -98,7 +98,7 @@ Good first tasks are small and easy to review: docs, a copy fix, a failing test,
 	every change is easy to see and undo.
 </Callout>
 
-## 5. Review the Result
+## 5. Review the result
 
 ```bash
 git diff
@@ -106,7 +106,7 @@ git diff
 
 Keep what you like, or ask for changes in the same session. Throw everything away with `git restore .`.
 
-## 6. Set a Default Model
+## 6. Set a default model
 
 Save the model in your settings so you can drop the flags:
 
@@ -121,19 +121,19 @@ Save the model in your settings so you can drop the flags:
 codework run "Find and fix one flaky test"
 ```
 
-## Next Steps
+## Next steps
 
 <Cards>
 	<Card title="Desktop app" href="/docs/desktop">
 		Run and review many sessions side by side.
 	</Card>
-	<Card title="Catalog & Prices" href="/docs/models/catalog">
+	<Card title="Catalog & prices" href="/docs/models/catalog">
 		Compare models by price, context window, and thinking levels.
 	</Card>
 	<Card title="Plugins" href="/docs/plugins">
 		Give CodeWork new tools and house rules.
 	</Card>
 	<Card title="Sandboxes" href="/docs/sandboxes/">
-		Run sessions in an isolated machine.
+		Run sessions on an isolated machine.
 	</Card>
 </Cards>

@@ -15,7 +15,7 @@ export const hero = {
 	title: "Make Code Work for You",
 	lines: [
 		"CodeWork is an open source AI coding agent for your terminal, editor or server.",
-		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
+		"Add tools, prompts, skills and more as plugins, shared over npm or git.",
 	],
 	install: [
 		{ label: "curl", command: "curl -fsSL https://codework.sh/install | sh" },
@@ -34,17 +34,17 @@ export const about = {
 	// The typewriter cycles through these, backspacing only as far as the next one differs.
 	phrases: [
 		"supports hundreds of models.",
-		"steers rather than terminates.",
-		"is minimal, yet extensible.",
+		"you steer instead of restart.",
+		"is small, and easy to extend.",
 		"runs in any sandbox.",
 		"works with ChatGPT Plus/Pro.",
 		"works with GitHub Copilot.",
 		"is not bloated.",
 	],
 	paragraphs: [
-		"CodeWork is open source, the way devtools should be. A harness malleable enough to fit how you work, and how your team ships.",
-		"CodeWork handles the loop, the sandbox and the models. Everything else is yours to shape: tools, skills, prompts and more, bundled as plugins and shared with your team over npm or git.",
-		"Start with the defaults and change them as you go. The docs cover how it's built, and how to make it yours.",
+		"CodeWork is open source, the way dev tools should be. Bend it to fit how you work and how your team ships.",
+		"CodeWork runs the agent, the sandbox and the models. Everything else is yours to shape: tools, skills, prompts and more, bundled as plugins and shared with your team over npm or git.",
+		"Start with the defaults and change them as you go. The docs cover how it's built and how to make it yours.",
 	],
 };
 
@@ -62,18 +62,18 @@ const NIGHTLY = `${GITHUB_URL}/releases/download/nightly`;
 
 export const install = {
 	title: "Install CodeWork",
-	description: "The CLI runs your agent harness. The desktop app runs many threads side by side.",
+	description: "The CLI runs your agent harness. The desktop app runs many sessions side by side.",
 	cta: { label: "Full installation guide", href: "/docs/cli/installation/" },
 	cli: {
 		title: "CLI",
 		body: "One command installs the standalone binary, or add the npm package.",
-		note: "The binary needs no Node.js, on macOS (Apple silicon) and Linux (x64, ARM64).",
+		note: "The binary runs without Node.js on macOS (Apple silicon) and Linux (x64, ARM64).",
 		docs: { label: "Quickstart", href: "/docs/quickstart/" },
 	},
 	desktop: {
 		title: "Desktop",
 		channel: "Canary",
-		body: "Run many threads side by side. Fresh builds, so expect a few rough edges.",
+		body: "Run many sessions side by side. Fresh builds, so expect a few rough edges.",
 		releases: `${GITHUB_URL}/releases/tag/nightly`,
 		checksums: `${NIGHTLY}/SHA256SUMS`,
 		platforms: [
@@ -113,21 +113,21 @@ export const gallery = {
 	screens: [
 		{
 			title: "All your projects, one place",
-			body: "Orchestrate threads across projects, steer them while they work. Go tokenmaxxing to warm up those GPUs.",
+			body: "Orchestrate sessions across projects, steer them while they work. Go tokenmaxxing to warm up those GPUs.",
 			src: "/images/landing/app/desktop.webp",
-			alt: "The CodeWork desktop app with threads from four projects, one of them writing and running tests.",
+			alt: "The CodeWork desktop app with sessions from four projects, one of them writing and running tests.",
 		},
 		{
 			title: "Steer, don't restart",
 			body: "Changed your mind halfway? Nudge the agent while it works. No do-overs, no hard feelings.",
 			src: "/images/landing/app/steer.webp",
-			alt: "A thread still working, with a message waiting to steer it.",
+			alt: "A session still working, with a message waiting to steer it.",
 		},
 		{
 			title: "Side by side",
-			body: "As many threads as your screen can fit. Taste one while the rest are still cooking.",
+			body: "As many sessions as your screen can fit. Taste one while the rest are still cooking.",
 			src: "/images/landing/app/split.webp",
-			alt: "Threads open side by side, one finished and one still working.",
+			alt: "Sessions open side by side, one finished and one still working.",
 		},
 		{
 			title: "Bored? Dino's got your back",
@@ -165,7 +165,7 @@ export const plugins = {
 		"The built-in tools are plugins too. Switch any of them off, or add your own tools and prompt sections from npm, git, or a file in your repo.",
 	points: [
 		"Tool plugins add or rewrite what the agent can do.",
-		"Prompt plugins shape the system prompt, like your AGENTS.md.",
+		"Prompt plugins shape the system prompt, the way AGENTS.md does.",
 		"Local TypeScript files load with no build step.",
 	],
 	cta: { label: "Write a plugin", href: "/docs/plugins/" },

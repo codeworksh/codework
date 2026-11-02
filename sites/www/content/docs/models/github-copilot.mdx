@@ -3,11 +3,11 @@ title: GitHub Copilot
 description: Use Claude, GPT, Gemini, Grok, and more through your Copilot subscription.
 ---
 
-Requires GitHub Copilot on your GitHub account: a subscription, a seat from your organization, or Copilot Free.
+You need GitHub Copilot on your GitHub account: a subscription, a seat from your organization, or Copilot Free.
 
-## Sign In
+## Sign in
 
-CodeWork uses GitHub's device flow. It shows a code, opens GitHub in your browser, and finishes once you enter it:
+CodeWork signs in with GitHub's device flow. It shows a code and opens GitHub in your browser. Sign-in finishes once you enter the code there.
 
 ```bash
 codework auth login --github-copilot
@@ -19,9 +19,9 @@ On GitHub Enterprise, pass your domain:
 codework auth login --github-copilot --enterprise github.example.com
 ```
 
-When you sign in, CodeWork records which models your account can use, and editor model pickers list only those. Add `--enable-models` to also turn on the models your Copilot settings haven't enabled or disabled yet. Sign in again after your plan or your organization's Copilot policies change.
+When you sign in, CodeWork records which models your account can use, and editor model pickers list only those. Add `--enable-models` to also turn on models you haven't yet enabled or disabled in your Copilot settings. Sign in again after your plan or your organization's Copilot policies change.
 
-To sign in a running `codework serve` instead of this machine, add `--server ws://127.0.0.1:7433/rpc/v1`.
+To store the login on a running `codework serve` instead of this machine, add `--server ws://127.0.0.1:7433/rpc/v1`.
 
 ## Run
 
@@ -32,17 +32,17 @@ codework run --provider github-copilot --model claude-sonnet-5.5 "Explain this r
 
 `codework models` lists every Copilot model in the catalog, including ones your account can't use.
 
-Requests go to the Copilot API host GitHub gives your account at sign-in, or your Enterprise's Copilot endpoint.
+Requests go to the Copilot API host that GitHub assigns your account at sign-in, or to your Enterprise's Copilot endpoint.
 
 ## Thinking
 
-Claude Opus 5.5, Claude Sonnet 5.5, and the Claude Fable models on Copilot can't turn thinking off. GPT models that OpenAI lets turn reasoning off, such as `gpt-6-luna` and `gpt-5.6-luna`, accept `off` here too.
+On Copilot, you can't turn thinking off for Claude Opus 5.5, Claude Sonnet 5.5, or the Claude Fable models. GPT models that OpenAI lets you run with reasoning off, such as `gpt-6-luna` and `gpt-5.6-luna`, accept `off` on Copilot too.
 
-## Use a Token Instead
+## Use a token instead
 
 Set `COPILOT_GITHUB_TOKEN` and CodeWork uses it instead of the stored login. `GITHUB_TOKEN` and `GH_TOKEN` are never read.
 
-## Check or Remove the Login
+## Check or remove the login
 
 ```bash
 codework auth status --github-copilot
@@ -53,4 +53,4 @@ Copilot logins don't expire. If requests keep failing with 401, sign in again.
 
 ## Pricing
 
-Usage counts against your Copilot plan. The cost in CodeWork's usage summary is the API-rate equivalent, useful for comparing models but not what you're billed.
+Usage counts against your Copilot plan. The cost in CodeWork's usage summary is what the same tokens would cost at API rates. Use it to compare models. It isn't what you're billed.

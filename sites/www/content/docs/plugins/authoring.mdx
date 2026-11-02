@@ -1,21 +1,21 @@
 ---
-title: Build a Plugin
-sidebarTitle: Build a Plugin
+title: Build a plugin
+sidebarTitle: Build a plugin
 description: Write MCP, tool, and prompt plugins with the @codeworksh/plugin SDK, test them locally, and publish them to npm or git.
 ---
 
 A plugin is a module that default-exports one object made with `Plugin.define`. Its `setup` function runs before every turn and writes into the agent: MCP servers into the server list, tools into the tool registry, text into the system prompt.
 
-Plugins build against `@codeworksh/plugin`, the same contract the harness itself depends on. Tool schemas use [Effect](https://effect.website) `Schema`.
+Plugins build against `@codeworksh/plugin`, the same package CodeWork itself builds on. Tool schemas use [Effect](https://effect.website) `Schema`.
 
-## Your First Plugin
+## Your first plugin
 
 The shortest path is a single file in your repository. It needs no build, no publish, and no version.
 
 <div className="fd-steps">
 <div className="fd-step">
 
-### Create the File
+### Create the file
 
 Put it next to your project settings:
 
@@ -60,7 +60,7 @@ export default Plugin.define({
 </div>
 <div className="fd-step">
 
-### Add Types for Your Editor
+### Add types for your editor
 
 You do not need to install anything for the plugin to run: CodeWork gives every plugin its own copies of `@codeworksh/plugin` and `effect`. Install them as dev dependencies if you want types and autocomplete in your editor:
 
@@ -71,7 +71,7 @@ pnpm add -D @codeworksh/plugin effect
 </div>
 <div className="fd-step">
 
-### Declare It with Options
+### Declare it with options
 
 ```jsonc title=".codework/settings.jsonc"
 {
@@ -87,7 +87,7 @@ Or let the CLI write the module entry for you with `codework plugin add ./.codew
 </div>
 <div className="fd-step">
 
-### Try It
+### Try it
 
 ```bash
 codework run "How do we deploy this project?"
@@ -98,11 +98,7 @@ codework run "How do we deploy this project?"
 </div>
 </div>
 
-<Placeholder title="Calling a local plugin tool">
-	Session transcript where the agent calls project_fact and answers from the configured facts.
-</Placeholder>
-
-## The Plugin Definition
+## The plugin definition
 
 | Field    | Required | Meaning                                                                                                                  |
 | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -116,7 +112,7 @@ The `codework.` prefix is reserved for built-ins, and a third-party plugin that 
 
 `options` is the plugin's own block from settings, or `{}` when there is none. CodeWork never validates it, so check the shape yourself and fall back to defaults instead of throwing. A plugin with nothing configured should usually register nothing.
 
-### The Setup Context
+### The setup context
 
 `ctx` is one object shared by every plugin in a turn.
 
@@ -134,9 +130,9 @@ The `codework.` prefix is reserved for built-ins, and a third-party plugin that 
 | `ctx.paths`         | CodeWork's own directories: `home`, `bin`, `cache`, `data`, `log`. |
 | `ctx.events`        | `publish`, for announcing your plugin's own events.                |
 
-The registries are open only while `setup` runs. Do your registration there, not later. `ctx.plugin.mcp` can only be changed by `mcp` plugins; every later plugin can read it.
+The registries are open only while `setup` runs. Do your registration there, not later. Only `mcp` plugins can change `ctx.plugin.mcp`. Every later plugin can read it.
 
-## Tool Plugins
+## Tool plugins
 
 A tool is a definition plus a handler. `Tool.make` builds both at once:
 
@@ -173,7 +169,7 @@ The handler's second argument describes the call: `callID`, `toolName`, `rawArgs
 
 Only offered tools run. A call to any other tool gets `Unknown tool: <name>`. An unknown `exposure` fails the plugin's `setup`.
 
-### Run Inside the Sandbox
+### Run inside the sandbox
 
 Sessions can run on your machine, in a container, or in a remote sandbox. A tool that touches files or runs commands should go through the session's sandbox rather than `node:fs` or `node:child_process`, so it acts wherever the session actually runs.
 
@@ -216,9 +212,9 @@ export default Plugin.define({
 });
 ```
 
-`SandboxIO` provides `Shell`, `FileSystem`, `Current` (the sandbox's identity and working directory), and `Mutation`. A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect.
+`SandboxIO` provides `Shell`, `FileSystem`, `Current` (the sandbox's identity and working directory), and `Mutation`. A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect: an untyped error, like the one `Effect.orDie` raises in the example.
 
-### Guard and Rewrite Tool Calls
+### Guard and rewrite tool calls
 
 `tools.add` takes optional hooks that run around every call to the tool you are adding:
 
@@ -240,7 +236,7 @@ ctx.plugin.tools.add(Tool.register(fetchTool), {
 
 Both hooks receive the decoded `params` and the call's `rawArgs`, `callID`, `toolName`, `modelInput`, `sessionId`, `threadId`, and `messageId`. `afterToolCall` also receives the finished call as `terminal`. Return `undefined` to leave the call alone. Hooks may also return a `Promise` or an Effect.
 
-### Change Someone Else's Tool
+### Change someone else's tool
 
 `tools.update` patches the prose of a tool another plugin registered, without touching its handler or hooks. It can change `description`, `label`, `promptSnippet`, and `promptGuidelines`.
 
@@ -252,9 +248,9 @@ The tool must already be registered, so your plugin's entry has to come after th
 
 Registering a tool with a name that already exists replaces it. That is how a plugin overrides a built-in, but disabling the built-in by ID is usually clearer.
 
-## MCP Plugins
+## MCP plugins
 
-An `mcp` plugin edits the list of [MCP servers](/docs/customize/mcp) a session connects to. The list starts with what `mcp.json` declares, and every `mcp` plugin runs before any tool exists, so the servers' tools are in place for the tool and prompt plugins that follow.
+An `mcp` plugin edits the list of [MCP servers](/docs/customize/mcp) a session connects to. The list starts with what `mcp.json` declares. Every `mcp` plugin runs before any tool exists, so the servers' tools are in place for the tool and prompt plugins that follow.
 
 ```ts
 import { Plugin } from "@codeworksh/plugin";
@@ -284,7 +280,7 @@ export default Plugin.define({
 
 A server config takes the same fields as an entry in `mcp.json`: `command`, `args`, `env`, and `cwd` for a local process, or `url`, `headers`, and `oauth` for a streamable HTTP server. Server names use letters, digits, `_`, and `-`. An invalid name or config, or `update` on a server that does not exist, fails the plugin's `setup`.
 
-## Prompt Plugins
+## Prompt plugins
 
 Prompt plugins run after every tool plugin, so `ctx.plugin.tools.list()` already holds the final tool set.
 
@@ -333,7 +329,7 @@ A custom section is `text` by default. Pass `{ format: "list" }` for a bulleted 
 
 Replacing the foundation discards the default prompt `codework.prompt.default` wrote. Prefer appending to a section unless you mean to.
 
-## Publish a Plugin
+## Publish a plugin
 
 A published plugin is an ordinary npm package or git repository that default-exports one plugin. One package is one plugin.
 
@@ -371,7 +367,7 @@ Users then install it with:
 codework plugin add @acme/codework-tool-proc
 ```
 
-## Example Plugins
+## Example plugins
 
 The CodeWork repository ships worked examples under [`extras/`](https://github.com/codeworksh/codework/tree/canary/extras). Each one is loaded in CodeWork's own test suite, so they stay correct.
 

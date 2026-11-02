@@ -3,11 +3,11 @@ title: Virtual
 description: An in-process filesystem and emulated bash. Nothing runs on your machine.
 ---
 
-## How It Works
+## How it works
 
-The virtual sandbox is the lightest environment: a filesystem CodeWork keeps in its own process, paired with [just-bash](https://github.com/vercel-labs/just-bash), a bash emulator written in TypeScript. No real process is ever spawned on your machine.
+The virtual sandbox is the lightest environment: a filesystem CodeWork keeps in its own process, paired with [just-bash](https://github.com/vercel-labs/just-bash), a bash emulator written in TypeScript. It never starts a real process on your machine.
 
-Two properties define it:
+Two things set it apart:
 
 - **It's isolated.** Commands are emulated in-process, so the model can't reach your files, processes, environment variables, or the network.
 - **It's ephemeral.** It starts empty and disappears with the CodeWork process that created it.
@@ -17,15 +17,15 @@ Two properties define it:
 | `memory` | An in-memory tree       |
 | `sqldb`  | A tree stored in SQLite |
 
-Both are built in. All tools act on the same tree, so a file from `write` is there for `cat`.
+Both are built in. All tools act on the same tree, so a file you create with `write` is there for `cat`.
 
 From the CLI or the RPC server, `sqldb` keeps its database in memory, so today it behaves like `memory`.
 
-## It Starts Empty
+## It starts empty
 
-Nothing is copied in: the session starts at `/` in an empty filesystem. Put what the agent needs in the prompt, or have it write the files first.
+CodeWork copies nothing in. The session starts at `/` in an empty filesystem. Put what the agent needs in the prompt, or have it write the files first.
 
-## What Works
+## What works
 
 Bash syntax (pipes, redirects, variables, loops, functions) and common commands:
 
@@ -35,19 +35,19 @@ Bash syntax (pipes, redirects, variables, loops, functions) and common commands:
 
 Run `help` or `<command> --help` inside the sandbox for the full list.
 
-## What Doesn't
+## What doesn't
 
 - **No real programs.** No `git`, `node`, `pnpm`, `python`, compilers, or test runners. They fail with "command not found".
 - **No network.** `curl` isn't available.
 - **No processes.** A plugin tool that spawns a process through the sandbox fails. Plugin code that calls Node APIs directly still works.
-- **No hard links.** `ln -s` works; `ln` without it fails.
+- **No hard links.** Symbolic links with `ln -s` work. Plain `ln` fails.
 
-## How Long It Lasts
+## How long it lasts
 
 - **`codework run`:** gone when the run ends. A continued session can't find its files.
 - **`codework serve`:** lives as long as the server, so sessions can share it with `--sandbox-id`.
 
-## When to Use It
+## When to use it
 
 It's enough for any work that only needs files and text:
 

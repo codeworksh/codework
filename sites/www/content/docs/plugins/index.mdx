@@ -4,13 +4,9 @@ sidebarTitle: Overview
 description: Extend CodeWork with MCP servers, tools, and system prompt sections, installed from npm, git, or a file in your repo.
 ---
 
-Plugins are how CodeWork learns new things. A plugin can add MCP servers, give the agent a new tool, change how an existing tool is described, or add instructions to the system prompt. CodeWork's own tools and system prompt are plugins too.
+Plugins extend CodeWork. A plugin can add MCP servers, give the agent a new tool, change how an existing tool is described, or add instructions to the system prompt. CodeWork's own tools and system prompt are plugins too.
 
-<Placeholder type="video" title="Installing a plugin">
-	Terminal showing codework plugin add installing a plugin, then codework plugin list with its ID resolved.
-</Placeholder>
-
-## How Plugins Work
+## How plugins work
 
 A plugin is a JavaScript module that default-exports one plugin definition. One package is one plugin. You name it in a [settings file](/docs/plugins/configuration), install it with the [CLI](/docs/plugins/install), and CodeWork loads it.
 
@@ -26,7 +22,7 @@ Loading never touches the network. If a plugin is declared but not installed, Co
 	once it loads.
 </Callout>
 
-## Plugin Kinds
+## Plugin kinds
 
 Every plugin declares a `kind`, which is the part of the agent it extends. The kind also decides when it runs: every `mcp` plugin runs first, then every `tool` plugin, then every `prompt` plugin. A prompt plugin therefore always sees the complete tool set.
 
@@ -36,25 +32,25 @@ Every plugin declares a `kind`, which is the part of the agent it extends. The k
 | `tool`   | Registers tools the model can call, changes another tool's description, or guards its own calls. | A `list_processes` tool that runs `ps` inside the sandbox.  |
 | `prompt` | Writes into the system prompt: the foundation, the shared `rules` list, or a section of its own. | A house-style plugin that appends your team's coding rules. |
 
-Within one kind, plugins run in the order their entries are written, which is what lets one plugin build on another.
+Within one kind, plugins run in the order their entries are written, so one plugin can build on another.
 
-## Built-In Plugins
+## Built-in plugins
 
 CodeWork ships these plugins. You can switch any of them on or off from settings by ID.
 
-| ID                            | Default | What it adds                                                                  |
-| ----------------------------- | ------- | ----------------------------------------------------------------------------- |
-| `codework.tool.bash`          | On      | Run shell commands in the session's sandbox.                                  |
-| `codework.tool.read`          | On      | Read files.                                                                   |
-| `codework.tool.write`         | On      | Create or overwrite files.                                                    |
-| `codework.tool.edit`          | On      | Make targeted edits to existing files.                                        |
-| `codework.tool.grep`          | Off     | Search file contents.                                                         |
-| `codework.tool.find`          | Off     | Find files by name.                                                           |
-| `codework.tool.ls`            | Off     | List a directory.                                                             |
-| `codework.tool.toolsearch`    | Auto    | Load deferred tools. On by itself in a turn that has some.                    |
-| `codework.prompt.default`     | On      | The base system prompt and standing rules.                                    |
-| `codework.prompt.instruction` | On      | Project instructions from `AGENTS.md` or `CLAUDE.md` files in your workspace. |
-| `codework.prompt.skill`       | On      | Lists the skills found in `.codework/skills` and `.agents/skills`.            |
+| ID                            | Default | What it adds                                                                                    |
+| ----------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `codework.tool.bash`          | On      | Run shell commands in the session's sandbox.                                                    |
+| `codework.tool.read`          | On      | Read files.                                                                                     |
+| `codework.tool.write`         | On      | Create or overwrite files.                                                                      |
+| `codework.tool.edit`          | On      | Make targeted edits to existing files.                                                          |
+| `codework.tool.grep`          | Off     | Search file contents.                                                                           |
+| `codework.tool.find`          | Off     | Find files by name.                                                                             |
+| `codework.tool.ls`            | Off     | List a directory.                                                                               |
+| `codework.tool.toolsearch`    | Auto    | Load deferred tools, which aren't offered up front. Switches on by itself when a turn has them. |
+| `codework.prompt.default`     | On      | The base system prompt and standing rules.                                                      |
+| `codework.prompt.instruction` | On      | Project instructions from `AGENTS.md` or `CLAUDE.md` files in your workspace.                   |
+| `codework.prompt.skill`       | On      | Lists the skills found in `.codework/skills` and `.agents/skills`.                              |
 
 Turn on the search tools with one entry each:
 
@@ -69,7 +65,7 @@ Turn on the search tools with one entry each:
 
 The `codework.` namespace is reserved for built-ins. Third-party plugins use their own vendor prefix, like `acme.tool.proc`.
 
-## Where Plugins Come From
+## Where plugins come from
 
 | Source         | Example entry                           | Notes                                                       |
 | -------------- | --------------------------------------- | ----------------------------------------------------------- |
@@ -81,22 +77,22 @@ Installed packages live in a shared store under `~/.codework/cache/plugins`, so 
 
 ## FAQ
 
-### Do Plugins Need a Build Step?
+### Do plugins need a build step?
 
 Not for a local file. A plugin loaded by path can be plain TypeScript, because Node strips types outside `node_modules`. A plugin installed from npm or git must ship compiled JavaScript.
 
-### Does CodeWork Update Plugins Automatically?
+### Does CodeWork update plugins automatically?
 
-No. A session only loads what is already installed. Run `codework plugin check` to see what is newer and `codework plugin update` to fetch it.
+No. A session only loads what is already installed. Run `codework plugin check` to see which plugins have newer versions, and `codework plugin update` to fetch them.
 
-### How Do I Pin a Plugin Version?
+### How do I pin a plugin version?
 
 Write an exact version (`@acme/codework-tool-proc@1.2.0`) or a full commit SHA after `#` for git. That entry is the pin: there is no separate lockfile. Ranges, tags, and branches move when you run `codework plugin update`.
 
-### Can I Turn Off a Built-In Tool?
+### Can I turn off a built-in tool?
 
 Yes. Add `{ "plugin": "codework.tool.bash", "enabled": false }` (or any other built-in ID) to the `plugins` array.
 
-### Can a Project and My User Settings Both Declare Plugins?
+### Can a project and my user settings both declare plugins?
 
 Yes. The two lists are combined, user first, so project plugins add to your personal ones instead of replacing them.

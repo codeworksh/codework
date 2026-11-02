@@ -3,20 +3,20 @@ title: Settings
 description: The keys of settings.jsonc, where CodeWork looks for it, and how user and project settings combine.
 ---
 
-CodeWork is configured with `settings.jsonc` files. JSON with comments and trailing commas is fine. A plain `settings.json` is read when there's no `.jsonc`.
+You configure CodeWork with `settings.jsonc` files. Comments and trailing commas are allowed. When there's no `.jsonc` file, CodeWork reads a plain `settings.json`.
 
-## Where Settings Live
+## Where settings live
 
 | Layer   | File                         | Use it for                                        |
 | ------- | ---------------------------- | ------------------------------------------------- |
 | User    | `~/.codework/settings.jsonc` | Your defaults in every project                    |
 | Project | `.codework/settings.jsonc`   | What the whole team should get. Commit this file. |
 
-The project is the session's folder on your machine, or the nearest folder above it, that has a `.codework` folder, even an empty one. Only that folder's settings file is read; folders further up are not searched. `~/.codework` never counts as a project, and a session with no folder on your machine reads only the user layer.
+The project is the first folder with a `.codework` folder inside, even an empty one, starting from the session's folder on your machine and moving up. CodeWork reads only that folder's settings file and doesn't search further up. `~/.codework` never counts as a project. A session with no folder on your machine reads only the user layer.
 
-The project layer is applied over the user layer. `model` and `retry` fields from the project win; `plugins` and `models` lists from both layers are combined, user first.
+The project layer is applied over the user layer. For `model` and `retry` fields, the project wins. The `plugins` and `models` lists from both layers are combined, user first.
 
-CodeWork re-reads settings before each model call, so a change applies without a restart. A file that exists but can't be used is an error naming the file and the key it didn't accept, rather than being skipped.
+CodeWork reads settings again before each model call, so a change applies without a restart. If a file exists but CodeWork can't use it, CodeWork doesn't skip it. It stops with an error that names the file and the key it didn't accept.
 
 `--home` moves the user layer along with the rest of the CodeWork home. `--user-config-dir <dir>` replaces just the user `settings.jsonc` and `mcp.json` with the ones in `<dir>`.
 
@@ -43,12 +43,12 @@ CodeWork re-reads settings before each model call, so a change applies without a
 }
 ```
 
-## Top-Level Keys
+## Top-level keys
 
 | Key       | Type   | Description                                                                          |
 | --------- | ------ | ------------------------------------------------------------------------------------ |
 | `model`   | object | The default model and how to call it. See [model](#model).                           |
-| `models`  | array  | Extra catalog entries. See [Custom Models](/docs/models/custom).                     |
+| `models`  | array  | Extra catalog entries. See [Custom models](/docs/models/custom).                     |
 | `plugins` | array  | Plugins to load and configure. See [Configure plugins](/docs/plugins/configuration). |
 | `retry`   | object | Retries for failed model requests. See [retry](#retry).                              |
 
@@ -66,7 +66,7 @@ MCP servers have their own file, [`mcp.json`](/docs/customize/mcp).
 | `options`         |                | Request options, below                                                  |
 | `providerOptions` |                | Options for one provider or model, below                                |
 
-Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with medium thinking. Each model supports a subset of the thinking levels; see [Thinking Levels](/docs/models#thinking-levels).
+Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with medium thinking. Each model supports only some of the thinking levels. See [Thinking levels](/docs/models#thinking-levels).
 
 `--provider`, `--model`, and `--thinking` on `codework run`, and the pickers in your editor, override these for one session.
 
@@ -90,7 +90,7 @@ Any other key is passed to the provider as a provider-specific request option.
 
 ### `model.providerOptions`
 
-Options for one provider, keyed by provider ID, then by model: `*` for every model, a pattern with `*`, or an exact model ID. Each takes the keys of `model.options`, plus `thinkingLevel` and `toolExecution`.
+Options for one provider. Key them by provider ID, then by model: `*` for every model, a pattern with `*`, or an exact model ID. Each one takes the keys of `model.options`, plus `thinkingLevel` and `toolExecution`.
 
 ```jsonc title="settings.jsonc"
 {

@@ -1,11 +1,11 @@
 ---
-title: Custom Models
+title: Custom models
 description: Add a local model, a private gateway, or any OpenAI-compatible endpoint to the catalog from your settings.
 ---
 
 The `models` array in a [settings file](/docs/customize/settings) adds entries to the [model catalog](/docs/models/catalog). Use it for a model running on your machine or a company gateway.
 
-## Add a Local Model
+## Add a local model
 
 This adds a model served by [Ollama](https://ollama.com) on its OpenAI-compatible endpoint:
 
@@ -36,11 +36,11 @@ codework run --provider ollama --model qwen3-coder:30b "Explain this repository"
 
 The same shape works for LM Studio, vLLM, llama.cpp, or anything else that speaks the OpenAI Chat Completions API. Change `baseUrl` to its address.
 
-Models from settings don't show in `codework models`, which lists only the downloaded catalog. They do show in editor model pickers.
+Models from settings don't appear in `codework models`, which lists only the downloaded catalog. They do appear in editor model pickers.
 
 ## Fields
 
-Every entry needs all of these. A missing or mistyped field fails the session with the settings file and the field it didn't accept.
+Every entry needs all of these fields. If a field is missing or mistyped, the session fails, and the error names the settings file and the field.
 
 | Field           | Description                                                                               |
 | --------------- | ----------------------------------------------------------------------------------------- |
@@ -52,12 +52,12 @@ Every entry needs all of these. A missing or mistyped field fails the session wi
 | `reasoning`     | `true` if the model supports thinking levels                                              |
 | `input`         | `["text"]`, or `["text", "image"]` if it accepts images                                   |
 | `cost`          | Per-million-token `input`, `output`, `cacheRead`, and `cacheWrite`, for the usage summary |
-| `contextWindow` | Most tokens the model accepts in one request                                              |
-| `maxTokens`     | Most tokens it can generate in one response                                               |
+| `contextWindow` | The most tokens the model accepts in one request                                          |
+| `maxTokens`     | The most tokens it can generate in one response                                           |
 
-## Use an API Key
+## Use an API key
 
-Settings never hold a key itself. Name the environment variable that holds it with `provider.key`, written as `"${NAME}"`:
+Settings never hold the key itself. Instead, set `provider.key` to the name of the environment variable that holds it, written as `"${NAME}"`:
 
 ```jsonc title="~/.codework/settings.jsonc"
 {
@@ -88,13 +88,13 @@ Settings never hold a key itself. Name the environment variable that holds it wi
 export GATEWAY_KEY="..."
 ```
 
-A literal key such as `"sk-..."` is rejected. A provider with a `key` only shows up in model pickers when that variable is set; a provider with no `key` and an empty `env`, like the Ollama example, always does.
+A literal key such as `"sk-..."` is rejected. A provider with a `key` appears in model pickers only when that variable is set. A provider with no `key` and an empty `env`, like the Ollama example, always appears.
 
-## Replace a Catalog Model
+## Replace a catalog model
 
 An entry with the same `provider.id` and `id` as a catalog model replaces that model. When more than one settings file declares the same model, the project's `.codework/settings.jsonc` wins over `~/.codework/settings.jsonc`.
 
-## Make It the Default
+## Make it the default
 
 Point `model` at your entry so you don't have to pass flags:
 

@@ -4,7 +4,6 @@ import type { TOCItemType } from "fumadocs-core/toc";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Docs } from "@/components/docs";
-import { Placeholder } from "@/components/placeholder";
 import Layout from "@/components/layout.astro";
 import { source } from "@/lib/source";
 import "@/styles/docs.css";
@@ -36,9 +35,9 @@ const toc: TOCItemType[] = headings.map((heading) => ({
 		breadcrumb: { includeSeparator: true, className: "*:text-fd-muted-foreground! *:font-normal!" },
 	}} client:load>
 		<h1 class="text-3xl font-semibold">{page.data.title}</h1>
-		{page.data.description && <p class="mb-8 text-lg text-fd-muted-foreground">{page.data.description}</p>}
+		{page.data.description && <p class="docs-lede mb-8 max-w-[42rem] text-lg text-fd-muted-foreground">{page.data.description}</p>}
 		<div class="prose flex-1">
-			<Content components={{ ...defaultMdxComponents, Placeholder, Step, Steps }} />
+			<Content components={{ ...defaultMdxComponents, Step, Steps }} />
 		</div>
 	</Docs>
 </Layout>

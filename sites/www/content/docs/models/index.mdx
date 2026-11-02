@@ -1,12 +1,12 @@
 ---
-title: Models & Pricing
+title: Models & pricing
 sidebarTitle: Overview
 description: Connect CodeWork to a model with a subscription, an API key, or your own endpoint, and see what each run costs.
 ---
 
-A **model** writes CodeWork's answers and decides which tools to call. A **provider** is the service CodeWork reaches it through. You can use any model in the [catalog](/docs/models/catalog) from a provider you have credentials for, and switch per run, per project, or mid-conversation in your editor.
+A **model** writes CodeWork's answers and decides which tools to call. A **provider** is the service CodeWork reaches the model through. You can use any model in the [catalog](/docs/models/catalog) from a provider you have credentials for, and switch per run, per project, or mid-conversation in your editor.
 
-## Connect a Provider
+## Connect a provider
 
 ### Subscriptions
 
@@ -17,9 +17,9 @@ Sign in once and use the models included in your plan.
 | [OpenAI Codex](/docs/models/openai-codex)     | `codework auth login --openai-codex`   |
 | [GitHub Copilot](/docs/models/github-copilot) | `codework auth login --github-copilot` |
 
-Logins are stored in `~/.codework/aikit/auth.json`. OpenAI Codex logins are renewed automatically when they expire; GitHub Copilot logins don't expire.
+CodeWork stores logins in `~/.codework/aikit/auth.json`. It renews OpenAI Codex logins when they expire. GitHub Copilot logins don't expire.
 
-### API Keys
+### API keys
 
 Set the provider's environment variable and CodeWork picks it up. No sign-in step.
 
@@ -31,13 +31,13 @@ Set the provider's environment variable and CodeWork picks it up. No sign-in ste
 | Google Gemini                         | `google`     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 | xAI                                   | `xai`        | `XAI_API_KEY`                        |
 
-These are the common ones. Every other provider in the catalog works the same way: run `codework models providers` for the full list of IDs. The variable each one reads is under `provider.env` in `~/.codework/models.gen.json`.
+These are the most common. Every other provider in the catalog works the same way. Run `codework models providers` for the full list of IDs. The variable each provider reads is under `provider.env` in `~/.codework/models.gen.json`.
 
-### Your Own Models
+### Your own models
 
-Local models (Ollama, LM Studio, vLLM) and private gateways are added in settings. See [Custom Models](/docs/models/custom).
+Local models (Ollama, LM Studio, vLLM) and private gateways are added in settings. See [Custom models](/docs/models/custom).
 
-## Choose a Model
+## Choose a model
 
 Pass `--provider` and `--model` on a run:
 
@@ -59,17 +59,17 @@ Without any settings, CodeWork uses `openai/gpt-5.6-luna` at `medium` thinking, 
 
 In an editor, use the model and Thinking Effort pickers instead. They list every model from the providers CodeWork has credentials for. See [ACP](/docs/integrations/acp#sessions-and-configuration).
 
-## Thinking Levels
+## Thinking levels
 
-Reasoning models let you trade speed and cost for depth. CodeWork uses one scale for every provider and maps it to each provider's own setting:
+Reasoning models can think before they answer. A higher thinking level trades speed and cost for depth. CodeWork uses one scale for every provider and maps it to each provider's own setting:
 
 `off` · `minimal` · `low` · `medium` · `high` · `xhigh` · `max`
 
-Each model supports a subset. Ask for one it doesn't have and CodeWork uses the next level up, or the highest it has. Pass `--thinking <level>` on a run, or set `thinkingLevel` in settings. The [catalog](/docs/models/catalog#thinking-levels) lists the levels for each Codex model.
+Each model supports only some of these levels. If you ask for one it doesn't support, CodeWork uses the next level up, or the model's highest level. Pass `--thinking <level>` on a run, or set `thinkingLevel` in settings. The [catalog](/docs/models/catalog#thinking-levels) lists the levels for each Codex model.
 
 ## Pricing
 
-CodeWork doesn't charge for models. You pay your provider, at their rates or through your plan. Every run ends with a usage summary showing tokens and an estimated cost from the catalog's per-million-token prices:
+CodeWork doesn't charge for models. You pay your provider, at their rates or through your plan. Every run ends with a usage summary that shows tokens and an estimated cost, based on the catalog's per-million-token prices:
 
 ```text
 ── usage ───────────────────────────────────────────────────────────────
@@ -79,4 +79,4 @@ cache    12,032 read · 0 write
 cost     $0.003127 · 3 turns
 ```
 
-See [Catalog & Prices](/docs/models/catalog) for the price of each model and how the estimate is worked out.
+See [Catalog & prices](/docs/models/catalog) for the price of each model and how the estimate is worked out.

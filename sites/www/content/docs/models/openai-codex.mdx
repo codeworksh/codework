@@ -5,13 +5,13 @@ description: Use GPT-6, GPT-5.6, and Codex models through your ChatGPT plan.
 
 Sign in with your ChatGPT account. Usage counts against your ChatGPT plan's limits.
 
-## Sign In
+## Sign in
 
 ```bash
 codework auth login --openai-codex
 ```
 
-CodeWork opens the sign-in page in your browser and waits for it on `localhost:1455`. If that port is taken, paste the redirect URL from your browser when asked.
+CodeWork opens the sign-in page in your browser and waits for the browser to return to `localhost:1455`. If that port is taken, paste the redirect URL from your browser when CodeWork asks for it.
 
 No browser on this machine, such as over SSH? Use a device code instead. It needs no local port:
 
@@ -19,7 +19,7 @@ No browser on this machine, such as over SSH? Use a device code instead. It need
 codework auth login --openai-codex --device
 ```
 
-To sign in a running `codework serve` instead of this machine, add `--server ws://127.0.0.1:7433/rpc/v1`.
+To store the login on a running `codework serve` instead of this machine, add `--server ws://127.0.0.1:7433/rpc/v1`.
 
 ## Run
 
@@ -40,9 +40,9 @@ codework run --provider openai-codex --model gpt-5.6-luna "Explain this reposito
 | GPT-5.6 Luna        | `gpt-5.6-luna`        | 272K    |
 | GPT-5.3 Codex Spark | `gpt-5.3-codex-spark` | 128K    |
 
-Every model reasons and accepts images. See [Catalog & Prices](/docs/models/catalog#openai-codex-models) for prices and thinking levels.
+Every model reasons and accepts images. See [Catalog & prices](/docs/models/catalog#openai-codex-models) for prices and thinking levels.
 
-## Check or Remove the Login
+## Check or remove the login
 
 ```bash
 codework auth status --openai-codex
@@ -53,4 +53,4 @@ The login renews itself when it expires. `codework auth refresh --openai-codex` 
 
 ## Pricing
 
-Usage counts against your ChatGPT plan's limits. The cost in CodeWork's usage summary is the API-rate equivalent, useful for comparing models but not what you're billed.
+Usage counts against your ChatGPT plan's limits. The cost in CodeWork's usage summary is what the same tokens would cost at API rates. Use it to compare models. It isn't what you're billed.

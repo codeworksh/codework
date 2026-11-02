@@ -3,20 +3,20 @@ title: Sessions
 description: How sessions are stored, continued, and shared.
 ---
 
-A session is one piece of work: its project folder, its sandbox, and one or more threads. A thread is a conversation: your prompts, the answers, and every tool call. Every session starts with a thread called `main`. Everything is saved.
+A session is one piece of work. It has a project folder, a sandbox (where its files live and its commands run), and one or more threads. A thread is one conversation inside the session: your prompts, the answers, and every tool call. Every session starts with a thread called `main`. CodeWork saves all of it.
 
-## Start a Session
+## Start a session
 
-Each `codework run` without `--session` starts a new one and prints its ID first:
+Each `codework run` without `--session` creates a new session and prints its ID first:
 
 ```text
 session  <session-id>
 sandbox  local · /Users/you/work/api
 ```
 
-A session remembers the folder you ran it from, so that folder's `.codework/settings.jsonc` and plugins apply wherever you continue it. A thread's title is the first line of its first prompt, cut to 48 characters.
+A session remembers the folder you ran it from. That folder's `.codework/settings.jsonc` and plugins apply wherever you continue the session. A thread's title is the first line of its first prompt, cut to 48 characters.
 
-## Continue a Session
+## Continue a session
 
 Pass the ID with `--session` (or `-s`):
 
@@ -24,9 +24,9 @@ Pass the ID with `--session` (or `-s`):
 codework run --session <session-id> "Now fix them"
 ```
 
-This continues the `main` thread, and the model sees its whole conversation so far. Add `--thread <thread-id>` to continue another thread. `--cwd` and the sandbox flags only apply to new sessions.
+This continues the `main` thread, and the model sees the whole conversation so far. Add `--thread <thread-id>` to continue another thread. `--cwd` and the sandbox flags only apply to new sessions.
 
-## Change the Model
+## Change the model
 
 `--provider`, `--model`, and `--thinking` also work on a continued session. The choice is saved on the thread and sticks until you change it:
 
@@ -36,9 +36,9 @@ codework run --session <session-id> --provider openrouter --model deepseek/deeps
 
 Without a saved choice, a thread uses the default model from your settings.
 
-## Threads and Forks
+## Threads and forks
 
-A fork is a new thread that starts from a finished message, or entry, of another thread. It keeps the history up to that point, and the model and thinking level chosen then. The original thread doesn't change.
+Each finished message in a thread's history is an entry. A fork is a new thread that starts from an entry of another thread. It keeps the history up to that point, along with the model and thinking level chosen at that point. The original thread doesn't change.
 
 | Command                                      | What it does                                                   |
 | -------------------------------------------- | -------------------------------------------------------------- |
@@ -46,15 +46,17 @@ A fork is a new thread that starts from a finished message, or entry, of another
 | `codework thread fork <session-id> --at`     | Forks, keeping history through the entry                       |
 | `codework thread fork <session-id> --before` | Forks just before one of your prompts, and prints it to resend |
 
-Both `--at` and `--before` take an entry ID, from the RPC server's `thread.history`. The new thread's ID is printed, and `main` is forked unless you pass `--thread`. A fork has no title until its first prompt, and its usage counts only its own messages.
+Both `--at` and `--before` take an entry ID, which you get from the RPC server's `thread.history`. The command prints the new thread's ID. It forks `main` unless you pass `--thread`. A fork has no title until its first prompt, and its usage counts only its own messages.
 
 These commands talk to a running `codework serve`, at `ws://127.0.0.1:7433/rpc/v1` unless you pass `--server`.
 
-## Move a Session
+## Move a session
 
-`codework session relink <session-id> -C <dir>` moves where a session's work runs, for example to another checkout of the same project. `--sandbox-id` moves it to a sandbox, and `--thread` moves one thread only. `codework session link <session-id> [path]` changes the folder its settings come from. Both talk to a running `codework serve`.
+`codework session relink <session-id> -C <dir>` changes where a session's work runs, for example to another checkout of the same project. Add `--sandbox-id` to move it to another sandbox, or `--thread` to move one thread only.
 
-## Usage Summary
+`codework session link <session-id> [path]` changes the folder the session's settings come from. Both commands talk to a running `codework serve`.
+
+## Usage summary
 
 When a run finishes, `codework run` prints a summary of that run to stderr:
 
@@ -73,15 +75,15 @@ cost     $0.002104 · 4 turns
 | `cache`  | Prompt cache reads and writes        |
 | `cost`   | Estimated cost and model responses   |
 
-## Shared Across Interfaces
+## Shared across interfaces
 
 Every interface that uses the same CodeWork home sees the same sessions:
 
 - **Terminal.** `codework run --session <id>`.
-- **Editors.** ACP editors list past sessions for the open folder, including ones from `codework run`. Each thread shows up as a session of its own, and forking in the editor starts a new thread from the latest message.
+- **Editors.** ACP editors list past sessions for the open folder, including ones from `codework run`. The editor shows each thread as a session of its own. Forking in the editor starts a new thread from the latest message.
 - **RPC server.** `codework serve` owns its sessions while it runs. Continue one with `codework run --server <url> --session <id>`, or list threads with `thread.list`.
 
-There's no CLI command to list sessions. Keep the printed ID, or use your editor's thread history.
+There's no CLI command to list sessions. Keep the printed ID, or use your editor's history.
 
 ## Storage
 

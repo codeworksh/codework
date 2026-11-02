@@ -3,9 +3,9 @@ title: OpenRouter
 description: Reach hundreds of models from many providers with a single API key.
 ---
 
-[OpenRouter](https://openrouter.ai) routes one API key to models from Anthropic, OpenAI, Google, DeepSeek, Meta, and many more. It's the quickest way to try models side by side.
+[OpenRouter](https://openrouter.ai) gives you one API key for models from Anthropic, OpenAI, Google, DeepSeek, Meta, and many more. It's the quickest way to try models side by side.
 
-## Set Your Key
+## Set your key
 
 Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then:
 
@@ -13,7 +13,7 @@ Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then:
 export OPENROUTER_API_KEY="..."
 ```
 
-Add it to your shell profile so it's set in every terminal. For an editor, also add it to the agent's `env` (see [Zed](/docs/integrations/acp#zed)).
+Add it to your shell profile so it's set in every terminal. If you use CodeWork from an editor, also add it to the agent's `env` (see [Zed](/docs/integrations/acp#zed)).
 
 ## Run
 
@@ -32,8 +32,8 @@ List every OpenRouter model CodeWork can use:
 codework models --provider openrouter
 ```
 
-Only models that support tool calling are listed. When the catalog downloads with your key set, the list narrows to the models your key can use. After setting the key for the first time, run `codework models refresh --force` to narrow it now.
+The list shows only models that support tool calling. If your key is set when the catalog downloads, the list narrows to the models your key can use. After you first set the key, run `codework models refresh --force` to narrow the list right away.
 
 ## Pricing
 
-You pay OpenRouter at its listed rates. The usage summary at the end of each run estimates the cost from the [catalog](/docs/models/catalog), whose OpenRouter prices come from OpenRouter, for your key, each time the catalog downloads.
+You pay OpenRouter at its listed rates. The usage summary at the end of each run estimates the cost from the [catalog](/docs/models/catalog). The catalog takes OpenRouter's prices from OpenRouter, for your key, each time it downloads.

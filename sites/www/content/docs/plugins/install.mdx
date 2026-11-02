@@ -1,12 +1,12 @@
 ---
-title: Install and Manage Plugins
-sidebarTitle: Install & Manage
+title: Install and manage plugins
+sidebarTitle: Install & manage
 description: Add, install, update, and remove plugins with the codework plugin commands.
 ---
 
 Every plugin command lives under `codework plugin`. They read and write the same settings files CodeWork loads from, so what you see in `codework plugin list` is what your next session gets.
 
-## Add a Plugin
+## Add a plugin
 
 `plugin add` installs a plugin, checks that it really is a plugin, and then writes it into a settings file:
 
@@ -18,20 +18,20 @@ codework plugin add @acme/codework-tool-proc
 Added acme.tool.proc (@acme/codework-tool-proc@1.2.0) to /work/app/.codework/settings.jsonc
 ```
 
-By default the entry goes into your project's `.codework/settings.jsonc`, found by walking up from the current directory. If no ancestor has a `.codework/` directory, CodeWork creates one here and prints `Created <path>/`, so a mistyped `cd` is easy to spot.
+By default the entry goes into your project's `.codework/settings.jsonc`. CodeWork finds it by searching up from the current directory. If no parent directory has a `.codework/` directory, CodeWork creates one in the current directory and prints `Created <path>/`, so a mistyped `cd` is easy to spot.
 
 | Flag             | What it does                                                                                    |
 | ---------------- | ----------------------------------------------------------------------------------------------- |
 | `-g`, `--global` | Write your user settings (`~/.codework/settings.jsonc`) so the plugin applies to every project. |
 | `--session <id>` | Write the project a session is linked to (see `codework session link`), from any directory.     |
 
-Adding validates before it writes. If the spec does not resolve, the download fails, or the module does not export a plugin, you get that error and your settings file is left untouched.
+`plugin add` validates before it writes. If the spec does not resolve, the download fails, or the module does not export a plugin, you get that error and your settings file is left untouched.
 
 `plugin add` rewrites only the `plugins` array, so comments and formatting elsewhere in the file are kept. Adding a plugin that is already there, under another version or spelling, replaces its entry instead of adding a second one.
 
 The entry is written the way you typed it. `@acme/codework-tool-proc` with no version follows `latest`. To pin a plugin, add it with an exact version or a full commit SHA. That entry is the pin: there is no lockfile.
 
-### Supported Sources
+### Supported sources
 
 ```bash
 # npm: exact version, range, or tag
@@ -51,7 +51,7 @@ A relative path is resolved from where you run the command (or from the linked s
 
 Private registries work through your normal `.npmrc`. CodeWork reads the `.npmrc` chain from the project that declares the plugin, so a scoped registry and token configured in the repository are the ones used to install it.
 
-## Install What Settings Already Name
+## Install what settings already name
 
 When you clone a repository whose `.codework/settings.jsonc` already lists plugins, fetch them all at once:
 
@@ -66,11 +66,11 @@ Installed @acme/codework-tool-proc@1.2.0 (acme.tool.proc)
 
 This is the plugin equivalent of `pnpm install` with no arguments. It writes nothing to settings, skips anything already in the store, and skips local paths, which are loaded where they are.
 
-## Resolve-Only Loading
+## Resolve-only loading
 
 CodeWork never installs a plugin while it is running a session. At startup, and at every turn after that, it only looks in the local store and imports what is there.
 
-That has a few consequences worth knowing:
+This means:
 
 - **Offline starts work.** Once plugins are installed, nothing about running a session depends on a registry being reachable.
 - **Missing plugins are reported, not fetched.** A plugin from your user settings that is not installed stops startup with `plugin-not-installed`. One from a project's settings is left out of the session with a warning that it is configured but not loaded. Both tell you to run `codework plugin install`.
@@ -84,7 +84,7 @@ That has a few consequences worth knowing:
 	decide which code runs. Keeping installs explicit means the same settings always load the same bytes.
 </Callout>
 
-## List Configured Plugins
+## List configured plugins
 
 ```bash
 codework plugin list
@@ -96,15 +96,11 @@ codework plugin list
 github:acme/broken#main         plugin-not-installed
 ```
 
-The left column is each module entry exactly as your settings spell it. The right column is the plugin ID it resolved to, which proves the whole chain worked: the entry parsed, the store had it, and the module imported and validated. When something fails, the [error slug](/docs/plugins/troubleshooting) appears in its place. Built-in plugins and configuration entries are not listed.
+The left column is each module entry exactly as your settings spell it. The right column is the plugin ID it resolved to. A plugin ID there means every step worked: the entry parsed, the store had it, and the module imported and validated. When something fails, the [error slug](/docs/plugins/troubleshooting) appears in its place. Built-in plugins and configuration entries are not listed.
 
 Add `--verbose` to see the full message behind a failure and which settings file declared each entry.
 
-<Placeholder title="Listing plugins">
-	Output of codework plugin list --verbose with one healthy plugin and one failing entry.
-</Placeholder>
-
-## Check for and Apply Updates
+## Check for and apply updates
 
 `plugin check` asks the registry or git remote which plugins have a newer revision. Entries pinned to an exact version or commit have nothing to check, and local plugins are skipped.
 
@@ -130,7 +126,7 @@ codework plugin update @acme/codework-tool-proc
 
 Both commands name a plugin by package, git spec, or path, not by plugin ID. `update` only refreshes plugins that are already installed; use `plugin install` for the rest. Updates install side by side with the version in use, so a session that is already running is never disturbed.
 
-## Reload Local Plugins
+## Reload local plugins
 
 When you are developing a local plugin against a running server (`codework serve`), pick up your edits without restarting:
 
@@ -141,7 +137,7 @@ codework plugin reload --server ws://127.0.0.1:7433/rpc/v1
 
 You only need this for local files. Installed packages are picked up automatically at the next turn, and every `codework run` without `--server` starts a fresh process that loads everything anyway. If the reload fails, the server keeps the plugins it already had loaded.
 
-## Remove a Plugin
+## Remove a plugin
 
 ```bash
 codework plugin remove @acme/codework-tool-proc
@@ -150,7 +146,7 @@ codework plugin remove acme.tool.proc -g
 
 You can name the plugin by package, path, or plugin ID. An npm package matches with or without the version you added it with; a git spec must include its `#` ref. `remove` deletes the module entry and any configuration entries written for it. For a plugin that is broken or not installed, name it by package or path, since its ID can only be read from an installed copy.
 
-## Command Reference
+## Command reference
 
 | Command                         | What it does                                                |
 | ------------------------------- | ----------------------------------------------------------- |

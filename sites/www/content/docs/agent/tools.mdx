@@ -3,7 +3,7 @@ title: Tools
 description: The built-in tools and how to turn them on or off.
 ---
 
-## Built-In Tools
+## Built-in tools
 
 | Tool         | What it does                 | Default |
 | ------------ | ---------------------------- | ------- |
@@ -22,17 +22,17 @@ Relative paths resolve against the session's working directory.
 
 - **`read`** returns up to 2,000 lines or 50 KB, and can read a range of lines. Images (JPEG, PNG, GIF, WebP, BMP) go to the model as attachments. A model without image input is told the image was left out.
 - **`write`** creates parent folders as needed.
-- **`edit`** takes a list of replacements. Each original piece must appear exactly once and not overlap another.
-- **`bash`** returns stdout and stderr together, cut to the last 2,000 lines or 50 KB. The full output is saved to a file in the sandbox. A non-zero exit is an error. The model can set a timeout in seconds.
+- **`edit`** takes a list of replacements. Each piece of text to replace must appear exactly once in the file, and no two pieces can overlap.
+- **`bash`** returns stdout and stderr together, cut to the last 2,000 lines or 50 KB. The full output is saved to a file in the sandbox. A non-zero exit code counts as an error. The model can set a timeout in seconds.
 - **`grep`** uses ripgrep and returns 100 matches by default.
 - **`find`** uses fd and returns 1,000 results by default.
 - **`ls`** includes dotfiles and returns 500 entries by default.
 
-`grep` and `find` skip files in `.gitignore` and include hidden files. If ripgrep or fd is missing, CodeWork downloads it to `~/.codework/bin` on first use, inside the sandbox for remote sessions. In a virtual sandbox, `find` isn't available.
+`grep` and `find` skip files in `.gitignore` and include hidden files. If ripgrep or fd is missing, CodeWork downloads it to `~/.codework/bin` on first use. For remote sessions, the download goes inside the sandbox. In a virtual sandbox, `find` isn't available.
 
-## Turn Tools On or Off
+## Turn tools on or off
 
-Each built-in tool is a plugin with the ID `codework.tool.<name>`. `grep`, `find`, and `ls` are off, so CodeWork searches with `bash` instead. Turn them on in your settings:
+Each built-in tool is a plugin with the ID `codework.tool.<name>`. `grep`, `find`, and `ls` are off by default, so the agent searches with `bash` instead. Turn them on in your settings:
 
 ```jsonc title=".codework/settings.jsonc"
 {
@@ -54,11 +54,13 @@ Set `enabled` to `false` to turn a tool off:
 
 Use `~/.codework/settings.jsonc` for every project, or `.codework/settings.jsonc` for one. Changes apply from your next message.
 
-## Deferred Tools
+## Deferred tools
 
-Some tools aren't sent to the model up front. They're deferred: the model calls `toolsearch` with a few words, and the best matches, 8 by default, are available from its next call and stay available in that thread. Deferred tools come from [MCP servers](/docs/customize/mcp) with `deferred` exposure, or from plugins.
+Some tools aren't sent to the model up front. These are deferred tools. To use one, the model first calls `toolsearch` with a few words. The best matches, 8 by default, are available from its next call and stay available for the rest of that thread.
 
-`toolsearch` turns itself on when a thread has deferred tools, or an enabled MCP server with `deferred` exposure. A settings entry turns it off, or on when nothing is deferred:
+Deferred tools come from plugins, or from [MCP servers](/docs/customize/mcp) whose `exposure` (the setting for which tools the model sees) is `deferred`.
+
+`toolsearch` turns itself on when a thread has deferred tools, or an enabled MCP server with `deferred` exposure. Add a settings entry to turn it off, or to turn it on when nothing is deferred:
 
 ```jsonc title=".codework/settings.jsonc"
 {
@@ -66,7 +68,7 @@ Some tools aren't sent to the model up front. They're deferred: the model calls 
 }
 ```
 
-## More Tools
+## More tools
 
 [Plugins](/docs/plugins) can add tools, change how a built-in tool is described, or check calls before and after they run. [MCP servers](/docs/customize/mcp) add their tools as `mcp__<server>__<tool>`.
 

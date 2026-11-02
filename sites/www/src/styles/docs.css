@@ -47,3 +47,22 @@
 	outline-offset: -1px;
 	box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.6);
 }
+
+/*
+ * Reading type: Geist for prose, capped near 70 characters a line; code keeps the mono face.
+ * The landing page and navigation stay monospace.
+ */
+.prose,
+.docs-lede {
+	font-family: var(--font-sans);
+}
+
+.prose {
+	max-width: 42rem;
+	font-size: 1rem;
+	line-height: 1.65;
+}
+
+.prose :is(code, pre, kbd) {
+	font-family: var(--font-mono);
+}

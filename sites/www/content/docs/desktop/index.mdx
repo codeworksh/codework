@@ -1,7 +1,7 @@
 ---
-title: Desktop App
+title: Desktop app
 sidebarTitle: Overview
-description: Run and review many sessions side by side, on the CodeWork server your CLI already runs.
+description: Run and review many sessions side by side, on a CodeWork server that the CLI starts.
 ---
 
 ![The CodeWork desktop app with sessions from four projects, one of them writing and running tests](/images/landing/app/desktop.webp)
@@ -19,8 +19,8 @@ The desktop app ships as **CodeWork Canary**, rebuilt with the latest changes. E
 There's no build for Windows or Intel Macs yet. Verify a download against the release's [SHA256SUMS](https://github.com/codeworksh/codework/releases/download/nightly/SHA256SUMS).
 
 <Callout type="warn">
-	macOS builds aren't notarized yet, so macOS blocks a downloaded copy. After moving the app to Applications, clear its
-	quarantine flag:
+	macOS builds aren't notarized yet, so macOS blocks the app after you download it. Move the app to Applications, then
+	clear its quarantine flag:
 
     ```bash
     xattr -dr com.apple.quarantine "/Applications/CodeWork Canary.app"
@@ -28,9 +28,9 @@ There's no build for Windows or Intel Macs yet. Verify a download against the re
 
 </Callout>
 
-## Set It Up
+## Set it up
 
-The app runs on a CodeWork server started by the CLI. It doesn't install the CLI for you.
+The app needs a CodeWork server, which the CLI starts. The app doesn't install the CLI, so install it first.
 
 <Steps>
 <Step>
@@ -52,14 +52,14 @@ The app finds `codework` in `~/.codework/bin`, or on your shell's `PATH`.
 codework auth login --openai-codex
 ```
 
-[Models & Pricing](/docs/models) lists every other way in, from Copilot to a local model.
+[Models & Pricing](/docs/models) lists every other way to connect, such as Copilot or a local model.
 
 </Step>
 <Step>
 
 ### Start the server
 
-Open **Settings → Providers** and press **Start**. The server keeps running after you quit the app; `codework service stop` stops it.
+Open **Settings → Providers** and press **Start**. The server keeps running after you quit the app. To stop it, run `codework service stop`.
 
 ![Settings → Providers with the CodeWork server running](/images/docs/desktop/providers.webp)
 

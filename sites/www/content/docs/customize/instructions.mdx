@@ -1,5 +1,5 @@
 ---
-title: Project Instructions
+title: Project instructions
 sidebarTitle: Instructions
 description: Standing project instructions in AGENTS.md or CLAUDE.md files.
 ---
@@ -8,7 +8,7 @@ CodeWork adds `AGENTS.md` and `CLAUDE.md` files to its system prompt. Use them f
 
 This is the built-in `codework.prompt.instruction` plugin. It's on by default.
 
-## File Names
+## File names
 
 In each directory, CodeWork uses the first readable file of:
 
@@ -19,20 +19,20 @@ In each directory, CodeWork uses the first readable file of:
 5. `CLAUDE.md`
 6. `CLAUDE.MD`
 
-Only one file per directory is used. An `.override.md` file is handy for personal instructions you keep out of git. An empty file still claims its directory and adds nothing.
+Only one file per directory is used. An `.override.md` file is handy for personal instructions you keep out of git. An empty file still counts as that directory's file: it blocks the others and adds nothing.
 
-## Which Directories
+## Which directories
 
-CodeWork walks from the session's working directory up to the sandbox root. Each directory adds at most one file.
+CodeWork looks in the session's working directory and in each parent directory up to the root of the sandbox. Each directory adds at most one file.
 
 - Parents are included. Subfolders are not.
 - There's no global file. `~/AGENTS.md` loads only when you work under your home folder.
-- Files are read inside the session's sandbox. With a remote sandbox, that's the sandbox's files, not your machine's.
+- CodeWork reads the files inside the session's sandbox. With a remote sandbox, it reads the sandbox's files, not your machine's.
 - In a git worktree nested inside the main checkout, the main root's file is skipped if the worktree has one with the same name.
 
-## How They Appear in the Prompt
+## How they appear in the prompt
 
-Files go into `<project_context>`, farthest directory first, so the closest file has the final word:
+The files go into `<project_context>`, farthest directory first, so the closest file has the final word:
 
 ```text title="System prompt"
 <project_context>
@@ -48,7 +48,7 @@ Project-Specific Instructions & Guidelines:
 </project_context>
 ```
 
-There's no size limit, and every file stays in the model's context for the whole session, so keep them short. Files are read again before each model call, and an edit reaches the model as an update to `<project_context>`.
+There's no size limit, and every file stays in the model's context for the whole session, so keep them short. CodeWork reads the files again before each model call. When you edit one, the model gets the change as an update to `<project_context>`.
 
 ## Example
 
@@ -61,7 +61,7 @@ There's no size limit, and every file stays in the model's context for the whole
 - Ask before adding a new dependency.
 ```
 
-## Turn It Off
+## Turn it off
 
 Disable the plugin in your [settings](/docs/customize/settings):
 

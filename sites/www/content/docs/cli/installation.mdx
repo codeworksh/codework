@@ -13,9 +13,9 @@ curl -fsSL https://codework.sh/install | sh
 pnpm add -g @codeworksh/cli
 ```
 
-The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). On other systems, such as Intel Macs or Linux with musl, the script stops and points you to pnpm. The pnpm package needs Node.js 24.14.1 or later.
+The curl script installs a standalone binary that doesn't need Node.js. It supports macOS (Apple silicon) and Linux (arm64, x64, glibc). On other systems, such as Intel Macs or Linux with musl, the script stops and points you to pnpm. The pnpm package needs Node.js 24.14.1 or later.
 
-The curl script installs one `codework` binary to `~/.codework/bin`, or to `CODEWORK_INSTALL_DIR` if you set it. If that folder isn't on your `PATH`, it adds it in your shell's startup file (zsh, bash, or fish) and tells you to open a new shell. For other shells it prints the line to add.
+The curl script installs one `codework` binary to `~/.codework/bin`, or to `CODEWORK_INSTALL_DIR` if you set it. If that folder isn't on your `PATH`, the script adds it to your shell's startup file (zsh, bash, or fish) and tells you to open a new shell. For other shells, it prints the line for you to add.
 
 | Flag                  | What it does                                |
 | --------------------- | ------------------------------------------- |
@@ -25,7 +25,7 @@ The curl script installs one `codework` binary to `~/.codework/bin`, or to `CODE
 
 Pass flags after `sh -s --`, as in `curl -fsSL https://codework.sh/install | sh -s -- --dev`.
 
-Check that it's on your path:
+Check that `codework` is on your `PATH`:
 
 ```bash
 codework --help
@@ -33,9 +33,9 @@ codework --help
 
 Every command is `codework <command>`. Add `--help` to any command to see its flags.
 
-## Connect a Model
+## Connect a model
 
-CodeWork needs access to at least one model provider. Sign in with a subscription:
+CodeWork needs access to at least one model provider. You can sign in with a subscription:
 
 ```bash
 codework auth login --openai-codex
@@ -58,7 +58,7 @@ codework auth status --openai-codex
 codework models
 ```
 
-## Where CodeWork Keeps Its Files
+## Where CodeWork keeps its files
 
 | Path                                 | What's in it                                                   |
 | ------------------------------------ | -------------------------------------------------------------- |
@@ -84,10 +84,10 @@ pnpm add -g @codeworksh/cli@latest
 
 ## Uninstall
 
-For curl, delete `~/.codework/bin/codework` and the `PATH` line the script added to your shell's startup file.
+If you installed with curl, delete `~/.codework/bin/codework` and the `PATH` line the script added to your shell's startup file.
 
 ```bash title="pnpm"
 pnpm remove -g @codeworksh/cli
 ```
 
-This leaves `~/.codework` in place. Delete it too if you want to remove your sessions, settings, and credentials.
+Either way, `~/.codework` stays in place. Delete it too if you want to remove your sessions, settings, and credentials.

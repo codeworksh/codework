@@ -3,16 +3,16 @@ title: Remote
 description: Daytona or Vercel sandboxes. A separate machine with real tools.
 ---
 
-## How It Works
+## How it works
 
-When the work needs a full Linux toolchain, real processes, or code you wouldn't run on your own machine, use a remote sandbox: a machine run by a provider. File tools act on its disk and `bash` runs on it, and nothing runs on your machine.
+When the work needs a full Linux toolchain, real processes, or code you wouldn't run on your own machine, use a remote sandbox: a machine run by a provider. File tools act on its disk, `bash` runs there, and nothing runs on your machine.
 
 | Driver    | Provider       |
 | --------- | -------------- |
 | `daytona` | Daytona        |
 | `vercel`  | Vercel Sandbox |
 
-Both drivers are built into the CLI, with nothing to add to your settings. The standalone binary includes their SDKs. In the pnpm package they're optional dependencies of `@codeworksh/cli`, so if your package manager skipped optional dependencies, the driver can't start.
+Both drivers are built into the CLI, so there's nothing to add to your settings. The standalone binary includes their SDKs. In the pnpm package, they're optional dependencies of `@codeworksh/cli`. If your package manager skipped optional dependencies, the driver can't start.
 
 ## Credentials
 
@@ -38,20 +38,20 @@ export VERCEL_OIDC_TOKEN="..."
 
 The token identifies your team and project. See Vercel's [OIDC docs](https://vercel.com/docs/oidc) to get one for a linked project.
 
-## New Sandboxes
+## New sandboxes
 
 CodeWork creates a sandbox with the provider's defaults. The session starts in its working directory, or in `--cwd`:
 
-| Driver    | Default working directory             |
-| --------- | ------------------------------------- |
-| `daytona` | Its work dir, or `/home/daytona`      |
-| `vercel`  | Its working dir, or `/vercel/sandbox` |
+| Driver    | Default working directory                   |
+| --------- | ------------------------------------------- |
+| `daytona` | Its working directory, or `/home/daytona`   |
+| `vercel`  | Its working directory, or `/vercel/sandbox` |
 
-A new sandbox is empty. CodeWork doesn't upload your files, so have the agent clone the repository, or attach a sandbox you've set up.
+A new sandbox is empty. CodeWork doesn't upload your files, so have the agent clone the repository, or attach a sandbox you've already set up.
 
-Created sandboxes are labeled `codework-managed` and `codework-instance` (tags on Vercel), so you can find them in the provider's dashboard. `codework run --server` prints the sandbox ID on a `sandbox-id:` line.
+CodeWork labels the sandboxes it creates `codework-managed` and `codework-instance` (as tags on Vercel), so you can find them in the provider's dashboard. `codework run --server` prints the sandbox ID on a `sandbox-id:` line.
 
-## Attach Your Own
+## Attach your own
 
 With `--sandbox-provider-id`, pass the sandbox ID for Daytona or the sandbox name for Vercel:
 
@@ -61,10 +61,10 @@ codework run --sandbox-driver vercel --sandbox-provider-id <sandbox-name> "Conti
 
 Attaching the same ID again reuses CodeWork's record of it.
 
-## Stopping and Deleting
+## Stopping and deleting
 
-Stopping isn't deleting. A stopped sandbox starts again when a session mounts it. The RPC server also stops one on `sandbox.stop`.
+Stopping isn't deleting. A stopped sandbox starts again when a session uses it. The RPC server also stops one on `sandbox.stop`.
 
 CodeWork creates, reuses, and stops sandboxes, but never deletes provider infrastructure. Daytona sandboxes are created with auto-delete off, so clean them up from the provider's dashboard or CLI.
 
-Interrupting a turn cancels a running command on Vercel. On Daytona, the command may keep running.
+When you stop a run, a running command is canceled on Vercel. On Daytona, the command may keep running.

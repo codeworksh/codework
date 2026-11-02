@@ -1,24 +1,24 @@
 ---
-title: How the Agent Works
+title: How the agent works
 sidebarTitle: Overview
 description: What happens between a prompt and an answer.
 ---
 
 CodeWork is a loop around a model. You send a prompt, the model answers or asks for a tool, CodeWork runs the tool and returns the result, and the model goes again. The loop ends when the model answers without a tool call.
 
-## A Run, Step by Step
+## A run, step by step
 
 1. **You send a prompt.** It's saved to the session before any work starts.
-2. **CodeWork builds the request.** The system prompt, the conversation so far, and the session's tools.
+2. **CodeWork builds the request.** It holds the system prompt, the conversation so far, and the session's tools.
 3. **The model responds.** It streams text, and reasoning on models that support it. It may call tools.
-4. **CodeWork runs the tools.** Each runs in the session's sandbox. The output, or the error, goes back to the model.
+4. **CodeWork runs the tools.** Each one runs in the session's sandbox, the environment where its files live and its commands run. The output, or the error, goes back to the model.
 5. **Repeat** until the model answers without a tool call.
 
 Each model response is one turn. A prompt usually takes several.
 
 Tool calls from one response run one after another. Set `model.toolExecution` to `parallel` in your [settings](/docs/customize/settings#model) to run them at the same time.
 
-## Streaming Output
+## Streaming output
 
 | Interface      | What it shows                                     |
 | -------------- | ------------------------------------------------- |
@@ -26,13 +26,13 @@ Tool calls from one response run one after another. Set `model.toolExecution` to
 | ACP editors    | The answer, reasoning, and each tool call         |
 | RPC server     | Every event, through `event.subscribe`            |
 
-So you can redirect just the answer:
+Because the answer goes to stdout on its own, you can redirect it to a file:
 
 ```bash
 codework run "Summarize the open TODOs in this repo" > todos.md
 ```
 
-## The System Prompt
+## The system prompt
 
 The system prompt is a short base prompt plus your project's `AGENTS.md` or `CLAUDE.md` files. See [Instructions](/docs/customize/instructions).
 
@@ -44,9 +44,9 @@ By default it retries up to 3 times, waiting 2 seconds and doubling each time, u
 
 Change the limits with `retry` in your settings.
 
-## Sending More While It Works
+## Sending more while it works
 
-`codework run` and ACP editors send one prompt at a time. An editor's second prompt to a busy session is rejected.
+`codework run` and ACP editors send one prompt at a time. If an editor sends a second prompt while the session is busy, CodeWork rejects it.
 
 With the RPC server, `thread.prompt` takes a `delivery` field:
 
@@ -55,17 +55,17 @@ With the RPC server, `thread.prompt` takes a `delivery` field:
 | `steer` (default) | Before its next model request, mid-task       |
 | `followUp`        | After the current work. Queued one at a time. |
 
-`codework run --server <url> --session <id>` sends a follow-up, so it waits its turn.
+`codework run --server <url> --session <id>` sends a follow-up, so it waits until the current work is done.
 
-Until the model takes a prompt in, you can change your mind:
+Until the model picks up a waiting prompt, you can still change it:
 
-| RPC method      | What it does                                           |
-| --------------- | ------------------------------------------------------ |
-| `thread.queue`  | Lists the waiting prompts, in the order they were sent |
-| `thread.cancel` | Withdraws one                                          |
-| `thread.update` | Rewrites one, or moves it to the other lane, in place  |
+| RPC method      | What it does                                                          |
+| --------------- | --------------------------------------------------------------------- |
+| `thread.queue`  | Lists the waiting prompts, in the order they were sent                |
+| `thread.cancel` | Withdraws one                                                         |
+| `thread.update` | Rewrites one, or switches it between `steer` and `followUp`, in place |
 
-## Stopping a Run
+## Stopping a run
 
 | Interface      | How to stop                                                    |
 | -------------- | -------------------------------------------------------------- |
@@ -73,23 +73,23 @@ Until the model takes a prompt in, you can change your mind:
 | ACP editors    | The stop button (`session/cancel`). It stops that thread.      |
 | RPC server     | `thread.interrupt` for one thread, `session.interrupt` for all |
 
-Stopping ends the response and any running tool calls, which are recorded as aborted. Prompts still waiting stay queued. The session is kept, so send another prompt when you're ready.
+Stopping ends the response and any running tool calls. CodeWork records those calls as aborted. Prompts still waiting stay queued. The session is kept, so you can send another prompt when you're ready.
 
-## Output Limit
+## Output limit
 
 If a reply hits the model's output limit in the middle of tool calls, those calls don't run. The model gets them back as errors and is asked to send them again in full. After two such replies in a row, the run ends.
 
 When the last reply was cut off, `codework run` prints `Response was truncated: the model reached its output token limit.` and exits with 1.
 
-## Crashes and Restarts
+## Crashes and restarts
 
-When `codework serve` starts, it resumes the runs a crash or shutdown cut off:
+When `codework serve` starts, it resumes any runs that a crash or shutdown cut off:
 
-- A reply that was streaming is kept as aborted, out of the model's view, and the request counts as a failed attempt under [Retries](#retries).
-- Tool calls that had finished keep their results. Those still running are recorded as aborted and never run again, so the model can call them again.
+- A reply that was streaming is kept as aborted and hidden from the model. The request counts as a failed attempt under [Retries](#retries).
+- Tool calls that had finished keep their results. Calls that were still running are recorded as aborted and never run again. The model can call them again if it needs to.
 
-A run cut off by 5 crashes in a row isn't resumed. It ends with a `session.run.failed` event, and its waiting prompts stay queued for your next one. A shutdown doesn't count toward the 5, and a run you stopped isn't resumed.
+A run cut off by 5 crashes in a row isn't resumed. It ends with a `session.run.failed` event, and its waiting prompts stay queued for your next run. A shutdown doesn't count toward the 5. A run you stopped yourself is never resumed.
 
-## No Permission Prompts
+## No permission prompts
 
-CodeWork never asks before it acts. Every tool runs as soon as the model calls it. Work in a git repository so changes are easy to review and undo, and use a [sandbox](/docs/sandboxes/) for work you don't want on your machine.
+CodeWork never asks before it acts. Every tool runs as soon as the model calls it. Work in a git repository so you can review and undo changes easily. Use a [sandbox](/docs/sandboxes/) for work you don't want on your machine.

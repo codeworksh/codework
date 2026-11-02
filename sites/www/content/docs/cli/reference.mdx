@@ -31,7 +31,7 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `codework plugin check [spec]`   | Report plugins with a newer revision                             |
 | `codework plugin update [spec]`  | Fetch newer revisions                                            |
 | `codework plugin reload`         | Re-import plugins in a running server                            |
-| `codework session link <id>`     | Anchor a session to a project folder, through a running server   |
+| `codework session link <id>`     | Link a session to a project folder, through a running server     |
 | `codework session relink <id>`   | Move a session's work, or one thread's, to another checkout      |
 | `codework thread list <id>`      | List a session's threads, newest first                           |
 | `codework thread fork <id>`      | Start a new thread from an entry of a thread's history           |
@@ -51,8 +51,8 @@ Commands that talk to a running server (`mcp reconnect`, `mcp disconnect`, `plug
 | `-s`, `--session <id>`       | Continue an existing session                                                           |
 | `--thread <id>`              | Thread of `--session` to continue: a thread ID, or `main` (default)                    |
 | `-C`, `--cwd <path>`         | Working directory for a new session                                                    |
-| `--provider <id>`            | Model catalog provider ID; give it together with `--model`                             |
-| `--model <id>`               | Model ID; give it together with `--provider`                                           |
+| `--provider <id>`            | Provider ID from the model catalog. Use it together with `--model`                     |
+| `--model <id>`               | Model ID. Use it together with `--provider`                                            |
 | `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`                           |
 | `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                                     |
 | `--sandbox-id <id>`          | Reuse an existing sandbox instance                                                     |
@@ -110,13 +110,13 @@ codework mcp add linear --url https://mcp.linear.app/mcp
 
 | Flag                | Applies to | Description                                                           |
 | ------------------- | ---------- | --------------------------------------------------------------------- |
-| `--unlink`          | `link`     | Clear the anchor, leaving the session with no project folder          |
+| `--unlink`          | `link`     | Clear the link, leaving the session with no project folder            |
 | `--thread <id>`     | `relink`   | Move only this thread (a thread ID, or `main`) instead of the session |
 | `-C`, `--directory` | `relink`   | Checkout to move into                                                 |
 | `--sandbox-id <id>` | `relink`   | Sandbox instance to move to (default `local`)                         |
 | `--json`            | `relink`   | Machine-readable output                                               |
 
-`codework session link <id> [path]` anchors the session to `path`, or to the current folder when you leave it out.
+`codework session link <id> [path]` links the session to `path`, or to the current folder when you leave `path` out.
 
 ## `codework thread`
 
@@ -164,9 +164,9 @@ On start, the server resumes runs that a crash or shutdown cut off.
 | `--port`    | Port to listen on, or `0` for any free port (default `7433`)     |
 | `--service` | Run as the background server, logging to `<home>/log/server.log` |
 
-## Global Flags
+## Global flags
 
-These work on every command. With `--server`, put `--home`, `--database` and `--user-config-dir` on `codework serve` instead.
+These work on every command. With `--server`, put `--home`, `--database`, and `--user-config-dir` on `codework serve` instead.
 
 | Flag                | Description                                                                             |
 | ------------------- | --------------------------------------------------------------------------------------- |
@@ -179,7 +179,7 @@ These work on every command. With `--server`, put `--home`, `--database` and `--
 | `--completions`     | Print a shell completion script: `bash`, `zsh`, `fish`, `sh`, `powershell`, or `pwsh`   |
 | `--wizard`          | Start wizard mode for a command                                                         |
 
-## Environment Variables
+## Environment variables
 
 | Variable               | Description                                                         |
 | ---------------------- | ------------------------------------------------------------------- |

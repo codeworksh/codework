@@ -1,10 +1,10 @@
 ---
-title: Model Catalog
-sidebarTitle: Catalog & Prices
+title: Model catalog
+sidebarTitle: Catalog & prices
 description: Every model CodeWork can run, what each one costs, and which thinking levels it supports.
 ---
 
-CodeWork reads models from a catalog in your CodeWork home. The catalog lists each model's provider, context window, input types, reasoning support, and price, and it's what `--provider`, `--model`, and the model picker in your editor choose from.
+CodeWork reads models from a catalog in your CodeWork home. The catalog lists each model's provider, context window, input types, reasoning support, and price. `--provider`, `--model`, and your editor's model picker all choose from it.
 
 ```bash
 codework models                         # every model, as provider/model
@@ -12,9 +12,9 @@ codework models --provider openai-codex # one provider
 codework models providers               # provider IDs only
 ```
 
-`codework models` lists the downloaded catalog. Models you add in [settings](/docs/models/custom) aren't in it, but you can still run them and they show in editor model pickers.
+`codework models` lists the downloaded catalog. Models you add in [settings](/docs/models/custom) aren't in this list. You can still run them, and they appear in editor model pickers.
 
-## Where the Catalog Comes From
+## Where the catalog comes from
 
 | Provider                                      | Source                                                                                  |
 | --------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -24,7 +24,7 @@ codework models providers               # provider IDs only
 | Every other provider                          | [models.dev](https://models.dev): any provider whose models support tool calling.       |
 | [Your own models](/docs/models/custom)        | The `models` array in your settings, added to the catalog.                              |
 
-CodeWork downloads the catalog to `~/.codework/models.gen.json` and downloads it again when it's older than 15 minutes. Change that window with `CODEWORK_MODELS_TTL`, or refresh it now:
+CodeWork downloads the catalog to `~/.codework/models.gen.json` and downloads a fresh copy once it's older than 15 minutes. Change that window with `CODEWORK_MODELS_TTL`, or refresh it now:
 
 ```bash
 codework models refresh --force
@@ -32,9 +32,9 @@ codework models refresh --force
 
 If a download fails, the last catalog stays in use. With no catalog at all, CodeWork falls back to a built-in one that covers only Anthropic, OpenAI, and OpenRouter.
 
-To use a catalog file you manage, point `CODEWORK_MODELS_FILE` at it. CodeWork reads it and reloads it when it changes, but only `codework models refresh` writes to it.
+To use your own catalog file, point `CODEWORK_MODELS_FILE` at it. CodeWork reads the file and reloads it whenever it changes. Only `codework models refresh` writes to it.
 
-## How Pricing Works
+## How pricing works
 
 Prices are in US dollars **per million tokens**, with four rates per model:
 
@@ -45,9 +45,9 @@ Prices are in US dollars **per million tokens**, with four rates per model:
 | Cache read  | Prompt tokens served from the provider's cache                    |
 | Cache write | Prompt tokens written to the cache, on providers that bill for it |
 
-Some models also have long-context tiers: once a request's prompt, cached tokens included, passes a threshold, a higher set of rates applies to the whole request. They're listed under `cost.tiers` in `~/.codework/models.gen.json`.
+Some models also have long-context tiers. Once a request's prompt passes a threshold, with cached tokens counted, higher rates apply to the whole request. The tiers are listed under `cost.tiers` in `~/.codework/models.gen.json`.
 
-Every `codework run` ends with a usage summary that adds these up for that run:
+Every `codework run` ends with a usage summary that totals these costs for the run:
 
 ```text
 ── usage ───────────────────────────────────────────────────────────────
@@ -59,13 +59,13 @@ cost     $0.003127 · 3 turns
 
 <Callout title="Subscriptions are billed by your plan">
 	With [OpenAI Codex](/docs/models/openai-codex) or [GitHub Copilot](/docs/models/github-copilot), the cost line is
-	what the same tokens would cost at API rates. What you actually pay is set by your ChatGPT or Copilot plan. Use it to
-	compare models, not as a bill.
+	what the same tokens would cost at API rates. What you actually pay is set by your ChatGPT or Copilot plan. Use the
+	cost line to compare models, not as a bill.
 </Callout>
 
-## OpenAI Codex Models
+## OpenAI Codex models
 
-Available with `codework auth login --openai-codex`. Prices are the API-equivalent rates CodeWork uses for the usage summary, as input / cache read / output.
+Available with `codework auth login --openai-codex`. Prices are the API-equivalent rates CodeWork uses for the usage summary, listed as input / cache read / output.
 
 | ID                    | Price                   | Context |
 | --------------------- | ----------------------- | ------- |
@@ -78,11 +78,11 @@ Available with `codework auth login --openai-codex`. Prices are the API-equivale
 | `gpt-5.6-luna`        | $0.20 / $0.02 / $1.20   | 272K    |
 | `gpt-5.3-codex-spark` | $1.75 / $0.175 / $14.00 | 128K    |
 
-Every Codex model reasons, accepts images, and can write up to 128K output tokens. Above 272K prompt tokens, `gpt-6.1-sol` is priced at its long-context rates. A request served at the `flex` tier is priced at half; `priority` at double.
+Every Codex model reasons, accepts images, and can write up to 128K output tokens. Above 272K prompt tokens, `gpt-6.1-sol` is priced at its long-context rates. A request served at the `flex` tier costs half; one served at `priority` costs double.
 
-### Thinking Levels
+### Thinking levels
 
-Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/customize/settings#model), or the Thinking Effort picker in your editor. Ask for a level a model doesn't support and CodeWork uses the next one up, or the highest it has.
+Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/customize/settings#model), or the Thinking Effort picker in your editor. If you ask for a level a model doesn't support, CodeWork uses the next level up, or the model's highest level.
 
 | Model                                                        | Levels                    |
 | ------------------------------------------------------------ | ------------------------- |
@@ -92,9 +92,9 @@ Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/customize/s
 
 On every Codex model, `minimal` is sent as `low`.
 
-## Top OpenRouter Models
+## Top OpenRouter models
 
-Available with `OPENROUTER_API_KEY` set. See [OpenRouter](/docs/models/openrouter). Use the ID with the `openrouter` provider, for example `--provider openrouter --model deepseek/deepseek-v4.1-flash`.
+Available when `OPENROUTER_API_KEY` is set. See [OpenRouter](/docs/models/openrouter). Use the ID with the `openrouter` provider, for example `--provider openrouter --model deepseek/deepseek-v4.1-flash`.
 
 | Model               | ID                             |
 | ------------------- | ------------------------------ |
@@ -106,4 +106,4 @@ Available with `OPENROUTER_API_KEY` set. See [OpenRouter](/docs/models/openroute
 | DeepSeek V4.1 Flash | `deepseek/deepseek-v4.1-flash` |
 | MiniMax M3          | `minimax/minimax-m3`           |
 
-OpenRouter's prices and context windows come from OpenRouter when the catalog downloads, for your key when it's set, so they can change between refreshes. The current ones are under each model's `cost` and `contextWindow` in `~/.codework/models.gen.json`.
+CodeWork fetches OpenRouter's prices and context windows from OpenRouter each time the catalog downloads, for your key if it's set. They can change between refreshes. The current ones are under each model's `cost` and `contextWindow` in `~/.codework/models.gen.json`.

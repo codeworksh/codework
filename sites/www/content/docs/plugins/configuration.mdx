@@ -1,12 +1,12 @@
 ---
-title: Configure Plugins
+title: Configure plugins
 sidebarTitle: Configuration
 description: Declare plugins in settings.jsonc, pass them options, and turn them on or off for a project or for yourself.
 ---
 
 Plugins are configured in the `plugins` array of a CodeWork settings file. The same array both selects which modules load and configures the plugins they contain.
 
-## Settings Files
+## Settings files
 
 CodeWork reads two settings layers and combines them, lowest priority first:
 
@@ -15,7 +15,7 @@ CodeWork reads two settings layers and combines them, lowest priority first:
 | User    | `~/.codework/settings.jsonc`                                 | Plugins you want in every project.                   |
 | Project | `.codework/settings.jsonc` in the nearest ancestor directory | Plugins the whole team should get. Commit this file. |
 
-Both layers fall back to `settings.json` when there is no `.jsonc` file. `--home` (or the `CODEWORK_HOME_DIR` environment variable) moves the user layer along with the rest of the CodeWork home, and `--user-config-dir <dir>` replaces just the user settings file with `<dir>/settings.jsonc`.
+Both layers fall back to `settings.json` when there is no `.jsonc` file. `--home` (or the `CODEWORK_HOME_DIR` environment variable) moves the user layer along with the rest of the CodeWork home. `--user-config-dir <dir>` replaces just the user settings file with `<dir>/settings.jsonc`.
 
 The `plugins` arrays **add up** rather than replace each other: the user list comes first, then the project list extends it. A teammate's project plugins never remove the personal ones you rely on.
 
@@ -26,7 +26,7 @@ CodeWork re-reads settings at every turn. Changing an option, flipping `enabled`
 	does not skip a broken file, because skipping it would silently drop everything else it configures.
 </Callout>
 
-## Two Kinds of Entries
+## Two kinds of entries
 
 Every item in `plugins` is one of two things.
 
@@ -53,7 +53,7 @@ A configuration entry never loads, installs, or moves anything. If its name matc
 
 An entry with both `plugin` and `package`, or with an `enabled` or `options` of the wrong type, makes the settings file invalid.
 
-### Configuration Fields
+### Configuration fields
 
 | Field     | Type    | Meaning                                                                                       |
 | --------- | ------- | --------------------------------------------------------------------------------------------- |
@@ -64,7 +64,7 @@ An entry with both `plugin` and `package`, or with an `enabled` or `options` of 
 
 When several entries configure the same plugin, the last `enabled` wins and the last `options` block replaces earlier ones whole. Option blocks are never merged, because CodeWork cannot know what their keys mean.
 
-## Turn Plugins On and Off
+## Turn plugins on and off
 
 Disable any plugin, built-in or not, by ID:
 
@@ -80,7 +80,7 @@ Some plugins are **opt-in**: they load with everything else but stay off until a
 
 Disabling a plugin in your project file also works on a plugin that came from your user file, since the lists are combined.
 
-## Pass Options to a Plugin
+## Pass options to a plugin
 
 Options belong to the plugin, so their shape is whatever the plugin's README says. For example, the example `house-style` prompt plugin takes a list of rules:
 
@@ -98,7 +98,7 @@ Options belong to the plugin, so their shape is whatever the plugin's README say
 
 Put the module entry before its configuration. `codework plugin add` does this for you, inserting the module ahead of any configuration you already wrote for it.
 
-## Paths in Settings
+## Paths in settings
 
 A relative path in a settings file resolves from the directory of the file that declares it, not from where you run CodeWork.
 

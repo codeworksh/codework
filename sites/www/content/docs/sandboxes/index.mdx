@@ -4,9 +4,9 @@ sidebarTitle: Overview
 description: Where a session's files live and its commands run.
 ---
 
-## What a Sandbox Adds
+## What a sandbox adds
 
-A sandbox is the environment a session works in: a filesystem and a shell. Every session has exactly one, and choosing it decides several things at once:
+A sandbox is the environment a session works in: a filesystem and a shell. Every session has exactly one. The sandbox you choose decides several things at once:
 
 - **The file and shell tools.** `read`, `write`, and `edit` act on its files, and `bash` runs commands in its shell.
 - **Project instructions.** `AGENTS.md` and `CLAUDE.md` are found by walking up from its working directory.
@@ -14,11 +14,7 @@ A sandbox is the environment a session works in: a filesystem and a shell. Every
 
 Swap the sandbox and all of this moves with it. The agent, its tools, and your plugins stay the same.
 
-<Placeholder title="How tools reach a sandbox">
-	Diagram: the agent's tools go through one sandbox (filesystem + shell), backed by Local, Virtual, or Remote.
-</Placeholder>
-
-## Kinds of Sandbox
+## Kinds of sandbox
 
 | Kind                               | Drivers         | Where the work happens                                          |
 | ---------------------------------- | --------------- | --------------------------------------------------------------- |
@@ -26,9 +22,9 @@ Swap the sandbox and all of this moves with it. The agent, its tools, and your p
 | [Virtual](/docs/sandboxes/virtual) | memory, sqldb   | An in-memory filesystem and an emulated bash. No real programs. |
 | [Remote](/docs/sandboxes/remote)   | daytona, vercel | A separate machine in the cloud.                                |
 
-Pick the one that fits your use case. The wider the environment, the more model-directed work can read, change, run, and reach.
+Pick the one that fits the task. The wider the sandbox, the more the agent can read, change, run, and reach.
 
-## Choose a Sandbox
+## Choose a sandbox
 
 Pass `--sandbox-driver` when you start a session:
 
@@ -36,15 +32,15 @@ Pass `--sandbox-driver` when you start a session:
 codework run --sandbox-driver memory "Draft a README for a CLI tool"
 ```
 
-Leave the flag off when you continue a session with `--session`: it keeps the sandbox it has. Editor sessions over ACP always use your local folder.
+Leave the flag off when you continue a session with `--session`. The session keeps the sandbox it has. Editor sessions over ACP always use your local folder.
 
 To move a session, or one of its threads, to another sandbox on a running server, use `codework session relink` with `--sandbox-id`. Without `--sandbox-id`, it moves back to `local`.
 
-## Reuse or Attach
+## Reuse or attach
 
-Start a new session in a sandbox CodeWork already created with `--sandbox-id <id>`. Its files are still there, and a stopped remote sandbox starts again.
+To start a new session in a sandbox CodeWork created earlier, pass `--sandbox-id <id>`. Its files are still there, and a stopped remote sandbox starts again.
 
-To use a remote sandbox you created yourself, pass its provider ID with the driver:
+To use a remote sandbox you created yourself, pass the ID the provider gave it, along with the driver:
 
 ```bash
 codework run --sandbox-driver daytona --sandbox-provider-id <id> "Inspect the repository"
@@ -52,7 +48,7 @@ codework run --sandbox-driver daytona --sandbox-provider-id <id> "Inspect the re
 
 CodeWork uses an attached sandbox but never stops it.
 
-## When Sandboxes Stop
+## When sandboxes stop
 
 CodeWork stops the sandboxes it creates:
 

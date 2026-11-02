@@ -1,5 +1,5 @@
 ---
-title: Troubleshooting Plugins
+title: Troubleshooting plugins
 sidebarTitle: Troubleshooting
 description: What each plugin error means, which file it points at, and how to fix it.
 ---
@@ -16,7 +16,7 @@ hint: a plugin installed from git or npm must ship compiled javascript; build it
 
 The slug in `error[...]` is the same string `codework plugin list` shows in place of a plugin ID, and the same one that appears in logs. Search for it on this page.
 
-## Start with Plugin List
+## Start with plugin list
 
 `codework plugin list` checks every configured entry without installing anything. Each row either resolves to a plugin ID or shows the slug of what went wrong:
 
@@ -26,13 +26,9 @@ codework plugin list --verbose
 
 `--verbose` adds the full message and the settings file behind each entry, which is usually enough to see the problem.
 
-<Placeholder title="Diagnosing a failing plugin">
-	Output of codework plugin list --verbose showing a plugin-not-installed entry with its declaring settings file.
-</Placeholder>
+## Errors by slug
 
-## Errors by Slug
-
-### The Entry Itself
+### The entry itself
 
 | Slug                        | What it means                                                            | Fix                                                                                                 |
 | --------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
@@ -65,14 +61,14 @@ codework plugin list --verbose
 
 A configuration entry with both `plugin` and `package`, or with an `enabled` or `options` of the wrong type, is reported as a settings error instead: `error[settings-decode-failed]` with the file and the offending key.
 
-### The Plugin Store
+### The plugin store
 
 | Slug                    | What it means                                                   | Fix                                                                                               |
 | ----------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `plugin-lock-timeout`   | Another install held the same plugin for more than two minutes. | Wait for it to finish. If nothing is running, remove the stale `.lock` folder in its store entry. |
 | `plugin-marker-invalid` | A store entry is damaged, or could not be read or written.      | Remove the entry under `~/.codework/cache/plugins` and install again.                             |
 
-## Common Situations
+## Common situations
 
 **A plugin I added does not show up in the system prompt.** Check that it is not a configuration entry pointing at nothing. Configuration entries that match no selected plugin are ignored without an error. `codework plugin list` shows only module entries, so if your plugin is missing from it, add the module entry.
 

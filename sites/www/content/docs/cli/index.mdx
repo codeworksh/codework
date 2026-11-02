@@ -6,7 +6,7 @@ description: Run CodeWork from your terminal, editor, or a server.
 
 The `codework` CLI runs agent sessions and manages models, plugins, and MCP servers. It also powers the other interfaces: `codework acp` for editors and `codework serve` for the RPC server.
 
-## Getting Started
+## Getting started
 
 ```bash
 pnpm add -g @codeworksh/cli
@@ -18,15 +18,11 @@ Then, from your project folder:
 codework run "Explain how this repository is structured"
 ```
 
-<Placeholder type="video" title="Your first CodeWork run">
-	Video: `codework run` exploring a repository and streaming its answer.
-</Placeholder>
-
 See [Installation](/docs/cli/installation) for requirements, signing in, and updates.
 
-## Running a Prompt
+## Running a prompt
 
-`codework run` sends one prompt, streams the answer, and exits when the turn is done. It prints the session ID first and the model, tokens, and cost last. Pass `--cwd` to start somewhere other than the current directory.
+`codework run` sends one prompt, streams the answer, and exits when the run is done. It prints the session ID first and the model, tokens, and cost last. Pass `--cwd` to start somewhere other than the current directory.
 
 Pick a model with `--provider` and `--model`, and reasoning effort with `--thinking`:
 
@@ -36,9 +32,9 @@ codework run --provider openrouter --model deepseek/deepseek-v4.1-flash --thinki
 
 Browse models with `codework models`, and see [Models](/docs/models) to connect a provider.
 
-Press Ctrl+C to stop a run. A stopped run is not picked up again later by `codework serve`.
+Press Ctrl+C to stop a run. `codework serve` won't resume a run you stopped.
 
-## Continuing a Session
+## Continuing a session
 
 Pass the session ID to send another prompt to the same session:
 
@@ -46,6 +42,6 @@ Pass the session ID to send another prompt to the same session:
 codework run --session <id> "Now write the migration"
 ```
 
-A session can have more than one thread. `codework thread list <id>` shows them, and `--thread <thread-id>` continues one. Without `--thread`, `run` continues the main thread.
+A session can have more than one thread, each a separate conversation. `codework thread list <id>` shows them, and `--thread <thread-id>` continues one. Without `--thread`, `run` continues the `main` thread.
 
-Every command and flag is in the [CLI Reference](/docs/cli/reference).
+Every command and flag is in the [CLI reference](/docs/cli/reference).
