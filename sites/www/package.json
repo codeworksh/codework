@@ -29,6 +29,7 @@
 		"vgpu": "^0.5.0"
 	},
 	"devDependencies": {
+		"@alchemy.run/cloudflare": "2.0.0-beta.84",
 		"@astrojs/check": "^0.9.10",
 		"@effect/platform-bun": "4.0.5",
 		"@effect/platform-node": "4.0.5",
