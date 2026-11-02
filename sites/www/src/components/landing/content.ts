@@ -58,32 +58,84 @@ export const showcase = {
 	],
 };
 
-export const modes = {
-	title: "Use it where you work",
-	description: "One agent and one set of sessions, wherever you are.",
-	cta: { label: "Read the CLI docs", href: "/docs/cli/" },
-	cards: [
+const NIGHTLY = `${GITHUB_URL}/releases/download/nightly`;
+
+export const install = {
+	title: "Install CodeWork",
+	description: "The CLI runs your agent harness. The desktop app runs many threads side by side.",
+	cta: { label: "Full installation guide", href: "/docs/cli/installation/" },
+	cli: {
+		title: "CLI",
+		body: "One command installs the standalone binary, or add the npm package.",
+		note: "The binary needs no Node.js, on macOS (Apple silicon) and Linux (x64, ARM64).",
+		docs: { label: "Quickstart", href: "/docs/quickstart/" },
+	},
+	desktop: {
+		title: "Desktop",
+		channel: "Canary",
+		body: "Run many threads side by side. Fresh builds, so expect a few rough edges.",
+		releases: `${GITHUB_URL}/releases/tag/nightly`,
+		checksums: `${NIGHTLY}/SHA256SUMS`,
+		platforms: [
+			{
+				name: "macOS (ARM64)",
+				detail: "Apple silicon",
+				files: [
+					{ label: "DMG", href: `${NIGHTLY}/codework-desktop-mac-arm64.dmg` },
+					{ label: "ZIP", href: `${NIGHTLY}/codework-desktop-mac-arm64.zip` },
+				],
+			},
+			{
+				name: "Linux (x64)",
+				detail: "Intel / AMD",
+				files: [
+					{ label: "AppImage", href: `${NIGHTLY}/codework-desktop-linux-x64.AppImage` },
+					{ label: "DEB", href: `${NIGHTLY}/codework-desktop-linux-x64.deb` },
+					{ label: "pacman", href: `${NIGHTLY}/codework-desktop-linux-x64.pacman` },
+				],
+			},
+			{
+				name: "Linux (ARM64)",
+				detail: "ARM64",
+				files: [
+					{ label: "AppImage", href: `${NIGHTLY}/codework-desktop-linux-arm64.AppImage` },
+					{ label: "DEB", href: `${NIGHTLY}/codework-desktop-linux-arm64.deb` },
+					{ label: "pacman", href: `${NIGHTLY}/codework-desktop-linux-arm64.pacman` },
+				],
+			},
+		],
+	},
+};
+
+export const gallery = {
+	label: "The desktop app",
+	// Each title and line shows with its screenshot.
+	screens: [
 		{
-			title: "CLI",
-			body: "Run a task from your terminal and pick the session up later.",
-			command: 'codework run "build me flappy bird"',
-			href: "/docs/cli/",
+			title: "All your projects, one place",
+			body: "Orchestrate threads across projects, steer them while they work. Go tokenmaxxing to warm up those GPUs.",
+			src: "/images/landing/app/desktop.webp",
+			alt: "The CodeWork desktop app with threads from four projects, one of them writing and running tests.",
 		},
 		{
-			title: "Editor",
-			body: "The agent inside Zed, or any editor that speaks ACP.",
-			command: "codework acp",
-			href: "/docs/integrations/acp/",
+			title: "Steer, don't restart",
+			body: "Changed your mind halfway? Nudge the agent while it works. No do-overs, no hard feelings.",
+			src: "/images/landing/app/steer.webp",
+			alt: "A thread still working, with a message waiting to steer it.",
 		},
 		{
-			title: "Server",
-			body: "Keep sessions running and drive them from your own tools.",
-			command: "codework serve",
-			href: "/docs/integrations/rpc/",
+			title: "Side by side",
+			body: "As many threads as your screen can fit. Taste one while the rest are still cooking.",
+			src: "/images/landing/app/split.webp",
+			alt: "Threads open side by side, one finished and one still working.",
+		},
+		{
+			title: "Bored? Dino's got your back",
+			body: "The agent writes your tests, you keep the dino alive. Zero tokens, peak productivity.",
+			src: "/images/landing/app/game.webp",
+			alt: "The dino game running full screen in the desktop app.",
 		},
 	],
-	backdrop: "/images/landing/editor.webp",
-	soon: [{ title: "Desktop", body: "Run, watch and review many sessions side by side." }],
 };
 
 export const models = {
