@@ -5,21 +5,22 @@ description: The built-in tools and how to turn them on or off.
 
 ## Built-In Tools
 
-| Tool    | What it does                 | Default |
-| ------- | ---------------------------- | ------- |
-| `read`  | Read a text file or image    | On      |
-| `write` | Create or overwrite a file   | On      |
-| `edit`  | Replace exact text in a file | On      |
-| `bash`  | Run a shell command          | On      |
-| `grep`  | Search file contents         | Off     |
-| `find`  | Find files by glob           | Off     |
-| `ls`    | List a directory             | Off     |
+| Tool         | What it does                 | Default |
+| ------------ | ---------------------------- | ------- |
+| `read`       | Read a text file or image    | On      |
+| `write`      | Create or overwrite a file   | On      |
+| `edit`       | Replace exact text in a file | On      |
+| `bash`       | Run a shell command          | On      |
+| `grep`       | Search file contents         | Off     |
+| `find`       | Find files by glob           | Off     |
+| `ls`         | List a directory             | Off     |
+| `toolsearch` | Find and load deferred tools | Auto    |
 
 Relative paths resolve against the session's working directory.
 
 ## Limits
 
-- **`read`** returns up to 2,000 lines or 50 KB, and can read a range of lines. Images (JPEG, PNG, GIF, WebP, BMP) go to the model as attachments.
+- **`read`** returns up to 2,000 lines or 50 KB, and can read a range of lines. Images (JPEG, PNG, GIF, WebP, BMP) go to the model as attachments. A model without image input is told the image was left out.
 - **`write`** creates parent folders as needed.
 - **`edit`** takes a list of replacements. Each original piece must appear exactly once and not overlap another.
 - **`bash`** returns stdout and stderr together, cut to the last 2,000 lines or 50 KB. The full output is saved to a file in the sandbox. A non-zero exit is an error. The model can set a timeout in seconds.
@@ -31,7 +32,7 @@ Relative paths resolve against the session's working directory.
 
 ## Turn Tools On or Off
 
-Each built-in tool is a plugin with the ID `codework.tool.<name>`. The search tools are off, so CodeWork searches with `bash` instead. Turn them on in your settings:
+Each built-in tool is a plugin with the ID `codework.tool.<name>`. `grep`, `find`, and `ls` are off, so CodeWork searches with `bash` instead. Turn them on in your settings:
 
 ```jsonc title=".codework/settings.jsonc"
 {
@@ -53,6 +54,20 @@ Set `enabled` to `false` to turn a tool off:
 
 Use `~/.codework/settings.jsonc` for every project, or `.codework/settings.jsonc` for one. Changes apply from your next message.
 
-## More Tools From Plugins
+## Deferred Tools
 
-[Plugins](/docs/plugins) can add tools, change how a built-in tool is described, or check calls before and after they run.
+Some tools aren't sent to the model up front. They're deferred: the model calls `toolsearch` with a few words, and the best matches, 8 by default, are available from its next call and stay available in that thread. Deferred tools come from [MCP servers](/docs/customize/mcp) with `deferred` exposure, or from plugins.
+
+`toolsearch` turns itself on when a thread has deferred tools, or an enabled MCP server with `deferred` exposure. A settings entry turns it off, or on when nothing is deferred:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [{ "plugin": "codework.tool.toolsearch", "enabled": false }],
+}
+```
+
+## More Tools
+
+[Plugins](/docs/plugins) can add tools, change how a built-in tool is described, or check calls before and after they run. [MCP servers](/docs/customize/mcp) add their tools as `mcp__<server>__<tool>`.
+
+The model can only run tools it has been sent. A call to any other tool returns an error.

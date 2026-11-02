@@ -27,7 +27,7 @@ CodeWork walks from the session's working directory up to the sandbox root. Each
 
 - Parents are included. Subfolders are not.
 - There's no global file. `~/AGENTS.md` loads only when you work under your home folder.
-- In a virtual or remote sandbox, files on your machine aren't read.
+- Files are read inside the session's sandbox. With a remote sandbox, that's the sandbox's files, not your machine's.
 - In a git worktree nested inside the main checkout, the main root's file is skipped if the worktree has one with the same name.
 
 ## How They Appear in the Prompt
@@ -48,7 +48,7 @@ Project-Specific Instructions & Guidelines:
 </project_context>
 ```
 
-There's no size limit, and every file is sent with every request, so keep them short. Files are read again before each model call, so edits apply from your next message.
+There's no size limit, and every file stays in the model's context for the whole session, so keep them short. Files are read again before each model call, and an edit reaches the model as an update to `<project_context>`.
 
 ## Example
 

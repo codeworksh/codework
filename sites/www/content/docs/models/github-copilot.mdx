@@ -3,7 +3,7 @@ title: GitHub Copilot
 description: Use Claude, GPT, Gemini, Grok, and more through your Copilot subscription.
 ---
 
-Requires a GitHub Copilot subscription. Free plans get a smaller set of models.
+Requires GitHub Copilot on your GitHub account: a subscription, a seat from your organization, or Copilot Free.
 
 ## Sign In
 
@@ -19,16 +19,28 @@ On GitHub Enterprise, pass your domain:
 codework auth login --github-copilot --enterprise github.example.com
 ```
 
-Add `--enable-models` to turn on catalog models your Copilot settings haven't enabled yet.
+When you sign in, CodeWork records which models your account can use, and editor model pickers list only those. Add `--enable-models` to also turn on the models your Copilot settings haven't enabled or disabled yet. Sign in again after your plan or your organization's Copilot policies change.
+
+To sign in a running `codework serve` instead of this machine, add `--server ws://127.0.0.1:7433/rpc/v1`.
 
 ## Run
 
 ```bash
 codework models --provider github-copilot
-codework run --provider github-copilot --model <model-id> "Explain this repository"
+codework run --provider github-copilot --model claude-sonnet-5.5 "Explain this repository"
 ```
 
-Models are served through `api.githubcopilot.com`, or your Enterprise's own Copilot endpoint. Which ones you can use depends on your plan and your organization's Copilot policies.
+`codework models` lists every Copilot model in the catalog, including ones your account can't use.
+
+Requests go to the Copilot API host GitHub gives your account at sign-in, or your Enterprise's Copilot endpoint.
+
+## Thinking
+
+Claude Opus 5.5, Claude Sonnet 5.5, and the Claude Fable models on Copilot can't turn thinking off. GPT models that OpenAI lets turn reasoning off, such as `gpt-6-luna` and `gpt-5.6-luna`, accept `off` here too.
+
+## Use a Token Instead
+
+Set `COPILOT_GITHUB_TOKEN` and CodeWork uses it instead of the stored login. `GITHUB_TOKEN` and `GH_TOKEN` are never read.
 
 ## Check or Remove the Login
 
@@ -36,6 +48,8 @@ Models are served through `api.githubcopilot.com`, or your Enterprise's own Copi
 codework auth status --github-copilot
 codework auth logout --github-copilot
 ```
+
+Copilot logins don't expire. If requests keep failing with 401, sign in again.
 
 ## Pricing
 

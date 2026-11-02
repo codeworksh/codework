@@ -38,9 +38,9 @@ The system prompt is a short base prompt plus your project's `AGENTS.md` or `CLA
 
 ## Retries
 
-CodeWork retries rate limits, overloads, server errors, timeouts, and dropped connections. The failed attempt isn't kept in the conversation.
+CodeWork retries rate limits, overloads, server errors, timeouts, and dropped connections. The model never sees the failed attempt.
 
-By default it retries up to 3 times, waiting 2 seconds and doubling each time, up to 60 seconds. If the provider asks for a longer wait, the turn fails. Quota, billing, bad request, and prompt-too-long errors are never retried.
+By default it retries up to 3 times, waiting 2 seconds and doubling each time, up to 60 seconds. If the provider asks to wait longer than that, the turn fails. Quota, billing, bad request, and prompt-too-long errors are never retried.
 
 Change the limits with `retry` in your settings.
 
@@ -48,7 +48,7 @@ Change the limits with `retry` in your settings.
 
 `codework run` and ACP editors send one prompt at a time. An editor's second prompt to a busy session is rejected.
 
-With the RPC server, `session.prompt` takes a `delivery` field:
+With the RPC server, `thread.prompt` takes a `delivery` field:
 
 | `delivery`        | When the model sees it                        |
 | ----------------- | --------------------------------------------- |
@@ -57,15 +57,38 @@ With the RPC server, `session.prompt` takes a `delivery` field:
 
 `codework run --server <url> --session <id>` sends a follow-up, so it waits its turn.
 
+Until the model takes a prompt in, you can change your mind:
+
+| RPC method      | What it does                                           |
+| --------------- | ------------------------------------------------------ |
+| `thread.queue`  | Lists the waiting prompts, in the order they were sent |
+| `thread.cancel` | Withdraws one                                          |
+| `thread.update` | Rewrites one, or moves it to the other lane, in place  |
+
 ## Stopping a Run
 
-| Interface      | How to stop                                      |
-| -------------- | ------------------------------------------------ |
-| `codework run` | `ctrl-c`. With `--server`, it stops the session. |
-| ACP editors    | The stop button (`session/cancel`)               |
-| RPC server     | `session.interrupt`                              |
+| Interface      | How to stop                                                    |
+| -------------- | -------------------------------------------------------------- |
+| `codework run` | `ctrl-c`. With `--server`, it stops that thread.               |
+| ACP editors    | The stop button (`session/cancel`). It stops that thread.      |
+| RPC server     | `thread.interrupt` for one thread, `session.interrupt` for all |
 
-Stopping ends the response and any running tool calls, which are recorded as aborted. The session is kept, so send another prompt when you're ready.
+Stopping ends the response and any running tool calls, which are recorded as aborted. Prompts still waiting stay queued. The session is kept, so send another prompt when you're ready.
+
+## Output Limit
+
+If a reply hits the model's output limit in the middle of tool calls, those calls don't run. The model gets them back as errors and is asked to send them again in full. After two such replies in a row, the run ends.
+
+When the last reply was cut off, `codework run` prints `Response was truncated: the model reached its output token limit.` and exits with 1.
+
+## Crashes and Restarts
+
+When `codework serve` starts, it resumes the runs a crash or shutdown cut off:
+
+- A reply that was streaming is kept as aborted, out of the model's view, and the request counts as a failed attempt under [Retries](#retries).
+- Tool calls that had finished keep their results. Those still running are recorded as aborted and never run again, so the model can call them again.
+
+A run cut off by 5 crashes in a row isn't resumed. It ends with a `session.run.failed` event, and its waiting prompts stay queued for your next one. A shutdown doesn't count toward the 5, and a run you stopped isn't resumed.
 
 ## No Permission Prompts
 

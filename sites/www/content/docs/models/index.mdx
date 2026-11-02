@@ -12,26 +12,26 @@ A **model** writes CodeWork's answers and decides which tools to call. A **provi
 
 Sign in once and use the models included in your plan.
 
-| Provider                                      | Plan                | Sign in                                |
-| --------------------------------------------- | ------------------- | -------------------------------------- |
-| [OpenAI Codex](/docs/models/openai-codex)     | ChatGPT Plus or Pro | `codework auth login --openai-codex`   |
-| [GitHub Copilot](/docs/models/github-copilot) | GitHub Copilot      | `codework auth login --github-copilot` |
+| Provider                                      | Sign in                                |
+| --------------------------------------------- | -------------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)     | `codework auth login --openai-codex`   |
+| [GitHub Copilot](/docs/models/github-copilot) | `codework auth login --github-copilot` |
 
-Logins are stored in `~/.codework/aikit/auth.json` and refreshed automatically when they expire.
+Logins are stored in `~/.codework/aikit/auth.json`. OpenAI Codex logins are renewed automatically when they expire; GitHub Copilot logins don't expire.
 
 ### API Keys
 
 Set the provider's environment variable and CodeWork picks it up. No sign-in step.
 
-| Provider                              | Provider ID  | Environment variable |
-| ------------------------------------- | ------------ | -------------------- |
-| [OpenRouter](/docs/models/openrouter) | `openrouter` | `OPENROUTER_API_KEY` |
-| Anthropic                             | `anthropic`  | `ANTHROPIC_API_KEY`  |
-| OpenAI                                | `openai`     | `OPENAI_API_KEY`     |
-| Google Gemini                         | `google`     | `GEMINI_API_KEY`     |
-| xAI                                   | `xai`        | `XAI_API_KEY`        |
+| Provider                              | Provider ID  | Environment variable                 |
+| ------------------------------------- | ------------ | ------------------------------------ |
+| [OpenRouter](/docs/models/openrouter) | `openrouter` | `OPENROUTER_API_KEY`                 |
+| Anthropic                             | `anthropic`  | `ANTHROPIC_API_KEY`                  |
+| OpenAI                                | `openai`     | `OPENAI_API_KEY`                     |
+| Google Gemini                         | `google`     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| xAI                                   | `xai`        | `XAI_API_KEY`                        |
 
-These are the common ones. Any other [models.dev](https://models.dev) provider with tool-calling models works the same way: run `codework models providers` for the full list of IDs.
+These are the common ones. Every other provider in the catalog works the same way: run `codework models providers` for the full list of IDs. The variable each one reads is under `provider.env` in `~/.codework/models.gen.json`.
 
 ### Your Own Models
 
@@ -55,7 +55,7 @@ Or set a default for every run in your [settings](/docs/customize/settings#model
 }
 ```
 
-Without any settings, CodeWork uses `openai/gpt-5.6-luna` at `high` thinking, which needs `OPENAI_API_KEY`.
+Without any settings, CodeWork uses `openai/gpt-5.6-luna` at `medium` thinking, which needs `OPENAI_API_KEY`.
 
 In an editor, use the model and Thinking Effort pickers instead. They list every model from the providers CodeWork has credentials for. See [ACP](/docs/integrations/acp#sessions-and-configuration).
 
@@ -65,7 +65,7 @@ Reasoning models let you trade speed and cost for depth. CodeWork uses one scale
 
 `off` · `minimal` · `low` · `medium` · `high` · `xhigh` · `max`
 
-Each model supports a subset; ask for one it doesn't have and CodeWork uses the next level up. Pass `--thinking <level>` on a run, or set `thinkingLevel` in settings. The [catalog](/docs/models/catalog#thinking-levels) lists the levels for each Codex model.
+Each model supports a subset. Ask for one it doesn't have and CodeWork uses the next level up, or the highest it has. Pass `--thinking <level>` on a run, or set `thinkingLevel` in settings. The [catalog](/docs/models/catalog#thinking-levels) lists the levels for each Codex model.
 
 ## Pricing
 
@@ -80,14 +80,3 @@ cost     $0.003127 · 3 turns
 ```
 
 See [Catalog & Prices](/docs/models/catalog) for the price of each model and how the estimate is worked out.
-
-## Related
-
-<Cards>
-	<Card title="Catalog & Prices" href="/docs/models/catalog">
-		Every built-in model, with prices, context windows, and thinking levels.
-	</Card>
-	<Card title="Custom Models" href="/docs/models/custom">
-		Add a local model or a private gateway.
-	</Card>
-</Cards>

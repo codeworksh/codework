@@ -4,7 +4,7 @@ sidebarTitle: MCP
 description: Connect Model Context Protocol servers and give their tools to the model.
 ---
 
-CodeWork connects to [MCP](https://modelcontextprotocol.io) servers over stdio or streamable HTTP. Their tools reach the model as `mcp__<server>__<tool>`.
+CodeWork connects to [MCP](https://modelcontextprotocol.io) servers over stdio or streamable HTTP. Their tools reach the model as `mcp__<server>__<tool>`. Characters other than letters, digits and `_` become `_`, and a name longer than 64 characters is shortened with a hash.
 
 ## Where Servers Run
 
@@ -18,7 +18,7 @@ A sandbox is only where files and commands run. To give MCP access to a remote s
 
 ## Configure Servers
 
-User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.json`. The format matches other MCP clients, so you can copy entries over:
+User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.json` of the [project](/docs/customize/settings#where-settings-live). The format matches other MCP clients, so you can copy entries over:
 
 ```json title="~/.codework/mcp.json"
 {
@@ -39,10 +39,14 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 | ------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------- |
 | `command`, `args`, `env`, `cwd`                  | stdio  | One executable and its arguments, not a shell line. `cwd` is relative to where the server starts. |
 | `url`, `headers`                                 | HTTP   | A streamable HTTP endpoint. SSE is not supported.                                                 |
+| `type`                                           | both   | Optional: `stdio`, or `http` (also `streamable-http`).                                            |
 | `enabled`, `timeout`, `exposure`, `toolExposure` | both   | Off switch, per-request timeout in seconds (default 60), and which tools the model sees.          |
 | `scope`                                          | both   | Who shares one running server: `session` (default), `space` or `app`.                             |
+| `description`                                    | both   | What the server offers, in a sentence. Shown to the model for `deferred` servers.                 |
 
-`env` and `headers` values can use `${NAME}` or `$NAME` for an environment variable (`$$` for a literal `$`), or `!command` to use a command's output. A command runs once, and its output is reused until CodeWork restarts.
+Server names use letters, digits, `_` and `-`. A leading `~` in `command`, `args` and `cwd` is your home folder.
+
+`env` and `headers` values can use `${NAME}` or `$NAME` for an environment variable (`$$` for a literal `$`), or `!command` to use the trimmed output of a shell command. A variable that is unset or empty fails the server's connect. A command has 10 seconds; once it succeeds, its output is reused until CodeWork restarts.
 
 A broken file or entry is reported and skipped. The other servers still connect.
 
@@ -55,7 +59,7 @@ codework mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
 codework mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
 ```
 
-It writes the user file; `-l` writes the project's. `codework mcp remove <name>` removes an entry.
+It writes the user file; `-l` writes the project's, or `.codework/mcp.json` in the current folder when there's no project. An entry with the same name is replaced. `--env`, `--cwd`, `--header`, `--exposure`, `--description` and the `--oauth-*` flags fill in the other fields. `codework mcp remove <name>` removes an entry, `-l` from the project's file.
 
 `codework mcp list` connects to every enabled server and shows its state, tools and errors. It exits with 1 if an entry is broken or an enabled server does not connect.
 
@@ -67,7 +71,7 @@ An HTTP server without an `Authorization` header signs in with OAuth when it ask
 codework mcp login linear
 ```
 
-CodeWork opens the authorization page and waits for the browser. If the browser runs on another machine, over SSH say, paste the URL it was redirected to, or pipe it to the command. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
+CodeWork prints the authorization URL, opens it in your browser, and waits up to 5 minutes (`--timeout <seconds>`). `--browser=false` only prints it. If the browser runs on another machine, over SSH say, paste the URL it was redirected to, or pipe it to the command. Running sessions use the new sign-in from your next message. `codework mcp logout linear` signs out.
 
 Sign-ins are stored in `~/.codework/mcpauth.json`, by server name and URL, and refreshed when they expire. Servers that don't support client registration take an `oauth` object:
 
@@ -123,7 +127,9 @@ Share a server only when it keeps no per-session state. Sessions whose settings 
 { "plugins": [{ "plugin": "codework.tool.toolsearch", "enabled": false }] }
 ```
 
-`toolExposure` sets single tools, by name or with `*` patterns:
+While `toolsearch` is on, the `<mcpservers>` section of the system prompt lists the enabled servers with `deferred` tools, each with the first line of its `description`, or of the instructions the server sends once connected.
+
+`toolExposure` sets single tools, by name or with `*` patterns. An exact name wins over patterns; among patterns, the first match wins:
 
 ```json
 { "exposure": "hidden", "toolExposure": { "search_*": "direct" } }
@@ -135,8 +141,8 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 
 - Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees or has found: all of them at first, then new or changed ones.
 - If a server stops, the next call starts it again. A server that fails to connect stays failed until you change its settings or reconnect it.
-- Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
-- A server no running session needs closes after 10 minutes, and starts again when one does.
+- Edits to `mcp.json` apply from your next message. Changing only `exposure`, `toolExposure` or `description` doesn't restart a running server.
+- A server closes once no thread uses it, and after 10 minutes with no reply running on it. It starts again when needed.
 - A tool the server lists in a shape the MCP SDK rejects is skipped; the server's other tools still work. `codework mcp list` names the skipped tools, and `~/.codework/mcp.log` says why.
 - Server log messages go to `~/.codework/mcp.log`.
 

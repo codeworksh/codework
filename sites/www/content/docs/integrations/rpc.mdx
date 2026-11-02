@@ -18,14 +18,19 @@ Use it when you want CodeWork to outlive a terminal, to run it on another machin
 codework serve
 ```
 
-The server listens on `ws://127.0.0.1:7433/rpc/v1` and prints the address when it's ready.
+The server listens on `ws://127.0.0.1:7433/rpc/v1` and logs the address when it's ready.
 
-| Flag     | Description                                                  |
-| -------- | ------------------------------------------------------------ |
-| `--host` | Interface to bind (default `127.0.0.1`)                      |
-| `--port` | Port to listen on, or `0` for any free port (default `7433`) |
+| Flag        | Description                                                      |
+| ----------- | ---------------------------------------------------------------- |
+| `--host`    | Interface to bind (default `127.0.0.1`)                          |
+| `--port`    | Port to listen on, or `0` for any free port (default `7433`)     |
+| `--service` | Run as the background server, logging to `<home>/log/server.log` |
+
+To keep a server running in the background instead of a terminal, use `codework service start`, and `codework service stop` to end it.
 
 `--home`, `--database`, and `--user-config-dir` belong on the server. Model credentials, plugins, and working directories are resolved there, not on the client.
+
+When the server starts, it resumes the runs that a crash or shutdown cut off.
 
 <Callout type="warn">
 	The RPC server is not secure yet: it has no authentication, so anyone who can reach the port can drive your sessions.
@@ -35,24 +40,42 @@ The server listens on `ws://127.0.0.1:7433/rpc/v1` and prints the address when i
 
 ## Use It from the CLI
 
-Point any `run`, `auth`, `session`, or `plugin reload` command at the server:
+`run` and `auth` work locally unless you pass `--server`:
 
 ```bash
 codework run --server ws://127.0.0.1:7433/rpc/v1 "Inspect the failing tests"
 codework run --server ws://127.0.0.1:7433/rpc/v1 --session <id> "Now fix them"
+codework run --server ws://127.0.0.1:7433/rpc/v1 --session <id> --thread <thread-id> "Try OAuth instead"
 codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc/v1
-codework plugin reload
 ```
 
-A remote run doesn't boot a local harness. Pressing `ctrl-c` interrupts the shared session on the server; disconnecting without it leaves the work running.
+These commands only work against a running server, and `--server` defaults to `ws://127.0.0.1:7433/rpc/v1`:
+
+| Command                                | What it does                                       |
+| -------------------------------------- | -------------------------------------------------- |
+| `codework session link`, `relink`      | Change a session's project folder or where it runs |
+| `codework thread list`, `fork`         | List a session's threads, or start a new one       |
+| `codework plugin reload`               | Re-import configured plugins without a restart     |
+| `codework mcp reconnect`, `disconnect` | Restart or close one thread's MCP server           |
+
+A remote run doesn't boot a local harness. Pressing `ctrl-c` interrupts the thread on the server; disconnecting without it leaves the work running.
 
 ## Link a Session to a Project
 
-A session remembers which project folder it belongs to, so it picks up that project's settings and plugins wherever it's continued from. Change or clear that link on a running server with:
+A session remembers which project folder it belongs to, so it picks up that project's settings and plugins wherever it's continued from. Change or clear that link with:
 
 ```bash
 codework session link <session-id> ~/work/api
 codework session link <session-id> --unlink
+```
+
+Without a path, it links the folder you run it from.
+
+To move where the work happens instead, use `relink`. Add `--thread` to move only one thread:
+
+```bash
+codework session relink <session-id> -C ~/work/api
+codework session relink <session-id> --thread <thread-id> --sandbox-id <sandbox-id>
 ```
 
 ## Protocol
@@ -61,26 +84,40 @@ The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc
 
 {/* TODO: document request/response shapes and a minimal client example once the contract is published as a package. */}
 
+### Sessions and Threads
+
+A session holds one or more threads. Each thread is a single conversation with its own model, thinking level, title, and usage. Every session starts with a `main` thread, and `thread.fork` starts another from a point in an existing one.
+
+`session.*` methods act on the whole session. `thread.*` methods take `{ sessionId, threadId? }`; without `threadId` they act on the session's `main` thread.
+
 ### Methods
 
-| Group     | Methods                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------- |
-| `session` | `create`, `list`, `info`, `configure`, `link`, `relink`, `prompt`, `interrupt`, `wait`, `message` |
-| `sandbox` | `drivers`, `list`, `create`, `register`, `stop`                                                   |
-| `auth`    | `save`, `status`, `refresh`, `logout`                                                             |
-| `plugin`  | `reload`                                                                                          |
-| `event`   | `subscribe` (stream)                                                                              |
+| Group     | Methods                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `session` | `create`, `link`, `relink`, `delete`, `interrupt`, `log` (stream)                                                     |
+| `thread`  | `list`, `info`, `history`, `queue`, `configure`, `fork`, `prompt`, `cancel`, `update`, `interrupt`, `message`, `wait` |
+| `model`   | `list`                                                                                                                |
+| `project` | `rename`                                                                                                              |
+| `sandbox` | `drivers`, `list`, `create`, `register`, `stop`                                                                       |
+| `mcp`     | `connect`, `disconnect`                                                                                               |
+| `auth`    | `save`, `status`, `refresh`, `logout`                                                                                 |
+| `plugin`  | `reload`                                                                                                              |
+| `server`  | `info`                                                                                                                |
+| `event`   | `subscribe` (stream)                                                                                                  |
 
 ### Events
 
-`event.subscribe` streams every event the server publishes. Events are live and not replayed, so subscribe before you send a prompt.
+`event.subscribe` streams every event the server publishes, live, starting with a `server.connected` frame. Pass `threadId` to get only that thread's events. Live events are not replayed, so subscribe before you send a prompt.
 
-Each busy period starts with `session.execution.started` and ends with exactly one of `succeeded`, `failed`, or `interrupted`. A failure carries a category such as `provider-authentication-error` or `sandbox-mount-error`. Plugins publish their own events under `plugin.<plugin-id>.*`; a client skips types it doesn't know.
+`session.log` reads a session's stored events, then a `log.synced` marker. With `follow`, it keeps streaming new events as they're stored. Text and tool progress deltas are never stored, so they only arrive through `event.subscribe`.
+
+Each busy period of a thread starts with `session.execution.started` and ends with exactly one of `succeeded`, `failed`, or `interrupted`. A failure carries a category such as `provider-authentication-error` or `sandbox-mount-error`. A run that can't be resumed ends with `session.run.failed`. Plugins publish their own events under `plugin.<plugin-id>.*`; a client skips types it doesn't know.
 
 ### Lifecycle
 
-- `session.prompt` returns once the prompt is admitted. Follow the event stream for the result.
-- `session.interrupt` returns as soon as the stop is accepted; `session.wait` resolves when the session has settled.
+- `thread.prompt` returns once the prompt is admitted. Follow the event stream for the result. Its `delivery` is `steer` (taken in at the agent's next model request) or `followUp` (taken in after the current turn).
+- `thread.queue` lists prompts waiting to join the conversation. `thread.cancel` withdraws one, and `thread.update` changes its text or delivery.
+- `thread.interrupt` stops one thread; `session.interrupt` stops every thread of the session. Both return as soon as the stop is accepted. `thread.wait` resolves when the thread has settled.
 - Managed sandboxes stay up until you stop them or the server shuts down. External sandboxes are never stopped by the server.
 
 ## RPC or ACP?
@@ -91,14 +128,3 @@ Each busy period starts with `session.execution.started` and ends with exactly o
 | Lifetime  | Long-lived, outlives clients             | One process per editor connection                 |
 | Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/integrations/acp#zed) |
 | Sandboxes | Create, share, and reuse across sessions | Local project folder only                         |
-
-## Related
-
-<Cards>
-	<Card title="CLI Reference" href="/docs/cli/reference">
-		Every command and flag.
-	</Card>
-	<Card title="ACP" href="/docs/integrations/acp">
-		Use CodeWork inside your editor.
-	</Card>
-</Cards>

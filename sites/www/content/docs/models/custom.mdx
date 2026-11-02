@@ -36,22 +36,24 @@ codework run --provider ollama --model qwen3-coder:30b "Explain this repository"
 
 The same shape works for LM Studio, vLLM, llama.cpp, or anything else that speaks the OpenAI Chat Completions API. Change `baseUrl` to its address.
 
+Models from settings don't show in `codework models`, which lists only the downloaded catalog. They do show in editor model pickers.
+
 ## Fields
 
 Every entry needs all of these. A missing or mistyped field fails the session with the settings file and the field it didn't accept.
 
-| Field           | Description                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `id`            | Model ID, as you'll pass it to `--model`                                                     |
-| `name`          | Display name, shown in editor model pickers                                                  |
-| `provider`      | `id` (for `--provider`), `name`, `source` (use `"config"`), `env`, and an optional `key`     |
-| `protocol`      | Wire protocol, such as `openai-compatible`, `openai`, `anthropic`, `google`, or `openrouter` |
-| `baseUrl`       | The endpoint's base URL                                                                      |
-| `reasoning`     | `true` if the model supports thinking levels                                                 |
-| `input`         | `["text"]`, or `["text", "image"]` if it accepts images                                      |
-| `cost`          | Per-million-token `input`, `output`, `cacheRead`, and `cacheWrite`, for the usage summary    |
-| `contextWindow` | Most tokens the model accepts in one request                                                 |
-| `maxTokens`     | Most tokens it can generate in one response                                                  |
+| Field           | Description                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `id`            | Model ID, as you'll pass it to `--model`                                                  |
+| `name`          | Display name, shown in editor model pickers                                               |
+| `provider`      | `id` (for `--provider`), `name`, `source` (use `"config"`), `env`, and an optional `key`  |
+| `protocol`      | Wire protocol, such as `openai-compatible`, `openai`, `anthropic`, `google`, or `xai`     |
+| `baseUrl`       | The endpoint's base URL                                                                   |
+| `reasoning`     | `true` if the model supports thinking levels                                              |
+| `input`         | `["text"]`, or `["text", "image"]` if it accepts images                                   |
+| `cost`          | Per-million-token `input`, `output`, `cacheRead`, and `cacheWrite`, for the usage summary |
+| `contextWindow` | Most tokens the model accepts in one request                                              |
+| `maxTokens`     | Most tokens it can generate in one response                                               |
 
 ## Use an API Key
 
@@ -88,6 +90,10 @@ export GATEWAY_KEY="..."
 
 A literal key such as `"sk-..."` is rejected. A provider with a `key` only shows up in model pickers when that variable is set; a provider with no `key` and an empty `env`, like the Ollama example, always does.
 
+## Replace a Catalog Model
+
+An entry with the same `provider.id` and `id` as a catalog model replaces that model. When more than one settings file declares the same model, the project's `.codework/settings.jsonc` wins over `~/.codework/settings.jsonc`.
+
 ## Make It the Default
 
 Point `model` at your entry so you don't have to pass flags:
@@ -97,14 +103,3 @@ Point `model` at your entry so you don't have to pass flags:
 	"model": { "provider": "ollama", "id": "qwen3-coder:30b" },
 }
 ```
-
-## Related
-
-<Cards>
-	<Card title="Model Catalog" href="/docs/models/catalog">
-		Every built-in model and its price.
-	</Card>
-	<Card title="Settings" href="/docs/customize/settings">
-		The full settings reference.
-	</Card>
-</Cards>

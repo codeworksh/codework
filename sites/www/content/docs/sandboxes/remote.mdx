@@ -12,7 +12,7 @@ When the work needs a full Linux toolchain, real processes, or code you wouldn't
 | `daytona` | Daytona        |
 | `vercel`  | Vercel Sandbox |
 
-Both drivers are built into the CLI, with nothing to add to your settings. Their SDKs are optional dependencies of `@codeworksh/cli`. If your package manager skipped optional dependencies, the driver can't start.
+Both drivers are built into the CLI, with nothing to add to your settings. The standalone binary includes their SDKs. In the pnpm package they're optional dependencies of `@codeworksh/cli`, so if your package manager skipped optional dependencies, the driver can't start.
 
 ## Credentials
 

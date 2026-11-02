@@ -3,7 +3,7 @@ title: Sessions
 description: How sessions are stored, continued, and shared.
 ---
 
-A session is one conversation: your prompts, the answers, every tool call, and its model and sandbox. Every session is saved.
+A session is one piece of work: its project folder, its sandbox, and one or more threads. A thread is a conversation: your prompts, the answers, and every tool call. Every session starts with a thread called `main`. Everything is saved.
 
 ## Start a Session
 
@@ -14,7 +14,7 @@ session  <session-id>
 sandbox  local · /Users/you/work/api
 ```
 
-A session remembers its project folder, so that folder's `.codework/settings.jsonc` and plugins apply wherever you continue it. It also keeps its sandbox and working directory for life. Its title is the first line of its first prompt, cut to 48 characters.
+A session remembers the folder you ran it from, so that folder's `.codework/settings.jsonc` and plugins apply wherever you continue it. A thread's title is the first line of its first prompt, cut to 48 characters.
 
 ## Continue a Session
 
@@ -24,17 +24,35 @@ Pass the ID with `--session` (or `-s`):
 codework run --session <session-id> "Now fix them"
 ```
 
-The model sees the whole conversation so far. `--cwd` and the sandbox flags only apply to new sessions.
+This continues the `main` thread, and the model sees its whole conversation so far. Add `--thread <thread-id>` to continue another thread. `--cwd` and the sandbox flags only apply to new sessions.
 
 ## Change the Model
 
-`--provider`, `--model`, and `--thinking` also work on a continued session. The choice is saved and sticks until you change it:
+`--provider`, `--model`, and `--thinking` also work on a continued session. The choice is saved on the thread and sticks until you change it:
 
 ```bash
 codework run --session <session-id> --provider openrouter --model deepseek/deepseek-v4.1-flash "Try a different approach"
 ```
 
-Without a saved choice, a session uses the default model from your settings.
+Without a saved choice, a thread uses the default model from your settings.
+
+## Threads and Forks
+
+A fork is a new thread that starts from a finished message, or entry, of another thread. It keeps the history up to that point, and the model and thinking level chosen then. The original thread doesn't change.
+
+| Command                                      | What it does                                                   |
+| -------------------------------------------- | -------------------------------------------------------------- |
+| `codework thread list <session-id>`          | Lists the threads, newest first, with model, usage, and title  |
+| `codework thread fork <session-id> --at`     | Forks, keeping history through the entry                       |
+| `codework thread fork <session-id> --before` | Forks just before one of your prompts, and prints it to resend |
+
+Both `--at` and `--before` take an entry ID, from the RPC server's `thread.history`. The new thread's ID is printed, and `main` is forked unless you pass `--thread`. A fork has no title until its first prompt, and its usage counts only its own messages.
+
+These commands talk to a running `codework serve`, at `ws://127.0.0.1:7433/rpc/v1` unless you pass `--server`.
+
+## Move a Session
+
+`codework session relink <session-id> -C <dir>` moves where a session's work runs, for example to another checkout of the same project. `--sandbox-id` moves it to a sandbox, and `--thread` moves one thread only. `codework session link <session-id> [path]` changes the folder its settings come from. Both talk to a running `codework serve`.
 
 ## Usage Summary
 
@@ -60,8 +78,8 @@ cost     $0.002104 · 4 turns
 Every interface that uses the same CodeWork home sees the same sessions:
 
 - **Terminal.** `codework run --session <id>`.
-- **Editors.** ACP editors list past sessions for the open folder, including ones from `codework run`.
-- **RPC server.** `codework serve` owns its sessions while it runs. Continue one with `codework run --server <url> --session <id>`, or list them with `session.list`.
+- **Editors.** ACP editors list past sessions for the open folder, including ones from `codework run`. Each thread shows up as a session of its own, and forking in the editor starts a new thread from the latest message.
+- **RPC server.** `codework serve` owns its sessions while it runs. Continue one with `codework run --server <url> --session <id>`, or list threads with `thread.list`.
 
 There's no CLI command to list sessions. Keep the printed ID, or use your editor's thread history.
 
@@ -78,14 +96,3 @@ Sessions are stored in SQLite at `~/.codework/data/codework.db`.
 These work on `run`, `acp`, and `serve`. With `--server`, set them on `codework serve`.
 
 Interfaces only share sessions with the same home and database. An editor running `codework acp --home ~/.codework-zed` has its own sessions.
-
-## Related
-
-<Cards>
-	<Card title="ACP" href="/docs/integrations/acp">
-		Reopen sessions from your editor.
-	</Card>
-	<Card title="RPC Server" href="/docs/integrations/rpc">
-		Keep sessions in a long-lived server.
-	</Card>
-</Cards>

@@ -32,6 +32,8 @@ List every OpenRouter model CodeWork can use:
 codework models --provider openrouter
 ```
 
+Only models that support tool calling are listed. When the catalog downloads with your key set, the list narrows to the models your key can use. After setting the key for the first time, run `codework models refresh --force` to narrow it now.
+
 ## Pricing
 
-You pay OpenRouter at its listed rates. The usage summary at the end of each run estimates the cost from the [catalog](/docs/models/catalog), whose prices come from models.dev and track OpenRouter's.
+You pay OpenRouter at its listed rates. The usage summary at the end of each run estimates the cost from the [catalog](/docs/models/catalog), whose OpenRouter prices come from OpenRouter, for your key, each time the catalog downloads.

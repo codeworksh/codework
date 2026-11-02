@@ -1,10 +1,10 @@
 ---
 title: Build a Plugin
 sidebarTitle: Build a Plugin
-description: Write tool and prompt plugins with the @codeworksh/plugin SDK, test them locally, and publish them to npm or git.
+description: Write MCP, tool, and prompt plugins with the @codeworksh/plugin SDK, test them locally, and publish them to npm or git.
 ---
 
-A plugin is a module that default-exports one object made with `Plugin.define`. Its `setup` function runs at the start of a session and writes into the agent: tools into the tool registry, text into the system prompt.
+A plugin is a module that default-exports one object made with `Plugin.define`. Its `setup` function runs before every turn and writes into the agent: MCP servers into the server list, tools into the tool registry, text into the system prompt.
 
 Plugins build against `@codeworksh/plugin`, the same contract the harness itself depends on. Tool schemas use [Effect](https://effect.website) `Schema`.
 
@@ -23,11 +23,20 @@ Put it next to your project settings:
 import { Plugin, Tool } from "@codeworksh/plugin";
 import { Effect, Schema } from "effect";
 
+// CodeWork never checks options, so keep only the string facts.
+const readFacts = (options: Plugin.PluginOptions): Record<string, string> => {
+	const facts = options["facts"];
+	if (typeof facts !== "object" || facts === null) return {};
+	return Object.fromEntries(
+		Object.entries(facts).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+	);
+};
+
 export default Plugin.define({
 	id: "local.tool.facts",
 	kind: "tool",
 	setup(ctx, options) {
-		const facts = (options["facts"] ?? {}) as Record<string, string>;
+		const facts = readFacts(options);
 		const keys = Object.keys(facts);
 		if (keys.length === 0) return;
 
@@ -51,9 +60,9 @@ export default Plugin.define({
 </div>
 <div className="fd-step">
 
-### Install the SDK Beside It
+### Add Types for Your Editor
 
-A local plugin's imports resolve from its own folder, so `@codeworksh/plugin` and `effect` need to be installed where Node can find them, usually your project root:
+You do not need to install anything for the plugin to run: CodeWork gives every plugin its own copies of `@codeworksh/plugin` and `effect`. Install them as dev dependencies if you want types and autocomplete in your editor:
 
 ```bash
 pnpm add -D @codeworksh/plugin effect
@@ -95,13 +104,13 @@ codework run "How do we deploy this project?"
 
 ## The Plugin Definition
 
-| Field    | Required | Meaning                                                                                                        |
-| -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
-| `id`     | Yes      | A unique ID in the form `vendor.domain.name`: three lowercase segments, like `acme.tool.proc`.                 |
-| `kind`   | Yes      | `"tool"` or `"prompt"`. Decides which pass the plugin runs in. See [Order](/docs/plugins/configuration#order). |
-| `setup`  | Yes      | `(ctx, options) => void`. May return a `Promise` or an Effect.                                                 |
-| `optIn`  | No       | `true` keeps the plugin off until a settings entry sets `"enabled": true`.                                     |
-| `events` | No       | Event definitions this plugin publishes. Types must start with `plugin.<id>.`.                                 |
+| Field    | Required | Meaning                                                                                                                  |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `id`     | Yes      | A unique ID in the form `vendor.domain.name`: three lowercase segments, like `acme.tool.proc`.                           |
+| `kind`   | Yes      | `"mcp"`, `"tool"`, or `"prompt"`. Decides which pass the plugin runs in. See [Order](/docs/plugins/configuration#order). |
+| `setup`  | Yes      | `(ctx, options) => void`. May return a `Promise` or an Effect.                                                           |
+| `optIn`  | No       | `true` keeps the plugin off until a settings entry sets `"enabled": true`.                                               |
+| `events` | No       | Event definitions this plugin publishes. Types must start with `plugin.<id>.`.                                           |
 
 The `codework.` prefix is reserved for built-ins, and a third-party plugin that uses it is rejected.
 
@@ -109,41 +118,60 @@ The `codework.` prefix is reserved for built-ins, and a third-party plugin that 
 
 ### The Setup Context
 
-`ctx` is one object shared by every plugin in a session.
+`ctx` is one object shared by every plugin in a turn.
 
 | Field               | What it holds                                                      |
 | ------------------- | ------------------------------------------------------------------ |
+| `ctx.plugin.mcp`    | The MCP servers: `list`, `get`, `set`, `update`, `remove`.         |
 | `ctx.plugin.tools`  | The tool registry: `add`, `update`, `list`, `get`, `has`.          |
 | `ctx.plugin.prompt` | The system prompt registry: `foundation` and `sections`.           |
 | `ctx.sessionId`     | The current session ID.                                            |
-| `ctx.model`         | The model this session is calling.                                 |
+| `ctx.threadId`      | The thread this turn belongs to.                                   |
+| `ctx.model`         | The model this turn is calling.                                    |
 | `ctx.settings`      | The merged settings for this session.                              |
-| `ctx.location`      | Where the session's work happens.                                  |
-| `ctx.sandbox`       | Which sandbox the session runs in.                                 |
+| `ctx.location`      | Where the thread's work happens.                                   |
+| `ctx.sandbox`       | Which sandbox the thread runs in.                                  |
 | `ctx.paths`         | CodeWork's own directories: `home`, `bin`, `cache`, `data`, `log`. |
 | `ctx.events`        | `publish`, for announcing your plugin's own events.                |
 
-The registries are open only while `setup` runs. Do your registration there, not later.
+The registries are open only while `setup` runs. Do your registration there, not later. `ctx.plugin.mcp` can only be changed by `mcp` plugins; every later plugin can read it.
 
 ## Tool Plugins
 
 A tool is a definition plus a handler. `Tool.make` builds both at once:
 
-| Field                  | Meaning                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| `name`                 | What the model calls. Must be unique across the session.                         |
-| `description`          | What the model reads to decide when to use the tool.                             |
-| `parameters`           | An Effect `Schema` for the arguments. Converted to JSON Schema for the provider. |
-| `success`              | The schema of a successful result.                                               |
-| `failure`              | Optional. A typed, model-visible failure the model can react to.                 |
-| `encodeContent`        | Optional. Renders a success for the model. Defaults to JSON text.                |
-| `encodeFailureContent` | Optional. Renders a failure for the model.                                       |
-| `promptSnippet`        | Optional. One line for the system prompt's tool list.                            |
-| `promptGuidelines`     | Optional. Bullets added to the prompt's guidelines while the tool is active.     |
-| `exposure`             | Optional. Only `"direct"` (default) and `"model"` tools reach the model.         |
-| `label`                | Optional. A short display name for UIs.                                          |
+| Field                  | Meaning                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `name`                 | What the model calls. A later tool with the same name replaces an earlier one.         |
+| `description`          | What the model reads to decide when to use the tool.                                   |
+| `parameters`           | An Effect `Schema` for the arguments. Converted to JSON Schema for the provider.       |
+| `success`              | The schema of a successful result.                                                     |
+| `handler`              | `(params, call) => Effect`. Returns a success or a typed failure.                      |
+| `failure`              | Optional. A typed, model-visible failure the model can react to.                       |
+| `encodeContent`        | Optional. Renders a success for the model. Defaults to JSON text.                      |
+| `encodeFailureContent` | Optional. Renders a failure for the model. Defaults to JSON text.                      |
+| `promptSnippet`        | Optional. One line for the system prompt's tool list.                                  |
+| `promptGuidelines`     | Optional. Lines added to the prompt's `rules` while the tool is offered.               |
+| `exposure`             | Optional. When the model sees the tool. See [Exposure](#exposure). Default `"direct"`. |
+| `label`                | Optional. A short display name for UIs.                                                |
 
 Register it with `Tool.register(tool)` when the handler needs nothing but its arguments.
+
+The handler's second argument describes the call: `callID`, `toolName`, `rawArgs` (the arguments as the model sent them), and `modelInput`, the input types the calling model accepts, such as `["text"]` or `["text", "image"]`. Check `modelInput` before returning an image.
+
+### Exposure
+
+`exposure` decides whether the model sees a tool.
+
+| Exposure   | What happens                                                                       |
+| ---------- | ---------------------------------------------------------------------------------- |
+| `direct`   | The default. Offered to the model every turn.                                      |
+| `model`    | Offered to the model every turn, but never callable from other tools.              |
+| `deferred` | Not offered until the model loads it with `toolsearch`, which turns on by itself.  |
+| `codemode` | Reserved for codemode scripts. Not offered to the model, and cannot be called yet. |
+| `hidden`   | Never offered to the model.                                                        |
+
+Only offered tools run. A call to any other tool gets `Unknown tool: <name>`. An unknown `exposure` fails the plugin's `setup`.
 
 ### Run Inside the Sandbox
 
@@ -192,23 +220,25 @@ export default Plugin.define({
 
 ### Guard and Rewrite Tool Calls
 
-`tools.add` takes optional hooks that run around every call to that tool:
+`tools.add` takes optional hooks that run around every call to the tool you are adding:
 
 ```ts
-ctx.plugin.tools.add(tool, {
+ctx.plugin.tools.add(Tool.register(fetchTool), {
 	// Return { block: true } to stop the call. The reason is shown to the model.
-	beforeToolCall: ({ params }) =>
-		isDangerous(params) ? { block: true, reason: "blocked by acme policy" } : undefined,
+	beforeToolCall: ({ rawArgs }) =>
+		String(rawArgs["url"]).startsWith("https://")
+			? undefined
+			: { block: true, reason: "only https URLs are allowed" },
 
-	// Return replacement content, details, or isError to rewrite the result.
+	// Return replacement content, details, or isError to change the result.
 	afterToolCall: ({ terminal }) =>
 		terminal.status === "completed"
-			? { content: [...terminal.result.content, { type: "text", text: "(checked by acme)" }] }
+			? { content: [...terminal.result.content, { type: "text", text: "(fetched by acme)" }] }
 			: undefined,
 });
 ```
 
-Return `undefined` to leave the call alone. Hooks may also return a `Promise` or an Effect.
+Both hooks receive the decoded `params` and the call's `rawArgs`, `callID`, `toolName`, `modelInput`, `sessionId`, `threadId`, and `messageId`. `afterToolCall` also receives the finished call as `terminal`. Return `undefined` to leave the call alone. Hooks may also return a `Promise` or an Effect.
 
 ### Change Someone Else's Tool
 
@@ -221,6 +251,38 @@ ctx.plugin.tools.update("bash", { promptGuidelines: ["Prefer `pnpm` over `npm` i
 The tool must already be registered, so your plugin's entry has to come after the plugin that owns it.
 
 Registering a tool with a name that already exists replaces it. That is how a plugin overrides a built-in, but disabling the built-in by ID is usually clearer.
+
+## MCP Plugins
+
+An `mcp` plugin edits the list of [MCP servers](/docs/customize/mcp) a session connects to. The list starts with what `mcp.json` declares, and every `mcp` plugin runs before any tool exists, so the servers' tools are in place for the tool and prompt plugins that follow.
+
+```ts
+import { Plugin } from "@codeworksh/plugin";
+
+export default Plugin.define({
+	id: "acme.mcp.docs",
+	kind: "mcp",
+	setup(ctx) {
+		ctx.plugin.mcp.set("acme-docs", {
+			url: "https://mcp.acme.dev/mcp",
+			description: "Acme's internal API documentation.",
+			exposure: "deferred",
+		});
+		if (ctx.plugin.mcp.get("github") !== undefined) {
+			ctx.plugin.mcp.update("github", { toolExposure: { "delete_*": "hidden" } });
+		}
+	},
+});
+```
+
+| Method                         | What it does                                                               |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `mcp.set(name, config)`        | Add a server, or replace one with the same name.                           |
+| `mcp.update(name, patch)`      | Change `enabled`, `exposure`, `toolExposure`, `timeout`, or `description`. |
+| `mcp.remove(name)`             | Drop a server.                                                             |
+| `mcp.get(name)` / `mcp.list()` | Read the servers as they stand.                                            |
+
+A server config takes the same fields as an entry in `mcp.json`: `command`, `args`, `env`, and `cwd` for a local process, or `url`, `headers`, and `oauth` for a streamable HTTP server. Server names use letters, digits, `_`, and `-`. An invalid name or config, or `update` on a server that does not exist, fails the plugin's `setup`.
 
 ## Prompt Plugins
 
@@ -236,12 +298,14 @@ export default Plugin.define({
 	kind: "prompt",
 	setup(ctx, options) {
 		const rules = Array.isArray(options["rules"]) ? options["rules"] : [];
-		for (const rule of rules) ctx.plugin.prompt.sections.append(Section.Rules, String(rule));
+		for (const rule of rules) {
+			if (typeof rule === "string") ctx.plugin.prompt.sections.append(Section.Rules, rule);
+		}
 	},
 });
 ```
 
-Built-in sections, rendered in this order:
+Built-in sections, rendered in this order after the tool list:
 
 | Section                  | Format | Use it for                                 |
 | ------------------------ | ------ | ------------------------------------------ |
@@ -257,7 +321,7 @@ const Deploy = Section.define("deploy_notes"); // rendered as <deploy_notes>
 ctx.plugin.prompt.sections.append(Deploy, "Production deploys go through the release workflow only.");
 ```
 
-Section names are lowercase letters, digits, `_` and `-`. The names `tools`, `cwd`, and `foundation` are reserved.
+A custom section is `text` by default. Pass `{ format: "list" }` for a bulleted list with duplicates removed. Section names are lowercase letters, digits, `_` and `-`, starting with a letter. The names `tools`, `cwd`, `mcpservers`, and `foundation` are reserved, and the built-in names cannot be defined again.
 
 | Method                                      | What it does                            |
 | ------------------------------------------- | --------------------------------------- |
@@ -271,7 +335,7 @@ Replacing the foundation discards the default prompt `codework.prompt.default` w
 
 ## Publish a Plugin
 
-A published plugin is an ordinary npm package or git repository that default-exports a plugin.
+A published plugin is an ordinary npm package or git repository that default-exports one plugin. One package is one plugin.
 
 ```json title="package.json"
 {
@@ -281,7 +345,7 @@ A published plugin is an ordinary npm package or git repository that default-exp
 	"exports": { ".": "./dist/index.js" },
 	"files": ["dist"],
 	"peerDependencies": {
-		"@codeworksh/plugin": "^0.2.0",
+		"@codeworksh/plugin": "^0.4.0",
 		"effect": "^4.0.0"
 	}
 }
@@ -296,7 +360,8 @@ A published plugin is an ordinary npm package or git repository that default-exp
 A few more things to get right:
 
 - **Default-export one plugin.** The module's default export must be the object from `Plugin.define`.
-- **Declare your dependencies.** CodeWork installs a plugin's `dependencies` with it, but never runs their lifecycle scripts.
+- **Keep the SDK as a peer.** CodeWork always hands your plugin its own `@codeworksh/plugin` and `effect`, whatever your package installs.
+- **Declare your other dependencies.** CodeWork installs a plugin's `dependencies` with it, but never runs their lifecycle scripts.
 - **Document your options.** Settings authors only know your `options` shape from your README.
 - **Name by convention.** `codework-tool-<name>` or `codework-prompt-<name>` makes a package easy to find.
 
@@ -316,14 +381,3 @@ The CodeWork repository ships worked examples under [`extras/`](https://github.c
 | `codework-prompt-life`   | prompt | A custom prompt section, configured by package name.             |
 | `plugins/local.ts`       | tool   | A single-file tool that answers from its own options.            |
 | `plugins/house-style.ts` | prompt | A single-file plugin that appends to the shared `rules` section. |
-
-## Related
-
-<Cards>
-	<Card title="Configure" href="/docs/plugins/configuration">
-		How settings authors declare and configure your plugin.
-	</Card>
-	<Card title="Troubleshooting" href="/docs/plugins/troubleshooting">
-		Errors you may hit while developing or publishing.
-	</Card>
-</Cards>

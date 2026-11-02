@@ -30,9 +30,11 @@ You don't normally run this yourself. You tell your editor to run it, as in the 
 
 1. `initialize`: CodeWork reports its name, version, and capabilities.
 2. `session/new`: CodeWork creates a session rooted at the editor's project folder. That folder's `.codework/settings.jsonc` applies, as if you'd run the CLI from it.
-3. `session/prompt`: CodeWork streams its answer, reasoning, and tool calls back as `session/update` notifications, then returns a stop reason.
-4. `session/cancel`: interrupts the running prompt.
-5. `session/list` and `session/load`: list past sessions for the folder and reopen one, replaying its full history.
+3. `session/prompt`: CodeWork streams its answer, reasoning, and tool calls back as `session/update` notifications, then returns a stop reason: `end_turn`, `max_tokens` when the reply hit the model's output limit, or `cancelled`. A failed turn returns an error instead. One prompt runs at a time per session.
+4. `session/cancel`: stops the running prompt of that session only.
+5. `session/set_config_option`: changes the session's model or thinking effort.
+6. `session/list` and `session/load`: list past sessions for the folder, newest first, and reopen one, replaying its full history.
+7. `session/fork`: starts a new session that continues the conversation as it stands.
 
 When the editor closes the connection, CodeWork interrupts anything still running and stops any sandboxes it manages.
 
@@ -49,6 +51,8 @@ Or pass an API key in the environment the editor launches CodeWork with, such as
 ## Sessions and Configuration
 
 ACP sessions are regular CodeWork sessions, stored in the same database as the ones you start with `codework run`. Your editor's history and the CLI see the same sessions.
+
+Each thread of a CodeWork session is an ACP session of its own, so a fork made with `session/fork` or `codework thread fork` shows up in the list and can be loaded and prompted like any other. The main thread keeps the CodeWork session's ID. Loading a fork replays the history it inherited too.
 
 Each session exposes two selectors the editor shows as pickers:
 
@@ -68,10 +72,12 @@ ACP sessions run locally in your project folder. Use [`codework run --sandbox-dr
 | Content                     | Support                                       |
 | --------------------------- | --------------------------------------------- |
 | Text                        | Yes                                           |
-| Images                      | Yes, for models that accept images            |
+| Images                      | PNG, JPEG, GIF, or WebP                       |
 | Mentioned files, selections | Yes, sent as embedded context with the prompt |
 | Resource links              | Yes, passed to the model as a link            |
-| Other binary files          | No                                            |
+| Other binary files          | No, the prompt is rejected                    |
+
+A model that doesn't accept images gets a note in place of each image.
 
 If a plugin in your settings fails to load, CodeWork shows a warning in the conversation so you see it without digging through logs.
 
@@ -144,21 +150,10 @@ Any editor that speaks ACP can run CodeWork with the same command, `codework acp
 
 **CodeWork doesn't appear in the Agent Panel.** Check that `agent_servers` is at the top level of your Zed settings and the JSON is valid.
 
-**The thread never starts.** Zed couldn't run the command. Use the absolute path from `which codework`, and make sure the `node` it runs with is version 24 or later.
+**The thread never starts.** Zed couldn't run the command. Use the absolute path from `which codework`. If you installed CodeWork with pnpm, make sure the `node` it runs with is version 24 or later.
 
 **The model picker is empty or missing a provider.** CodeWork only lists providers it has credentials for. Run `codework auth status --openai-codex` in a terminal, or add the API key to `env`.
 
 **A plugin warning appears in the thread.** Run `codework plugin install` in the project folder, or `codework plugin list --verbose` to see why it failed.
 
 **Something else.** Run `dev: open acp logs` from Zed's command palette to see the raw messages between Zed and CodeWork.
-
-## Related
-
-<Cards>
-	<Card title="Tools" href="/docs/agent/tools">
-		The built-in tools CodeWork uses in every session.
-	</Card>
-	<Card title="RPC Server" href="/docs/integrations/rpc">
-		Keep sessions running in a long-lived server.
-	</Card>
-</Cards>

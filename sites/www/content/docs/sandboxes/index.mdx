@@ -36,7 +36,9 @@ Pass `--sandbox-driver` when you start a session:
 codework run --sandbox-driver memory "Draft a README for a CLI tool"
 ```
 
-A session keeps its sandbox for life, so leave the flag off when you continue one with `--session`. Editor sessions over ACP always use your local folder.
+Leave the flag off when you continue a session with `--session`: it keeps the sandbox it has. Editor sessions over ACP always use your local folder.
+
+To move a session, or one of its threads, to another sandbox on a running server, use `codework session relink` with `--sandbox-id`. Without `--sandbox-id`, it moves back to `local`.
 
 ## Reuse or Attach
 
@@ -54,7 +56,7 @@ CodeWork uses an attached sandbox but never stops it.
 
 CodeWork stops the sandboxes it creates:
 
-- `codework run` stops its sandbox when the run ends.
+- `codework run` stops a sandbox it created when the run ends.
 - `codework serve` keeps them running between sessions and stops them when the server shuts down.
 - `codework acp` stops them when the editor disconnects.
 

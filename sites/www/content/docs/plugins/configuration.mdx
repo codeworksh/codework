@@ -15,7 +15,7 @@ CodeWork reads two settings layers and combines them, lowest priority first:
 | User    | `~/.codework/settings.jsonc`                                 | Plugins you want in every project.                   |
 | Project | `.codework/settings.jsonc` in the nearest ancestor directory | Plugins the whole team should get. Commit this file. |
 
-Both layers fall back to `settings.json` when there is no `.jsonc` file. `--home` moves the user layer along with the rest of the CodeWork home, and `--user-config-dir <dir>` replaces just the user settings file with `<dir>/settings.jsonc`.
+Both layers fall back to `settings.json` when there is no `.jsonc` file. `--home` (or the `CODEWORK_HOME_DIR` environment variable) moves the user layer along with the rest of the CodeWork home, and `--user-config-dir <dir>` replaces just the user settings file with `<dir>/settings.jsonc`.
 
 The `plugins` arrays **add up** rather than replace each other: the user list comes first, then the project list extends it. A teammate's project plugins never remove the personal ones you rely on.
 
@@ -51,6 +51,8 @@ Every item in `plugins` is one of two things.
 
 A configuration entry never loads, installs, or moves anything. If its name matches nothing that was selected, it is ignored rather than failing the session, so a typo costs you a missing option, not a network fetch. Check `codework plugin list` when an option seems to have no effect.
 
+An entry with both `plugin` and `package`, or with an `enabled` or `options` of the wrong type, makes the settings file invalid.
+
 ### Configuration Fields
 
 | Field     | Type    | Meaning                                                                                       |
@@ -70,7 +72,7 @@ Disable any plugin, built-in or not, by ID:
 { "plugin": "codework.tool.write", "enabled": false }
 ```
 
-Some plugins are **opt-in**: they load with everything else but stay off until an entry turns them on. The built-in `grep`, `find`, and `ls` tools work this way.
+Some plugins are **opt-in**: they load with everything else but stay off until an entry turns them on. The built-in `grep`, `find`, and `ls` tools work this way. `codework.tool.toolsearch` is opt-in too, but turns itself on in a turn that has deferred tools unless an entry says otherwise.
 
 ```jsonc
 { "plugin": "codework.tool.grep", "enabled": true }
@@ -110,19 +112,8 @@ Absolute paths, `~/` paths, and `file:///` URLs are taken as written. A path can
 
 ## Order
 
-Plugins run in two passes: every `tool` plugin first, then every `prompt` plugin. This holds no matter which settings file each came from, so a tool you add in settings is always in place before the system prompt is built. Tools with a `promptSnippet` are listed in the prompt's tool list.
+Plugins run in three passes: every `mcp` plugin first, then every `tool` plugin, then every `prompt` plugin. This holds no matter which settings file each came from, so a tool you add in settings is always in place before the system prompt is built. Tools with a `promptSnippet` are listed in the prompt's tool list.
 
 Within one kind, plugins run in the order their module entries are written, after the built-ins. That order matters when plugins build on each other. A plugin that patches another plugin's tool must come after it, and a prompt plugin that appends to the `rules` section adds to what `codework.prompt.default` already wrote.
 
 Writing a module entry again moves the plugin to the new position. Configuration entries never change the order.
-
-## Related
-
-<Cards>
-	<Card title="Install and manage" href="/docs/plugins/install">
-		Add, install, update, and remove plugins with the CLI.
-	</Card>
-	<Card title="Build a plugin" href="/docs/plugins/authoring">
-		Read your own options in a plugin's setup.
-	</Card>
-</Cards>

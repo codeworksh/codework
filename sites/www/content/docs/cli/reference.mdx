@@ -7,44 +7,59 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 
 ## Commands
 
-| Command                         | What it does                                                   |
-| ------------------------------- | -------------------------------------------------------------- |
-| `codework run <prompt>`         | Start or continue an agent session                             |
-| `codework models`               | List the model catalog                                         |
-| `codework models providers`     | List provider IDs                                              |
-| `codework models refresh`       | Download the model catalog if it's stale                       |
-| `codework auth login`           | Sign in to a subscription provider                             |
-| `codework auth status`          | Show a stored login without refreshing it                      |
-| `codework auth refresh`         | Refresh a stored login if it has expired                       |
-| `codework auth logout`          | Clear a stored login                                           |
-| `codework plugin add <spec>`    | Install a plugin and add it to a settings file                 |
-| `codework plugin remove <spec>` | Remove a plugin from a settings file                           |
-| `codework plugin install`       | Install every plugin the settings files name                   |
-| `codework plugin list`          | List configured plugins and what each resolved to              |
-| `codework plugin check [spec]`  | Report plugins with a newer revision                           |
-| `codework plugin update [spec]` | Fetch newer revisions                                          |
-| `codework plugin reload`        | Re-import plugins in a running server                          |
-| `codework session link <id>`    | Anchor a session to a project folder, through a running server |
-| `codework service start`        | Start the background server and print its URL                  |
-| `codework service restart`      | Restart the background server and print its URL                |
-| `codework service status`       | Print the background server's URL, or `stopped`                |
-| `codework service stop`         | Stop the background server                                     |
-| `codework serve`                | Start the [RPC server](/docs/integrations/rpc)                 |
-| `codework acp`                  | Start the [ACP server](/docs/integrations/acp) on stdio        |
+| Command                          | What it does                                                     |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `codework run <prompt>`          | Start or continue an agent session                               |
+| `codework models`                | List the model catalog                                           |
+| `codework models providers`      | List provider IDs                                                |
+| `codework models refresh`        | Download the model catalog if it's stale                         |
+| `codework auth login`            | Sign in to a subscription provider                               |
+| `codework auth status`           | Show a stored login without refreshing it                        |
+| `codework auth refresh`          | Refresh a stored login if it has expired                         |
+| `codework auth logout`           | Clear a stored login                                             |
+| `codework mcp add <name>`        | Add or replace an MCP server in `mcp.json`                       |
+| `codework mcp remove <name>`     | Remove an MCP server from `mcp.json`                             |
+| `codework mcp list`              | Connect to every enabled MCP server and show its state and tools |
+| `codework mcp login <name>`      | Sign in to an MCP server with OAuth                              |
+| `codework mcp logout <name>`     | Remove an MCP server's stored OAuth credentials                  |
+| `codework mcp reconnect <name>`  | Restart a thread's MCP server in a running server                |
+| `codework mcp disconnect <name>` | Close a thread's MCP server in a running server                  |
+| `codework plugin add <spec>`     | Install a plugin and add it to a settings file                   |
+| `codework plugin remove <spec>`  | Remove a plugin from a settings file                             |
+| `codework plugin install`        | Install every plugin the settings files name                     |
+| `codework plugin list`           | List configured plugins and what each resolved to                |
+| `codework plugin check [spec]`   | Report plugins with a newer revision                             |
+| `codework plugin update [spec]`  | Fetch newer revisions                                            |
+| `codework plugin reload`         | Re-import plugins in a running server                            |
+| `codework session link <id>`     | Anchor a session to a project folder, through a running server   |
+| `codework session relink <id>`   | Move a session's work, or one thread's, to another checkout      |
+| `codework thread list <id>`      | List a session's threads, newest first                           |
+| `codework thread fork <id>`      | Start a new thread from an entry of a thread's history           |
+| `codework service start`         | Start the background server and print its URL                    |
+| `codework service restart`       | Restart the background server and print its URL                  |
+| `codework service status`        | Print the background server's URL, or `stopped`                  |
+| `codework service stop`          | Stop the background server                                       |
+| `codework serve`                 | Start the [RPC server](/docs/integrations/rpc)                   |
+| `codework acp`                   | Start the [ACP server](/docs/integrations/acp) on stdio          |
+
+Commands that talk to a running server (`mcp reconnect`, `mcp disconnect`, `plugin reload`, `session link`, `session relink`, `thread list`, `thread fork`) take `--server`, which defaults to `ws://127.0.0.1:7433/rpc/v1`.
 
 ## `codework run`
 
 | Flag                         | Description                                                                            |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `-s`, `--session <id>`       | Continue an existing session                                                           |
+| `--thread <id>`              | Thread of `--session` to continue: a thread ID, or `main` (default)                    |
 | `-C`, `--cwd <path>`         | Working directory for a new session                                                    |
-| `--provider <id>`            | Model catalog provider ID                                                              |
-| `--model <id>`               | Model ID                                                                               |
+| `--provider <id>`            | Model catalog provider ID; give it together with `--model`                             |
+| `--model <id>`               | Model ID; give it together with `--provider`                                           |
 | `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`                           |
 | `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                                     |
 | `--sandbox-id <id>`          | Reuse an existing sandbox instance                                                     |
 | `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                                |
 | `--server <url>`             | Run against an [RPC server](/docs/integrations/rpc), e.g. `ws://127.0.0.1:7433/rpc/v1` |
+
+`--cwd` and the sandbox flags only apply when starting a new session. Ctrl+C stops the run, and `codework serve` does not resume it later. `run` exits with 1 when the reply was cut off by the model's output limit.
 
 ## `codework auth`
 
@@ -57,8 +72,62 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `--enterprise <host>` | `login` only: GitHub Enterprise domain for Copilot                  |
 | `--enable-models`     | `login` only: enable unconfigured Copilot catalog models            |
 | `--auth-file <path>`  | Credential file (default `<home>/aikit/auth.json`)                  |
-| `--server <url>`      | Store the credentials in a running RPC server                       |
-| `--json`              | Machine-readable output                                             |
+| `--server <url>`      | Use the credentials of a running RPC server instead of this machine |
+| `--json`              | Machine-readable output (not on `logout`)                           |
+
+## `codework mcp`
+
+`add` and `remove` edit the user `mcp.json` in your CodeWork home, or the project's `.codework/mcp.json` with `--local`.
+
+| Flag                           | Applies to                | Description                                                 |
+| ------------------------------ | ------------------------- | ----------------------------------------------------------- |
+| `--url <url>`                  | `add`                     | Streamable HTTP server URL, instead of a command after `--` |
+| `--env KEY=VALUE`              | `add`                     | Environment variable of a stdio server                      |
+| `--cwd <path>`                 | `add`                     | Working directory of a stdio server                         |
+| `--header KEY=VALUE`           | `add`                     | HTTP header                                                 |
+| `--bearer-token-env-var <var>` | `add`                     | Send `Authorization: Bearer` with this variable's value     |
+| `--oauth-client-id <id>`       | `add`                     | Pre-registered OAuth client ID                              |
+| `--oauth-client-secret <s>`    | `add`                     | OAuth client secret (may be `${NAME}` or `!command`)        |
+| `--oauth-callback-port <port>` | `add`                     | Fixed OAuth callback port                                   |
+| `--oauth-client-name <name>`   | `add`                     | Client name sent when registering with the OAuth server     |
+| `--exposure <mode>`            | `add`                     | `direct` (default), `hidden`, `codemode`, or `deferred`     |
+| `--description <text>`         | `add`                     | What the server offers                                      |
+| `-l`, `--local`                | `add`, `remove`           | Edit the project's `.codework/mcp.json`                     |
+| `--json`                       | `list`                    | Machine-readable output                                     |
+| `--browser`                    | `login`                   | Open the sign-in URL in your browser (default on)           |
+| `--timeout <seconds>`          | `login`                   | How long the whole sign-in may take (default `300`)         |
+| `-s`, `--session <id>`         | `reconnect`, `disconnect` | The session (required)                                      |
+| `--thread <id>`                | `reconnect`, `disconnect` | Thread whose server it is: a thread ID, or `main` (default) |
+
+```bash
+codework mcp add fs -- npx -y @modelcontextprotocol/server-filesystem .
+codework mcp add linear --url https://mcp.linear.app/mcp
+```
+
+`codework mcp list` exits with 1 when an entry is broken or an enabled server does not connect.
+
+## `codework session`
+
+| Flag                | Applies to | Description                                                           |
+| ------------------- | ---------- | --------------------------------------------------------------------- |
+| `--unlink`          | `link`     | Clear the anchor, leaving the session with no project folder          |
+| `--thread <id>`     | `relink`   | Move only this thread (a thread ID, or `main`) instead of the session |
+| `-C`, `--directory` | `relink`   | Checkout to move into                                                 |
+| `--sandbox-id <id>` | `relink`   | Sandbox instance to move to (default `local`)                         |
+| `--json`            | `relink`   | Machine-readable output                                               |
+
+`codework session link <id> [path]` anchors the session to `path`, or to the current folder when you leave it out.
+
+## `codework thread`
+
+| Flag               | Applies to     | Description                                                 |
+| ------------------ | -------------- | ----------------------------------------------------------- |
+| `--thread <id>`    | `fork`         | Thread to fork: a thread ID, or `main` (default)            |
+| `--at <entry>`     | `fork`         | Keep history through this entry                             |
+| `--before <entry>` | `fork`         | Keep history up to this prompt, and print the prompt's text |
+| `--json`           | `list`, `fork` | Machine-readable output                                     |
+
+`codework thread fork` prints the new thread's ID. Continue it with `codework run --session <id> --thread <thread-id>`.
 
 ## `codework plugin`
 
@@ -67,8 +136,7 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `-g`, `--global` | `add`, `remove` | Edit the user-wide settings file instead of this project's |
 | `--session <id>` | `add`           | Write to the project a session is linked to                |
 | `--verbose`      | `list`          | Show the message behind a failure                          |
-| `--refresh`      | `check`         | Ask the registry again instead of reusing a recent answer  |
-| `--server <url>` | `reload`        | Server base URL (default `http://127.0.0.1:7433`)          |
+| `--refresh`      | `check`         | Ask again instead of reusing a recent answer               |
 
 ## `codework models`
 
@@ -88,6 +156,8 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 
 ## `codework serve`
 
+On start, the server resumes runs that a crash or shutdown cut off.
+
 | Flag        | Description                                                      |
 | ----------- | ---------------------------------------------------------------- |
 | `--host`    | Interface to bind (default `127.0.0.1`)                          |
@@ -96,18 +166,24 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 
 ## Global Flags
 
-These work on every command that runs CodeWork locally, including `run`, `serve`, and `acp`.
+These work on every command. With `--server`, put `--home`, `--database` and `--user-config-dir` on `codework serve` instead.
 
-| Flag                | Description                                                                     |
-| ------------------- | ------------------------------------------------------------------------------- |
-| `--home`            | CodeWork home for settings, credentials, cache and data (default `~/.codework`) |
-| `--database`        | SQLite database path, or `:memory:` for throwaway sessions                      |
-| `--user-config-dir` | Directory whose `settings.jsonc` replaces the user settings in `--home`         |
+| Flag                | Description                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `--home`            | CodeWork home for settings, credentials, cache and data (default `~/.codework`)         |
+| `--database`        | SQLite database path, or `:memory:` for throwaway sessions                              |
+| `--user-config-dir` | Directory whose `settings.jsonc` replaces the user settings in `--home`                 |
+| `-h`, `--help`      | Show help                                                                               |
+| `-v`, `--version`   | Show the version                                                                        |
+| `--log-level`       | Minimum log level: `all`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `none` |
+| `--completions`     | Print a shell completion script: `bash`, `zsh`, `fish`, `sh`, `powershell`, or `pwsh`   |
+| `--wizard`          | Start wizard mode for a command                                                         |
 
 ## Environment Variables
 
 | Variable               | Description                                                         |
 | ---------------------- | ------------------------------------------------------------------- |
+| `CODEWORK_HOME_DIR`    | CodeWork home when `--home` is not given (default `~/.codework`)    |
 | `CODEWORK_MODELS_FILE` | Pin the model catalog to a file you manage                          |
 | `CODEWORK_MODELS_TTL`  | How old the catalog may get before a refresh (default `15 minutes`) |
 | `OPENAI_API_KEY`       | OpenAI API key                                                      |
