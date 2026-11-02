@@ -1,0 +1,12 @@
+{
+	"calls": {
+		"described": "Loaded 1 tool. They are available from your next call:\n- mcp__forecast__echo: Echo text back, prefixed with the configured greeting.",
+		"instructed": "Loaded 1 tool. They are available from your next call:\n- mcp__billing__echo: Echo text back, prefixed with the configured greeting."
+	},
+	"loaded": {
+		"add": [
+			"mcp__forecast__echo",
+			"mcp__billing__echo"
+		]
+	}
+}

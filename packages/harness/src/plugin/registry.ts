@@ -1,4 +1,4 @@
-import type { Message } from "@codeworksh/aikit";
+import type { DeferredTool } from "../tool/offer.ts";
 import type { PluginRegistry } from "@codeworksh/plugin/plugin";
 import type { Effect } from "effect";
 import type { McpServer } from "@codeworksh/plugin/settings";
@@ -34,7 +34,7 @@ export const make = (servers: ReadonlyArray<McpServer>) => {
 		freeze: (
 			directory: string,
 			selection?: Selection,
-			live?: Effect.Effect<ReadonlyArray<Message.Tool>>,
+			live?: Effect.Effect<ReadonlyArray<DeferredTool>>,
 			mcpservers?: string,
 		) => {
 			close();

@@ -40,5 +40,5 @@ overrides:
 storeDir: .pnpm-store
 
 permissions:
-  '@tanstack/router-plugin':
-    skills: true
+   "@tanstack/router-plugin":
+      skills: true

@@ -1,0 +1,128 @@
+[
+	{
+		"query": "mcp__app__thread_read",
+		"limit": 3,
+		"loaded": [
+			"mcp__app__thread_read",
+			"mcp__app__queue_read",
+			"mcp__app__thread_list"
+		]
+	},
+	{
+		"query": "thread_read",
+		"limit": 3,
+		"loaded": [
+			"mcp__app__thread_read",
+			"mcp__app__queue_read",
+			"mcp__app__thread_list"
+		]
+	},
+	{
+		"query": "app__thread_read",
+		"limit": 3,
+		"loaded": [
+			"mcp__app__thread_read",
+			"mcp__app__queue_read",
+			"mcp__app__thread_list"
+		]
+	},
+	{
+		"query": "Thread_Read",
+		"limit": 3,
+		"loaded": [
+			"mcp__app__thread_read",
+			"mcp__app__queue_read",
+			"mcp__app__thread_list"
+		]
+	},
+	{
+		"query": "dev-radius__status",
+		"limit": 3,
+		"loaded": [
+			"mcp__dev_radius__status",
+			"mcp__ci__status"
+		]
+	},
+	{
+		"query": "read",
+		"limit": 3,
+		"loaded": [
+			"mcp__app__queue_read",
+			"mcp__app__thread_read"
+		]
+	},
+	{
+		"query": "deploy",
+		"limit": 3,
+		"loaded": [
+			"mcp__ci__deploy_release",
+			"mcp__ci__status"
+		]
+	},
+	{
+		"query": "screenshot window",
+		"limit": 3,
+		"loaded": [
+			"mcp__peekaboo__image",
+			"mcp__peekaboo__window",
+			"mcp__peekaboo__see"
+		]
+	},
+	{
+		"query": "describe app",
+		"limit": 3,
+		"loaded": [
+			"mcp__peekaboo__see",
+			"mcp__peekaboo__app",
+			"mcp__app__queue_read"
+		]
+	},
+	{
+		"query": "peekaboo app",
+		"limit": 3,
+		"loaded": [
+			"mcp__peekaboo__app",
+			"mcp__peekaboo__see",
+			"mcp__peekaboo__window"
+		]
+	},
+	{
+		"query": "airtable comment",
+		"limit": 3,
+		"loaded": [
+			"mcp__airtable__create_comment",
+			"mcp__airtable__list_comments",
+			"mcp__airtable__list_records"
+		]
+	},
+	{
+		"query": "update records",
+		"limit": 3,
+		"loaded": [
+			"mcp__airtable__update_records",
+			"mcp__airtable__list_records",
+			"mcp__airtable__create_record"
+		]
+	},
+	{
+		"query": "问题",
+		"limit": 3,
+		"loaded": [
+			"mcp__docs__search_cn"
+		]
+	},
+	{
+		"query": "café",
+		"limit": 3,
+		"loaded": [
+			"mcp__menu__order"
+		]
+	},
+	{
+		"query": "résumé",
+		"limit": 3,
+		"loaded": [
+			"mcp__menu__order"
+		]
+	}
+]

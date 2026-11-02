@@ -60,7 +60,7 @@ export const toolSearchHandler: Tool.Handler<
 	const deferred = yield* (yield* ToolOffer).deferred;
 	const loaded = ToolSearch.rank(
 		query,
-		deferred.map((tool) => ({ name: tool.name, text: ToolSearch.text(tool) })),
+		deferred.map((tool) => ({ name: tool.name, text: ToolSearch.text(tool), namespaceText: tool.namespace })),
 		max,
 	);
 	const listed = loaded.map((name) => {
