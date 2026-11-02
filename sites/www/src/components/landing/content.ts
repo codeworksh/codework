@@ -54,6 +54,7 @@ export const showcase = {
 	description: ["devs", "it. share yours, it might end up here."],
 	// `id` is the YouTube video id.
 	videos: [
+		{ id: "AsbUFefpe9U", title: "Bored of Coding? Play Games Inside Your AI Coding Agent", channel: "Prem Patel" },
 		{ id: "X6Q-JAGxva4", title: "Codework + ACP: Running an AI Coding Agent Inside Zed", channel: "Prem Patel" },
 	],
 };
