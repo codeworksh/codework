@@ -5,9 +5,11 @@ import type { Message } from "@codeworksh/aikit";
 /** The tool that loads deferred tools. */
 export const name = "toolsearch";
 
+/** A tool as the ranker sees it. The name is its own field, so `text` leaves it out. */
 export interface Document {
 	readonly name: string;
 	readonly text: string;
+	readonly namespaceText?: string | undefined;
 }
 
 const STOP_WORDS: ReadonlySet<string> = new Set([
@@ -42,48 +44,117 @@ const stem = (term: string): string => {
 	return term;
 };
 
-/** Lowercase terms, split at camelCase boundaries and non-alphanumerics, without stop words. */
-export const tokenize = (text: string): string[] =>
-	text
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+
+/** Unicode words, split at camelCase boundaries, lowercase, without stop words; ASCII words in singular form. */
+export const tokenize = (text: string): string[] => {
+	const normalized = text
+		.normalize("NFC")
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
 		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
 		.toLowerCase()
-		.split(/[^a-z0-9]+/)
-		.filter((term) => term.length > 0 && !STOP_WORDS.has(term))
-		.map(stem);
+		.replace(/[^\p{L}\p{M}\p{N}]+/gu, " ");
+	// The segmenter costs about 15 times a split, and plain ASCII splits into the same words at spaces, so only
+	// other text, such as Chinese written without spaces, goes through it.
+	const words = /^[a-z0-9 ]*$/.test(normalized)
+		? normalized.split(" ")
+		: Array.from(wordSegmenter.segment(normalized), (segment) => (segment.isWordLike ? segment.segment : ""));
+	return words
+		.filter((word) => word.length > 0 && !STOP_WORDS.has(word))
+		.map((word) => (/^[a-z0-9]+$/.test(word) ? stem(word) : word));
+};
 
-/** Okapi BM25 (k1 1.2, b 0.75): the names of the best matches, best first; ties keep document order. */
+const K1 = 1.2;
+const B = 0.75;
+
+/**
+ * A query term in the name counts this many times its IDF. The text part of a term is at most `K1 + 1` (2.2) times
+ * its IDF and about 1 for a single mention, so a name match beats any number of mentions in the text.
+ */
+const NAME_WEIGHT = 3;
+
+/** Every tool of a namespace shares its text, so it helps find the namespace but not the tool in it. */
+const NAMESPACE_WEIGHT = 0.5;
+
+/** Lowercase with characters invalid in identifiers as `_`, so `dev-radius` matches `dev_radius`. */
+const normalizeName = (name: string): string =>
+	name
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9_$]/g, "_");
+
+/** The whole query is the tool's full name or its name after a `__`: `thread_read` names `mcp__app__thread_read`. */
+const isExactName = (query: string, name: string): boolean => {
+	const normalized = normalizeName(name);
+	return normalized === query || normalized.endsWith(`__${query}`);
+};
+
+const indexDocument = (document: Document) => {
+	const textCounts = new Map<string, number>();
+	for (const term of tokenize(document.text)) textCounts.set(term, (textCounts.get(term) ?? 0) + 1);
+	const segments = document.name.split("__");
+	return {
+		name: document.name,
+		nameTerms: new Set(tokenize(document.name)),
+		// The part after the last `__` is what models say: `thread`, `read` of `mcp__app__thread_read`.
+		localNameTerms: [...new Set(tokenize(segments[segments.length - 1]!))],
+		textCounts,
+		textLength: [...textCounts.values()].reduce((sum, count) => sum + count, 0),
+		namespaceTerms: new Set(tokenize(document.namespaceText ?? "")),
+	};
+};
+
+/**
+ * Okapi BM25 over `text`, with the name and the namespace as separate fields: the names of the best matches, best
+ * first; ties keep document order.
+ * - A query that is exactly a tool's name, or its name after a `__`, ranks that tool first.
+ * - Then a tool matching more of the query's terms, in any field, ranks above one matching fewer, whatever their
+ *   scores: for `screenshot window`, a tool whose description has both words beats `window`, whose name has one.
+ * - A tool whose whole local name is in the query gets a bonus worth one more match of every query term, so
+ *   `peekaboo app` finds `mcp__peekaboo__app` over tools that only mention the words.
+ *
+ * Only `text` is length-normalized, so a long name or namespace text does not lower a tool's score.
+ */
 export const rank = (query: string, documents: ReadonlyArray<Document>, limit: number): string[] => {
-	const k1 = 1.2;
-	const b = 0.75;
-	const queryTerms = [...new Set(tokenize(query))];
-	if (queryTerms.length === 0 || documents.length === 0 || limit <= 0) return [];
-	const termCounts = documents.map((document) => {
-		const counts = new Map<string, number>();
-		for (const term of tokenize(document.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
-		return counts;
-	});
-	const lengths = termCounts.map((counts) => [...counts.values()].reduce((sum, count) => sum + count, 0));
-	const averageLength = lengths.reduce((sum, length) => sum + length, 0) / documents.length || 1;
+	const queryTerms = new Set(tokenize(query));
+	if (queryTerms.size === 0 || documents.length === 0 || limit <= 0) return [];
+	const indexed = documents.map(indexDocument);
+	const averageLength = indexed.reduce((sum, document) => sum + document.textLength, 0) / indexed.length || 1;
 	const idf = new Map(
-		queryTerms.map((term) => {
-			const frequency = termCounts.filter((counts) => counts.has(term)).length;
-			return [term, Math.log(1 + (documents.length - frequency + 0.5) / (frequency + 0.5))] as const;
+		[...queryTerms].map((term) => {
+			const frequency = indexed.filter(
+				(document) =>
+					document.nameTerms.has(term) || document.textCounts.has(term) || document.namespaceTerms.has(term),
+			).length;
+			return [term, Math.log(1 + (indexed.length - frequency + 0.5) / (frequency + 0.5))] as const;
 		}),
 	);
-	const matches: { name: string; score: number }[] = [];
-	documents.forEach((document, index) => {
+	const localNameBonus = [...idf.values()].reduce((sum, value) => sum + value, 0);
+	const exactQuery = normalizeName(query);
+	const matches: { name: string; score: number; covered: number; exact: boolean }[] = [];
+	for (const document of indexed) {
+		const norm = K1 * (1 - B + (B * document.textLength) / averageLength);
 		let score = 0;
+		let covered = 0;
 		for (const term of queryTerms) {
-			const count = termCounts[index]!.get(term);
-			if (!count) continue;
-			const norm = k1 * (1 - b + (b * lengths[index]!) / averageLength);
-			score += (idf.get(term) ?? 0) * ((count * (k1 + 1)) / (count + norm));
+			const count = document.textCounts.get(term) ?? 0;
+			const weight =
+				(document.nameTerms.has(term) ? NAME_WEIGHT : 0) +
+				(document.namespaceTerms.has(term) ? NAMESPACE_WEIGHT : 0) +
+				(count * (K1 + 1)) / (count + norm);
+			if (weight > 0) covered++;
+			score += (idf.get(term) ?? 0) * weight;
 		}
-		if (score > 0) matches.push({ name: document.name, score });
-	});
+		if (score === 0) continue;
+		const local = document.localNameTerms;
+		if (local.length > 0 && local.every((term) => queryTerms.has(term))) score += localNameBonus;
+		matches.push({ name: document.name, score, covered, exact: isExactName(exactQuery, document.name) });
+	}
 	return matches
-		.sort((left, right) => right.score - left.score)
+		.sort(
+			(left, right) =>
+				Number(right.exact) - Number(left.exact) || right.covered - left.covered || right.score - left.score,
+		)
 		.slice(0, limit)
 		.map((match) => match.name);
 };
@@ -108,9 +179,9 @@ const schemaText = (schema: unknown, parts: string[]): void => {
 	}
 };
 
-/** Search text of a tool: its name, the name with `_` as spaces, its description, and its parameters' text. */
+/** Search text of a tool: its description and its parameters' text. The ranker reads the name from `name`. */
 export const text = (tool: Message.Tool): string => {
-	const parts = [tool.name, tool.name.replaceAll("_", " "), tool.description];
+	const parts = [tool.description];
 	schemaText(tool.parameters, parts);
 	return parts.filter((part) => part.trim() !== "").join(" ");
 };

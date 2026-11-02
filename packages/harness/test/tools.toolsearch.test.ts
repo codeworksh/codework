@@ -178,7 +178,7 @@ const catalog: Plugin = {
 	},
 };
 
-const layer = () => {
+const layer = (tools: Plugin) => {
 	const database = Database.layer(":memory:");
 	const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 		Layer.provideMerge(SandboxDriverRegistry.layer()),
@@ -188,7 +188,7 @@ const layer = () => {
 	const seeded = pooled([
 		...builtins.filter((plugin) => plugin.id !== toolSearchPlugin.id),
 		{ ...toolSearchPlugin, optIn: false },
-		catalog,
+		tools,
 	]);
 	return Control.layer.pipe(
 		Layer.provideMerge(
@@ -211,7 +211,7 @@ const layer = () => {
 	);
 };
 
-const { effect: it } = testEffect(layer());
+const { effect: it } = testEffect(layer(catalog));
 
 const reset = Effect.sync(() => {
 	script.clear();
@@ -555,6 +555,116 @@ describe("toolsearch", () => {
 				sections: prompt.sections,
 				toolsRemoved: [{ name: "notes_read" }],
 			});
+		}),
+	);
+});
+
+/** Built-in-style tools and MCP-style `mcp__<server>__<tool>` tools, for ranking alone. */
+const rankingCatalog: Plugin = {
+	id: "test.tool.ranking",
+	kind: "tool",
+	setup: (ctx) => {
+		const tools = [
+			deferred("web_fetch", "Fetch a URL and return the page as markdown.", { url: text("URL to fetch") }),
+			deferred("notebook_edit", "Edit a cell of a Jupyter notebook.", {
+				path: text("Notebook path"),
+				cell: Schema.Finite.annotate({ description: "Cell index" }),
+			}),
+			deferred("mcp__ci__status", "Deploy status: last deploy, deploy log, deploy errors.", {}),
+			deferred(
+				"mcp__ci__deploy_release",
+				"Start a release of the current branch to an environment, run the migrations, switch traffic over, and wait until the new version is live and healthy.",
+				{ environment: text("Target environment") },
+			),
+			deferred("mcp__app__queue_read", "Read a queued message of this thread.", {}),
+			deferred(
+				"mcp__app__thread_read",
+				"Read durable state and a paginated timeline from any thread. The default view returns user messages, assistant messages and plans.",
+				{ threadId: text("Thread to read") },
+			),
+			deferred("mcp__app__thread_list", "List the threads of the current project, newest first.", {}),
+			deferred("mcp__dev_radius__status", "Report the health of the local development environment.", {}),
+			deferred("mcp__peekaboo__app", "Launch, quit, focus, or switch applications by name or bundle identifier.", {
+				name: text("Application name"),
+			}),
+			deferred("mcp__peekaboo__see", "Capture the app window and describe the UI elements of the app.", {}),
+			deferred("mcp__peekaboo__window", "Move, resize, or close a window of an app.", {}),
+			deferred("mcp__peekaboo__image", "Take a screenshot of the screen, an app, or a window.", {
+				path: text("Where to save the image"),
+			}),
+			deferred("mcp__airtable__list_records", "List records of an Airtable table.", {
+				baseId: text("Base ID"),
+				tableId: text("Table ID"),
+			}),
+			deferred("mcp__airtable__create_record", "Create a record in an Airtable table.", {
+				tableId: text("Table ID"),
+				fields: text("Field values as JSON"),
+			}),
+			deferred("mcp__airtable__update_records", "Update fields of one or more records in a table.", {
+				tableId: text("Table ID"),
+			}),
+			deferred("mcp__airtable__list_comments", "List the comments on a record.", { recordId: text("Record ID") }),
+			deferred("mcp__airtable__create_comment", "Add a comment to a record.", {
+				recordId: text("Record ID"),
+				text: text("Comment text"),
+			}),
+			deferred("mcp__docs__search_cn", "搜索仓库问题和文档。", { query: text("搜索关键词") }),
+			deferred("mcp__menu__order", "Order a cafe\u0301 au lait or a résumé review.", {}),
+		];
+		for (const tool of tools) ctx.plugin.tools.add(tool);
+	},
+};
+
+describe("toolsearch ranking", () => {
+	const { effect: rankIt } = testEffect(layer(rankingCatalog));
+
+	rankIt(
+		"ranks exact names, name words, coverage, local names, CJK and canonically equivalent text",
+		Effect.gen(function* () {
+			yield* reset;
+			const { sessionId, main } = yield* createSession;
+			const queries: ReadonlyArray<{ readonly query: string; readonly limit?: number }> = [
+				{ query: "mcp__app__thread_read", limit: 3 },
+				{ query: "thread_read", limit: 3 },
+				{ query: "app__thread_read", limit: 3 },
+				{ query: "Thread_Read", limit: 3 },
+				{ query: "dev-radius__status", limit: 3 },
+				{ query: "read", limit: 3 },
+				{ query: "deploy", limit: 3 },
+				{ query: "screenshot window", limit: 3 },
+				{ query: "describe app", limit: 3 },
+				{ query: "peekaboo app", limit: 3 },
+				{ query: "airtable comment", limit: 3 },
+				{ query: "update records", limit: 3 },
+				{ query: "问题", limit: 3 },
+				{ query: "caf\u00e9", limit: 3 },
+				{ query: "re\u0301sume\u0301", limit: 3 },
+			];
+			// One step, so every search runs against the same candidates: the whole catalog.
+			yield* run(sessionId, main, "Find me tools", [
+				call(...queries.map((one) => search(one.query, one.limit))),
+				reply,
+			]);
+			const outcomes = yield* results(main);
+			const ranked = queries.map((one, index) => ({
+				...one,
+				loaded: (outcomes[index]!.details as { readonly loaded: ReadonlyArray<string> }).loaded,
+			}));
+			const first = (query: string) => ranked.find((one) => one.query === query)!.loaded[0];
+
+			for (const query of ["mcp__app__thread_read", "thread_read", "app__thread_read", "Thread_Read"])
+				expect(first(query)).toBe("mcp__app__thread_read");
+			expect(first("dev-radius__status")).toBe("mcp__dev_radius__status");
+			expect(first("read")).toBe("mcp__app__queue_read");
+			expect(first("deploy")).toBe("mcp__ci__deploy_release");
+			expect(first("screenshot window")).toBe("mcp__peekaboo__image");
+			expect(first("describe app")).toBe("mcp__peekaboo__see");
+			expect(first("peekaboo app")).toBe("mcp__peekaboo__app");
+			expect(first("问题")).toBe("mcp__docs__search_cn");
+			expect(first("caf\u00e9")).toBe("mcp__menu__order");
+			expect(first("re\u0301sume\u0301")).toBe("mcp__menu__order");
+
+			yield* artifact("toolsearch-ranking.json", ranked);
 		}),
 	);
 });

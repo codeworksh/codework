@@ -2,6 +2,7 @@ import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Context, Effect, Layer } from "effect";
 import * as Executor from "./executor.ts";
+import type { DeferredTool } from "./offer.ts";
 import { type AnyToolDef, declared, type RegisteredTool, toAikitTool } from "./tool.ts";
 
 /**
@@ -63,7 +64,7 @@ export interface Registry {
 	 * deferred tools registered after this catalog, as MCP servers connect: what a search finds
 	 * beside `deferred`, and the next snapshot registers.
 	 */
-	readonly resolve: (selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>) => Resolved;
+	readonly resolve: (selection?: Selection, live?: Effect.Effect<ReadonlyArray<DeferredTool>>) => Resolved;
 }
 
 /**
@@ -90,7 +91,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 	const isDeferred = (entry: ToolRegistration) => entry.tool.definition.exposure === "deferred";
 	const catalog = Object.freeze(effective.filter(isDeferred).map((entry) => toAikitTool(entry.tool.definition)));
 
-	const resolve = (selection?: Selection, live?: Effect.Effect<ReadonlyArray<Message.Tool>>): Resolved => {
+	const resolve = (selection?: Selection, live?: Effect.Effect<ReadonlyArray<DeferredTool>>): Resolved => {
 		const removed = new Set(selection?.remove);
 		const declaredSet = effective.filter((entry) => declared(entry.tool.definition));
 		const kept = declaredSet.filter((entry) => !removed.has(entry.tool.definition.name));

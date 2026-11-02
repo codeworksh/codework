@@ -32,7 +32,6 @@
  * service down, stops the server process and ends the HTTP session.
  */
 
-import type { Message } from "@codeworksh/aikit";
 import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { AuthProvider, Tool } from "@modelcontextprotocol/client";
 import {
@@ -63,6 +62,7 @@ import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { ID as SessionId } from "../session/schema.ts";
 import { ID as ThreadId } from "../thread/schema.ts";
+import type { DeferredTool } from "../tool/offer.ts";
 import { type RegisteredTool, toAikitTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { namespace } from "./config.ts";
@@ -135,7 +135,7 @@ export interface Reconciled {
 	 * The thread's deferred tools as they stand when it runs, under the names they are registered by.
 	 * Waits first, within {@link STARTUP_WAIT}, for those servers' connect attempts in progress.
 	 */
-	readonly deferred: Effect.Effect<ReadonlyArray<Message.Tool>>;
+	readonly deferred: Effect.Effect<ReadonlyArray<DeferredTool>>;
 	/** The `mcpservers` prompt section, as the servers stand once the ones with declared tools were waited for. */
 	readonly section: string | undefined;
 }
@@ -925,9 +925,23 @@ export const layer = (options: {
 						yield* Effect.forEach(servers, attempted, { concurrency: "unbounded", discard: true }).pipe(
 							Effect.timeoutOption(STARTUP_WAIT),
 						);
-					return toolsOf(thread).flatMap((tool) =>
-						tool.definition.exposure === "deferred" ? [toAikitTool(tool.definition)] : [],
+					// A tool is searched by its server's namespace text too: its name, description and instructions.
+					const namespaces = new Map(
+						[...thread.servers].flatMap(([name, { config, server }]) => {
+							if (server === undefined) return [];
+							const text = [namespace(name), config.description ?? "", server.instructions ?? ""].join(" ");
+							const names = thread.names(
+								name,
+								server.tools.map((tool) => tool.name),
+							);
+							return [...names.values()].map((registered) => [registered, text] as const);
+						}),
 					);
+					return toolsOf(thread).flatMap((tool): ReadonlyArray<DeferredTool> => {
+						if (tool.definition.exposure !== "deferred") return [];
+						const text = namespaces.get(tool.definition.name);
+						return [{ ...toAikitTool(tool.definition), ...(text === undefined ? {} : { namespace: text }) }];
+					});
 				});
 
 			const reconcile = Effect.fn("Mcp.reconcile")(function* (input: Input) {

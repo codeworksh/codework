@@ -800,3 +800,43 @@ it("mcp: toolsearch stops waiting for a server that never answers, at the startu
 		"./__artifacts__/mcp.toolsearch.bounded.json",
 	);
 }, 60_000);
+
+it("mcp: toolsearch matches a server's description and instructions, not only its tools", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const work = join(dir.path, "work");
+	await fs.mkdir(work, { recursive: true });
+	// The same tools on every server, and the plain one first: only namespace text tells them apart.
+	await write(join(home, "mcp.json"), {
+		mcpServers: {
+			plain: stdio({ exposure: "deferred" }),
+			billing: stdio({ exposure: "deferred" }, { E2E_INSTRUCTIONS: "Handles invoices." }),
+			forecast: stdio({ exposure: "deferred", description: "Weather for any city." }),
+		},
+	});
+
+	const model = scripted();
+	const result = await Effect.gen(function* () {
+		const session = yield* Session.create({ directory: work, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		const main = session.main;
+		model.turn(main.id, [
+			pendingCall(TOOL_SEARCH_NAME, { query: "weather echo", limit: 1 }, "described"),
+			pendingCall(TOOL_SEARCH_NAME, { query: "invoices echo", limit: 1 }, "instructed"),
+		]);
+		yield* main.run("one");
+		return {
+			calls: yield* results(main),
+			loaded: (yield* Document.Service.use((documents) => documents.agent(main.id))).modelTools,
+		};
+	}).pipe(
+		Effect.provide(Harness.layer({ home, hostCwd: dir.path, database: ":memory:", llm: model.open })),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	expect(result.calls.described).toContain("mcp__forecast__echo");
+	expect(result.calls.instructed).toContain("mcp__billing__echo");
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/mcp.toolsearch.namespace.json",
+	);
+}, 60_000);

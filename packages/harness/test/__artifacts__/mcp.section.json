@@ -19,7 +19,14 @@
 		{
 			"sections": [],
 			"added": [
-				"mcp__atlas__echo"
+				"mcp__atlas__echo",
+				"mcp__atlas__args",
+				"mcp__atlas__fail",
+				"mcp__atlas__pid",
+				"mcp__atlas__crash",
+				"mcp__atlas__my_tool_v2",
+				"mcp__atlas__secret",
+				"mcp__atlas__bye"
 			],
 			"removed": []
 		},
@@ -36,7 +43,14 @@
 			],
 			"added": [],
 			"removed": [
-				"mcp__atlas__echo"
+				"mcp__atlas__echo",
+				"mcp__atlas__args",
+				"mcp__atlas__fail",
+				"mcp__atlas__pid",
+				"mcp__atlas__crash",
+				"mcp__atlas__my_tool_v2",
+				"mcp__atlas__secret",
+				"mcp__atlas__bye"
 			]
 		}
 	],
