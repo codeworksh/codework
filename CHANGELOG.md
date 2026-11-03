@@ -12,12 +12,33 @@ This file is the canonical source for unreleased changes and published release n
 
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
+- With no project picked, the desktop start page's project button reads "New Project" and opens Add Project in the command palette (⌘K), with five sources: Open Finder, New Project (a folder in `~/codework/projects` with a git repository, a README and a first commit), Local Folder (browse, Tab-complete or paste a path), Git URL and GitHub Repository (by `owner/name`, URL or a bare name of the signed-in `gh` user). Each asks where the project goes before adding it.
+- A clone runs in the background. A banner under the composer shows its stage and percent and a stalled clone, and offers Cancel; a failed or cancelled clone offers Retry and Remove project. Elsewhere in the app the same progress shows as a toast, with Open project once done. A session cannot start in the folder until its clone is done.
+- The model picker reads "No Models" and is disabled when the server has no provider credentials.
+- The sidebar's "New session" button is "New", the list has no heading, and "No projects yet" sits at the top. The title bar puts the sidebar toggle before back and forward.
+
+### Fixed
+
+- Switching between threads in the desktop app no longer flashes blank: a thread opened in the last 5 minutes (up to 16) shows at once, and an unopened one keeps the previous thread on screen until it loads. A streaming reply re-renders only its own row.
 
 ### @codeworksh/cli
+
+#### Added
+
+- `host.info`, `host.browse`, `host.add` and `host.create` RPCs list host folders and add or create projects; `host.create` makes them in `~/codework/projects`.
+- `host.clone` starts a background clone and answers at once; `host.clones` streams every tracked clone with its stage, percent, git's transfer note and a stalled flag. `host.cancel`, `host.retry` and `host.discard` stop, restart and forget one. A clone the host refuses over SSH is tried again over HTTPS, and git never prompts.
+- `github.status` reports whether `gh` is installed and signed in; `github.lookup` resolves a repository by `owner/name`, `host/owner/name`, its URL or a bare name.
+- `session.create` fails with `HostError` when `hostDir` is a clone still running, failed or cancelled.
 
 #### Removed
 
 - `codework tui` and the bundled terminal UI binary; the CLI no longer depends on `@codeworksh/tui`. `codework service` still starts and stops the background server.
+
+### @codeworksh/harness
+
+#### Added
+
+- `@codeworksh/harness/effect` exports `Git` and `expandTilde`. `Git.Service` gains `init`; `init`, `clone`, `fetch`, `checkout`, `reset` and `push` fail with `Git.OperationError` carrying git's own message, and `clone` is a full clone unless `depth` is given.
 
 ## [@codeworksh/cli@0.6.0] - 2026-11-02
 
