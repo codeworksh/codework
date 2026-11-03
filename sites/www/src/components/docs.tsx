@@ -76,7 +76,7 @@ function CopyPage({ pathname }: { pathname: string }) {
 			className="mt-4 inline-flex items-center gap-1.5 border-t border-fd-border pt-4 text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground [&_svg]:size-3.5"
 		>
 			{copied ? <Check className="text-fd-primary" /> : <Copy />}
-			{copied ? "Copied" : "Copy page"}
+			{copied ? "Copied" : "Copy"}
 		</button>
 	);
 }
