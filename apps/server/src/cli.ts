@@ -112,7 +112,8 @@ const executableOf = (row: Servers.Row, foundOnce: typeof found) => {
 	);
 };
 
-const alive = (pid: number) =>
+/** Whether a process runs under `pid`. */
+export const alive = (pid: number) =>
 	Effect.sync(() => {
 		try {
 			process.kill(pid, 0);
