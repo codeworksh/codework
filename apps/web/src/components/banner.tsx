@@ -1,4 +1,5 @@
-import { CircleAlert, Clock, type LucideIcon, X } from "lucide-react";
+import { CircleAlert, Clock, Download, type LucideIcon, TriangleAlert, X } from "lucide-react";
+import { useRef } from "react";
 
 /**
  * Something the reader should know before writing more: a short title, and a line only when it adds
@@ -7,8 +8,8 @@ import { CircleAlert, Clock, type LucideIcon, X } from "lucide-react";
 export interface Notice {
 	readonly title: string;
 	readonly description?: string;
-	readonly tone: "error" | "expired";
-	readonly action?: NoticeAction;
+	readonly tone: "error" | "warning" | "info" | "expired";
+	readonly actions?: ReadonlyArray<NoticeAction>;
 }
 
 export interface NoticeAction {
@@ -24,6 +25,16 @@ const tones: Record<Notice["tone"], { readonly icon: LucideIcon; readonly text: 
 		icon: CircleAlert,
 		text: "text-destructive",
 		surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
+	},
+	warning: {
+		icon: TriangleAlert,
+		text: "text-warning",
+		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
+	},
+	info: {
+		icon: Download,
+		text: "text-ink-muted",
+		surface: "border-edge bg-frame",
 	},
 	expired: {
 		icon: Clock,
@@ -41,16 +52,19 @@ export function ComposerNotice({
 	title,
 	description,
 	tone,
-	action,
+	actions = [],
 	onDismiss,
+	detached = false,
 }: Notice & {
 	readonly onDismiss?: () => void;
+	/** A card of its own rather than tucked behind the composer's top edge. */
+	readonly detached?: boolean;
 }) {
 	const { icon: Icon, text, surface } = tones[tone];
 	return (
 		<div
 			role="alert"
-			className={`mx-3 flex items-center gap-2.5 rounded-t-xl border border-b-0 ${surface} px-3 py-2 text-xs leading-snug`}
+			className={`flex items-center gap-2.5 border ${detached ? "rounded-xl" : "mx-3 rounded-t-xl border-b-0"} ${surface} px-3 py-2 text-xs leading-snug`}
 		>
 			<Icon className={`size-4 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
 			<div className="min-w-0 flex-1">
@@ -61,8 +75,9 @@ export function ComposerNotice({
 					</p>
 				)}
 			</div>
-			{action !== undefined && (
+			{actions.map((action) => (
 				<button
+					key={action.label}
 					type="button"
 					disabled={action.disabled}
 					onClick={action.onClick}
@@ -71,7 +86,7 @@ export function ComposerNotice({
 					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
 					{action.label}
 				</button>
-			)}
+			))}
 			{onDismiss !== undefined && (
 				<button
 					type="button"
@@ -82,6 +97,26 @@ export function ComposerNotice({
 					<X className="size-3" strokeWidth={2} aria-hidden />
 				</button>
 			)}
+		</div>
+	);
+}
+
+/**
+ * A notice detached below the composer and out of its flow, so it comes and goes without moving
+ * anything. It eases in, and fades out quicker on the last notice it showed.
+ */
+export function NoticeSlot({ notice }: { readonly notice: Notice | undefined }) {
+	const last = useRef(notice);
+	if (notice !== undefined) last.current = notice;
+	const shown = notice ?? last.current;
+	if (shown === undefined) return null;
+	return (
+		<div
+			data-shown={notice !== undefined}
+			inert={notice === undefined}
+			className="absolute inset-x-0 top-full z-10 pt-2 transition-[opacity,translate] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[shown=false]:-translate-y-1 data-[shown=false]:opacity-0 data-[shown=false]:duration-150 data-[shown=false]:ease-in motion-reduce:transition-none"
+		>
+			<ComposerNotice {...shown} detached />
 		</div>
 	);
 }

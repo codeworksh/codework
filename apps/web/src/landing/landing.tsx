@@ -1,16 +1,9 @@
 import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { ChevronDown, Folder, FolderPlus } from "lucide-react";
+import { Folder } from "lucide-react";
 import { useContext, useMemo, useState } from "react";
 
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ComposerNotice } from "@/components/banner";
+import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
@@ -18,7 +11,9 @@ import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
 import { Arcade } from "./arcade";
-import { placeAtom, placeLabel, usePickFolder } from "./place";
+import { cloneBlock, useClone, useCloneNotice } from "../shell/clones";
+import { useAddProject } from "../shell/palette";
+import { placeAtom, placeLabel } from "./place";
 import { projectsAtom } from "../widgets/session/projects";
 
 const encodeCreate = Schema.encodeSync(Json.Create);
@@ -45,8 +40,10 @@ export function Landing() {
 	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
 	const notice = useModelsNotice(hostDir);
+	const cloneNotice = useCloneNotice(hostDir);
+	const blocked = cloneBlock(useClone(hostDir));
 
-	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
+	const canSend = place.kind !== "none" && query.trim() !== "" && !pending && blocked === undefined;
 
 	const send = async () => {
 		if (!canSend || place.kind !== "folder") return;
@@ -75,7 +72,7 @@ export function Landing() {
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};
 
-	const pickFolder = usePickFolder();
+	const addProject = useAddProject();
 	const title =
 		place.kind === "folder" ? `What should we work on in ${placeLabel(place)}?` : "What should we work on?";
 
@@ -92,8 +89,7 @@ export function Landing() {
 						{title}
 					</h1>
 				</div>
-				<div className="pointer-events-auto w-full shrink-0">
-					{notice !== undefined && <ComposerNotice {...notice} />}
+				<div className="pointer-events-auto relative w-full shrink-0">
 					<Composer
 						autoFocus
 						value={query}
@@ -115,39 +111,31 @@ export function Landing() {
 								/>
 							</>
 						}
-						actions={<ComposerSubmit label="Start session" disabled={!canSend} />}
+						actions={
+							<ComposerSubmit
+								label="Start session"
+								disabled={!canSend}
+								{...(blocked === undefined ? {} : { title: blocked })}
+							/>
+						}
 						tray={
 							<>
-								<DropdownMenu>
-									<DropdownMenuTrigger
-										title={place.kind === "folder" ? place.path : undefined}
-										className="group -ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none press hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection data-[state=open]:text-ink"
-									>
-										<Folder className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
-										<span className="truncate">{placeLabel(place)}</span>
-										<ChevronDown
-											className="size-3 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
-											strokeWidth={1.75}
-											aria-hidden
-										/>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="min-w-44">
-										<DropdownMenuLabel>Project</DropdownMenuLabel>
-										<DropdownMenuItem
-											disabled={pickFolder === undefined}
-											onSelect={() => void pickFolder?.()}
-										>
-											<FolderPlus strokeWidth={1.75} />
-											New…
-										</DropdownMenuItem>
-									</DropdownMenuContent>
-								</DropdownMenu>
+								<button
+									type="button"
+									title={place.kind === "folder" ? place.path : undefined}
+									onClick={addProject}
+									className="-ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none press hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									<Folder className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+									<span className="truncate">{placeLabel(place)}</span>
+								</button>
 								{error !== undefined && (
 									<span className="ml-auto truncate text-2xs text-destructive">{error}</span>
 								)}
 							</>
 						}
 					/>
+					<NoticeSlot notice={cloneNotice ?? notice} />
 				</div>
 				<div aria-hidden className="flex-[1_1_1.125rem]" />
 			</main>

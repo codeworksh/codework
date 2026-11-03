@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
 import {
@@ -54,8 +54,12 @@ export const layer = Contract.Api.toLayer(
 		const servers = yield* Servers.Service;
 		const health = yield* Health.Service;
 		// A failed call is the first sign the default server went down.
-		const call = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0]) =>
-			Codework.call(use).pipe(Effect.tapError(() => health.poke));
+		const call = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0], options?: Codework.CallOptions) =>
+			Codework.call(use, options).pipe(Effect.tapError(() => health.poke));
+		const callHost = <A, E>(use: Parameters<typeof Codework.callHost<A, E>>[0], options?: Codework.CallOptions) =>
+			Codework.callHost(use, options).pipe(
+				Effect.tapError((error) => (error._tag === "Server.CodeworkUnavailable" ? health.poke : Effect.void)),
+			);
 		// A changed default reconnects the app; the status read after waits for it to reach the server.
 		const changingDefault = <A, E, R>(change: Effect.Effect<A, E, R>) =>
 			Effect.gen(function* () {
@@ -70,6 +74,41 @@ export const layer = Contract.Api.toLayer(
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				return byProject(yield* call((client) => client("thread.list", {})));
+			}),
+
+			"host.info": Effect.fn("host.info")(function* () {
+				return yield* call((client) => client("host.info", {}));
+			}),
+			"host.browse": Effect.fn("host.browse")(function* ({ path }) {
+				return yield* callHost((client) => client("host.browse", { path }));
+			}),
+			// Creating runs git init and a first commit, well past the default 5 seconds.
+			"host.create": Effect.fn("host.create")(function* ({ name }) {
+				return yield* callHost((client) => client("host.create", { name }), { timeout: "60 seconds" });
+			}),
+			"host.add": Effect.fn("host.add")(function* ({ path }) {
+				return yield* callHost((client) => client("host.add", { path }));
+			}),
+			"host.clone": Effect.fn("host.clone")(function* ({ remote, path }) {
+				return yield* callHost((client) => client("host.clone", { remote, path }));
+			}),
+			"host.clones": () =>
+				Codework.stream((client) => client("host.clones", {})).pipe(Stream.tapError(() => health.poke)),
+			"host.cancel": Effect.fn("host.cancel")(function* ({ path }) {
+				return yield* call((client) => client("host.cancel", { path }));
+			}),
+			"host.retry": Effect.fn("host.retry")(function* ({ path }) {
+				return yield* callHost((client) => client("host.retry", { path }));
+			}),
+			"host.discard": Effect.fn("host.discard")(function* ({ path }) {
+				return yield* call((client) => client("host.discard", { path }));
+			}),
+			// gh checks its token, and looks repositories up, over the network.
+			"github.status": Effect.fn("github.status")(function* () {
+				return yield* call((client) => client("github.status", {}), { timeout: "30 seconds" });
+			}),
+			"github.lookup": Effect.fn("github.lookup")(function* ({ repository }) {
+				return yield* callHost((client) => client("github.lookup", { repository }), { timeout: "30 seconds" });
 			}),
 
 			// The catalog's own errors are kept apart from an unreachable server, so their detail shows.

@@ -76,7 +76,7 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 		tone: "error",
 		...(reveal === undefined
 			? {}
-			: { action: { label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) } }),
+			: { actions: [{ label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) }] }),
 	};
 }
 
@@ -143,7 +143,8 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	// The providers this server can call, plus the settings default's when it cannot: that one stays
 	// in view, unavailable, so the model a session gets by default never silently drops out of sight.
 	const providers = useMemo((): ReadonlyArray<ModelProvider & { readonly available: boolean }> => {
-		if (list === undefined) return [];
+		// With nothing to call, there is no model to keep in view either.
+		if (list === undefined || list.providers.length === 0) return [];
 		const usable = list.providers.map((provider) => ({ ...provider, available: true }));
 		const fallback = list.default;
 		if (lookup(usable, fallback) !== undefined) return usable;
@@ -179,10 +180,11 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	);
 
 	// The settings default can name a provider this server cannot call; it reads muted, not chosen.
-	const unavailable = current !== undefined && list !== undefined && found?.provider.available !== true;
+	const none = list !== undefined && providers.length === 0;
+	const unavailable = !none && current !== undefined && list !== undefined && found?.provider.available !== true;
 	// Why is the composer's notice; the picker only reads as unusable until it clears.
 	const failed = AsyncResult.isFailure(result);
-	const label = failed ? "Unavailable" : (found?.model.name ?? current?.id ?? "Choose model");
+	const label = failed ? "Unavailable" : none ? "No Models" : (found?.model.name ?? current?.id ?? "Choose model");
 	const empty =
 		list === undefined ? "Loading models…" : providers.length === 0 ? "No provider is signed in." : "No models found";
 
@@ -198,15 +200,15 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 			}}
 		>
 			<PopoverTrigger
-				disabled={failed}
+				disabled={failed || none}
 				title={
-					current === undefined || failed
+					current === undefined || failed || none
 						? undefined
 						: `${current.provider}/${current.id}${unavailable ? " — no credentials on this server" : ""}`
 				}
 				className={`${trigger} max-w-56`}
 			>
-				{current !== undefined && !failed && (
+				{current !== undefined && !failed && !none && (
 					<ProviderIcon
 						id={current.provider}
 						name={found?.provider.name ?? current.provider}

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
-import { ModelList } from "@codeworksh/widget/codework";
+import { Clone, ClonePhase, CloneStage, Folder, ModelList, Repository } from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
 /** A conversation with the agent, as listed under its project. */
@@ -26,6 +26,13 @@ export type Project = typeof Project.Type;
 export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
 	message: Schema.String,
 }) {}
+
+/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
+export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
+	message: Schema.String,
+}) {}
+
+export { Clone, ClonePhase, CloneStage, Folder, Repository };
 
 /** The models could not be listed: a settings file or the model catalog, at `path`, is broken. */
 export class ModelsError extends Schema.TaggedError<ModelsError>()("Server.ModelsError", {
@@ -217,6 +224,73 @@ export const Api = RpcGroup.make(
 		payload: { hostDir: Schema.optionalKey(Schema.String) },
 		success: ModelList,
 		error: Schema.Union([CodeworkUnavailable, ModelsError]),
+	}),
+	/** The OS home directory, and the folder `host.create` makes projects in. */
+	Rpc.make("host.info", {
+		success: Schema.Struct({ home: Schema.String, projects: Schema.String }),
+		error: CodeworkUnavailable,
+	}),
+	/** The directories in `path` (a leading `~` is the OS home), hidden ones included; an unreadable one lists empty. */
+	Rpc.make("host.browse", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder) }),
+		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** A new git-initialised folder under `projects`; `commitError` says why the first commit was skipped. */
+	Rpc.make("host.create", {
+		payload: { name: Schema.String },
+		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
+		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** An existing folder as an absolute path; a missing one is created. */
+	Rpc.make("host.add", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ path: Schema.String }),
+		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** Starts a background clone of `remote` into `path`, which must be missing or empty; `host.clones` follows it. */
+	Rpc.make("host.clone", {
+		payload: { remote: Schema.String, path: Schema.String },
+		success: Schema.Struct({ path: Schema.String, remote: Schema.String }),
+		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/**
+	 * Every tracked clone now, then the whole list again on each change. It fails when the CodeWork
+	 * server goes away; subscribe again to pick up the list it has then.
+	 */
+	Rpc.make("host.clones", {
+		success: Schema.Array(Clone),
+		error: CodeworkUnavailable,
+		stream: true,
+	}),
+	/** Stops a running clone and empties its folder; `applied` is false when it was not running. */
+	Rpc.make("host.cancel", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: CodeworkUnavailable,
+	}),
+	/** Clones a failed or cancelled one again into its emptied folder; `applied` is false otherwise. */
+	Rpc.make("host.retry", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** Stops tracking a clone, stopping it and emptying its folder unless it finished. */
+	Rpc.make("host.discard", {
+		payload: { path: Schema.String },
+		success: Schema.Void,
+		error: CodeworkUnavailable,
+	}),
+	/** Whether `gh` is installed and signed in; `hint` says what to do when it is not. */
+	Rpc.make("github.status", {
+		success: Schema.Struct({ ready: Schema.Boolean, hint: Schema.optionalKey(Schema.String) }),
+		error: CodeworkUnavailable,
+	}),
+	/** A repository by `owner/name`, `host/owner/name`, its URL, or a bare name of the signed-in user's. */
+	Rpc.make("github.lookup", {
+		payload: { repository: Schema.String },
+		success: Repository,
+		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
 	Rpc.make("workspaces.list", {
 		success: Schema.Array(Workspace),

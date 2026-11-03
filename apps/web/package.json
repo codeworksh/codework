@@ -34,6 +34,7 @@
 		"remark-gfm": "^4.0.1",
 		"scheduler": "^0.27.0",
 		"shiki": "4.4.3",
+		"sonner": "^2.0.8",
 		"tailwind-merge": "^3.7.0",
 		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz"
 	},

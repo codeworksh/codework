@@ -25,7 +25,8 @@ import { OpenProviderSettings } from "@/components/offline";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
-import { placeAtom, usePickFolder } from "./place";
+import { useAddProject } from "../shell/palette";
+import { placeAtom } from "./place";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -37,7 +38,7 @@ export function SessionsSidebar() {
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
-	const pickFolder = usePickFolder();
+	const addProject = useAddProject();
 	const navigate = useNavigate();
 	// The session in front on the workspace on screen reads as current.
 	const { workspaceId } = useParams({ strict: false });
@@ -45,8 +46,6 @@ export function SessionsSidebar() {
 	const focusedOn = useAtomValue(focusedAtom);
 	const focusedId = workspaceId === undefined ? undefined : focusedOn.get(workspaceId);
 	const current = instances.find((instance) => instance.id === focusedId)?.address;
-	// Picking lands on the start page, where the folder is used.
-	const addProject = pickFolder === undefined ? undefined : () => void pickFolder().then(() => navigate({ to: "/" }));
 	// A new session starts on the start page, in the current session's project when one is in front.
 	const startNew = () => {
 		const project = AsyncResult.isSuccess(result)
@@ -88,7 +87,7 @@ export function SessionsSidebar() {
 					<SidebarInput
 						type="search"
 						placeholder="Search"
-						aria-label="Search sessions"
+						aria-label="Search threads"
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
 						className="h-8 rounded-md border-edge bg-transparent pr-2 pl-8 text-ui shadow-sm placeholder:text-ink-muted focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
@@ -100,11 +99,10 @@ export function SessionsSidebar() {
 					className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
 				>
 					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
-					New session
+					New
 				</button>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
-				<h2 className="flex h-7 shrink-0 items-center px-2 text-ui font-medium text-ink-muted">Sessions</h2>
 				{problem !== undefined ? (
 					<OpenProviderSettings
 						problem={problem}
@@ -114,36 +112,34 @@ export function SessionsSidebar() {
 					<p className="px-2.5 py-2 text-xs text-ink-muted">Could not load sessions.</p>
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
 					needle !== "" ? (
-						<p className="px-2.5 py-2 text-xs text-ink-muted">No sessions match “{query}”.</p>
+						<p className="px-2.5 py-2 text-xs text-ink-muted">No threads match “{query}”.</p>
 					) : (
 						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
 								<>
 									<span>No projects yet</span>
-									{addProject !== undefined && (
-										<EmptyAction
-											icon={
-												<HugeiconsIcon
-													icon={PlusSignIcon}
-													size={12}
-													strokeWidth={2}
-													className="-mx-0.5 size-3"
-													aria-hidden
-												/>
-											}
-											onClick={addProject}
-										>
-											Add project
-										</EmptyAction>
-									)}
+									<EmptyAction
+										icon={
+											<HugeiconsIcon
+												icon={PlusSignIcon}
+												size={12}
+												strokeWidth={2}
+												className="-mx-0.5 size-3"
+												aria-hidden
+											/>
+										}
+										onClick={addProject}
+									>
+										Add project
+									</EmptyAction>
 								</>
 							) : (
-								<span>No sessions yet</span>
+								<span>No threads yet</span>
 							)}
 						</Empty>
 					)
 				) : (
-					<ul className="flex flex-col gap-0.5">
+					<ul aria-label="Threads" className="flex flex-col gap-0.5">
 						{sessions.map((session) => (
 							<li key={session.id}>
 								<button

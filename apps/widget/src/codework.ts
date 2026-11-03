@@ -237,6 +237,11 @@ export const RuntimeConfig = Schema.Struct({
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
+/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
+export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
+	message: Schema.String,
+}) {}
+
 /**
  * Why `session.create` failed, by the server's wire tags. Each keeps only the fields read here;
  * the rest of what the server sends is ignored on decode.
@@ -257,8 +262,46 @@ export const CreateError = Schema.Union([
 	Schema.TaggedStruct("SandboxBusyError", { id: Schema.String }),
 	Schema.TaggedStruct("Location.DirectoryNotFoundError", { directory: Schema.String }),
 	Schema.TaggedStruct("Location.NotDirectoryError", { directory: Schema.String }),
+	HostError,
 ]);
 export type CreateError = typeof CreateError.Type;
+
+/** A directory on the host, by its name and absolute path. */
+export const Folder = Schema.Struct({ name: Schema.String, path: Schema.String });
+export type Folder = typeof Folder.Type;
+
+/** A GitHub repository as `gh` names it, with its web and SSH clone URLs. */
+export const Repository = Schema.Struct({ nameWithOwner: Schema.String, url: Schema.String, sshUrl: Schema.String });
+export type Repository = typeof Repository.Type;
+
+export const CloneStage = Schema.Literals(["connecting", "counting", "receiving", "resolving", "checkout"]);
+export type CloneStage = typeof CloneStage.Type;
+
+export const ClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
+export type ClonePhase = typeof ClonePhase.Type;
+
+/** A tracked clone; `path` (the absolute destination) is its id. */
+export const Clone = Schema.Struct({
+	path: Schema.String,
+	/** Credentials and query stripped. */
+	remote: Schema.String,
+	phase: ClonePhase,
+	stage: CloneStage,
+	/** 0 to 100 within `stage`, when git prints one. */
+	percent: Schema.NullOr(Schema.Int),
+	/** Git's transfer note, such as its speed; at most 200 characters. */
+	detail: Schema.NullOr(Schema.String),
+	/** Git has printed no progress for 20 seconds. */
+	stalled: Schema.Boolean,
+	/** Why it failed; at most 1000 characters. */
+	error: Schema.NullOr(Schema.String),
+	/** Epoch milliseconds. */
+	startedAt: Schema.Finite,
+	endedAt: Schema.NullOr(Schema.Finite),
+	/** Bumped on every change across all clones; a higher one is newer. */
+	sequence: Schema.Int,
+});
+export type Clone = typeof Clone.Type;
 
 /** A thread of a session; the session's main thread when `threadId` is absent. */
 const ThreadRef = { sessionId: Schema.String, threadId: Schema.optionalKey(Schema.String) };
@@ -379,6 +422,68 @@ export const Api = RpcGroup.make(
 		payload: ThreadRef,
 		success: Schema.Struct({ interrupted: Schema.Boolean }),
 		error: ThreadError,
+	}),
+	/** The OS home directory, and the folder `host.create` makes projects in. */
+	Rpc.make("host.info", {
+		payload: {},
+		success: Schema.Struct({ home: Schema.String, projects: Schema.String }),
+	}),
+	/** The directories in `path` (a leading `~` is the OS home), hidden ones included; an unreadable one lists empty. */
+	Rpc.make("host.browse", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder) }),
+		error: HostError,
+	}),
+	/** A new git-initialised folder under `projects`; `commitError` says why the first commit was skipped. */
+	Rpc.make("host.create", {
+		payload: { name: Schema.String },
+		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
+		error: HostError,
+	}),
+	/** An existing folder as an absolute path; a missing one is created. */
+	Rpc.make("host.add", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ path: Schema.String }),
+		error: HostError,
+	}),
+	/** Starts a background clone of `remote` into `path`, which must be missing or empty; `host.clones` follows it. */
+	Rpc.make("host.clone", {
+		payload: { remote: Schema.String, path: Schema.String },
+		success: Schema.Struct({ path: Schema.String, remote: Schema.String }),
+		error: HostError,
+	}),
+	/** Every tracked clone now, then the whole list again on each change. */
+	Rpc.make("host.clones", {
+		payload: {},
+		success: Schema.Array(Clone),
+		stream: true,
+	}),
+	/** Stops a running clone and empties its folder; `applied` is false when it was not running. */
+	Rpc.make("host.cancel", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+	}),
+	/** Clones a failed or cancelled one again into its emptied folder; `applied` is false otherwise. */
+	Rpc.make("host.retry", {
+		payload: { path: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: HostError,
+	}),
+	/** Stops tracking a clone, stopping it and emptying its folder unless it finished. */
+	Rpc.make("host.discard", {
+		payload: { path: Schema.String },
+		success: Schema.Void,
+	}),
+	/** Whether `gh` is installed and signed in; `hint` says what to do when it is not. */
+	Rpc.make("github.status", {
+		payload: {},
+		success: Schema.Struct({ ready: Schema.Boolean, hint: Schema.optionalKey(Schema.String) }),
+	}),
+	/** A repository by `owner/name`, `host/owner/name`, its URL, or a bare name of the signed-in user's. */
+	Rpc.make("github.lookup", {
+		payload: { repository: Schema.String },
+		success: Repository,
+		error: HostError,
 	}),
 	/**
 	 * Every event as it happens, durable and live-only alike (text deltas, execution state), after a

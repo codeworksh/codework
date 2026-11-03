@@ -6,6 +6,7 @@ import { SessionsSidebar } from "../landing/sidebar";
 import { SettingsSidebar } from "../settings/layout";
 import { NavigationControls } from "../shell/titlebar";
 import { Palette } from "../shell/palette";
+import { Toasts } from "../shell/toasts";
 import { Splash } from "../splash";
 
 // The sessions sidebar wraps every page but settings, which has its own; its open state carries over.
@@ -27,6 +28,7 @@ function Root() {
 				</div>
 			</div>
 			<Palette />
+			<Toasts />
 			<Splash />
 		</SidebarProvider>
 	);

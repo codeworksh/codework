@@ -1,12 +1,12 @@
 import { Codework as Mirror } from "@codeworksh/widget/codework";
 import { Codework as Client } from "@codeworksh/widget/backend";
 import { NodeSocket } from "@effect/platform-node";
-import { Deferred, Effect, FileSystem, Layer, Schedule, Schema, Stream } from "effect";
+import { Deferred, Duration, Effect, FileSystem, Layer, Schedule, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 /* @effect-diagnostics nodeBuiltinImport:off -- a home's registration is a file path. */
 import path from "node:path";
-import { CodeworkUnavailable } from "@codeworksh/contract";
+import { CodeworkUnavailable, HostError } from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
 
 export type ThreadInfo = Mirror.ThreadInfo;
@@ -83,21 +83,52 @@ export const layer = Layer.effect(Client, RpcClient.make(Mirror.Api, { flatten: 
 	Layer.orDie,
 );
 
+export interface CallOptions {
+	/** How long the server has to answer; 5 seconds unless given. */
+	readonly timeout?: Duration.Input;
+}
+
 /**
  * One call on behalf of the app's own RPC handlers. A server that is down, or of another build (a
  * reply this mirror cannot decode), surfaces as `CodeworkUnavailable`.
  */
-export const call = <A, E>(use: (client: typeof Client.Service) => Effect.Effect<A, E>) =>
+export const call = <A, E>(use: (client: typeof Client.Service) => Effect.Effect<A, E>, options: CallOptions = {}) =>
 	Client.use(use).pipe(
-		Effect.timeout("5 seconds"),
-		Effect.catchCause(() =>
-			Effect.fail(
-				new CodeworkUnavailable({
-					message:
-						"No usable reply from the CodeWork server. Start one with `codework service start`; it may also be running a build older than this app.",
-				}),
-			),
-		),
+		Effect.timeout(options.timeout ?? "5 seconds"),
+		Effect.catchCause(() => Effect.fail(unavailable())),
 	);
+
+const unavailable = () =>
+	new CodeworkUnavailable({
+		message:
+			"No usable reply from the CodeWork server. Start one with `codework service start`; it may also be running a build older than this app.",
+	});
+
+/**
+ * A stream on behalf of the app's own RPC handlers. A dropped connection, or a reply this mirror
+ * cannot decode, ends it as `CodeworkUnavailable`, so its subscriber subscribes again.
+ */
+export const stream = <A, E>(use: (client: typeof Client.Service) => Stream.Stream<A, E>) =>
+	Stream.unwrap(Client.use((client) => Effect.succeed(use(client)))).pipe(
+		Stream.catchCause(() => Stream.fail(unavailable())),
+	);
+
+const isHostError = Schema.is(Mirror.HostError);
+
+/** {@link call} for a host operation: the server's `HostError` reaches the app as its own, with its message. */
+export const callHost = <A, E>(
+	use: (client: typeof Client.Service) => Effect.Effect<A, E | Mirror.HostError>,
+	options: CallOptions = {},
+) =>
+	call(
+		(client) =>
+			use(client).pipe(
+				Effect.map((value) => ({ value })),
+				Effect.catchIf(isHostError, (error) =>
+					Effect.succeed({ failed: new HostError({ message: error.message }) }),
+				),
+			),
+		options,
+	).pipe(Effect.flatMap((reply) => ("failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.value))));
 
 export * as Codework from "./codework.ts";

@@ -109,6 +109,7 @@ const mergeParts = (stored: ReadonlyArray<Part>, streamed: ReadonlyMap<number, P
 };
 
 const describe = (error: { readonly _tag: string }) => {
+	if (error._tag === "Server.HostError" && "message" in error) return String(error.message);
 	switch (error._tag) {
 		case "SessionNotFoundError":
 			return "This session no longer exists.";
