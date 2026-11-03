@@ -68,7 +68,7 @@ export function Shell() {
 				{ready &&
 					shown !== undefined && (
 						// Hidden, not unmounted, so widgets keep their state behind settings.
-						<div className={`h-full ${inSettings ? "invisible" : ""}`} inert={inSettings}>
+						<div className={`h-full ${inSettings ? "paused-animations invisible" : ""}`} inert={inSettings}>
 							<Desktop workspace={shown} />
 						</div>
 					)}

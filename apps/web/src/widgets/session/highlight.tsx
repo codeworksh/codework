@@ -1,14 +1,7 @@
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { useEffect, useMemo, useReducer } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import {
-	type BundledLanguage,
-	type BundledTheme,
-	bundledLanguages,
-	bundledLanguagesAlias,
-	createHighlighter,
-	type Highlighter,
-} from "shiki";
+import type { BundledLanguage, BundledTheme, Highlighter } from "shiki";
 
 import type { ThemeId } from "../../theme";
 
@@ -20,15 +13,16 @@ const SHIKI_THEMES: Record<ThemeId, BundledTheme> = {
 
 type Root = ReturnType<Highlighter["codeToHast"]>;
 
-/** A fence's language as Shiki knows it; undefined for none or one it has no grammar for. */
+/**
+ * A fence's language, lower-cased; whether Shiki has a grammar for it is known once Shiki loads.
+ * Shiki itself loads with the first code block rather than with the app.
+ */
 export function languageOf(name: string | undefined): BundledLanguage | undefined {
-	const lower = name?.toLowerCase();
-	return lower !== undefined && (lower in bundledLanguages || lower in bundledLanguagesAlias)
-		? (lower as BundledLanguage)
-		: undefined;
+	return (name?.toLowerCase() || undefined) as BundledLanguage | undefined;
 }
 
 // One highlighter for the app, with grammars and themes loaded as code blocks ask for them.
+let shiki: Promise<typeof import("shiki")> | undefined;
 let highlighter: Highlighter | undefined;
 let creating: Promise<Highlighter> | undefined;
 const loading = new Map<string, Promise<void>>();
@@ -41,12 +35,20 @@ const notify = () => {
 function load(kind: "lang" | "theme", name: string) {
 	const key = `${kind}:${name}`;
 	if (loading.has(key)) return;
-	creating ??= createHighlighter({ themes: [], langs: [] }).then((created) => (highlighter = created));
-	const task = creating
-		.then((ready) =>
-			kind === "lang" ? ready.loadLanguage(name as BundledLanguage) : ready.loadTheme(name as BundledTheme),
-		)
-		.then(notify)
+	shiki ??= import("shiki");
+	creating ??= shiki.then((module) =>
+		module.createHighlighter({ themes: [], langs: [] }).then((created) => (highlighter = created)),
+	);
+	const task = shiki
+		.then(async (module) => {
+			// A language Shiki has no grammar for stays plain text.
+			if (kind === "lang" && !(name in module.bundledLanguages || name in module.bundledLanguagesAlias)) return;
+			const ready = await creating;
+			await (kind === "lang"
+				? ready?.loadLanguage(name as BundledLanguage)
+				: ready?.loadTheme(name as BundledTheme));
+			notify();
+		})
 		.catch(() => undefined);
 	loading.set(key, task);
 }

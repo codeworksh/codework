@@ -195,6 +195,8 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 	const boardsRef = useRef<Board[] | null>(null);
 	const indexRef = useRef(0);
 	const playingRef = useRef(false);
+	// Restarts the paint loop when something it waits on changes outside its own listeners.
+	const wakeRef = useRef<() => void>(() => undefined);
 	const scoreRef = useRef(0);
 	const highScoreRef = useRef(0);
 	const livesRef = useRef(0);
@@ -251,6 +253,11 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		let rgb = parseContentRgb();
 		let surfaceRgb = parseSurfaceRgb();
 		let lastFrame = 0;
+		// Off screen, or attract mode under reduced motion, nothing is drawn; a game the reader plays still runs.
+		let onScreen = true;
+		const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+		const idle = () =>
+			document.hidden || width <= 0 || height <= 0 || !onScreen || (still.matches && !playingRef.current);
 
 		const drawGrid = () => {
 			if (!gridCtx || width <= 0 || height <= 0) return;
@@ -268,7 +275,13 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		};
 
 		const start = () => {
-			if (raf || document.hidden || width <= 0 || height <= 0) return;
+			if (raf) return;
+			if (idle()) {
+				// Reduced motion still shows the board, as one frame.
+				const board = boards[indexRef.current];
+				if (still.matches && board !== undefined && width > 0 && height > 0) paint(board, width, height);
+				return;
+			}
 			lastFrame = 0;
 			raf = requestAnimationFrame(draw);
 		};
@@ -358,7 +371,7 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		};
 
 		function draw(time: number) {
-			if (document.hidden || width <= 0 || height <= 0) {
+			if (idle()) {
 				raf = 0;
 				return;
 			}
@@ -374,7 +387,8 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 			for (let i = 0; i < boards.length; i++) {
 				const board = boards[i];
 				if (!board) continue;
-				if (controlled && i !== current) continue;
+				// The board out of view only moves while it slides in or out.
+				if ((controlled || !sliding) && i !== current) continue;
 				board.arcade.step(dt);
 				if (i === current || sliding) paint(board, width, height);
 			}
@@ -407,6 +421,13 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		layout();
 
 		document.addEventListener("visibilitychange", start);
+		still.addEventListener("change", start);
+		const visibility = new IntersectionObserver(([entry]) => {
+			onScreen = entry?.isIntersecting ?? true;
+			start();
+		});
+		visibility.observe(root);
+		wakeRef.current = start;
 
 		const resizeObserver = new ResizeObserver(layout);
 		resizeObserver.observe(root);
@@ -426,6 +447,8 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		return () => {
 			cancelAnimationFrame(raf);
 			document.removeEventListener("visibilitychange", start);
+			still.removeEventListener("change", start);
+			visibility.disconnect();
 			resizeObserver.disconnect();
 			themeObserver.disconnect();
 			boardsRef.current = null;
@@ -466,7 +489,12 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 
 	useEffect(() => {
 		slideAtRef.current = performance.now();
+		wakeRef.current();
 	}, [slide.index]);
+
+	useEffect(() => {
+		wakeRef.current();
+	}, [playing]);
 
 	const showGame = useCallback((next: number) => {
 		if (next === indexRef.current) return;
@@ -478,6 +506,7 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 
 	useEffect(() => {
 		if (playing || hovered || focused || GRID_GAMES.length < 2) return;
+		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
 		const id = window.setInterval(() => {
 			if (document.hidden || !rootRef.current?.offsetParent) return;

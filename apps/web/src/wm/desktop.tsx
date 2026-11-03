@@ -456,13 +456,8 @@ export function Desktop({ workspace }: DesktopProps) {
 							}}
 							onDragCancel={() => setDrag(null)}
 						>
-							<Host
-								key={instance.address}
-								instanceId={widget.id}
-								kind={instance.kind}
-								shell={shellFor(widget.id)}
-								decorate={decorate}
-							>
+							{/* Kept across a retarget: a widget whose state belongs to its address keys that state itself. */}
+							<Host instanceId={widget.id} kind={instance.kind} shell={shellFor(widget.id)} decorate={decorate}>
 								{body}
 							</Host>
 						</Frame>

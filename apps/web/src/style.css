@@ -179,8 +179,16 @@
 	::before,
 	::after {
 		animation-duration: 0.01ms !important;
+		/* A looping animation would still update every frame, however short each loop. */
+		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 	}
+}
+
+/* Hidden but kept mounted (the desktop behind settings): its loops stop until it shows again. */
+.paused-animations,
+.paused-animations * {
+	animation-play-state: paused !important;
 }
 
 @layer base {
@@ -486,7 +494,16 @@
 	background-clip: text;
 	-webkit-background-clip: text;
 	color: transparent;
-	animation: shimmer-text 1.6s linear infinite;
+}
+
+/*
+ * background-position repaints rather than composites, so the sweep only runs when motion is
+ * welcome, and steps at about 30 updates a second instead of every display frame.
+ */
+@media (prefers-reduced-motion: no-preference) {
+	.shimmer-text {
+		animation: shimmer-text 1.6s steps(48) infinite;
+	}
 }
 
 @keyframes zen-spin {

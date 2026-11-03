@@ -30,8 +30,12 @@ const contentWidth = "mx-auto w-full max-w-conversation";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const thread = useMemo(() => threadRef(address), [address]);
+	const key = thread === undefined ? (address ?? "") : threadKey(thread);
+	// The thread this frame showed before, so a switch can keep it in view while the next one loads.
+	const [shown, setShown] = useState<{ readonly key: string; readonly previous?: string }>({ key });
+	if (shown.key !== key) setShown({ key, previous: shown.key });
 	if (thread === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
-	return <Conversation key={threadKey(thread)} thread={thread} instanceId={instanceId} />;
+	return <Conversation key={key} thread={thread} instanceId={instanceId} previous={shown.previous} />;
 }
 
 type State =
@@ -55,6 +59,32 @@ type State =
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
+
+/*
+ * The threads opened lately, as last shown: switching back to one renders it on the first frame
+ * while it catches up, instead of an empty frame until its first page loads.
+ */
+const RECENT = 16;
+const RECENT_FOR_MS = 5 * 60_000;
+const recent = new Map<string, { readonly state: Ready; readonly at: number }>();
+
+function remembered(key: string): State {
+	const entry = recent.get(key);
+	if (entry === undefined || Date.now() - entry.at > RECENT_FOR_MS) return { status: "loading" };
+	return entry.state;
+}
+
+function remember(key: string, state: Ready) {
+	recent.delete(key);
+	recent.set(key, { state, at: Date.now() });
+	for (const oldest of recent.keys()) {
+		if (recent.size <= RECENT) break;
+		recent.delete(oldest);
+	}
+}
+
+/** How long a load runs before it says so, so a quick one never flashes a status line. */
+const LOADING_AFTER_MS = 300;
 
 /** What a failed run reads as: in the reader's words, never CodeWork's internal ids. */
 const noticeOf = (kind: string, message: string, sandbox: string | undefined): Notice => {
@@ -129,8 +159,12 @@ const apply = (state: State, update: Update): State => {
  */
 function useConversation(thread: ThreadRef) {
 	const bus = useBus();
-	const [state, setState] = useState<State>({ status: "loading" });
+	const [state, setState] = useState<State>(() => remembered(threadKey(thread)));
 	const paging = useRef(false);
+
+	useEffect(() => {
+		if (state.status === "ready") remember(threadKey(thread), state);
+	}, [thread, state]);
 
 	const page = useCallback(
 		async (before: string | undefined) => {
@@ -167,10 +201,30 @@ function useConversation(thread: ThreadRef) {
 	}, [bus, thread, page]);
 
 	const after = state.status === "ready" ? state.after : undefined;
+	// Updates that arrive within a frame apply together, in one render, instead of one render each.
+	const pending = useRef<Update[]>([]);
+	const scheduled = useRef<() => void>(undefined);
+	useEffect(() => () => scheduled.current?.(), []);
 	useEvents(after === undefined ? undefined : { topics: [topics.thread(threadKey(thread))], after }, (item) => {
 		if ("_tag" in item) return;
 		const update = decodeUpdate(item.payload);
-		if (Option.isSome(update)) setState((current) => apply(current, update.value));
+		if (Option.isNone(update)) return;
+		pending.current.push(update.value);
+		if (scheduled.current !== undefined) return;
+		const run = () => {
+			scheduled.current = undefined;
+			const batch = pending.current;
+			pending.current = [];
+			setState((current) => batch.reduce(apply, current));
+		};
+		// A hidden window gets no animation frames, so updates still land, just less often.
+		if (document.hidden) {
+			const timer = setTimeout(run, 50);
+			scheduled.current = () => clearTimeout(timer);
+		} else {
+			const frame = requestAnimationFrame(run);
+			scheduled.current = () => cancelAnimationFrame(frame);
+		}
 	});
 
 	const oldest = state.status === "ready" && state.more ? state.messages[0]?.id : undefined;
@@ -199,9 +253,19 @@ function useConversation(thread: ThreadRef) {
 	return { state, loadOlder };
 }
 
-function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; readonly instanceId: string }) {
+function Conversation({
+	thread,
+	instanceId,
+	previous,
+}: {
+	readonly thread: ThreadRef;
+	readonly instanceId: string;
+	/** The thread shown before this one; its last state stands in, inert, while this one loads. */
+	readonly previous: string | undefined;
+}) {
 	const { setTitle, setIcon, setTab } = useFrame();
 	const { state: loaded, loadOlder } = useConversation(thread);
+	const slow = useSlow(loaded.status === "loading");
 	// Prompts sent while idle, shown before the backend echoes them: it queues a prompt before the
 	// conversation takes it in, which would otherwise flash a queue row. Each leaves once echoed.
 	const [sent, setSent] = useState<readonly HistoryEntry[]>([]);
@@ -292,7 +356,8 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 
 	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
-	useEffect(() => {
+	// Before paint, so the first frame is laid out with both heights.
+	useLayoutEffect(() => {
 		const root = surface.current;
 		const element = composer.current;
 		if (root === null || element === null) return;
@@ -307,13 +372,17 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 		return () => observer.disconnect();
 	}, [state.status]);
 
-	if (state.status === "loading") return null;
-	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
-	const last = state.messages.at(-1);
-	const running = state.running ?? (last?.role === "assistant" && last.state === "draft");
+	// A thread not shown lately keeps the one before it in view, inert, for a quick load.
+	const stand =
+		state.status === "loading" && !slow && previous !== undefined ? recent.get(previous)?.state : undefined;
+	const view = stand ?? state;
+	if (view.status === "loading") return <Loading slow={slow} />;
+	if (view.status === "failed") return <p className="p-3 text-ink-muted">{view.message}</p>;
+	const last = view.messages.at(-1);
+	const running = view.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
-		<div ref={surface} className="relative flex h-full flex-col">
-			<Transcript state={state} running={running} loadOlder={loadOlder} />
+		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
+			<Transcript key={stand === undefined ? "own" : "stand"} state={view} running={running} loadOlder={loadOlder} />
 			<div
 				ref={composer}
 				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 *:pointer-events-auto`}
@@ -332,10 +401,10 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 					)
 				)}
 				{/* Idle too: prompts left waiting by a stop or a failure run with the next message, so they stay in view. */}
-				{state.queued.length > 0 && (
+				{view.queued.length > 0 && (
 					<Queue
 						thread={thread}
-						queued={state.queued}
+						queued={view.queued}
 						running={running}
 						onError={setSendError}
 						onRestore={restore}
@@ -345,13 +414,33 @@ function Conversation({ thread, instanceId }: { readonly thread: ThreadRef; read
 					thread={thread}
 					instanceId={instanceId}
 					running={running}
-					info={state.info}
+					info={view.info}
 					onError={setSendError}
 					onSending={sending}
 					onUnsent={unsent}
 					restored={restored}
 				/>
 			</div>
+		</div>
+	);
+}
+
+/** True once something has been loading for a while, so a quick load never flashes a status line. */
+function useSlow(loading: boolean) {
+	const [slow, setSlow] = useState(false);
+	useEffect(() => {
+		if (!loading) return;
+		const timer = setTimeout(() => setSlow(true), LOADING_AFTER_MS);
+		return () => clearTimeout(timer);
+	}, [loading]);
+	return loading && slow;
+}
+
+/** The frame while a thread it hasn't shown lately loads: empty, then a quiet line if it takes a while. */
+function Loading({ slow }: { readonly slow: boolean }) {
+	return (
+		<div className="flex h-full items-center justify-center text-xs text-ink-muted">
+			{slow && "Loading messages…"}
 		</div>
 	);
 }
@@ -498,25 +587,24 @@ function Transcript({
 		}
 		seenFirstTurnKey.current = firstTurnKey;
 		prependHeight.current = null;
-		if (stickToBottom.current) {
-			syncTranscriptViewport(el);
-			pinToBottom(el);
-		}
-	}, [turns, running, firstTurnKey, pinToBottom]);
+		// Growth is pinned by the resize observer below, once per layout rather than once per update.
+	}, [turns, firstTurnKey]);
 
 	useLayoutEffect(() => {
 		const el = scroller.current;
 		const inner = el?.firstElementChild;
 		if (el === null || inner === null || inner === undefined) return;
-		const onResize = () => {
+		// Runs after layout and before paint. The viewport is measured again only when the scroller
+		// itself resizes; content growing only needs pinning.
+		const observer = new ResizeObserver((entries) => {
 			if (!el.isConnected) return;
-			syncTranscriptViewport(el);
+			if (entries.some((entry) => entry.target === el)) syncTranscriptViewport(el);
 			if (stickToBottom.current) pinToBottom(el);
-		};
-		const observer = new ResizeObserver(onResize);
+		});
 		observer.observe(el);
 		observer.observe(inner);
-		onResize();
+		syncTranscriptViewport(el);
+		if (stickToBottom.current) pinToBottom(el);
 		return () => observer.disconnect();
 	}, [pinToBottom, turns.length]);
 

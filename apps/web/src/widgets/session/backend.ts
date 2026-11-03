@@ -56,6 +56,7 @@ const changes = (
 	info: Info,
 	messages: ReadonlyArray<HistoryEntry>,
 	queued: ReadonlyArray<QueuedPrompt>,
+	streamed: (id: string) => boolean,
 ): Update[] => {
 	if (before === undefined) return [];
 	const previous = new Map(before.messages.map((message) => [message.id, message]));
@@ -66,7 +67,13 @@ const changes = (
 		...messages
 			.filter((message) => {
 				const old = previous.get(message.id);
-				return old === undefined || !sameMessage(old, message);
+				if (old === undefined) return true;
+				// Every stored change moves an entry's updatedAt, so only a moved or streaming one is compared in full.
+				const moved =
+					old.updatedAt !== message.updatedAt ||
+					old.state !== message.state ||
+					old.parts.length !== message.parts.length;
+				return (moved || streamed(message.id)) && !sameMessage(old, message);
 			})
 			.map((message) => ({ _tag: "Message" as const, message })),
 		// After the messages, so a prompt that was promoted is in the conversation before it leaves the queue.
@@ -231,7 +238,8 @@ export const session = defineBackend({
 			open.set(key, { sessionId: ref.sessionId, threadId: info.id });
 			const queue = yield* codework("thread.queue", target);
 			const history = yield* codework("thread.history", target);
-			const before = yield* load(key);
+			// The snapshot in memory is the newest; storage can trail it by up to a second.
+			const before = latest.get(key) ?? (yield* load(key));
 			const next = toInfo(info, yield* titleOf(info));
 			const messages = withStreamed(history.entries);
 			// One that is in both has been promoted: the conversation wins.
@@ -239,7 +247,7 @@ export const session = defineBackend({
 			const queued = queue.entries.filter((prompt) => !listed.has(prompt.id));
 			let seq = before?.seq ?? 0;
 			// Published before the snapshot is stored, so a view never holds a snapshot newer than its cursor.
-			for (const update of changes(before, next, messages, queued)) {
+			for (const update of changes(before, next, messages, queued, (id) => streaming.has(id))) {
 				const payload = yield* encodeUpdate(update).pipe(Effect.orDie);
 				seq = (yield* bus.publish({ topic: topics.thread(key), payload })).seq ?? seq;
 			}
@@ -252,8 +260,8 @@ export const session = defineBackend({
 				seq,
 				...(resume === undefined ? {} : { cursor: resume }),
 			};
-			yield* kv.set(snapshotKey(key), yield* encodeSnapshot(snapshot).pipe(Effect.orDie));
 			latest.set(key, snapshot);
+			unsaved.add(key);
 			return snapshot;
 		});
 
@@ -365,6 +373,27 @@ export const session = defineBackend({
 			);
 		});
 
+		// Snapshots changed since they were last stored. Encoding a whole conversation on every move of
+		// a busy log costs more than it saves, so they are stored at most once a second.
+		const unsaved = new Set<string>();
+		const save = Effect.suspend(() => {
+			const keys = [...unsaved];
+			unsaved.clear();
+			return Effect.forEach(
+				keys,
+				(key) => {
+					const snapshot = latest.get(key);
+					return snapshot === undefined
+						? Effect.void
+						: encodeSnapshot(snapshot).pipe(
+								Effect.orDie,
+								Effect.flatMap((json) => kv.set(snapshotKey(key), json)),
+							);
+				},
+				{ discard: true },
+			);
+		});
+
 		const following = new Map<string, Deferred.Deferred<Reply>>();
 
 		/** Seeds, answers `ready`, then refreshes on every move of this thread's durable log. */
@@ -405,6 +434,11 @@ export const session = defineBackend({
 		yield* flush.pipe(
 			Effect.catchCause((cause) => Effect.logWarning("Session drafts stopped; restarting", cause)),
 			Effect.repeat(Schedule.spaced("50 millis")),
+			Effect.forkScoped,
+		);
+		yield* save.pipe(
+			Effect.catchCause((cause) => Effect.logWarning("Session snapshots not stored; retrying", cause)),
+			Effect.repeat(Schedule.spaced("1 second")),
 			Effect.forkScoped,
 		);
 		// Nothing here is replayed, so a reconnect only resumes from what happens next.
