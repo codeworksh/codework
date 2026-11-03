@@ -1,6 +1,11 @@
 {
 	"first": "Stopped",
-	"registered": "Unreachable",
+	"running": "Running",
+	"otherOs": "Running",
+	"killed": "Stopped",
+	"leftBehind": true,
+	"otherOsKilled": "Stopped",
+	"stale": "Stopped",
 	"gone": "Stopped",
 	"health": {
 		"interval": 300
