@@ -1,7 +1,7 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AppWindow, X } from "lucide-react";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { isMac } from "@codeworksh/widget/view";
 import { registry } from "../widgets";
@@ -103,42 +103,35 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
-				// Keep separator space reserved when selection hides its hairline.
-				const divider = index > 0 && !current && workspaces[index - 1]?.id !== active?.id;
 				return (
-					<Fragment key={workspace.id}>
-						{index > 0 && (
-							<span aria-hidden className={`mx-0.5 h-4 w-px shrink-0 bg-ink/12 ${divider ? "" : "invisible"}`} />
-						)}
-						<div className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
-							<Link
-								{...workspaceRoute(workspace)}
-								aria-current={current ? "page" : undefined}
-								title={`${tab}\n${shortcutLabel(index + 1)}`}
-								className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-8 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-									current
-										? "bg-selection-current text-ink"
-										: "bg-ink/4 text-ink-muted hover:bg-selection hover:text-ink"
-								}`}
+					<div key={workspace.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
+						<Link
+							{...workspaceRoute(workspace)}
+							aria-current={current ? "page" : undefined}
+							title={`${tab}\n${shortcutLabel(index + 1)}`}
+							className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-8 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+								current
+									? "bg-selection-current text-ink"
+									: "bg-ink/4 text-ink-muted hover:bg-selection hover:text-ink"
+							}`}
+						>
+							<span
+								className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
 							>
-								<span
-									className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
-								>
-									<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
-								</span>
-								<span className="truncate text-xs font-medium">{tab}</span>
-							</Link>
-							<button
-								type="button"
-								aria-label={`Close ${workspace.name}`}
-								title={`Close ${workspace.name}`}
-								onClick={() => void close(workspace, index)}
-								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
-							>
-								<X className="size-3" strokeWidth={2} aria-hidden />
-							</button>
-						</div>
-					</Fragment>
+								<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
+							</span>
+							<span className="truncate text-xs font-medium">{tab}</span>
+						</Link>
+						<button
+							type="button"
+							aria-label={`Close ${workspace.name}`}
+							title={`Close ${workspace.name}`}
+							onClick={() => void close(workspace, index)}
+							className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
+						>
+							<X className="size-3" strokeWidth={2} aria-hidden />
+						</button>
+					</div>
 				);
 			})}
 		</nav>
