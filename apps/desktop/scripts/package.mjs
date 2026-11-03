@@ -16,8 +16,9 @@ if (!["canary", "dev", "latest"].includes(channel)) {
 	process.exit(1);
 }
 
+// On Windows pnpm is a .cmd shim, which Node runs only through a shell.
 const run = (command, args, cwd, env = process.env) => {
-	const result = spawnSync(command, args, { cwd, env, stdio: "inherit" });
+	const result = spawnSync(command, args, { cwd, env, stdio: "inherit", shell: process.platform === "win32" });
 	if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
@@ -36,7 +37,7 @@ run(
 		"exec",
 		"electron-builder",
 		"--config",
-		"electron-builder.config.ts",
+		"electron.config.ts",
 		`-c.extraMetadata.version=${version}`,
 		"--publish",
 		"never",

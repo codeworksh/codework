@@ -109,12 +109,13 @@ function useFinish(close: () => void) {
 	};
 }
 
-/** The native folder dialog, opening at `from`; finishes on a pick. Absent outside the desktop app. */
+/** The native folder dialog, opening at `from`; finishes on a pick. Absent outside the desktop app and on Windows. */
 function usePick(close: () => void) {
 	const finish = useFinish(close);
-	if (bridge === undefined) return undefined;
+	const pickFolder = bridge?.pickFolder;
+	if (pickFolder === undefined) return undefined;
 	return (from: string) =>
-		void bridge.pickFolder(from).then((picked) => {
+		void pickFolder(from).then((picked) => {
 			if (picked !== null) finish(picked);
 		});
 }

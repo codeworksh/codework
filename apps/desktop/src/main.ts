@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL } from "./ipc.ts";
@@ -15,8 +16,8 @@ const DEV_SERVER_URL = process.env.CODEWORK_WEB_URL;
 const CLIENT_ASSETS_DIR =
 	process.env.CODEWORK_WEB_DIR ??
 	(app.isPackaged ? path.join(process.resourcesPath, "web") : path.resolve(app.getAppPath(), "../web/dist"));
-// The 3D brand mark on Apple's icon grid. A packaged build will carry it as an .icns; until then
-// it is set at runtime, or the Dock shows Electron's own icon.
+// The 3D brand mark on Apple's icon grid. A packaged build carries it as an .icns; an unpackaged run
+// sets it at runtime, or the Dock shows Electron's own icon.
 const ICON = path.join(app.getAppPath(), "resources/icon.png");
 
 const MIME_TYPES: Record<string, string> = {
@@ -124,22 +125,53 @@ function createMainWindow(): BrowserWindow {
 		}),
 		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
 		icon: ICON,
+		// The default File/Edit menu bar shows until Alt; its shortcuts work either way.
+		autoHideMenuBar: true,
 		// Hidden until the page's first paint, the splash in the saved theme, so it never opens blank.
 		show: false,
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
+			// A hidden window's renderer is throttled, which holds up the first paint that shows it.
+			backgroundThrottling: false,
 		},
 	});
-	window.once("ready-to-show", () => window.show());
+	const reveal = () => {
+		window.show();
+		window.webContents.setBackgroundThrottling(true);
+	};
+	window.once("ready-to-show", reveal);
 	// Linux can miss ready-to-show; the load finishing reveals the window there.
-	if (process.platform === "linux") window.webContents.once("did-finish-load", () => window.show());
+	if (process.platform === "linux") window.webContents.once("did-finish-load", reveal);
+	// Links that open a new window, as a reply's links do, open in the browser instead.
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		if (url.startsWith("https:") || url.startsWith("http:")) void shell.openExternal(url);
+		return { action: "deny" };
+	});
 	void window.loadURL(APP_URL);
 	return window;
 }
 
+// A second launch (the Start menu, a .desktop file) would start a second app server on the same
+// database, so it focuses the running app's window instead.
+if (!app.requestSingleInstanceLock()) app.exit();
+app.on("second-instance", () => {
+	const window = BrowserWindow.getAllWindows()[0];
+	if (window === undefined) return;
+	if (window.isMinimized()) window.restore();
+	window.focus();
+});
+
+// The installer's shortcuts carry the app id, and Windows groups the taskbar button with the
+// shortcut whose id the running app takes.
+if (process.platform === "win32" && app.isPackaged) {
+	const { appId } = JSON.parse(readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")) as { appId: string };
+	app.setAppUserModelId(appId);
+}
+
 void app.whenReady().then(async () => {
-	app.dock?.setIcon(ICON);
+	// A packaged app's Info.plist names its icon; setting it again would replace one the user chose.
+	if (!app.isPackaged) app.dock?.setIcon(ICON);
 	protocol.handle(SCHEME, handleRequest);
 	ipcMain.on(HOME_CHANNEL, (event) => {
 		event.returnValue = app.getPath("home");

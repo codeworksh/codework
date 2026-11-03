@@ -158,8 +158,18 @@ jobs:
                - target: linux-x64
                  runner: ubuntu-24.04
                  args: --linux --x64
+               - target: win-arm64
+                 runner: windows-11-arm
+                 args: --win --arm64
+               - target: win-x64
+                 runner: windows-2025
+                 args: --win --x64
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+      # Windows runners default to PowerShell, which reads "$CHANNEL" as its own variable.
+      defaults:
+         run:
+            shell: bash
       steps:
          - uses: actions/checkout@v6
          # The pacman target packs with bsdtar.
@@ -184,6 +194,7 @@ jobs:
                  apps/desktop/dist/codework-desktop-*.AppImage
                  apps/desktop/dist/codework-desktop-*.deb
                  apps/desktop/dist/codework-desktop-*.pacman
+                 apps/desktop/dist/codework-desktop-*.exe
               if-no-files-found: error
               retention-days: 1
 
