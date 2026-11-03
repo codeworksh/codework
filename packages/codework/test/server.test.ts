@@ -4,6 +4,7 @@
 import type { Message } from "@codeworksh/aikit";
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
+import { NodeServices } from "@effect/platform-node";
 import { HttpServer } from "effect/http";
 import { RpcTest } from "effect/rpc";
 import { execFile } from "node:child_process";
@@ -16,10 +17,12 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import { define as definePlugin } from "../../harness/src/plugin/plugin.ts";
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import { Client } from "../src/server/client.ts";
+import { Clones } from "../src/server/clones.ts";
 import { Contract } from "../src/server/contract.ts";
 import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
+import { Host } from "../src/server/host.ts";
 import { Identity } from "../src/server/identity.ts";
 import { OAuth } from "../src/server/oauth.ts";
 import { Server } from "../src/server/server.ts";
@@ -54,6 +57,8 @@ const layer = (options: Harness.Options = {}) => {
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
 		Layer.provide(OAuth.layer({ home })),
+		Layer.provide(Host.layer.pipe(Layer.provide(NodeServices.layer))),
+		Layer.provide(Clones.layer.pipe(Layer.provide(NodeServices.layer))),
 		Layer.provide(Identity.layer),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);

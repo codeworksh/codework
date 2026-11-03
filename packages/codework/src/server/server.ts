@@ -6,9 +6,11 @@ import * as NetAddress from "effect/net/NetAddress";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
+import { Clones } from "./clones.ts";
 import { Contract } from "./contract.ts";
 import { EventFeed } from "./feed.ts";
 import { Handlers } from "./handlers.ts";
+import { Host } from "./host.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
 import { Registration } from "./registration.ts";
@@ -91,6 +93,8 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provideMerge(managedShutdown),
 		Layer.provideMerge(resumeUnfinished),
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
+		Layer.provide(Host.layer),
+		Layer.provide(Clones.layer),
 	);
 	return app.pipe(
 		Layer.provideMerge(announce),

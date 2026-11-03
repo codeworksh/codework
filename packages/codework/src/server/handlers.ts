@@ -28,7 +28,9 @@ import {
 	type ThreadInfo,
 } from "./contract.ts";
 import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
+import { Clones } from "./clones.ts";
 import { EventFeed } from "./feed.ts";
+import { Host } from "./host.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
 import { MessagePart } from "./part.ts";
@@ -128,6 +130,8 @@ export const layer = Contract.Api.toLayer(
 		const events = yield* Event.Service;
 		const registry = yield* EventRegistry.Service;
 		const mcp = yield* Mcp.Service;
+		const host = yield* Host.Service;
+		const clones = yield* Clones.Service;
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -140,6 +144,8 @@ export const layer = Contract.Api.toLayer(
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
 			"auth.logout": ({ provider }) => oauth.logout(provider),
 			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime, project }) {
+				// Refused before anything is resolved, so no session starts on a half-cloned tree.
+				if (hostDir !== undefined) yield* clones.guard(hostDir);
 				const selection =
 					sandbox === undefined ? undefined : yield* exported("Server.session.create", Sandbox.resolve(sandbox));
 				const selected = selection?.info;
@@ -348,6 +354,17 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"mcp.connect": mcpControl("connect"),
 			"mcp.disconnect": mcpControl("disconnect"),
+			"host.info": () => Effect.succeed(host.info),
+			"host.browse": ({ path }) => host.browse(path),
+			"host.create": ({ name }) => host.create(name),
+			"host.add": ({ path }) => host.add(path),
+			"host.clone": (input) => clones.start(input),
+			"host.clones": () => clones.stream,
+			"host.cancel": ({ path }) => clones.cancel(path).pipe(Effect.map((applied) => ({ applied }))),
+			"host.retry": ({ path }) => clones.retry(path).pipe(Effect.map((applied) => ({ applied }))),
+			"host.discard": ({ path }) => clones.discard(path),
+			"github.status": () => host.status(),
+			"github.lookup": ({ repository }) => host.lookup(repository),
 			"sandbox.drivers": Effect.fnUntraced(function* () {
 				const drivers = yield* Sandbox.drivers();
 				return drivers.map(({ name, kind }) => ({ name, kind }));
