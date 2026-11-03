@@ -1,9 +1,10 @@
-import { useAtomRefresh } from "@effect/atom-react";
+import { RegistryContext, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import brand from "../../assets/codework.png";
 import { ComposerNotice, type Notice } from "@/components/banner";
@@ -152,6 +153,82 @@ const apply = (state: State, update: Update): State => {
 	}
 };
 
+const blank = (text: string) => text.trim() === "";
+
+/** Whether `next` only grows text a draft already had: the same parts, each as blank as before. */
+const streamedInto = (previous: HistoryEntry, next: HistoryEntry) =>
+	previous.id === next.id &&
+	previous.state === "draft" &&
+	next.state === "draft" &&
+	previous.error === next.error &&
+	previous.parts.length === next.parts.length &&
+	previous.parts.every((part, at) => {
+		const other = next.parts[at]!;
+		if (part === other) return true;
+		if (part.type === "text" && other.type === "text") return blank(part.text) === blank(other.text);
+		return (
+			part.type === "thinking" &&
+			other.type === "thinking" &&
+			part.redacted === other.redacted &&
+			blank(part.thinking) === blank(other.thinking)
+		);
+	});
+
+/** Whether `next` differs from `previous` only by text streamed into its drafts. */
+const sameStructure = (previous: State, next: State) =>
+	previous === next ||
+	(previous.status === "ready" &&
+		next.status === "ready" &&
+		previous.info === next.info &&
+		previous.more === next.more &&
+		previous.queued === next.queued &&
+		previous.after === next.after &&
+		previous.running === next.running &&
+		previous.failure === next.failure &&
+		previous.messages.length === next.messages.length &&
+		previous.messages.every(
+			(message, at) => message === next.messages[at] || streamedInto(message, next.messages[at]!),
+		));
+
+/**
+ * A conversation as it streams. `quiet` holds while only a draft's text grows, so the transcript
+ * re-renders on structure alone; a streaming row reads its own text through `message`.
+ */
+function conversationStore(initial: State) {
+	const live = Atom.make<State>(initial);
+	const quiet = Atom.make((get) => get(live)).pipe(Atom.withEquality(sameStructure));
+	const message = Atom.family((id: string) =>
+		Atom.make((get) => {
+			const state = get(live);
+			return state.status === "ready" ? state.messages.find((entry) => entry.id === id) : undefined;
+		}),
+	);
+	return { live, quiet, message };
+}
+
+const noMessage = Atom.make<HistoryEntry | undefined>(undefined);
+const StreamedContext = createContext<(id: string) => Atom.Atom<HistoryEntry | undefined>>(() => noMessage);
+
+/** A reply's answer (its text parts, as one), or the text of its part `at`. */
+function textOf(reply: HistoryEntry, at?: number) {
+	if (at === undefined) return reply.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n");
+	const part = reply.parts[at];
+	return part?.type === "thinking" ? part.thinking : part?.type === "text" ? part.text : "";
+}
+
+/**
+ * `textOf` a reply as it streams: a draft reads its live message, so a streamed update re-renders
+ * only the row showing it. A settled reply, or one this conversation does not hold, reads as given.
+ */
+function useStreamed(reply: HistoryEntry, at?: number) {
+	const message = use(StreamedContext);
+	const select = useCallback(
+		(entry: HistoryEntry | undefined) => (entry === undefined ? undefined : textOf(entry, at)),
+		[at],
+	);
+	return useAtomValue(reply.state === "draft" ? message(reply.id) : noMessage, select) ?? textOf(reply, at);
+}
+
 /**
  * Asks the session backend to follow the thread, loads its newest page, then applies every update
  * published after that page. Older pages load on demand. A dropped connection resumes where it
@@ -159,12 +236,20 @@ const apply = (state: State, update: Update): State => {
  */
 function useConversation(thread: ThreadRef) {
 	const bus = useBus();
-	const [state, setState] = useState<State>(() => remembered(threadKey(thread)));
+	const registry = use(RegistryContext);
+	const [store] = useState(() => conversationStore(remembered(threadKey(thread))));
+	const state = useAtomValue(store.quiet);
+	const setState = useAtomSet(store.live);
 	const paging = useRef(false);
 
-	useEffect(() => {
-		if (state.status === "ready") remember(threadKey(thread), state);
-	}, [thread, state]);
+	// As last streamed, not as last quiet: the next thread's first render may stand this one in.
+	useEffect(
+		() =>
+			registry.subscribe(store.live, (latest) => {
+				if (latest.status === "ready") remember(threadKey(thread), latest);
+			}),
+		[registry, store, thread],
+	);
 
 	const page = useCallback(
 		async (before: string | undefined) => {
@@ -250,7 +335,7 @@ function useConversation(thread: ThreadRef) {
 		[oldest, page],
 	);
 
-	return { state, loadOlder };
+	return { state, loadOlder, message: store.message };
 }
 
 function Conversation({
@@ -264,7 +349,7 @@ function Conversation({
 	readonly previous: string | undefined;
 }) {
 	const { setTitle, setIcon, setTab } = useFrame();
-	const { state: loaded, loadOlder } = useConversation(thread);
+	const { state: loaded, loadOlder, message } = useConversation(thread);
 	const slow = useSlow(loaded.status === "loading");
 	// Prompts sent while idle, shown before the backend echoes them: it queues a prompt before the
 	// conversation takes it in, which would otherwise flash a queue row. Each leaves once echoed.
@@ -382,7 +467,14 @@ function Conversation({
 	const running = view.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
 		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
-			<Transcript key={stand === undefined ? "own" : "stand"} state={view} running={running} loadOlder={loadOlder} />
+			<StreamedContext value={message}>
+				<Transcript
+					key={stand === undefined ? "own" : "stand"}
+					state={view}
+					running={running}
+					loadOlder={loadOlder}
+				/>
+			</StreamedContext>
 			<div
 				ref={composer}
 				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 *:pointer-events-auto`}
@@ -696,7 +788,7 @@ function turnsOf(entries: readonly HistoryEntry[]): Turn[] {
 	return turns;
 }
 
-// Turns are rebuilt on every update, but their messages are the same objects unless they changed.
+// Turns are rebuilt on every structural update, but their messages are the same objects unless they changed.
 const sameTurn = (
 	a: {
 		readonly turn: Turn;
@@ -743,18 +835,19 @@ const TurnView = memo(function TurnView({
 	readonly modelName: string | undefined;
 }) {
 	const last = turn.replies.at(-1);
-	const answer = last?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) ?? [];
-	const answerText = answer.join("\n\n");
-	const work = turn.replies
-		.flatMap((reply) => reply.parts.filter((part) => !(reply === last && part.type === "text")))
-		.filter(isWork);
+	const answer = last?.parts.some((part) => part.type === "text") === true;
+	const work = turn.replies.flatMap((reply) =>
+		reply.parts.flatMap((part, at) =>
+			(reply === last && part.type === "text") || !isWork(part) ? [] : [{ part, reply, at }],
+		),
+	);
 	const interrupted = last?.state === "aborted";
 	const failed = last?.error !== undefined;
 	// While the agent works and no final answer is streaming yet (or a tool is still running), keep the work open.
 	const toolRunning = work.some(
-		(part) => part.type === "toolCall" && (part.status === "pending" || part.status === "running"),
+		({ part }) => part.type === "toolCall" && (part.status === "pending" || part.status === "running"),
 	);
-	const working = active && (last?.state !== "draft" || answer.length === 0 || toolRunning);
+	const working = active && (last?.state !== "draft" || !answer || toolRunning);
 	const started = turn.user?.createdAt ?? turn.replies[0]?.createdAt;
 	const ended = active ? undefined : endOf(turn.replies);
 
@@ -763,14 +856,15 @@ const TurnView = memo(function TurnView({
 			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-1 text-body ${anchored ? "transcript-turn-anchor" : ""}`}
 		>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
-			{(work.length > 0 || working || answer.length > 0 || interrupted || failed) && (
-				<Message role="assistant" at={turn.replies[0]?.createdAt} ended={ended} copyText={answerText}>
-					<WorkLog parts={work} started={started} ended={ended} working={working} modelName={modelName} />
-					{answer.length > 0 && (
-						<div className="min-w-0 px-4 pt-1 pb-1">
-							<Markdown text={answerText} streaming={last?.state === "draft"} />
-						</div>
-					)}
+			{(work.length > 0 || working || answer || interrupted || failed) && (
+				<Message
+					role="assistant"
+					at={turn.replies[0]?.createdAt}
+					ended={ended}
+					copyText={last === undefined ? "" : textOf(last)}
+				>
+					<WorkLog steps={work} started={started} ended={ended} working={working} modelName={modelName} />
+					{answer && last !== undefined && <Answer reply={last} />}
 					{last?.error !== undefined ? (
 						<p className="px-4 py-1 text-xs text-destructive">{last.error}</p>
 					) : (
@@ -781,6 +875,15 @@ const TurnView = memo(function TurnView({
 		</section>
 	);
 }, sameTurn);
+
+function Answer({ reply }: { readonly reply: HistoryEntry }) {
+	const text = useStreamed(reply);
+	return (
+		<div className="min-w-0 px-4 pt-1 pb-1">
+			<Markdown text={text} streaming={reply.state === "draft"} />
+		</div>
+	);
+}
 
 function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	const [expanded, setExpanded] = useState(false);
@@ -907,7 +1010,7 @@ function nestedScrollAbsorbsWheel(
  * Keeps the open work scroller pinned to its newest step while live; scrolling up with the wheel
  * pauses auto-follow until the reader scrolls back to the bottom.
  */
-function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, parts: readonly Part[]) {
+function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: readonly Step[]) {
 	const stickToBottom = useRef(true);
 	const lastScrollTop = useRef(0);
 	const wasEnabled = useRef(false);
@@ -936,7 +1039,7 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, parts: 
 			wasEnabled.current = true;
 		}
 		pin();
-	}, [el, enabled, pin, parts]);
+	}, [el, enabled, pin, steps]);
 
 	useEffect(() => {
 		if (el === null || !enabled) return;
@@ -969,14 +1072,21 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, parts: 
 	}, [el, enabled, pin]);
 }
 
+/** A part the work log shows, with the reply it is from and where. */
+interface Step {
+	readonly part: Part;
+	readonly reply: HistoryEntry;
+	readonly at: number;
+}
+
 function WorkLog({
-	parts,
+	steps,
 	started,
 	ended,
 	working,
 	modelName,
 }: {
-	readonly parts: readonly Part[];
+	readonly steps: readonly Step[];
 	readonly started: number | undefined;
 	/** Absent while the turn is still running. */
 	readonly ended: number | undefined;
@@ -987,9 +1097,9 @@ function WorkLog({
 	const [override, setOverride] = useState<boolean | null>(null);
 	const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
 	const live = ended === undefined;
-	const expandable = parts.length > 0;
+	const expandable = steps.length > 0;
 	const open = expandable && (override ?? working);
-	useLivePhaseScroll(liveScroller, open, parts);
+	useLivePhaseScroll(liveScroller, open, steps);
 	const label = <WorkLabel started={started} ended={ended} modelName={modelName} />;
 	const icon = (
 		<span className="relative flex size-3.5 shrink-0 items-center justify-center">
@@ -1048,14 +1158,14 @@ function WorkLog({
 				{open && (
 					<div ref={setLiveScroller} className="zen-phase-live">
 						<div className="flex min-w-0 flex-col pb-1">
-							{parts.map((part, index) => (
+							{steps.map((step, index) => (
 								<div
 									key={index}
 									className={`zen-fold-rail flow-root pr-4 pb-1 pl-9 last:pb-0 ${
-										index === parts.length - 1 ? "zen-fold-tail" : ""
-									} ${part.type === "text" ? "zen-fold-prose" : ""}`}
+										index === steps.length - 1 ? "zen-fold-tail" : ""
+									} ${step.part.type === "text" ? "zen-fold-prose" : ""}`}
 								>
-									<WorkRow part={part} live={working && index === parts.length - 1} />
+									<WorkRow {...step} live={working && index === steps.length - 1} />
 								</div>
 							))}
 						</div>
@@ -1084,13 +1194,13 @@ function proseSummary(text: string) {
 		.trim();
 }
 
-const WorkRow = memo(function WorkRow({ part, live = false }: { readonly part: Part; readonly live?: boolean }) {
+const WorkRow = memo(function WorkRow({ part, reply, at, live = false }: Step & { readonly live?: boolean }) {
 	switch (part.type) {
 		case "toolCall":
 			return <ToolRow call={part} />;
 		case "thinking":
 			return part.redacted === true || part.thinking === "" ? null : (
-				<ThinkingWorkRow text={part.thinking} live={live} />
+				<ThinkingWorkRow reply={reply} at={at} live={live} />
 			);
 		case "text":
 			return <NoteWorkRow text={part.text} />;
@@ -1099,7 +1209,16 @@ const WorkRow = memo(function WorkRow({ part, live = false }: { readonly part: P
 	}
 });
 
-function ThinkingWorkRow({ text, live = false }: { readonly text: string; readonly live?: boolean }) {
+function ThinkingWorkRow({
+	reply,
+	at,
+	live = false,
+}: {
+	readonly reply: HistoryEntry;
+	readonly at: number;
+	readonly live?: boolean;
+}) {
+	const text = useStreamed(reply, at);
 	const [open, setOpen] = useState(false);
 	const summary = useMemo(() => proseSummary(text) || "Thinking", [text]);
 	return (
