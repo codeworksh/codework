@@ -112,29 +112,20 @@ const executableOf = (row: Servers.Row, foundOnce: typeof found) => {
 	);
 };
 
-/** Whether a process runs under `pid`. */
-export const alive = (pid: number) =>
-	Effect.sync(() => {
-		try {
-			process.kill(pid, 0);
-			return true;
-		} catch (error) {
-			// EPERM: it exists, under another user.
-			return (error as NodeJS.ErrnoException).code === "EPERM";
-		}
-	});
-
-/** The server a home names, while its process lives. */
+/** The server a home names, while its URL answers. */
 export const liveAt = (home: string) =>
 	Effect.gen(function* () {
 		const registered = yield* Codework.registrationAt(home);
-		return Option.isSome(registered) && (yield* alive(registered.value.pid)) ? registered : Option.none();
+		return Option.isSome(registered) && (yield* Codework.reachable(registered.value.url))
+			? registered
+			: Option.none();
 	});
 
 /**
  * The server a home names. The default one is asked through the app's own connection, since a build
  * whose replies differ still answers `server.info`: a call the app depends on decides whether it
- * works with this app. Any other is taken from its registration and process.
+ * works with this app, and the pid it reports must be the registration's, not another server's on
+ * that port. Any other is taken from its registration once its URL answers.
  */
 export const serverAt = (home: string, isDefault: boolean) =>
 	Effect.gen(function* () {

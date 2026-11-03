@@ -28,6 +28,17 @@ export const registrationAt = (home: string) =>
 			.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Registration)), Effect.option);
 	});
 
+/**
+ * Whether a server answers at `url`: its WebSocket opens. A registration's pid says nothing here, since
+ * the server may run on another OS than this app, as one in WSL does for the Windows app.
+ */
+export const reachable = (url: string) =>
+	Socket.makeWebSocket(url, { openTimeout: "2 seconds" }).pipe(
+		Effect.flatMap((socket) => Effect.scoped(socket.reader)),
+		Effect.isSuccess,
+		Effect.provide(NodeSocket.layerWebSocketConstructor),
+	);
+
 /** The server the default server's home names: the one the app connects to. */
 export const registration = Effect.gen(function* () {
 	return yield* registrationAt(yield* (yield* Servers.Service).defaultHome);
