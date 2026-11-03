@@ -50,12 +50,9 @@ suite("Session.relink across remote envs (vercel → daytona)", () => {
 								Effect.gen(function* () {
 									const { cwd } = yield* SandboxIO.Current;
 									const target = path.posix.join(cwd, "69th");
-									const result = yield* Git.Service.use((git) =>
+									yield* Git.Service.use((git) =>
 										git.clone({ remote, target, branch: "main", depth: 1 }),
-									).pipe(Effect.provide(Git.layer));
-									if (result.exitCode !== 0) {
-										return yield* Effect.die(`clone failed: ${result.stderr || result.text}`);
-									}
+									).pipe(Effect.provide(Git.layer), Effect.orDie);
 									return target;
 								}),
 							);

@@ -260,10 +260,10 @@ const PINNED = "6b47f8aa0d88847512773f6b33e188d847825f6a";
 const clone = Effect.gen(function* () {
 	const { cwd } = yield* SandboxIO.Current;
 	const target = path.posix.join(cwd, `69th-${Date.now()}`);
-	const result = yield* Git.Service.use((git) => git.clone({ ...FIXTURE, target, depth: 1 })).pipe(
+	yield* Git.Service.use((git) => git.clone({ ...FIXTURE, target, depth: 1 })).pipe(
 		Effect.provide(Git.layer),
+		Effect.orDie,
 	);
-	if (result.exitCode !== 0) return yield* Effect.die(`clone failed: ${result.stderr || result.text}`);
 	const head = yield* SandboxIO.Shell.use((shell) => shell.exec("git rev-parse HEAD", { cwd: target }));
 	if (head.stdout.trim() !== PINNED)
 		return yield* Effect.die(`${FIXTURE.branch} moved to ${head.stdout.trim()}; expected ${PINNED}`);

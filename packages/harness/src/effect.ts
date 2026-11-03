@@ -15,6 +15,7 @@ export { Thread as ThreadStore } from "./thread/thread.ts";
 export { ThreadSchema } from "./thread/schema.ts";
 export { DocumentSchema } from "./document/schema.ts";
 export { Runner } from "./runner/run.ts";
+export { Git } from "./git/git.ts";
 export { Location } from "./location/location.ts";
 export { Project } from "./project/project.ts";
 export { McpConfig } from "./mcp/config.ts";
@@ -25,6 +26,7 @@ export { ModelCatalog } from "./model/catalog.ts";
 export * as Tool from "./tool/tool.ts";
 
 export { Global } from "./global.ts";
+export { expandTilde } from "./util/home.ts";
 export { Settings } from "./settings/settings.ts";
 export { State } from "./state/state.ts";
 

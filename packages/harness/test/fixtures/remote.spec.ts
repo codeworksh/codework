@@ -60,13 +60,10 @@ const prepareRepository = (input: {
 	readonly shell: ISandboxExe;
 }) =>
 	Effect.gen(function* () {
-		const clone = yield* Effect.gen(function* () {
+		yield* Effect.gen(function* () {
 			const git = yield* Git.Service;
 			return yield* git.clone({ remote, target: input.repo, branch: "main", depth: 1 });
-		}).pipe(Effect.provide(Git.layer));
-		if (clone.exitCode !== 0) {
-			throw new Error(`unable to clone ${remote}: ${clone.stderr || clone.text}`);
-		}
+		}).pipe(Effect.provide(Git.layer), Effect.orDie);
 
 		const commitFile = `sandbox-${input.kind}.txt`;
 		yield* input.fs.writeFile(path.join(input.repo, commitFile), `${input.envId}\n`);
@@ -269,7 +266,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 							Effect.gen(function* () {
 								const git = yield* Git.Service;
 								return yield* git.push({ directory: repo, refspec, env: auth });
-							}).pipe(Effect.provide(Git.layer));
+							}).pipe(Effect.provide(Git.layer), Effect.orDie);
 
 						const program = Effect.gen(function* () {
 							const prepared = yield* prepareRepository({
@@ -280,14 +277,11 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								shell,
 							});
 
-							const pushed = yield* push(`HEAD:${ref}`);
-							if (pushed.exitCode !== 0) {
-								throw new Error(`unable to push remote test branch: ${pushed.stderr || pushed.text}`);
-							}
+							yield* push(`HEAD:${ref}`);
 
 							const advertised = yield* shell.execArgv(["git", "ls-remote", "--heads", remote, ref]);
 
-							return { prepared, pushed, advertised, branch };
+							return { prepared, advertised, branch };
 						});
 
 						return yield* program.pipe(
@@ -297,7 +291,6 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 				);
 
 				const head = result.prepared.head.stdout.trim();
-				expect(result.pushed.exitCode).toBe(0);
 				expect(result.advertised.exitCode).toBe(0);
 				expect(result.advertised.stdout.trim()).toBe(`${head}\trefs/heads/${result.branch}`);
 			},
