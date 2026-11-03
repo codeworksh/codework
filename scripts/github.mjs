@@ -76,6 +76,8 @@ if (channel === "canary") {
 			"",
 			"macOS builds are not signed or notarized yet. After installing, run:",
 			'`xattr -dr com.apple.quarantine "/Applications/CodeWork Canary.app"`',
+			"",
+			"Windows builds are not signed yet, so SmartScreen warns on install: choose More info, then Run anyway.",
 		].join("\n"),
 	);
 } else if (channel === "dev") {

@@ -6,10 +6,10 @@ declare global {
 			server: string;
 			/** The user's home directory. */
 			home: string;
-			/** Opens the native folder dialog at `from`; the chosen folder, or null when cancelled. */
-			pickFolder: (from: string) => Promise<string | null>;
-			/** Shows `path` in the file manager, selected. */
-			reveal: (path: string) => Promise<void>;
+			/** Opens the native folder dialog at `from`; the chosen folder, or null when cancelled. Not on Windows. */
+			pickFolder?: (from: string) => Promise<string | null>;
+			/** Shows `path` in the file manager, selected. Not on Windows. */
+			reveal?: (path: string) => Promise<void>;
 		};
 	}
 }

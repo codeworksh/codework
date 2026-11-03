@@ -5,6 +5,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
+import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
 import { Contract } from "@codeworksh/contract";
 import { Db } from "./db.ts";
@@ -51,9 +52,13 @@ const announceReady = Layer.effectDiscard(
 const exitWithParent = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const parent = process.ppid;
-		yield* Effect.sync(() => process.ppid).pipe(
-			// Adopted by launchd (pid 1) is orphaned too, even when the parent was gone before this started.
-			Effect.repeat({ while: (ppid) => ppid === parent && ppid !== 1, schedule: Schedule.spaced("1 second") }),
+		// Adopted by launchd (pid 1) is orphaned too, even when the parent was gone before this started.
+		// Windows never adopts an orphan, so the parent itself is asked whether it still runs.
+		const attached = Effect.suspend(() =>
+			process.ppid === parent && process.ppid !== 1 ? Cli.alive(parent) : Effect.succeed(false),
+		);
+		yield* attached.pipe(
+			Effect.repeat({ while: (running) => running, schedule: Schedule.spaced("1 second") }),
 			Effect.andThen(Effect.sync(() => process.kill(process.pid, "SIGTERM"))),
 			Effect.forkScoped,
 		);

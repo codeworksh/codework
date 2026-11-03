@@ -25,9 +25,12 @@ export default {
 	artifactName: "codework-desktop-${os}-${arch}.${ext}",
 	// Nothing native to rebuild: the app server uses node:sqlite.
 	npmRebuild: false,
+	// The app is in English, so Chromium's other locales are left out of every installer.
+	electronLanguages: ["en-US"],
 	copyright: "Copyright © CodeWork",
 	directories: { output: "dist", buildResources: "resources" },
-	extraMetadata: { name: packageName, productName, homepage: "https://www.codework.sh" },
+	// appId too: on Windows the app takes it as its AppUserModelID, the one the installer gives its shortcuts.
+	extraMetadata: { name: packageName, productName, appId, homepage: "https://www.codework.sh" },
 	// The app is its two bundles and its icon; Electron is the only dependency, and it is the runtime.
 	files: ["out/*.cjs", "resources/icon.png", "package.json"],
 	// The app server runs as its own process from Resources, so it sits outside the asar archive.
@@ -48,6 +51,8 @@ export default {
 		// flag removed until builds are signed and notarized.
 		identity: "-",
 		hardenedRuntime: false,
+		// macOS 26 offers Messages and Mail codes in every text field unless the app opts out.
+		extendInfo: { NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true },
 	},
 	dmg: { icon: "resources/icon.icns" },
 	linux: {
@@ -60,8 +65,30 @@ export default {
 		maintainer: "CodeWork",
 		executableName: packageName,
 	},
-	deb: { packageName },
+	deb: {
+		packageName,
+		// electron-builder's list misses ALSA and GBM, which Electron loads; Debian 13 and Ubuntu 24.04
+		// renamed some to 64-bit-time names, so the old names stay as fallbacks.
+		depends: [
+			"libasound2t64 | libasound2",
+			"libatspi2.0-0t64 | libatspi2.0-0",
+			"libgbm1",
+			"libgtk-3-0t64 | libgtk-3-0",
+			"libnotify4",
+			"libnss3",
+			"libsecret-1-0",
+			"libuuid1",
+			"libxss1",
+			"libxtst6",
+			"xdg-utils",
+		],
+	},
 	pacman: { packageName },
+	win: {
+		// One installer per run, for the arch scripts/package.mjs builds for.
+		target: "nsis",
+		icon: "resources/icon.ico",
+	},
 	// The static AppImage runtime, so it runs without libfuse2.
 	toolsets: { appimage: "1.0.3" },
 	publish: null,
