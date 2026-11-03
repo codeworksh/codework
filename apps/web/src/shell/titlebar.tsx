@@ -13,7 +13,7 @@ export const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
 export const chromeButton =
-	"grid size-6 shrink-0 place-items-center rounded-md text-ink-muted press [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+	"grid size-7 shrink-0 place-items-center rounded-md text-ink-muted press [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 /** Window-level navigation remains available on Home, workspaces, and settings. */
 export function NavigationControls() {
@@ -30,33 +30,35 @@ export function NavigationControls() {
 	return (
 		<header className="flex h-titlebar w-full shrink-0 items-center bg-desktop pr-2 select-none [-webkit-app-region:drag]">
 			<div
-				className={`flex shrink-0 items-center gap-1 px-2 ${insetTitleBar ? "min-w-44 pl-20" : "min-w-28"}`}
+				className={`flex shrink-0 items-center gap-1 pr-2 ${insetTitleBar ? "min-w-44 pl-22" : "min-w-28 pl-3"}`}
 				style={{ width: withSidebar ? "var(--sidebar-width)" : undefined }}
 			>
-				<button
-					type="button"
-					aria-label="Back"
-					title="Back"
-					disabled={!canGoBack}
-					onClick={() => router.history.back()}
-					className={chromeButton}
-				>
-					<ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden />
-				</button>
-				<button
-					type="button"
-					aria-label="Forward"
-					title="Forward"
-					disabled={!canGoForward}
-					onClick={() => router.history.forward()}
-					className={chromeButton}
-				>
-					<ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />
-				</button>
 				<SidebarTrigger
 					title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
 					className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
 				/>
+				<div className="flex items-center">
+					<button
+						type="button"
+						aria-label="Back"
+						title="Back"
+						disabled={!canGoBack}
+						onClick={() => router.history.back()}
+						className={chromeButton}
+					>
+						<ArrowLeft className="size-3.5" strokeWidth={1.5} aria-hidden />
+					</button>
+					<button
+						type="button"
+						aria-label="Forward"
+						title="Forward"
+						disabled={!canGoForward}
+						onClick={() => router.history.forward()}
+						className={chromeButton}
+					>
+						<ArrowRight className="size-3.5" strokeWidth={1.5} aria-hidden />
+					</button>
+				</div>
 			</div>
 			{inSettings ? (
 				<CloseSettings />
