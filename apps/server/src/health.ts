@@ -48,7 +48,7 @@ export const layer = Layer.effect(
 		);
 
 		// The default server alone is cheap to ask; only a change is worth a full check. Unless `asked`,
-		// a running one is only looked for, without a call.
+		// a running one is only looked for at its URL, without a call.
 		const checkDefault = (asked: boolean) =>
 			Effect.gen(function* () {
 				const before = (yield* SubscriptionRef.get(current))?.find((status) => status.isDefault);
