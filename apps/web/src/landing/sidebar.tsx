@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
-import { projectsAtom } from "../widgets/session/projects";
+import { projectsAtom, runningAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -27,6 +27,7 @@ import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
+import { PixelLoader } from "@/components/loader";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -35,6 +36,8 @@ import { placeAtom } from "./place";
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
+	const running = useAtomValue(runningAtom);
+	const working = new Set(running.values());
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
@@ -151,6 +154,15 @@ export function SessionsSidebar() {
 									onAuxClick={(event) => open(session, event)}
 								>
 									<span className="flex min-w-0 items-center gap-1.5">
+										{working.has(session.id) && (
+											<span
+												role="status"
+												aria-label="Agent working"
+												className="flex shrink-0 text-ink-muted"
+											>
+												<PixelLoader />
+											</span>
+										)}
 										<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
 											{session.title}
 										</span>

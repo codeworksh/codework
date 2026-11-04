@@ -506,6 +506,28 @@
 	}
 }
 
+@media (prefers-reduced-motion: no-preference) {
+	.pixel-loader-cell {
+		animation: pixel-loader 960ms steps(1, end) infinite;
+	}
+}
+
+@keyframes pixel-loader {
+	0% {
+		opacity: 1;
+	}
+	12.5% {
+		opacity: 0.65;
+	}
+	25% {
+		opacity: 0.4;
+	}
+	37.5%,
+	100% {
+		opacity: 0.2;
+	}
+}
+
 @keyframes zen-spin {
 	to {
 		transform: rotate(360deg);
