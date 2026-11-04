@@ -127,8 +127,13 @@ function toModelValue(providerId: string, provider: ModelsDevProvider, model: Mo
 	return applyModification(providerId, provider, model);
 }
 
-// models.dev lists this alias, but OpenAI's APIs do not accept it (pi).
-const MODELS_DEV_UNSUPPORTED_MODEL_IDS = new Set(["openai/gpt-5.6"]);
+// models.dev lists these, but the provider's API does not accept them: an OpenAI alias (pi),
+// and Claude Sonnet 4.5, retired from the Claude API on 2026-11-30.
+const MODELS_DEV_UNSUPPORTED_MODEL_IDS = new Set([
+	"openai/gpt-5.6",
+	"anthropic/claude-sonnet-4-5",
+	"anthropic/claude-sonnet-4-5-20250929",
+]);
 
 function usable(providerId: string, provider: ModelsDevProvider, model: ModelsDevModel): boolean {
 	return (
