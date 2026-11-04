@@ -438,7 +438,7 @@ describe("codework acp", () => {
 							yield* acp.agent.setSessionConfigOption({
 								sessionId: chosen.sessionId,
 								configId: "model",
-								value: "openrouter/anthropic/claude-sonnet-4.5",
+								value: "openrouter/anthropic/claude-sonnet-5.5",
 							});
 							const set = yield* acp.agent.setSessionConfigOption({
 								sessionId: chosen.sessionId,

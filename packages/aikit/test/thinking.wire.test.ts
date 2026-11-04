@@ -96,7 +96,7 @@ describe("thinking wire budgets", () => {
 
 	it("lets the Anthropic adapter add the budget exactly once", async () => {
 		const model = makeModel({
-			id: "claude-sonnet-4-5",
+			id: "claude-haiku-4-5",
 			npm: "@ai-sdk/anthropic",
 			reasoning: true,
 			maxTokens: 64_000,
@@ -128,7 +128,7 @@ const adaptiveClaude = makeModel({
 	compat: { forceAdaptiveThinking: true },
 });
 const budgetClaude = makeModel({
-	id: "claude-sonnet-4-5",
+	id: "claude-haiku-4-5",
 	npm: "@ai-sdk/anthropic",
 	reasoning: true,
 	maxTokens: 64_000,
