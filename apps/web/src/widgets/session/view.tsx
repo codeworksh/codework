@@ -6,7 +6,7 @@ import { Atom } from "effect/reactivity";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
 import { createContext, memo, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import brand from "../../assets/codework.png";
+import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
 import { Monogram } from "@/components/monogram";
 import { useModelName, useModelsNotice } from "@/components/model";
@@ -1112,10 +1112,12 @@ function WorkLog({
 				<ChevronRight className="size-3.5 rotate-90 text-ink-muted" strokeWidth={1.75} aria-hidden />
 			) : (
 				<>
-					<img
-						src={brand}
-						alt=""
-						className={`size-3.5 shrink-0 ${expandable ? "transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0" : ""}`}
+					<Logo
+						className={
+							expandable
+								? "transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0"
+								: ""
+						}
 					/>
 					{expandable && (
 						<ChevronRight
