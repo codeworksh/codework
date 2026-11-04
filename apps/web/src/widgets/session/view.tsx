@@ -15,7 +15,7 @@ import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
-import { projectsAtom, useListedSession } from "./projects";
+import { projectsAtom, useListedSession, useSessionRunning } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -60,6 +60,11 @@ type State =
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
+
+const isRunning = (state: Ready) => {
+	const last = state.messages.at(-1);
+	return state.running ?? (last?.role === "assistant" && last.state === "draft");
+};
 
 /*
  * The threads opened lately, as last shown: switching back to one renders it on the first frame
@@ -378,6 +383,7 @@ function Conversation({
 				: loaded.queued,
 		};
 	}, [loaded, sent]);
+	useSessionRunning(instanceId, thread.sessionId, state.status === "ready" && isRunning(state));
 	const sending = useCallback(
 		(prompt: { readonly id: string; readonly text: string; readonly createdAt: number }) =>
 			setSent((current) => [
@@ -463,8 +469,7 @@ function Conversation({
 	const view = stand ?? state;
 	if (view.status === "loading") return <Loading slow={slow} />;
 	if (view.status === "failed") return <p className="p-3 text-ink-muted">{view.message}</p>;
-	const last = view.messages.at(-1);
-	const running = view.running ?? (last?.role === "assistant" && last.state === "draft");
+	const running = isRunning(view);
 	return (
 		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
 			<StreamedContext value={message}>
