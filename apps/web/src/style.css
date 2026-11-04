@@ -552,8 +552,8 @@
 	color: color-mix(in srgb, var(--cw-ink) 80%, transparent);
 }
 
-/* Only soften edges that have more settings content beyond them. */
-.settings-scroll {
+/* Only soften edges that have more scrollable content beyond them. */
+.scroll-fade {
 	mask-image: linear-gradient(
 		to bottom,
 		var(--scroll-top, black),
