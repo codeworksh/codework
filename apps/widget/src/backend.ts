@@ -1,6 +1,6 @@
 import { Context, type Duration, Effect, type Option, Schema, type Scope, Stream } from "effect";
 import type { RpcClient, RpcClientError, RpcGroup } from "effect/rpc";
-import type { Api } from "./codework.ts";
+import { type Api, HistoryEntry, QueuedPrompt, RunState, ThinkingLevel, ThreadRun } from "./codework.ts";
 import type { Event, EventTimeout, Publish, Request, Synced } from "./event.ts";
 
 /** The event log as a backend sees it: `source` is its package, and it publishes only under it. */
@@ -42,6 +42,87 @@ export class Codework extends Context.Service<
 	RpcClient.RpcClient.Flat<RpcGroup.Rpcs<typeof Api>, RpcClientError.RpcClientError>
 >()("@codeworksh/widget/backend/Codework") {}
 
+/** The CodeWork server that owns projects and sessions is not running, or did not answer. */
+export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
+	message: Schema.String,
+}) {}
+
+/** A thread of a synced session. */
+export const SyncThread = Schema.Struct({ sessionId: Schema.String, threadId: Schema.String });
+export type SyncThread = typeof SyncThread.Type;
+
+/** A thread whose detail is not synced, or not known yet. */
+export class SyncError extends Schema.TaggedError<SyncError>()("Server.SyncError", {
+	message: Schema.String,
+}) {}
+
+/**
+ * One page of a thread's line as the app holds it: `threadId`, or the session's main thread when
+ * absent; the newest `limit` entries below the seq `before`, cut to `budget` bytes (1 MiB unless given).
+ */
+export const LineRequest = Schema.Struct({
+	sessionId: Schema.String,
+	threadId: Schema.optionalKey(Schema.String),
+	before: Schema.optionalKey(Schema.Int),
+	limit: Schema.Int,
+	budget: Schema.optionalKey(Schema.Int),
+});
+export type LineRequest = typeof LineRequest.Type;
+
+/** A synced thread as its view shows it, with what its session, space and project add. */
+export const LineThread = Schema.Struct({
+	id: Schema.String,
+	sessionId: Schema.String,
+	machineId: Schema.String,
+	/** Its own, else its nearest titled ancestor's by the line's walk; absent while none has one. */
+	title: Schema.optionalKey(Schema.String),
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
+	runState: RunState,
+	lastRun: Schema.optionalKey(ThreadRun),
+	/** Epoch milliseconds. */
+	updatedAt: Schema.Finite,
+	directory: Schema.String,
+	hostDir: Schema.optionalKey(Schema.String),
+	project: Schema.Struct({ id: Schema.String, name: Schema.String }),
+});
+export type LineThread = typeof LineThread.Type;
+
+export const ThreadLine = Schema.Struct({
+	thread: LineThread,
+	/** The page, oldest first: its own entries and, for a fork, its sources' up to each cut. */
+	entries: Schema.Array(HistoryEntry),
+	/** Its pending prompts, oldest first. */
+	inbox: Schema.Array(QueuedPrompt),
+	/** Whether the app holds entries of the line older than this page. */
+	more: Schema.Boolean,
+	/** The oldest seq of the line the app holds; older entries come with `sync.page`. Null before a first open. */
+	floor: Schema.NullOr(Schema.Int),
+});
+export type ThreadLine = typeof ThreadLine.Type;
+
+/**
+ * The app's synced copy of every machine's CodeWork. A followed thread is opened, read by page from
+ * the copy and paged below its floor; a command goes to the machine its session is on.
+ */
+export class Sync extends Context.Service<
+	Sync,
+	{
+		/** Keeps a thread's detail in sync until it is closed; done once it is current, or at once while its machine is away. */
+		readonly open: (ref: SyncThread) => Effect.Effect<void>;
+		readonly close: (ref: SyncThread) => Effect.Effect<void>;
+		/** Stores up to `limit` entries of an opened thread's line below its floor. */
+		readonly page: (
+			input: SyncThread & { readonly limit: number },
+		) => Effect.Effect<{ readonly entries: number; readonly floor: number | null }, CodeworkUnavailable | SyncError>;
+		readonly line: (input: LineRequest) => Effect.Effect<ThreadLine, SyncError>;
+		/** The stored entries with these ids, with their parts, oldest first. */
+		readonly entries: (ids: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<HistoryEntry>>;
+		/** The CodeWork server of the machine a session is on; the default one for a session not synced yet. */
+		readonly machine: (sessionId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
+	}
+>()("@codeworksh/widget/backend/Sync") {}
+
 /**
  * A package's backend. `run` starts it, forking whatever it keeps running into its scope; closing
  * the scope stops it.
@@ -49,7 +130,7 @@ export class Codework extends Context.Service<
 export interface Backend {
 	/** The package its topics and kv keys belong to, e.g. "codework". */
 	readonly package: string;
-	readonly run: Effect.Effect<void, never, Bus | Kv | Codework | Scope.Scope>;
+	readonly run: Effect.Effect<void, never, Bus | Kv | Codework | Sync | Scope.Scope>;
 }
 
 export const defineBackend = (backend: Backend): Backend => backend;

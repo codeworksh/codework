@@ -7,7 +7,7 @@ import { isMac } from "@codeworksh/widget/view";
 import { PixelLoader } from "@/components/loader";
 import { registry } from "../widgets";
 import { threadRef } from "../widgets/session/address";
-import { workingAtom } from "../widgets/session/projects";
+import { runningAtom } from "../widgets/session/projects";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
 import {
@@ -35,7 +35,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const owners = useAtomValue(tabOwnerAtom);
-	const working = useAtomValue(workingAtom);
+	const working = useAtomValue(runningAtom);
 	const navigate = useNavigate();
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.

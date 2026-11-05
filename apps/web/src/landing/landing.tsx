@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
 import { Folder } from "lucide-react";
 import { useContext, useMemo, useState } from "react";
@@ -15,7 +15,6 @@ import { Arcade } from "./arcade";
 import { cloneBlock, useClone, useCloneNotice } from "../shell/clones";
 import { useAddProject } from "../shell/palette";
 import { placeAtom, placeLabel } from "./place";
-import { projectsAtom } from "../widgets/session/projects";
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
@@ -29,7 +28,6 @@ export function Landing() {
 	// The start page asks the Session backend as the "landing" source, outside any widget frame.
 	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "landing" }).bus, [registry]);
 	const openElsewhere = useOpenElsewhere();
-	const refreshProjects = useAtomRefresh(projectsAtom);
 	const [query, setQuery] = useState("");
 	const [playing, setPlaying] = useState(false);
 	const place = useAtomValue(placeAtom);
@@ -71,7 +69,6 @@ export function Landing() {
 			return;
 		}
 		handoffs.set(created.sessionId, prompt);
-		refreshProjects();
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};
 

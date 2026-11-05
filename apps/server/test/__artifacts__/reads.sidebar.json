@@ -1,0 +1,36 @@
+{
+	"launched": [
+		{
+			"machine": {
+				"id": "<id 1>",
+				"name": "Scripted"
+			},
+			"id": "<id 2>",
+			"name": "Alpha",
+			"path": "<home>",
+			"sessions": [
+				{
+					"id": "<ses 1>",
+					"threadId": "<thr 1>",
+					"spaceKind": "plain",
+					"color": null,
+					"title": "hold",
+					"runState": "running",
+					"updated": "<time>",
+					"path": "<home>"
+				},
+				{
+					"id": "<ses 2>",
+					"threadId": "<thr 2>",
+					"spaceKind": "plain",
+					"color": null,
+					"title": "Idle prompt",
+					"runState": "idle",
+					"updated": "<time>",
+					"path": "<home>"
+				}
+			]
+		}
+	],
+	"stoppedEqualsLaunched": true
+}

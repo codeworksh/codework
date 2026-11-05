@@ -1,51 +1,17 @@
 import { Effect, Stream } from "effect";
+import { SqlClient } from "effect/sql";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
-import {
-	type CliAction,
-	Contract,
-	ModelsError,
-	type Project,
-	type ServerAdd,
-	type ServerUpdate,
-} from "@codeworksh/contract";
+import { type CliAction, Contract, ModelsError, type ServerAdd, type ServerUpdate } from "@codeworksh/contract";
 import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
+import { Reads } from "./reads.ts";
 import { Servers } from "./servers.ts";
 import { Sync } from "./sync.ts";
 import { Tracking } from "./tracking.ts";
 import { Workspaces } from "./workspaces.ts";
-
-/**
- * Sessions grouped by project, both newest first, each shown as its main thread. A session whose
- * project row is missing gets a group of its own folder, so it still shows rather than vanishing.
- */
-const byProject = (threads: ReadonlyArray<Codework.ThreadInfo>): Project[] => {
-	const groups = new Map<string, Project & { sessions: Project["sessions"][number][] }>();
-	const mains = threads.filter((thread) => thread.origin.kind === "main");
-	for (const thread of [...mains].sort((a, b) => b.updatedAt - a.updatedAt)) {
-		const session = thread.session;
-		const folder = session.hostDir ?? session.directory;
-		const key = session.project?.id ?? folder;
-		const group = groups.get(key) ?? {
-			id: key,
-			name: session.project?.name ?? folder.split("/").at(-1) ?? folder,
-			// The newest session's folder: where the project was last worked on.
-			path: folder,
-			sessions: [],
-		};
-		group.sessions.push({
-			id: session.id,
-			title: thread.title ?? Codework.UNTITLED,
-			updated: thread.updatedAt,
-			...(thread.model === undefined ? {} : { model: thread.model }),
-		});
-		groups.set(key, group);
-	}
-	return [...groups.values()];
-};
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
@@ -57,6 +23,7 @@ export const layer = Contract.Api.toLayer(
 		const servers = yield* Servers.Service;
 		const health = yield* Health.Service;
 		const sync = yield* Sync.Service;
+		const sql = yield* SqlClient.SqlClient;
 		// A failed call is the first sign the default server went down.
 		const call = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0], options?: Codework.CallOptions) =>
 			Codework.call(use, options).pipe(Effect.tapError(() => health.poke));
@@ -77,9 +44,8 @@ export const layer = Contract.Api.toLayer(
 			...desk,
 			...tracking,
 
-			"projects.list": Effect.fn("projects.list")(function* () {
-				return byProject(yield* call((client) => client("thread.list", {})));
-			}),
+			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));

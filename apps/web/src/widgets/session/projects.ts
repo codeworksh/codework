@@ -1,42 +1,65 @@
-import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Option, Schema } from "effect";
+import { useAtomValue } from "@effect/atom-react";
+import { PERSONAL_ORGANIZATION, readTopics, SyncChanged, SyncTracking, syncTopics } from "@codeworksh/contract";
+import type { Event } from "@codeworksh/widget/event";
+import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useContext, useEffect, useMemo } from "react";
 
-import { makeHost } from "../../kernel/host";
 import { Server } from "../../kernel/rpc";
-import { codeworkKey } from "../../kernel/servers";
-import { Json, topics } from "./schema";
 
-const decodeActivity = Schema.decodeUnknownOption(Json.Activity);
+const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
+const decodeTracking = Schema.decodeUnknownOption(SyncTracking);
 
-/** Every project with its sessions, as the sidebar lists them; refresh it once a new session exists. */
-export const projectsAtom = Server.query("projects.list", undefined, { reactivityKeys: codeworkKey });
+/** Whether an event changes what the sidebar shows: an index row, a removed session, or a session's color. */
+const touches = (event: Event) =>
+	event.topic === syncTopics.changed
+		? Option.exists(
+				decodeChanged(event.payload),
+				(notice) =>
+					notice.project.length +
+						notice.space.length +
+						notice.session.length +
+						notice.thread.length +
+						notice.removed.length >
+					0,
+			)
+		: Option.exists(decodeTracking(event.payload), (edit) => edit._tag === "Session");
 
-/** The sessions the agent works on, followed or not, as the Session backend sees runs start and end. */
-export const workingAtom = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
+/**
+ * Every active project with its sessions, on every machine, as the sidebar lists them: read from the
+ * app's synced copy when subscribed, and again after each change to it.
+ */
+export const projectsAtom = Server.runtime
+	.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: readTopics.sidebar }).pipe(
+						// `Synced` first, once subscribed: the first read can miss no change.
+						Stream.filter((item) => "_tag" in item || touches(item)),
+						Stream.debounce("50 millis"),
+						Stream.mapEffect(() =>
+							client("sidebar.list", { organizationId: PERSONAL_ORGANIZATION, machines: "all" }),
+						),
+					),
+				),
+			),
+		).pipe(
+			// The app server is local, so a dropped stream is only a moment's gap.
+			Stream.retry(Schedule.spaced("1 second")),
+		),
+	)
+	.pipe(Atom.keepAlive);
 
-/** Keeps {@link workingAtom} current; mounted once, at the app's root. */
-export function useWorkingFeed() {
-	const registry = useContext(RegistryContext);
-	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "activity" }).bus, [registry]);
-	const setWorking = useAtomSet(workingAtom);
-	useEffect(() => {
-		// A live change beats the answer to the first read, which may have been taken before it.
-		let live = false;
-		const apply = (payload: unknown) =>
-			Option.map(decodeActivity(payload), ({ working }) => setWorking(new Set(working)));
-		const stop = bus.subscribe({ topics: [topics.working] }, (item) => {
-			if ("_tag" in item) return;
-			live = true;
-			apply(item.payload);
-		});
-		bus.request({ topic: topics.activity, payload: {} })
-			.then((reply) => live || apply(reply.payload))
-			.catch(() => undefined);
-		return stop;
-	}, [bus, setWorking]);
-}
+/** The sessions whose main thread has a run going, as synced. */
+export const runningAtom = Atom.make((get) => {
+	const result = get(projectsAtom);
+	if (!AsyncResult.isSuccess(result)) return new Set<string>();
+	return new Set(
+		result.value.flatMap((project) =>
+			project.sessions.flatMap((session) => (session.runState === "idle" ? [] : [session.id])),
+		),
+	);
+});
 
 const listedAtom = Atom.family((id: string) =>
 	Atom.make((get) => {

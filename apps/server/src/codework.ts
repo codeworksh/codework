@@ -9,11 +9,6 @@ import path from "node:path";
 import { CodeworkUnavailable, HostError } from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
 
-export type ThreadInfo = Mirror.ThreadInfo;
-
-/** What an untitled thread is called until its first prompt names it. */
-export const UNTITLED = Mirror.UNTITLED;
-
 /** How a running server advertises itself: `<home>/service.json`, written by `codework serve`. */
 const Registration = Schema.fromJsonString(
 	Schema.Struct({ pid: Schema.Int, version: Schema.String, url: Schema.String, port: Schema.Int }),

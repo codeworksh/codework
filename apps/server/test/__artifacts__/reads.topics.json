@@ -1,0 +1,59 @@
+{
+	"sidebar": {
+		"added": "sync/changed",
+		"colored": {
+			"_tag": "Session",
+			"sessionId": "<ses 1>",
+			"color": "#336699"
+		},
+		"listed": {
+			"id": "<ses 1>",
+			"threadId": "<thr 1>",
+			"spaceKind": "plain",
+			"color": null,
+			"title": "New session",
+			"runState": "idle",
+			"updated": "<time>",
+			"path": "<home>"
+		}
+	},
+	"line": {
+		"detail": "sync/changed",
+		"reply": {
+			"id": "<assistant 1>",
+			"parts": [
+				{
+					"type": "text",
+					"text": "Hello world!"
+				}
+			]
+		}
+	},
+	"backend": {
+		"tags": [
+			"Delta",
+			"Info",
+			"Message"
+		],
+		"runStates": [
+			"running",
+			"idle"
+		],
+		"answered": {
+			"id": "<assistant 2>",
+			"threadId": "<thr 1>",
+			"seq": "<seq 0>",
+			"role": "assistant",
+			"state": "committed",
+			"createdAt": "<time>",
+			"updatedAt": "<time>",
+			"parts": [
+				{
+					"type": "text",
+					"text": "Hello world!"
+				}
+			],
+			"size": 37
+		}
+	}
+}

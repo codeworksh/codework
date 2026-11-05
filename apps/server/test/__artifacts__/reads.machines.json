@@ -1,0 +1,69 @@
+{
+	"default": [
+		{
+			"machine": {
+				"id": "<local machine>",
+				"name": "CodeWork"
+			},
+			"id": "<id 1>",
+			"name": "Local",
+			"path": "<home>",
+			"sessions": [
+				{
+					"id": "<ses 1>",
+					"threadId": "<thr 1>",
+					"spaceKind": "plain",
+					"color": null,
+					"title": "On the default machine",
+					"runState": "idle",
+					"updated": "<time>",
+					"path": "<home>"
+				}
+			]
+		}
+	],
+	"all": [
+		{
+			"machine": {
+				"id": "<local machine>",
+				"name": "CodeWork"
+			},
+			"id": "<id 1>",
+			"name": "Local",
+			"path": "<home>",
+			"sessions": [
+				{
+					"id": "<ses 1>",
+					"threadId": "<thr 1>",
+					"spaceKind": "plain",
+					"color": null,
+					"title": "On the default machine",
+					"runState": "idle",
+					"updated": "<time>",
+					"path": "<home>"
+				}
+			]
+		},
+		{
+			"machine": {
+				"id": "<id 2>",
+				"name": "Scripted"
+			},
+			"id": "<id 3>",
+			"name": "Remote",
+			"path": "<home>",
+			"sessions": [
+				{
+					"id": "<ses 2>",
+					"threadId": "<thr 2>",
+					"spaceKind": "plain",
+					"color": null,
+					"title": "On a remote machine",
+					"runState": "idle",
+					"updated": "<time>",
+					"path": "<home>"
+				}
+			]
+		}
+	]
+}

@@ -1,31 +1,59 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
-import { Clone, ClonePhase, CloneStage, Folder, ModelList, Repository } from "@codeworksh/widget/codework";
+import {
+	CodeworkUnavailable,
+	LineRequest,
+	LineThread,
+	SyncError,
+	SyncThread,
+	ThreadLine,
+} from "@codeworksh/widget/backend";
+import {
+	Clone,
+	ClonePhase,
+	CloneStage,
+	Folder,
+	ModelList,
+	Repository,
+	RunState,
+	SpaceInfo,
+} from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
-/** A conversation with the agent, as listed under its project. */
-export const SessionSummary = Schema.Struct({
-	id: Schema.String,
-	title: Schema.String,
-	/** Last activity, epoch milliseconds. */
-	updated: Schema.Number,
-	/** The model chosen for the session; absent when settings decide. */
-	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-});
-export type SessionSummary = typeof SessionSummary.Type;
+export { CodeworkUnavailable, LineRequest, LineThread, SyncError, SyncThread, ThreadLine };
 
-export const Project = Schema.Struct({
+/** The organization the UI shows until auth exists; every synced project starts in it. */
+export const PERSONAL_ORGANIZATION = "personal";
+
+/** A session as the sidebar lists it: its space's kind, its color and its main thread. */
+export const SidebarSession = Schema.Struct({
+	id: Schema.String,
+	/** Its main thread. */
+	threadId: Schema.String,
+	spaceKind: SpaceInfo.fields.kind,
+	/** Hex; null is the default. */
+	color: Schema.NullOr(Schema.String),
+	/** The main thread's title, or what an untitled one is called. */
+	title: Schema.String,
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	runState: RunState,
+	/** The main thread's last activity, epoch milliseconds. */
+	updated: Schema.Finite,
+	/** The host folder it is anchored to, else its directory. */
+	path: Schema.String,
+});
+export type SidebarSession = typeof SidebarSession.Type;
+
+/** An active project with its sessions, newest first, and the machine it is on. */
+export const SidebarProject = Schema.Struct({
+	machine: Schema.Struct({ id: Schema.String, name: Schema.String }),
 	id: Schema.String,
 	name: Schema.String,
+	/** Its newest session's folder, else its primary space's location: where it was last worked on. */
 	path: Schema.String,
-	sessions: Schema.Array(SessionSummary),
+	sessions: Schema.Array(SidebarSession),
 });
-export type Project = typeof Project.Type;
-
-/** The CodeWork server that owns projects and sessions is not running, or did not answer. */
-export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
-	message: Schema.String,
-}) {}
+export type SidebarProject = typeof SidebarProject.Type;
 
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
@@ -232,15 +260,6 @@ export class ServersError extends Schema.TaggedError<ServersError>()("Server.Ser
 	message: Schema.String,
 }) {}
 
-/** A thread of a synced session. */
-export const SyncThread = Schema.Struct({ sessionId: Schema.String, threadId: Schema.String });
-export type SyncThread = typeof SyncThread.Type;
-
-/** A thread whose detail is not synced, or not known yet. */
-export class SyncError extends Schema.TaggedError<SyncError>()("Server.SyncError", {
-	message: Schema.String,
-}) {}
-
 /** The app bus topics the sync publishes on. */
 export const syncTopics = {
 	/** `SyncChanged` after each applied batch; stored. */
@@ -327,6 +346,19 @@ export const SyncTracking = Schema.Union([
 ]);
 export type SyncTracking = typeof SyncTracking.Type;
 
+/**
+ * The topics a client follows to keep each read current; it reads again when one fires.
+ * - `sidebar.list`: `sync/changed` naming a project, space, session or thread, or a removed session;
+ *   `sync/tracking` for a session's color.
+ * - `threads.line`: `sync/changed` whose `threadId` is the thread (its entries and inbox) or that
+ *   names a thread (the thread itself, or the ancestor an untitled fork takes its title from);
+ *   `sync/delta/<thread>` streams its draft between checkpoints.
+ */
+export const readTopics = {
+	sidebar: [syncTopics.changed, syncTopics.tracking],
+	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
+};
+
 /** A desktop edit refused: a value out of range, or a thread, session, group or organization not found. */
 export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.TrackingError", {
 	message: Schema.String,
@@ -336,9 +368,19 @@ export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.T
 const KvKey = { package: Schema.String, key: Schema.String };
 
 export const Api = RpcGroup.make(
-	Rpc.make("projects.list", {
-		success: Schema.Array(Project),
-		error: CodeworkUnavailable,
+	/**
+	 * An organization's active projects, newest activity first, each with its sessions that are not
+	 * deleted: on the default machine only, or on every machine. Read from app.db alone.
+	 */
+	Rpc.make("sidebar.list", {
+		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },
+		success: Schema.Array(SidebarProject),
+	}),
+	/** One page of a thread's line with its pending inbox, read from app.db alone; below `floor`, `sync.page` first. */
+	Rpc.make("threads.line", {
+		payload: LineRequest,
+		success: ThreadLine,
+		error: SyncError,
 	}),
 	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
 	Rpc.make("models.list", {

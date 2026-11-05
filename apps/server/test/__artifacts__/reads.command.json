@@ -1,0 +1,21 @@
+{
+	"prompted": {
+		"_tag": "Done"
+	},
+	"interrupted": {
+		"_tag": "Done"
+	},
+	"history": [
+		{
+			"id": "<message>",
+			"role": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 1>",
+			"role": "assistant",
+			"state": "aborted"
+		}
+	],
+	"onLocal": []
+}

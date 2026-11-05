@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
@@ -18,7 +18,7 @@ import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
-import { projectsAtom, useListedSession } from "./projects";
+import { useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -56,18 +56,11 @@ type State =
 			readonly queued: readonly QueuedPrompt[];
 			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
-			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
-			readonly running: boolean | undefined;
-			/** Why the last run failed, until another one starts. */
-			readonly failure?: Notice;
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
 
-const isRunning = (state: Ready) => {
-	const last = state.messages.at(-1);
-	return state.running ?? (last?.role === "assistant" && last.state === "draft");
-};
+const isRunning = (state: Ready) => state.info.runState !== "idle";
 
 /*
  * The threads opened lately, as last shown: switching back to one renders it on the first frame
@@ -96,23 +89,30 @@ function remember(key: string, state: Ready) {
 const LOADING_AFTER_MS = 300;
 
 /** What a failed run reads as: in the reader's words, never CodeWork's internal ids. */
-const noticeOf = (kind: string, message: string, sandbox: string | undefined): Notice => {
+const noticeOf = (kind: string, message: string): Notice => {
 	switch (kind) {
 		// The session's sandbox is gone, so it can't run; its conversation is still saved and readable.
-		// A memory one lives only as long as the server that made it.
 		case "sandbox-mount-error":
 			return {
 				title: "Expired",
-				description:
-					sandbox === "memory"
-						? "Memory sessions can’t continue after closed. Start a new session to keep going."
-						: "This session can't be picked up again. Start a new session to keep going.",
+				description: "This session can't be picked up again. Start a new session to keep going.",
 				tone: "expired",
 			};
 		default:
 			return { title: "Something went wrong", description: message, tone: "error" };
 	}
 };
+
+/** Whether `held` already has `part`'s text and more, streamed in after that checkpoint. */
+const streamedPast = (held: Part, part: Part) =>
+	(held.type === "text" &&
+		part.type === "text" &&
+		held.text.length > part.text.length &&
+		held.text.startsWith(part.text)) ||
+	(held.type === "thinking" &&
+		part.type === "thinking" &&
+		held.thinking.length > part.thinking.length &&
+		held.thinking.startsWith(part.thinking));
 
 const apply = (state: State, update: Update): State => {
 	if (state.status !== "ready") return state;
@@ -121,14 +121,23 @@ const apply = (state: State, update: Update): State => {
 			return { ...state, info: update.info };
 		case "Queue":
 			return { ...state, queued: update.queued };
-		case "Removed":
-			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
-		case "Running": {
-			const { failure: _, ...rest } = state;
-			return update.running ? { ...rest, running: true } : { ...state, running: false };
+		case "Delta": {
+			const { entryId, partIndex, kind, offset, delta } = update.delta;
+			const index = state.messages.findIndex((message) => message.id === entryId);
+			const draft = state.messages[index];
+			// Only text that continues the draft exactly; anything else waits for its next checkpoint.
+			if (draft === undefined || draft.state !== "draft") return state;
+			const part = draft.parts[partIndex];
+			const text = part?.type === "text" ? part.text : part?.type === "thinking" ? part.thinking : undefined;
+			if ((text ?? "").length !== offset || (part !== undefined && part.type !== kind)) return state;
+			if (part === undefined && partIndex !== draft.parts.length) return state;
+			const next: Part =
+				kind === "text"
+					? { ...(part?.type === "text" ? part : { type: "text" }), text: (text ?? "") + delta }
+					: { ...(part?.type === "thinking" ? part : { type: "thinking" }), thinking: (text ?? "") + delta };
+			const parts = part === undefined ? [...draft.parts, next] : draft.parts.with(partIndex, next);
+			return { ...state, messages: state.messages.with(index, { ...draft, parts }) };
 		}
-		case "Failed":
-			return { ...state, failure: noticeOf(update.kind, update.message, state.info.sandbox) };
 		case "Message": {
 			const { id } = update.message;
 			const index = state.messages.findIndex((message) => message.id === id);
@@ -139,6 +148,8 @@ const apply = (state: State, update: Update): State => {
 			const previous = state.messages[index];
 			if (previous !== undefined && update.message.state === "draft" && previous.state !== "draft") return state;
 			// Unchanged parts keep their objects, so their rows skip re-rendering as the message streams.
+			// A draft's checkpoint can trail the deltas already folded in: the longer text is the newer.
+			const streaming = previous?.state === "draft" && update.message.state === "draft";
 			const message =
 				previous === undefined
 					? update.message
@@ -146,7 +157,8 @@ const apply = (state: State, update: Update): State => {
 							...update.message,
 							parts: update.message.parts.map((part, at) => {
 								const old = previous.parts[at];
-								return old !== undefined && samePart(old, part) ? old : part;
+								if (old === undefined) return part;
+								return samePart(old, part) || (streaming && streamedPast(old, part)) ? old : part;
 							}),
 						};
 			return {
@@ -191,8 +203,6 @@ const sameStructure = (previous: State, next: State) =>
 		previous.more === next.more &&
 		previous.queued === next.queued &&
 		previous.after === next.after &&
-		previous.running === next.running &&
-		previous.failure === next.failure &&
 		previous.messages.length === next.messages.length &&
 		previous.messages.every(
 			(message, at) => message === next.messages[at] || streamedInto(message, next.messages[at]!),
@@ -260,7 +270,7 @@ function useConversation(thread: ThreadRef) {
 	);
 
 	const page = useCallback(
-		async (before: string | undefined) => {
+		async (before: number | undefined) => {
 			const reply = decodeWindow(
 				(
 					await bus.request({
@@ -286,7 +296,7 @@ function useConversation(thread: ThreadRef) {
 			if (window === undefined) return fail(`Could not load session ${threadKey(thread)}.`);
 			if (window._tag === "Failed") return fail(window.message);
 			const { info, messages, more, queued, seq } = window;
-			if (active) setState({ status: "ready", info, messages, more, queued, after: seq, running: undefined });
+			if (active) setState({ status: "ready", info, messages, more, queued, after: seq });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
@@ -320,7 +330,7 @@ function useConversation(thread: ThreadRef) {
 		}
 	});
 
-	const oldest = state.status === "ready" && state.more ? state.messages[0]?.id : undefined;
+	const oldest = state.status === "ready" && state.more ? state.messages[0]?.seq : undefined;
 	const loadOlder = useCallback(() => {
 		if (oldest === undefined || paging.current) return;
 		paging.current = true;
@@ -383,19 +393,18 @@ function Conversation({
 	// A run that stops or fails before taking a prompt in leaves it queued for the next wake: its
 	// stand-in goes, so the queue row and its actions show again.
 	const run = loaded.status === "ready" ? loaded : undefined;
-	const outcome = `${run?.running}|${run?.failure?.title ?? ""}|${run?.failure?.description ?? ""}`;
+	const failure = run?.info.failure;
+	const outcome = `${run?.info.runState}|${failure?.kind ?? ""}|${failure?.message ?? ""}`;
 	const [seenOutcome, setSeenOutcome] = useState(outcome);
 	if (outcome !== seenOutcome) {
 		setSeenOutcome(outcome);
-		if (sent.length > 0 && (run?.running === false || run?.failure !== undefined)) setSent([]);
+		if (sent.length > 0 && (run?.info.runState === "idle" || failure !== undefined)) setSent([]);
 	}
 	const state = useMemo<State>(() => {
 		if (loaded.status !== "ready" || sent.length === 0) return loaded;
 		const ids = new Set(sent.map((message) => message.id));
 		return {
 			...loaded,
-			// A prompt not yet taken in is about to wake the agent: busy until the server says otherwise.
-			running: loaded.running ?? true,
 			messages: [...loaded.messages, ...sent],
 			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
 				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
@@ -410,12 +419,6 @@ function Conversation({
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
-	// A first prompt names the session after the list was fetched; the main thread's title is the listed one.
-	const refreshProjects = useAtomRefresh(projectsAtom);
-	const stale = thread.threadId === undefined && state.status === "ready" && listed?.title !== title;
-	useEffect(() => {
-		if (stale) refreshProjects();
-	}, [stale, title, refreshProjects]);
 	const project = state.status === "ready" ? state.info.project : listed?.project;
 	const projectId = project?.id;
 	const projectName = project?.name;
@@ -444,8 +447,8 @@ function Conversation({
 	const notice: Notice | undefined =
 		sendError !== undefined
 			? { title: "Not sent", description: sendError, tone: "error" }
-			: state.status === "ready"
-				? state.failure
+			: state.status === "ready" && state.info.failure !== undefined
+				? noticeOf(state.info.failure.kind, state.info.failure.message)
 				: undefined;
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);

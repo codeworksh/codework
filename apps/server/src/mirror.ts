@@ -3,7 +3,13 @@ import { SqlClient } from "effect/sql";
 import type { Publish } from "@codeworksh/widget/event";
 import type { Codework } from "@codeworksh/widget/codework";
 import { Ordering } from "./ordering.ts";
-import { syncTopics, type SyncChanged, type SyncStatus, type ThreadStatus } from "@codeworksh/contract";
+import {
+	PERSONAL_ORGANIZATION as ORGANIZATION,
+	syncTopics,
+	type SyncChanged,
+	type SyncStatus,
+	type ThreadStatus,
+} from "@codeworksh/contract";
 
 /*
  * The writes that copy a machine's CodeWork rows into app.db. Each runs inside the caller's
@@ -13,9 +19,6 @@ import { syncTopics, type SyncChanged, type SyncStatus, type ThreadStatus } from
 type IndexRow = Exclude<Codework.IndexItem, { _tag: "Synced" }>;
 type ThreadRow = Exclude<Codework.ThreadItem, { _tag: "Synced" }>;
 type Append = (input: Publish) => Effect.Effect<void>;
-
-/** The organization every project starts in, until auth exists. */
-const ORGANIZATION = "personal";
 
 /** The rows a batch wrote, for its `SyncChanged` notice. */
 export class Changes {
