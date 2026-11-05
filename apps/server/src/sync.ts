@@ -170,7 +170,7 @@ export const layer = Layer.effect(
 					(rows, synced) =>
 						transact((append) =>
 							Effect.gen(function* () {
-								const changes = yield* Mirror.thread(rows);
+								const changes = yield* Mirror.thread(threadId, rows);
 								yield* sql`
 										UPDATE thread SET cursor = ${synced.rev}, floor = COALESCE(${synced.floor ?? null}, floor)
 										WHERE id = ${threadId}
