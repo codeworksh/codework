@@ -1,8 +1,15 @@
-import { Command as CommandPrimitive } from "cmdk";
 import { Check, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandShortcut,
+} from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export interface Option {
@@ -12,8 +19,7 @@ export interface Option {
 }
 
 /**
- * A row's picker, as Linear's: a search field with the key that opens it, then the options, the
- * current one checked. With `digits`, 1-9 pick while the field is empty; with `onCreate`, a name
+ * A row's picker, as Linear's: a search field, then the options, the current one checked. With `digits`, 1-9 pick while the field is empty; with `onCreate`, a name
  * no option has offers to create it.
  */
 export function Picker({
@@ -55,6 +61,10 @@ export function Picker({
 		if (!next) setSearch("");
 		onOpenChange(next);
 	};
+	const create = () => {
+		onCreate?.create(name);
+		change(false);
+	};
 	const pick = (option: Option) => {
 		if (option.value !== value) onPick(option.value);
 		change(false);
@@ -74,71 +84,58 @@ export function Picker({
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className="w-60 overflow-hidden rounded-lg border-edge p-0 shadow-lg"
+				className="w-52 p-0"
 				// The list takes focus back, so the keyboard stays on it.
 				onCloseAutoFocus={(event) => event.preventDefault()}
 				onMouseDown={(event) => event.stopPropagation()}
 			>
-				<Command loop className="bg-transparent">
-					<div className="flex h-10 items-center gap-2 border-b border-edge pr-2.5 pl-3">
-						<CommandPrimitive.Input
-							value={search}
-							onValueChange={setSearch}
-							placeholder={placeholder}
-							aria-label={placeholder}
-							onKeyDown={(event) => {
-								const option =
-									digits && search === "" && /^[1-9]$/.test(event.key)
-										? options[Number(event.key) - 1]
-										: undefined;
-								if (option === undefined) return;
-								event.preventDefault();
-								pick(option);
-							}}
-							className="h-full min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-muted"
-						/>
-						<kbd className="grid h-5 min-w-5 place-items-center rounded border border-edge px-1 font-sans text-2xs text-ink-muted">
-							{shortcut}
-						</kbd>
-					</div>
-					<CommandList className="max-h-72 p-1">
-						<CommandGroup heading={heading} className="p-0">
+				<Command loop>
+					<CommandInput
+						value={search}
+						onValueChange={setSearch}
+						placeholder={placeholder}
+						aria-label={placeholder}
+						onKeyDown={(event) => {
+							const option =
+								digits && search === "" && /^[1-9]$/.test(event.key)
+									? options[Number(event.key) - 1]
+									: undefined;
+							if (option === undefined) return;
+							event.preventDefault();
+							pick(option);
+						}}
+						className="h-9 text-ui"
+					/>
+					<CommandList>
+						<CommandEmpty className="py-4 text-center text-ui text-ink-muted">No results.</CommandEmpty>
+						<CommandGroup heading={heading}>
 							{options.map((option, index) => (
 								<CommandItem
 									key={option.value}
 									value={`${option.label}\u0000${option.value}`}
 									onSelect={() => pick(option)}
-									className="h-8 gap-2.5 rounded-md px-2 text-ui text-ink"
+									className="text-ui"
 								>
-									<span className="grid size-4 shrink-0 place-items-center">{option.mark}</span>
-									<span className="min-w-0 flex-1 truncate">{option.label}</span>
-									{option.value === value && (
-										<Check className="size-3.5 text-ink-secondary" aria-label="Current" />
-									)}
+									{option.mark}
+									<span className="truncate">{option.label}</span>
+									{option.value === value && <Check className="ml-auto size-3.5" aria-label="Current" />}
 									{digits && index < 9 && (
-										<span className="w-3 text-right text-2xs text-ink-muted tabular-nums">{index + 1}</span>
+										<CommandShortcut className={option.value === value ? "ml-1.5" : undefined}>
+											{index + 1}
+										</CommandShortcut>
 									)}
 								</CommandItem>
 							))}
 						</CommandGroup>
 						{creatable && (
-							<CommandItem
-								forceMount
-								value={`\u0000create ${name}`}
-								onSelect={() => {
-									onCreate.create(name);
-									change(false);
-								}}
-								className="h-8 gap-2.5 rounded-md px-2 text-ui text-ink"
-							>
-								<Plus className="size-4 text-ink-secondary" aria-hidden />
-								<span className="min-w-0 truncate">
-									Create new {onCreate.noun}: <span className="text-ink-muted">“{name}”</span>
-								</span>
-							</CommandItem>
-						)}
-						{!creatable && (
-							<CommandEmpty className="py-4 text-center text-ui text-ink-muted">No results</CommandEmpty>
+							<CommandGroup forceMount>
+								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className="text-ui">
+									<Plus aria-hidden />
+									<span className="truncate">
+										Create {onCreate.noun} <span className="text-ink-muted">“{name}”</span>
+									</span>
+								</CommandItem>
+							</CommandGroup>
 						)}
 					</CommandList>
 				</Command>

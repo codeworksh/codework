@@ -1,11 +1,10 @@
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
-import { ListFilter, Plus, SlidersHorizontal, X } from "lucide-react";
+import { Check, ListFilter, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
-	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
@@ -66,60 +65,54 @@ export function Toolbar({
 							<ListFilter aria-hidden />
 						</Button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-48">
+					<DropdownMenuContent align="end" className="w-44">
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger>Status</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
+							<DropdownMenuSubTrigger className="text-ui">Status</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent className="min-w-44">
 								{STATUSES.map((status) => (
-									<DropdownMenuCheckboxItem
+									<FilterItem
 										key={status}
 										checked={options.status.includes(status)}
-										onSelect={(event) => event.preventDefault()}
-										onCheckedChange={() => onChange({ status: toggled(options.status, status) })}
-										className="gap-2"
-									>
-										<StatusIcon status={status} />
-										{STATUS[status].label}
-									</DropdownMenuCheckboxItem>
+										onToggle={() => onChange({ status: toggled(options.status, status) })}
+										mark={<StatusIcon status={status} />}
+										label={STATUS[status].label}
+									/>
 								))}
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger>Priority</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
+							<DropdownMenuSubTrigger className="text-ui">Priority</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent className="min-w-44">
 								{PRIORITIES.map((priority) => (
-									<DropdownMenuCheckboxItem
+									<FilterItem
 										key={priority}
 										checked={options.priority.includes(priority)}
-										onSelect={(event) => event.preventDefault()}
-										onCheckedChange={() => onChange({ priority: toggled(options.priority, priority) })}
-										className="gap-2"
-									>
-										<PriorityIcon priority={priority} />
-										{PRIORITY[priority].label}
-									</DropdownMenuCheckboxItem>
+										onToggle={() => onChange({ priority: toggled(options.priority, priority) })}
+										mark={<PriorityIcon priority={priority} />}
+										label={PRIORITY[priority].label}
+									/>
 								))}
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger>Machine</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
+							<DropdownMenuSubTrigger className="text-ui">Machine</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent className="min-w-44">
 								{machines.map((machine) => (
-									<DropdownMenuCheckboxItem
+									<FilterItem
 										key={machine.id}
 										checked={options.machine.includes(machine.id)}
-										onSelect={(event) => event.preventDefault()}
-										onCheckedChange={() => onChange({ machine: toggled(options.machine, machine.id) })}
-										className="gap-2"
-									>
-										<MachineAvatar id={machine.id} name={machine.name} />
-										{machine.name}
-									</DropdownMenuCheckboxItem>
+										onToggle={() => onChange({ machine: toggled(options.machine, machine.id) })}
+										mark={<MachineAvatar id={machine.id} name={machine.name} />}
+										label={machine.name}
+									/>
 								))}
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onSelect={() => onChange({ status: [], priority: [], machine: [] })}>
+						<DropdownMenuItem
+							className="text-ui"
+							onSelect={() => onChange({ status: [], priority: [], machine: [] })}
+						>
 							Clear Filters
 						</DropdownMenuItem>
 					</DropdownMenuContent>
@@ -130,7 +123,7 @@ export function Toolbar({
 							<SlidersHorizontal aria-hidden />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="end" className="w-64 gap-3 p-3 text-xs">
+					<PopoverContent align="end" className="grid w-72 gap-3 p-4">
 						<Field label="Grouping">
 							<Select
 								value={options.group}
@@ -139,12 +132,12 @@ export function Toolbar({
 									if (next !== undefined) onChange({ group: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Grouping" className="h-7 w-32 text-xs">
+								<SelectTrigger size="sm" aria-label="Grouping" className="w-36 text-ui">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{GROUPS.map((group) => (
-										<SelectItem key={group.value} value={group.value} className="text-xs">
+										<SelectItem key={group.value} value={group.value} className="text-ui">
 											{group.label}
 										</SelectItem>
 									))}
@@ -159,12 +152,12 @@ export function Toolbar({
 									if (next !== undefined) onChange({ order: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Ordering" className="h-7 w-32 text-xs">
+								<SelectTrigger size="sm" aria-label="Ordering" className="w-36 text-ui">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{ORDERS.map((order) => (
-										<SelectItem key={order.value} value={order.value} className="text-xs">
+										<SelectItem key={order.value} value={order.value} className="text-ui">
 											{order.label}
 										</SelectItem>
 									))}
@@ -189,9 +182,38 @@ export function Toolbar({
 function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
 	return (
 		<div className="flex items-center justify-between gap-2">
-			<span className="text-ink-secondary">{label}</span>
+			<span className="text-ui text-ink-secondary">{label}</span>
 			{children}
 		</div>
+	);
+}
+
+/** A filter value: its mark and name, checked while it narrows the list; picking it keeps the menu open. */
+function FilterItem({
+	checked,
+	onToggle,
+	mark,
+	label,
+}: {
+	readonly checked: boolean;
+	readonly onToggle: () => void;
+	readonly mark: ReactNode;
+	readonly label: string;
+}) {
+	return (
+		<DropdownMenuItem
+			onSelect={(event) => {
+				event.preventDefault();
+				onToggle();
+			}}
+			aria-checked={checked}
+			role="menuitemcheckbox"
+			className="text-ui"
+		>
+			{mark}
+			<span className="truncate">{label}</span>
+			{checked && <Check className="ml-auto size-3.5" aria-hidden />}
+		</DropdownMenuItem>
 	);
 }
 

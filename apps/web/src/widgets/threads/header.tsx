@@ -116,7 +116,9 @@ export function SectionHeader({
 							<MoreHorizontal className="size-3.5" aria-hidden />
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
-							<DropdownMenuItem onSelect={() => onRename(group.id)}>Rename</DropdownMenuItem>
+							<DropdownMenuItem className="text-ui" onSelect={() => onRename(group.id)}>
+								Rename
+							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<div className="flex flex-wrap gap-1 px-2 py-1" role="group" aria-label="Color">
 								{[...COLORS.map((color) => color.hex), null].map((color) => (
@@ -133,6 +135,7 @@ export function SectionHeader({
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								variant="destructive"
+								className="text-ui"
 								onSelect={() => void remove({ payload: { groupingId: group.id } }).catch(failed)}
 							>
 								Delete group
