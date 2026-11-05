@@ -40,6 +40,7 @@ describe("Event.subscribe", () => {
 				threadId,
 				messageId: SessionMessageSchema.ID.make("message_live"),
 				partIndex: 0,
+				offset: 0,
 				delta: "hello",
 			});
 			const durable = yield* publish(events, 1);
