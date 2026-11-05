@@ -7,7 +7,7 @@ import { Projects } from "./projects";
 /** What opens the Projects widget, from the command palette. */
 export const projectsAddress = "codework://projects";
 
-/** Every project with its sessions; picking a session opens it beside the list. */
+/** Every project as a tree of its sessions and their forks; picking a thread opens it beside the tree. */
 export const projects = defineWidget({
 	kind: "codework:projects",
 	title: "Projects",
