@@ -198,6 +198,8 @@ export const HistoryEntry = Schema.Struct({
 	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
 	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
+	/** Bytes of its parts as the harness stores them; `thread.sync`'s budget counts it. */
+	size: Schema.Int,
 	/** Why a reply failed, as `provider/model: reason`; absent for one that ended normally or was stopped. */
 	error: optional(Schema.String),
 });
@@ -213,6 +215,33 @@ export const QueuedPrompt = Schema.Struct({
 	createdAt: Schema.Finite,
 });
 export type QueuedPrompt = typeof QueuedPrompt.Type;
+
+/** Text streamed into a reply's part since its last checkpoint; never stored. */
+export const LiveDelta = Schema.Struct({
+	/** The reply's entry id. */
+	entryId: Schema.String,
+	partIndex: Schema.Int,
+	kind: Schema.Literals(["text", "thinking"]),
+	/** The part's text length before this delta: apply it only where the held text ends there. */
+	offset: Schema.Int,
+	delta: Schema.String,
+});
+export type LiveDelta = typeof LiveDelta.Type;
+
+/** A `thread.sync` item: a row with the revision that last wrote it, progress, or a live delta. */
+export const ThreadItem = Schema.Union([
+	/** Upsert by entry id. */
+	Schema.TaggedStruct("Entry", { entry: HistoryEntry, rev: Schema.Int }),
+	Schema.TaggedStruct("Inbox", {
+		prompt: QueuedPrompt,
+		state: Schema.Literals(["pending", "promoted", "cancelled"]),
+		rev: Schema.Int,
+	}),
+	/** Every row with a revision up to `rev` has been sent; `floor`, on the first, is the oldest entry's seq. */
+	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int, floor: optional(Schema.Int) }),
+	Schema.TaggedStruct("Delta", { delta: LiveDelta }),
+]);
+export type ThreadItem = typeof ThreadItem.Type;
 
 /** Ends `session.log`'s replay; `seq` is absent when the session has no durable events yet. */
 export const LogSynced = Schema.Struct({
@@ -579,6 +608,24 @@ export const Api = RpcGroup.make(
 		payload: ThreadRef,
 		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
 		error: ThreadErrors,
+	}),
+	/**
+	 * One thread's detail. Without `after`, the newest entries of its line (inherited ones
+	 * included) within `budget` bytes (default 1 MiB) and its pending inbox, then `Synced` with
+	 * `floor`. With `after`, its own entries and inbox rows whose revision is past it, then
+	 * `Synced`. Then the same live after each commit, with the thread's text and thinking deltas
+	 * as `Delta` between.
+	 */
+	Rpc.make("thread.sync", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: ThreadSchema.ID,
+			after: optional(Schema.Int),
+			budget: optional(Schema.Int),
+		},
+		success: ThreadItem,
+		error: Schema.Union([ThreadErrors, Event.SubscriptionOverflowError, EncodingError]),
+		stream: true,
 	}),
 	Rpc.make("thread.configure", {
 		payload: { ...ThreadRef, runtime: RuntimeConfig },

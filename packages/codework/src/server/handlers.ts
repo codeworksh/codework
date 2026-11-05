@@ -19,7 +19,7 @@ import {
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option, Schema, Stream } from "effect";
+import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
 import {
 	Contract,
 	type HistoryEntry,
@@ -28,7 +28,10 @@ import {
 	type RuntimeConfig,
 	type SandboxInfo,
 	type SessionInfo,
+	type LiveDelta,
+	type QueuedPrompt,
 	type ThreadInfo,
+	type ThreadItem,
 	type ThreadSummary,
 } from "./contract.ts";
 import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
@@ -125,6 +128,65 @@ const decodeFailedReply = Schema.decodeUnknownOption(
 );
 const replyError = (data: string) =>
 	Option.map(decodeFailedReply(data), (reply) => `${reply.provider.id}/${reply.model}: ${reply.errorMessage}`);
+
+/** A line entry for the wire; the harness's own entries (compactions, resets, notices) are left out. */
+const toHistoryEntries = ({ entry, parts, size }: ThreadStore.HydratedEntry): ReadonlyArray<HistoryEntry> =>
+	entry.type === "user" || entry.type === "assistant"
+		? [
+				{
+					id: entry.id,
+					threadId: entry.threadId,
+					seq: entry.seq,
+					role: entry.type,
+					state: entry.state,
+					createdAt: DateTime.toEpochMillis(entry.createdAt),
+					updatedAt: DateTime.toEpochMillis(entry.updatedAt),
+					// A part this schema does not render (a future aikit type) is skipped, not fatal.
+					parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+					size,
+					...Option.match(entry.type === "assistant" ? replyError(entry.data) : Option.none(), {
+						onNone: () => ({}),
+						onSome: (error) => ({ error }),
+					}),
+				},
+			]
+		: [];
+
+const toQueuedPrompt = (input: Extract<Sync.ThreadChange, { _tag: "Inbox" }>["prompt"]): QueuedPrompt => ({
+	id: input.id,
+	delivery: input.delivery,
+	text: PromptSchema.Prompt.text(input.prompt),
+	createdAt: DateTime.toEpochMillis(input.timeCreated),
+});
+
+const toThreadItems = (change: Sync.ThreadChange): ReadonlyArray<ThreadItem> =>
+	change._tag === "Entry"
+		? toHistoryEntries(change.entry).map((entry) => ({ _tag: "Entry", entry, rev: change.rev }))
+		: [{ _tag: "Inbox", prompt: toQueuedPrompt(change.prompt), state: change.state, rev: change.rev }];
+
+const deltaKinds: Partial<Record<string, LiveDelta["kind"]>> = {
+	[EventList.LLMTextDelta.type]: "text",
+	[EventList.LLMThinkingDelta.type]: "thinking",
+};
+const decodeDelta = Schema.decodeUnknownOption(
+	Schema.Struct({ messageId: Schema.String, partIndex: Schema.Int, offset: Schema.Int, delta: Schema.String }),
+);
+
+/** A live text or thinking delta of the feed as a `thread.sync` item. */
+const toDeltaItem = (envelope: EventEnvelope): ThreadItem | undefined => {
+	const kind = deltaKinds[envelope.type];
+	if (kind === undefined) return undefined;
+	return Option.match(decodeDelta(envelope.data), {
+		onNone: () => undefined,
+		onSome: ({ messageId, partIndex, offset, delta }) => ({
+			_tag: "Delta",
+			delta: { entryId: messageId, partIndex, kind, offset, delta },
+		}),
+	});
+};
+
+/** Bytes of entries a first `thread.sync` sends when the client names no budget. */
+const defaultBudget = 1024 * 1024;
 
 const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
 
@@ -333,41 +395,54 @@ export const layer = Contract.Api.toLayer(
 				};
 			}),
 			"thread.history": Effect.fnUntraced(function* (ref) {
-				const line = yield* threads.line(yield* resolve(ref));
-				const entries = line.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
-					entry.type === "user" || entry.type === "assistant"
-						? [
-								{
-									id: entry.id,
-									threadId: entry.threadId,
-									seq: entry.seq,
-									role: entry.type,
-									state: entry.state,
-									createdAt: DateTime.toEpochMillis(entry.createdAt),
-									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
-									// A part this schema does not render (a future aikit type) is skipped, not fatal.
-									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
-									...Option.match(entry.type === "assistant" ? replyError(entry.data) : Option.none(), {
-										onNone: () => ({}),
-										onSome: (error) => ({ error }),
-									}),
-								},
-							]
-						: [],
-				);
-				return { entries };
+				return { entries: (yield* threads.line(yield* resolve(ref))).flatMap(toHistoryEntries) };
 			}),
 			"thread.queue": Effect.fnUntraced(function* (ref) {
-				const pending = yield* control.pending(yield* resolve(ref));
-				return {
-					entries: pending.map((input) => ({
-						id: input.id,
-						delivery: input.delivery,
-						text: PromptSchema.Prompt.text(input.prompt),
-						createdAt: DateTime.toEpochMillis(input.timeCreated),
-					})),
-				};
+				return { entries: (yield* control.pending(yield* resolve(ref))).map(toQueuedPrompt) };
 			}),
+			// The feed subscription is taken before the first read, so no delta after it is missed.
+			"thread.sync": ({ after, budget, ...ref }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						const threadId = yield* resolve(ref);
+						const deltas = yield* feed.subscribe;
+						const synced = (head: Store.Head, floor?: number): ThreadItem => ({
+							_tag: "Synced",
+							storeId: head.id,
+							rev: head.rev,
+							...(floor === undefined ? {} : { floor }),
+						});
+						const page = (from: Sync.Cursor, upto: number) =>
+							Sync.thread(threadId, from, upto, Rows.batch).pipe(
+								Effect.map(({ items, next }) => ({
+									items: items.flatMap(toThreadItems),
+									...(next === undefined ? {} : { next }),
+								})),
+							);
+						const rows =
+							after === undefined
+								? Rows.watch(
+										(head) =>
+											Stream.fromEffect(Sync.open(threadId, budget ?? defaultBudget, Rows.batch)).pipe(
+												Stream.flatMap(({ items, floor }) =>
+													Stream.fromIterable([...items.flatMap(toThreadItems), synced(head, floor)]),
+												),
+											),
+										page,
+										synced,
+									)
+								: Rows.follow(after, page, synced);
+						return rows.pipe(
+							Stream.merge(
+								deltas.pipe(
+									Stream.filter(Envelope.ofThread(threadId)),
+									Stream.map(toDeltaItem),
+									Stream.filter(Predicate.isNotUndefined),
+								),
+							),
+						);
+					}),
+				),
 			"thread.prompt": Effect.fnUntraced(function* ({ text, delivery, id, ...ref }) {
 				const admitted = yield* control.prompt({
 					...ref,
