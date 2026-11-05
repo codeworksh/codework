@@ -18,9 +18,9 @@ export type StoredEnv = typeof StoredEnv.Type;
 export const splitArgs = (input: string) =>
 	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 
-/** A server as stored. A `null` executable or home is the one found. An executable is a path, or a
+/** A local server as stored. A `null` executable or home is the one found. An executable is a path, or a
  * command whose first word is one (`node --conditions=development …/index.ts`, running from source). */
-export interface Row {
+export interface LocalRow {
 	readonly id: string;
 	readonly kind: "local";
 	readonly name: string;
@@ -30,6 +30,17 @@ export interface Row {
 	readonly env: StoredEnv;
 	readonly isDefault: boolean;
 }
+
+/** A remote server as stored: where the app reaches it. */
+export interface RemoteRow {
+	readonly id: string;
+	readonly kind: "remote";
+	readonly name: string;
+	readonly url: string;
+	readonly isDefault: boolean;
+}
+
+export type Row = LocalRow | RemoteRow;
 
 const decodeEnv = Schema.decodeUnknownEffect(Schema.fromJsonString(StoredEnv));
 
@@ -46,6 +57,14 @@ const chosenPath = (input: string | null) =>
 			return yield* fail("Use a full path, such as ~/.codework or /usr/local/bin/codework.");
 		return path.normalize(expanded);
 	});
+
+/** A remote server's URL typed in Settings: CodeWork answers over a WebSocket. */
+const chosenUrl = (input: string) => {
+	const trimmed = input.trim();
+	return URL.canParse(trimmed) && ["ws:", "wss:"].includes(new URL(trimmed).protocol)
+		? Effect.succeed(trimmed)
+		: Effect.fail(fail("Use a WebSocket URL, such as wss://codework.example.com/rpc."));
+};
 
 const quoted = (word: string) => (/\s/.test(word) ? `"${word}"` : word);
 
@@ -93,15 +112,18 @@ const nextEnv = (chosen: ReadonlyArray<CliEnvVar>, saved: StoredEnv) =>
 
 /**
  * The servers the app knows, and the one it connects to: the default, whose home's `service.json`
- * names the server. The built-in local server is always there.
+ * names the server. The built-in local server is always there. The default is always a local one:
+ * the connection finds its server through a home.
  */
 export class Service extends Context.Service<
 	Service,
 	{
 		readonly list: Effect.Effect<ReadonlyArray<Row>>;
 		readonly get: (id: string) => Effect.Effect<Row, ServersError>;
-		/** The home a server uses; `fallback` is the built-in server's when none is chosen. */
-		readonly homeOf: (row: Row) => {
+		/** The local server `id`; a remote one is refused. */
+		readonly getLocal: (id: string) => Effect.Effect<LocalRow, ServersError>;
+		/** The home a local server uses; `fallback` is the built-in server's when none is chosen. */
+		readonly homeOf: (row: LocalRow) => {
 			readonly path: string;
 			readonly custom: boolean;
 			readonly fallback: string | null;
@@ -124,18 +146,28 @@ export const layer = Layer.effect(
 		const fs = yield* FileSystem.FileSystem;
 		const fallback = yield* cliHome.pipe(Effect.orDie);
 
-		const list = sql<Omit<Row, "env" | "isDefault" | "kind"> & { kind: string; env: string; isDefault: number }>`
-			SELECT id, kind, name, executable, home, args, env, is_default FROM servers ORDER BY pos
+		const list = sql<
+			Omit<LocalRow, "kind" | "env" | "isDefault"> & {
+				kind: string;
+				env: string;
+				url: string | null;
+				isDefault: number;
+			}
+		>`
+			SELECT id, kind, name, executable, home, args, env, url, is_default FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
-				Effect.forEach(rows, (row) =>
-					decodeEnv(row.env).pipe(
-						Effect.map((env): Row => ({ ...row, kind: "local", env, isDefault: row.isDefault === 1 })),
-					),
+				Effect.forEach(rows, ({ kind, url, env, isDefault, ...row }) =>
+					kind === "remote" && url !== null
+						? Effect.succeed<Row>({ id: row.id, kind, name: row.name, url, isDefault: isDefault === 1 })
+						: decodeEnv(env).pipe(
+								Effect.map((env): Row => ({ ...row, kind: "local", env, isDefault: isDefault === 1 })),
+							),
 				),
 			),
 			Effect.orDie,
 		);
+		const locals = list.pipe(Effect.map((rows) => rows.filter((row): row is LocalRow => row.kind === "local")));
 
 		const get = (id: string) =>
 			list.pipe(
@@ -143,13 +175,20 @@ export const layer = Layer.effect(
 				Effect.flatMap((row) => (row === undefined ? Effect.fail(fail(`No server ${id}`)) : Effect.succeed(row))),
 			);
 
-		const homeOf = (row: Row) => ({
+		const getLocal = (id: string) =>
+			get(id).pipe(
+				Effect.flatMap((row) =>
+					row.kind === "local" ? Effect.succeed(row) : Effect.fail(fail(`${row.name} is a remote server.`)),
+				),
+			);
+
+		const homeOf = (row: LocalRow) => ({
 			path: row.home ?? fallback,
 			custom: row.home !== null,
 			fallback: row.id === LOCAL_SERVER ? fallback : null,
 		});
 
-		const defaultHome = list.pipe(Effect.map((rows) => homeOf(rows.find((row) => row.isDefault) ?? rows[0]!).path));
+		const defaultHome = locals.pipe(Effect.map((rows) => homeOf(rows.find((row) => row.isDefault) ?? rows[0]!).path));
 		const current = yield* SubscriptionRef.make(yield* defaultHome);
 		// Told after every write, so a new default or a new home for it reaches the connection.
 		const announce = defaultHome.pipe(
@@ -162,7 +201,7 @@ export const layer = Layer.effect(
 
 		// A home names one server, so no two servers share one.
 		const ensureOwnHome = (id: string | null, home: string) =>
-			list.pipe(
+			locals.pipe(
 				Effect.flatMap((rows) => {
 					const taken = rows.find((row) => row.id !== id && homeOf(row).path === home);
 					return taken === undefined
@@ -182,29 +221,31 @@ export const layer = Layer.effect(
 		return Service.of({
 			list,
 			get,
+			getLocal,
 			homeOf,
 			defaultHome,
 			homeChanges: SubscriptionRef.changes(current).pipe(Stream.drop(1)),
 
 			add: Effect.fn("Servers.add")(function* (input) {
-				const home = yield* chosenPath(input.home);
-				if (home === null) return yield* fail("A new server needs a home of its own.");
 				const id = yield* Effect.sync(() => crypto.randomUUID().slice(0, 8));
+				const home = input.kind === "local" ? yield* chosenPath(input.home) : null;
+				if (input.kind === "local" && home === null) return yield* fail("A new server needs a home of its own.");
+				const route =
+					input.kind === "local"
+						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
+						: { url: yield* chosenUrl(input.url) };
 				yield* transaction(
 					Effect.gen(function* () {
-						yield* ensureOwnHome(null, home);
-						const [last] = yield* sql<{ pos: number }>`SELECT COALESCE(MAX(pos), 0) AS pos FROM servers`;
-						yield* sql`INSERT INTO servers ${sql.insert({
+						if (home !== null) yield* ensureOwnHome(null, home);
+						const [last] = yield* sql<{ pos: number }>`SELECT COALESCE(MAX(pos), 0) AS pos FROM machine`;
+						yield* sql`INSERT INTO machine ${sql.insert({
 							id,
-							kind: "local",
+							kind: input.kind,
 							name: yield* name(input.name),
-							executable: yield* chosenCommand(fs, input.executable),
-							home,
-							args: input.args.trim(),
-							env: "[]",
-							isDefault: 0,
+							...route,
+							namespace: "codework",
 							pos: (last?.pos ?? 0) + 1,
-							created: yield* Clock.currentTimeMillis,
+							createdAt: yield* Clock.currentTimeMillis,
 						})}`;
 					}),
 				);
@@ -217,35 +258,43 @@ export const layer = Layer.effect(
 						const row = yield* get(id);
 						const fields: Record<string, string | null> = {};
 						if (patch.name !== undefined) fields.name = yield* name(patch.name);
-						if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
-						if (patch.args !== undefined) fields.args = patch.args.trim();
-						if (patch.env !== undefined) fields.env = JSON.stringify(yield* nextEnv(patch.env, row.env));
-						if (patch.home !== undefined) {
-							const home = yield* chosenPath(patch.home);
-							if (home === null && row.id !== LOCAL_SERVER)
-								return yield* fail("An added server keeps a home of its own.");
-							yield* ensureOwnHome(id, home ?? fallback);
-							fields.home = home;
+						if (row.kind === "remote") {
+							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
+								return yield* fail("A remote server has no executable, home, arguments or variables.");
+							if (patch.url !== undefined) fields.url = yield* chosenUrl(patch.url);
+						} else {
+							if (patch.url !== undefined) return yield* fail("Only a remote server has a URL.");
+							if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
+							if (patch.args !== undefined) fields.args = patch.args.trim();
+							if (patch.env !== undefined) fields.env = JSON.stringify(yield* nextEnv(patch.env, row.env));
+							if (patch.home !== undefined) {
+								const home = yield* chosenPath(patch.home);
+								if (home === null && row.id !== LOCAL_SERVER)
+									return yield* fail("An added server keeps a home of its own.");
+								yield* ensureOwnHome(id, home ?? fallback);
+								fields.home = home;
+							}
 						}
 						if (Object.keys(fields).length > 0)
-							yield* sql`UPDATE servers SET ${sql.update(fields)} WHERE id = ${id}`;
+							yield* sql`UPDATE machine SET ${sql.update(fields)} WHERE id = ${id}`;
 					}),
 				);
 				yield* announce;
 			}),
 
+			// Everything synced from the server goes with it: its rows cascade.
 			remove: Effect.fn("Servers.remove")(function* (id) {
 				const row = yield* get(id);
 				if (row.id === LOCAL_SERVER) return yield* fail("The built-in local server cannot be removed.");
 				if (row.isDefault) return yield* fail("Make another server the default before removing this one.");
-				yield* sql`DELETE FROM servers WHERE id = ${id}`.pipe(Effect.orDie);
+				yield* sql`DELETE FROM machine WHERE id = ${id}`.pipe(Effect.orDie);
 			}),
 
 			setDefault: Effect.fn("Servers.setDefault")(function* (id) {
 				yield* transaction(
 					Effect.gen(function* () {
-						yield* get(id);
-						yield* sql`UPDATE servers SET is_default = CASE WHEN id = ${id} THEN 1 ELSE 0 END`;
+						yield* getLocal(id);
+						yield* sql`UPDATE machine SET is_default = CASE WHEN id = ${id} THEN 1 ELSE 0 END`;
 					}),
 				);
 				yield* announce;

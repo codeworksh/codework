@@ -51,7 +51,7 @@ export function AddServer({
 		setAdding(true);
 		setError(null);
 		add({
-			payload: { name, executable: executable.trim() || null, home, args },
+			payload: { kind: "local", name, executable: executable.trim() || null, home, args },
 		})
 			.then((id) => {
 				onAdded(id);

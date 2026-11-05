@@ -143,16 +143,16 @@ export const CliEnvVar = Schema.Struct({
 });
 export type CliEnvVar = typeof CliEnvVar.Type;
 
-/** Only servers on this machine for now; remote ones come later. */
-export const ServerKind = Schema.Literals(["local"]);
+/** A server on this computer (local), or one hosted elsewhere that the app reaches at its URL (remote). */
+export const ServerKind = Schema.Literals(["local", "remote"]);
 
 /** The server the app always has, which cannot be removed. */
 export const LOCAL_SERVER = "local";
 
-/** A server and how it is set up, with its executable and process as found when listed. */
-export const ServerStatus = Schema.Struct({
+/** A local server and how it is set up, with its executable and process as found when listed. */
+export const LocalServerStatus = Schema.Struct({
 	id: Schema.String,
-	kind: ServerKind,
+	kind: Schema.Literal("local"),
 	name: Schema.String,
 	/** The one the app connects to. */
 	isDefault: Schema.Boolean,
@@ -168,6 +168,19 @@ export const ServerStatus = Schema.Struct({
 	args: Schema.String,
 	env: Schema.Array(CliEnvVar),
 });
+export type LocalServerStatus = typeof LocalServerStatus.Type;
+
+/** A remote server: only where to reach it; it has no executable or home here. */
+export const RemoteServerStatus = Schema.Struct({
+	id: Schema.String,
+	kind: Schema.Literal("remote"),
+	name: Schema.String,
+	isDefault: Schema.Boolean,
+	url: Schema.String,
+});
+export type RemoteServerStatus = typeof RemoteServerStatus.Type;
+
+export const ServerStatus = Schema.Union([LocalServerStatus, RemoteServerStatus]);
 export type ServerStatus = typeof ServerStatus.Type;
 
 /** How often every server is checked again in the background. */
@@ -182,18 +195,25 @@ export const DEFAULT_SERVER_HEALTH: ServerHealth = { interval: 300 };
 export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
-/** A new local server: it needs a home of its own, since a home names one server. */
-export const ServerAdd = Schema.Struct({
-	name: Schema.String,
-	executable: Schema.NullOr(Schema.String),
-	home: Schema.String,
-	args: Schema.String,
-});
+/**
+ * A new server. A local one needs a home of its own, since a home names one server; a remote one
+ * needs its WebSocket URL.
+ */
+export const ServerAdd = Schema.Union([
+	Schema.Struct({
+		kind: Schema.Literal("local"),
+		name: Schema.String,
+		executable: Schema.NullOr(Schema.String),
+		home: Schema.String,
+		args: Schema.String,
+	}),
+	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.String, url: Schema.String }),
+]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * `env` replaces every variable.
+ * `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -202,6 +222,7 @@ export const ServerUpdate = Schema.Struct({
 	home: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
+	url: Schema.optionalKey(Schema.String),
 });
 export type ServerUpdate = typeof ServerUpdate.Type;
 
@@ -361,13 +382,13 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: ServersError,
 	}),
-	/** The app reconnects through the new default's home at once. */
+	/** The app reconnects through the new default's home at once; only a local server can be the default. */
 	Rpc.make("servers.setDefault", {
 		payload: ServerId,
 		success: Schema.Void,
 		error: ServersError,
 	}),
-	/** Runs `codework service <action>` with the server's executable, home, arguments and variables. */
+	/** Runs `codework service <action>` with a local server's executable, home, arguments and variables. */
 	Rpc.make("servers.service", {
 		payload: { id: Schema.String, action: CliAction },
 		success: Schema.Void,

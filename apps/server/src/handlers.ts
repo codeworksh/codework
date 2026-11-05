@@ -159,7 +159,7 @@ export const layer = Contract.Api.toLayer(
 				readonly action: CliAction;
 			}) {
 				// Checked again whether it worked or not, so the status shows what the CLI left.
-				yield* Cli.service(yield* servers.get(id), action).pipe(Effect.ensuring(health.check));
+				yield* Cli.service(yield* servers.getLocal(id), action).pipe(Effect.ensuring(health.check));
 			}),
 
 			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),
