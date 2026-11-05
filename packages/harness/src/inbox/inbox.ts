@@ -2,6 +2,7 @@ import { DateTime, Effect, Option, Schema } from "effect";
 import { VariantSchema } from "effect/schema";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { InboxRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
@@ -156,6 +157,7 @@ export interface Interface {
 
 export const make = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
+	const store = yield* Store.Service;
 	const events = yield* Event.Service;
 
 	const findRow = SqlSchema.findOneOption({
@@ -182,11 +184,12 @@ export const make = Effect.gen(function* () {
 			threadId: Schema.String,
 			data: Schema.NullOr(Schema.fromJsonString(Prompt)),
 			delivery: Schema.NullOr(Delivery),
+			rev: Schema.Int,
 		}),
 		Result: Schema.Struct({ id: Schema.String }),
 		// A null field is one the update left alone.
-		execute: ({ id, threadId, data, delivery }) => sql`
-      UPDATE inbox SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery)
+		execute: ({ id, threadId, data, delivery, rev }) => sql`
+      UPDATE inbox SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery), rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
       RETURNING id
     `,
@@ -201,12 +204,13 @@ export const make = Effect.gen(function* () {
 			delivery: Delivery,
 			admittedSeq: Schema.Int,
 			createdAt: DateTimeUtcFromMillis,
+			rev: Schema.Int,
 		}),
 		Result: Schema.Struct({ id: Schema.String }),
-		execute: ({ id, threadId, data, delivery, admittedSeq, createdAt }) => sql`
+		execute: ({ id, threadId, data, delivery, admittedSeq, createdAt, rev }) => sql`
       UPDATE inbox
       SET data = ${data}, delivery = ${delivery}, admitted_seq = ${admittedSeq}, created_at = ${createdAt},
-        cancelled_seq = NULL
+        cancelled_seq = NULL, rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NOT NULL
       RETURNING id
     `,
@@ -219,10 +223,11 @@ export const make = Effect.gen(function* () {
 			id: Schema.String,
 			threadId: Schema.String,
 			promotedSeq: Schema.Int,
+			rev: Schema.Int,
 		}),
 		Result: InboxRow,
-		execute: ({ id, threadId, promotedSeq }) => sql`
-      UPDATE inbox SET promoted_seq = ${promotedSeq}
+		execute: ({ id, threadId, promotedSeq, rev }) => sql`
+      UPDATE inbox SET promoted_seq = ${promotedSeq}, rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
       RETURNING *
     `,
@@ -230,10 +235,10 @@ export const make = Effect.gen(function* () {
 
 	// The same compare-and-set as promotion: whichever of the two commits first wins the row.
 	const cancelRow = SqlSchema.findAll({
-		Request: Schema.Struct({ id: Schema.String, threadId: Schema.String, cancelledSeq: Schema.Int }),
+		Request: Schema.Struct({ id: Schema.String, threadId: Schema.String, cancelledSeq: Schema.Int, rev: Schema.Int }),
 		Result: Schema.Struct({ id: Schema.String }),
-		execute: ({ id, threadId, cancelledSeq }) => sql`
-      UPDATE inbox SET cancelled_seq = ${cancelledSeq}
+		execute: ({ id, threadId, cancelledSeq, rev }) => sql`
+      UPDATE inbox SET cancelled_seq = ${cancelledSeq}, rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
       RETURNING id
     `,
@@ -343,97 +348,118 @@ export const make = Effect.gen(function* () {
 			);
 	});
 
-	const projectAdmitted = Effect.fn("Inbox.projectAdmitted")(function* (input: ProjectAdmittedInput) {
-		// Safe to read first here: the commit transaction already opened with the
-		// event's sequence bump, so this cannot upgrade a read lock.
-		const entry = yield* selectEntry(input.id);
-		if (entry.length > 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-		const stored = yield* insertRow({
-			id: input.id,
-			sessionId: input.sessionId,
-			threadId: input.threadId,
-			kind: "prompt",
-			data: input.prompt,
-			delivery: input.delivery,
-			admittedSeq: input.admittedSeq,
-			promotedSeq: Option.none(),
-			cancelledSeq: Option.none(),
-			createdAt: VariantSchema.Override(input.timeCreated),
-		});
-		if (stored.length > 0) return;
-		const revived = yield* reviveRow({
-			id: input.id,
-			threadId: input.threadId,
-			data: input.prompt,
-			delivery: input.delivery,
-			admittedSeq: input.admittedSeq,
-			createdAt: input.timeCreated,
-		});
-		if (revived.length === 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-	}, Effect.orDie);
+	const projectAdmitted = Effect.fn("Inbox.projectAdmitted")(
+		function* (input: ProjectAdmittedInput) {
+			// Safe to read first here: the commit transaction already opened with the
+			// event's sequence bump, so this cannot upgrade a read lock.
+			const entry = yield* selectEntry(input.id);
+			if (entry.length > 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+			const stored = yield* insertRow({
+				id: input.id,
+				sessionId: input.sessionId,
+				threadId: input.threadId,
+				kind: "prompt",
+				data: input.prompt,
+				delivery: input.delivery,
+				admittedSeq: input.admittedSeq,
+				promotedSeq: Option.none(),
+				cancelledSeq: Option.none(),
+				createdAt: VariantSchema.Override(input.timeCreated),
+				rev: yield* store.rev,
+			});
+			if (stored.length > 0) return;
+			const revived = yield* reviveRow({
+				id: input.id,
+				threadId: input.threadId,
+				data: input.prompt,
+				delivery: input.delivery,
+				admittedSeq: input.admittedSeq,
+				createdAt: input.timeCreated,
+				rev: yield* store.rev,
+			});
+			if (revived.length === 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+		},
+		store.write,
+		Effect.orDie,
+	);
 
-	const projectPrompted = Effect.fn("Inbox.projectPrompted")(function* (input: ProjectPromptedInput) {
-		const updated = yield* promoteRow({
-			id: input.id,
-			threadId: input.threadId,
-			promotedSeq: input.promotedSeq,
-		});
-		const promoted = updated[0];
-		if (promoted) {
-			if (!matchesProjection(fromRow(promoted), input))
-				return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-			return;
-		}
+	const projectPrompted = Effect.fn("Inbox.projectPrompted")(
+		function* (input: ProjectPromptedInput) {
+			const updated = yield* promoteRow({
+				id: input.id,
+				threadId: input.threadId,
+				promotedSeq: input.promotedSeq,
+				rev: yield* store.rev,
+			});
+			const promoted = updated[0];
+			if (promoted) {
+				if (!matchesProjection(fromRow(promoted), input))
+					return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+				return;
+			}
 
-		// Nothing moved: either this exact promotion is being replayed, or the row
-		// is already promoted at a different sequence, which is a conflict.
-		const stored = yield* find(input.id);
-		if (Option.isSome(stored)) {
-			if (
-				!matchesProjection(stored.value, input) ||
-				stored.value.promotedSeq !== input.promotedSeq ||
-				stored.value.cancelledSeq !== undefined
-			)
-				return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-			return;
-		}
+			// Nothing moved: either this exact promotion is being replayed, or the row
+			// is already promoted at a different sequence, which is a conflict.
+			const stored = yield* find(input.id);
+			if (Option.isSome(stored)) {
+				if (
+					!matchesProjection(stored.value, input) ||
+					stored.value.promotedSeq !== input.promotedSeq ||
+					stored.value.cancelledSeq !== undefined
+				)
+					return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+				return;
+			}
 
-		// Promotion of an input this store never admitted -- replayed onto an empty
-		// projection. Both sequences collapse onto the promotion.
-		yield* insertRow({
-			id: input.id,
-			sessionId: input.sessionId,
-			threadId: input.threadId,
-			kind: "prompt",
-			data: input.prompt,
-			delivery: input.delivery,
-			admittedSeq: input.promotedSeq,
-			promotedSeq: Option.some(input.promotedSeq),
-			cancelledSeq: Option.none(),
-			createdAt: VariantSchema.Override(input.timeCreated),
-		});
-	}, Effect.orDie);
+			// Promotion of an input this store never admitted -- replayed onto an empty
+			// projection. Both sequences collapse onto the promotion.
+			yield* insertRow({
+				id: input.id,
+				sessionId: input.sessionId,
+				threadId: input.threadId,
+				kind: "prompt",
+				data: input.prompt,
+				delivery: input.delivery,
+				admittedSeq: input.promotedSeq,
+				promotedSeq: Option.some(input.promotedSeq),
+				cancelledSeq: Option.none(),
+				createdAt: VariantSchema.Override(input.timeCreated),
+				rev: yield* store.rev,
+			});
+		},
+		store.write,
+		Effect.orDie,
+	);
 
-	const projectCancelled = Effect.fn("Inbox.projectCancelled")(function* (input: ProjectCancelledInput) {
-		const updated = yield* cancelRow(input);
-		if (updated.length > 0) return;
-		// Nothing moved: this exact cancel being replayed, or the row was promoted or cancelled first.
-		const stored = yield* find(input.id);
-		if (Option.isSome(stored) && stored.value.cancelledSeq === input.cancelledSeq) return;
-		return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-	}, Effect.orDie);
+	const projectCancelled = Effect.fn("Inbox.projectCancelled")(
+		function* (input: ProjectCancelledInput) {
+			const updated = yield* cancelRow({ ...input, rev: yield* store.rev });
+			if (updated.length > 0) return;
+			// Nothing moved: this exact cancel being replayed, or the row was promoted or cancelled first.
+			const stored = yield* find(input.id);
+			if (Option.isSome(stored) && stored.value.cancelledSeq === input.cancelledSeq) return;
+			return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+		},
+		store.write,
+		Effect.orDie,
+	);
 
-	const projectUpdated = Effect.fn("Inbox.projectUpdated")(function* (input: ProjectUpdatedInput) {
-		const updated = yield* updateRow({
-			id: input.id,
-			threadId: input.threadId,
-			data: input.prompt ?? null,
-			delivery: input.delivery ?? null,
-		});
-		if (updated.length > 0) return;
-		// Promoted or cancelled first: the update lost, and its event rolls back.
-		return yield* Effect.die(new LifecycleConflict({ id: input.id }));
-	}, Effect.orDie);
+	const projectUpdated = Effect.fn("Inbox.projectUpdated")(
+		function* (input: ProjectUpdatedInput) {
+			const updated = yield* updateRow({
+				id: input.id,
+				threadId: input.threadId,
+				data: input.prompt ?? null,
+				delivery: input.delivery ?? null,
+				rev: yield* store.rev,
+			});
+			if (updated.length > 0) return;
+			// Promoted or cancelled first: the update lost, and its event rolls back.
+			return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+		},
+		store.write,
+		Effect.orDie,
+	);
 
 	const pendingOf = (threadId: ThreadSchema.ID, id: SessionMessageSchema.ID) =>
 		find(id).pipe(

@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 import { DocumentRevisionRow, DocumentRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import type { ThreadSchema } from "../thread/schema.ts";
 import { DocumentSchema } from "./schema.ts";
@@ -56,6 +57,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 
 		const insertDocument = SqlSchema.void({
 			Request: DocumentRow.insert,
@@ -98,30 +100,46 @@ export const layer = Layer.effect(
 			value: row.value,
 		});
 
-		const write = Effect.fn("Document.write")(function* (documentId: DocumentSchema.ID, revision: Revision) {
-			yield* insertRevision({ documentId, ...revision });
-			const document = yield* findById(documentId);
-			if (Option.isSome(document) && Option.getOrUndefined(document.value.history) === "latest") {
-				yield* sql`DELETE FROM revision WHERE document_id = ${documentId} AND seq < ${revision.seq}`;
-			}
-		}, Effect.orDie);
+		// A document configures threads, so writing one stamps them: the thread for a thread-scoped
+		// document, every thread of the session for a session-scoped one.
+		const write = Effect.fn("Document.write")(
+			function* (documentId: DocumentSchema.ID, revision: Revision) {
+				yield* insertRevision({ documentId, ...revision });
+				const document = yield* findById(documentId);
+				if (Option.isNone(document)) return yield* Effect.die(`document ${documentId} not found`);
+				if (Option.getOrUndefined(document.value.history) === "latest") {
+					yield* sql`DELETE FROM revision WHERE document_id = ${documentId} AND seq < ${revision.seq}`;
+				}
+				const rev = yield* store.rev;
+				yield* Option.match(document.value.threadId, {
+					onNone: () => sql`UPDATE thread SET rev = ${rev} WHERE session_id = ${document.value.sessionId}`,
+					onSome: (threadId) => sql`UPDATE thread SET rev = ${rev} WHERE id = ${threadId}`,
+				});
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const create = Effect.fn("Document.create")(function* (input: CreateInput) {
-			const { definition } = input;
-			const row = DocumentRow.insert.make({
-				id: DocumentSchema.ID.make(uuidv7()),
-				sessionId: input.sessionId,
-				threadId: Option.fromUndefinedOr(input.threadId),
-				kind: definition.kind,
-				history: Option.fromUndefinedOr(definition.history),
-				fork: Option.fromUndefinedOr(definition.fork),
-				createdSeq: input.seq,
-				retiredSeq: Option.none(),
-			});
-			yield* insertDocument(row);
-			yield* write(row.id, { seq: input.seq, version: definition.version, value: input.value });
-			return new DocumentRow(row);
-		}, Effect.orDie);
+		const create = Effect.fn("Document.create")(
+			function* (input: CreateInput) {
+				const { definition } = input;
+				const row = DocumentRow.insert.make({
+					id: DocumentSchema.ID.make(uuidv7()),
+					sessionId: input.sessionId,
+					threadId: Option.fromUndefinedOr(input.threadId),
+					kind: definition.kind,
+					history: Option.fromUndefinedOr(definition.history),
+					fork: Option.fromUndefinedOr(definition.fork),
+					createdSeq: input.seq,
+					retiredSeq: Option.none(),
+				});
+				yield* insertDocument(row);
+				yield* write(row.id, { seq: input.seq, version: definition.version, value: input.value });
+				return new DocumentRow(row);
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		const find = Effect.fn("Document.find")(function* (threadId: string, kind: string) {
 			return yield* findLive({ threadId, kind });
@@ -148,20 +166,20 @@ export const layer = Layer.effect(
 		const agent = Effect.fn("Document.agent")((threadId: string) => readAgent(threadId, Number.MAX_SAFE_INTEGER));
 		const agentAsOf = Effect.fn("Document.agentAsOf")(readAgent);
 
-		const configure = Effect.fn("Document.configure")(function* (
-			threadId: string,
-			change: DocumentSchema.AgentChange,
-			seq: number,
-		) {
-			const document = yield* find(threadId, DocumentSchema.agent.kind);
-			if (Option.isNone(document)) return yield* Effect.die(`thread ${threadId} has no agent document`);
-			const next = DocumentSchema.applyAgentChange(yield* readAgent(threadId, Number.MAX_SAFE_INTEGER), change);
-			yield* write(document.value.id, {
-				seq,
-				version: DocumentSchema.agent.version,
-				value: yield* encodeAgent(next).pipe(Effect.orDie),
-			});
-		});
+		const configure = Effect.fn("Document.configure")(
+			function* (threadId: string, change: DocumentSchema.AgentChange, seq: number) {
+				const document = yield* find(threadId, DocumentSchema.agent.kind);
+				if (Option.isNone(document)) return yield* Effect.die(`thread ${threadId} has no agent document`);
+				const next = DocumentSchema.applyAgentChange(yield* readAgent(threadId, Number.MAX_SAFE_INTEGER), change);
+				yield* write(document.value.id, {
+					seq,
+					version: DocumentSchema.agent.version,
+					value: yield* encodeAgent(next).pipe(Effect.orDie),
+				});
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		return Service.of({ create, find, ofThread, current, asOf, write, agent, agentAsOf, configure });
 	}),

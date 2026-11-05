@@ -5,6 +5,7 @@
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/sql";
+import { Store } from "../db/store.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { Location } from "../location/location.ts";
@@ -31,6 +32,7 @@ export const layer = Layer.effect(
 		const threads = yield* Thread.Service;
 		const sandbox = yield* SandboxController.Controller;
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		// Captured here, not requested inside `drain`: `RunCoordinator.make`
 		// requires the drain's `R` channel to be `never`, and a `Runner.Service.use`
 		// in the callback would leave the tag in it.
@@ -163,6 +165,7 @@ export const layer = Layer.effect(
 					const location = Location.layerMounted().pipe(
 						Layer.provide(Layer.succeedContext(mountContext)),
 						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
+						Layer.provide(Layer.succeed(Store.Service, store)),
 					);
 					const locationContext = yield* Layer.build(location).pipe(
 						Effect.catchTag(

@@ -21,6 +21,9 @@ export const Timestamps = {
 
 const Metadata = Schema.Record(Schema.String, Schema.String);
 
+// The revision of the write transaction that last wrote the row (db/store.ts).
+const Rev = NonNegativeInt;
+
 // Session entry discriminant. Frozen once shipped — values live in persisted
 // rows, so a rename is a data migration. Additions are code-only (the column is unconstrained TEXT).
 export const entryTypes = ["user", "assistant", "synthetic", "system", "compaction", "reset", "custom"] as const;
@@ -74,6 +77,7 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	name: Schema.String,
 	status: ProjectSchema.Status,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 /**
@@ -115,6 +119,7 @@ export class SpaceRow extends Model.Class<SpaceRow>("SpaceRow")({
 	env: Model.FieldOption(SandboxInstance.ID),
 	status: SpaceSchema.Status,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
@@ -129,6 +134,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // One linear transcript of a session. `origin*` is the flattened `ThreadSchema.Origin`.
@@ -154,6 +160,7 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	tokensCacheWrite: Model.GeneratedByDb(Schema.Int),
 	createdSeq: NonNegativeInt,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // Work addressed to one thread, from admission to delivery. `kind` + `data` is the flattened item;
@@ -169,6 +176,7 @@ export class InboxRow extends Model.Class<InboxRow>("InboxRow")({
 	promotedSeq: Model.FieldOption(Schema.Int),
 	cancelledSeq: Model.FieldOption(Schema.Int),
 	createdAt: Model.DateTimeInsertFromNumber,
+	rev: Rev,
 }) {}
 
 // One transcript record in one thread. Immutable except a draft assistant, whose `data` and
@@ -188,6 +196,7 @@ export class EntryRow extends Model.Class<EntryRow>("EntryRow")({
 	label: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // One aikit message part. `data` is the verbatim aikit part JSON and is authoritative;

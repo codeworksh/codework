@@ -13,6 +13,7 @@ import {
 } from "effect";
 import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { Space } from "../space/space.ts";
 import { Telemetry } from "../telemetry/telemetry.ts";
 import { SandboxDriver } from "./driver.ts";
@@ -179,6 +180,7 @@ const timedShell = (shell: ISandboxExe, driver: SandboxDriver.Name): ISandboxExe
 
 export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options) {
 	const sql = yield* SqlClient.SqlClient;
+	const db = yield* Store.Service;
 	const registry = yield* SandboxDriverRegistry.Registry;
 	const store = yield* SandboxStore.make;
 	const gate = yield* Semaphore.make(1);
@@ -913,8 +915,8 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 		// Tombstone and archive the env's spaces atomically (D-ENV). The UPDATE
 		// goes first so the DEFERRED transaction takes its write lock up front.
-		yield* sql
-			.withTransaction(
+		yield* db
+			.write(
 				Effect.gen(function* () {
 					yield* sql`
 						UPDATE sandbox
@@ -929,7 +931,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					yield* Space.archiveEnv(id);
 				}),
 			)
-			.pipe(Effect.provideService(SqlClient.SqlClient, sql), Effect.orDie);
+			.pipe(Effect.provideService(SqlClient.SqlClient, sql), Effect.provideService(Store.Service, db), Effect.orDie);
 	});
 
 	const createAndMount: Interface["createAndMount"] = (input, mountOptions) => {

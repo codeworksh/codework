@@ -11,6 +11,7 @@ import {
 	ThreadRow,
 	type ToolStatus,
 } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { Document } from "../document/document.ts";
 import { DocumentSchema } from "../document/schema.ts";
 import { Event } from "../event/event.ts";
@@ -240,6 +241,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		const events = yield* Event.Service;
 		const documents = yield* Document.Service;
 
@@ -285,11 +287,11 @@ export const layer = Layer.effect(
 			Request: EntryRow.insert,
 			Result: Schema.Struct({ id: Schema.String }),
 			execute: (row) => sql`
-				INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, label, metadata, created_at, updated_at)
+				INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, label, metadata, created_at, updated_at, rev)
 				SELECT
 					${row.id}, ${row.sessionId}, ${row.threadId}, ${row.seq}, ${row.committedSeq ?? null},
 					${row.type}, ${row.state}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
-					${row.createdAt}, ${row.updatedAt}
+					${row.createdAt}, ${row.updatedAt}, ${row.rev}
 				WHERE NOT EXISTS (
 					SELECT 1 FROM entry WHERE thread_id = ${row.threadId} AND seq >= ${row.seq}
 				)
@@ -405,22 +407,27 @@ export const layer = Layer.effect(
 			return yield* selectUnsettled(threadId).pipe(Effect.orDie);
 		});
 
-		const insert = Effect.fn("Thread.insert")(function* (input: InsertThread) {
-			const origin = input.origin;
-			const row = yield* ThreadRow.insert.makeEffect({
-				id: input.id,
-				sessionId: input.sessionId,
-				originKind: origin.kind,
-				originThreadId: origin.kind === "main" ? Option.none() : Option.some(origin.threadId),
-				originEntryId: origin.kind === "main" ? Option.none() : Option.fromUndefinedOr(origin.entryId),
-				originCallId: origin.kind === "subagent" ? Option.some(origin.callId) : Option.none(),
-				title: Option.fromUndefinedOr(input.title),
-				execution: Option.none(),
-				attempt: Option.none(),
-				createdSeq: input.seq,
-			});
-			yield* insertThread(row);
-		}, Effect.orDie);
+		const insert = Effect.fn("Thread.insert")(
+			function* (input: InsertThread) {
+				const origin = input.origin;
+				const row = yield* ThreadRow.insert.makeEffect({
+					id: input.id,
+					sessionId: input.sessionId,
+					originKind: origin.kind,
+					originThreadId: origin.kind === "main" ? Option.none() : Option.some(origin.threadId),
+					originEntryId: origin.kind === "main" ? Option.none() : Option.fromUndefinedOr(origin.entryId),
+					originCallId: origin.kind === "subagent" ? Option.some(origin.callId) : Option.none(),
+					title: Option.fromUndefinedOr(input.title),
+					execution: Option.none(),
+					attempt: Option.none(),
+					createdSeq: input.seq,
+					rev: yield* store.rev,
+				});
+				yield* insertThread(row);
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		const writePart = Effect.fnUntraced(function* (
 			entryId: string,
@@ -457,8 +464,10 @@ export const layer = Layer.effect(
 			delta?: { cost: number; input: number; output: number; cacheRead: number; cacheWrite: number },
 		) {
 			const now = yield* epochNow;
+			const rev = yield* store.rev;
 			yield* sql`
 				UPDATE thread SET
+					rev = ${rev},
 					updated_at = ${now},
 					cost = cost + ${delta?.cost ?? 0},
 					tokens_input = tokens_input + ${delta?.input ?? 0},
@@ -467,7 +476,7 @@ export const layer = Layer.effect(
 					tokens_cache_write = tokens_cache_write + ${delta?.cacheWrite ?? 0}
 				WHERE id = ${thread.id}
 			`;
-			yield* sql`UPDATE session SET updated_at = ${now} WHERE id = ${thread.sessionId}`;
+			yield* sql`UPDATE session SET updated_at = ${now}, rev = ${rev} WHERE id = ${thread.sessionId}`;
 		});
 
 		type AppendTxResult =
@@ -522,8 +531,8 @@ export const layer = Layer.effect(
 						)
 					: undefined;
 
-			const result: AppendTxResult = yield* sql
-				.withTransaction(
+			const result: AppendTxResult = yield* store
+				.write(
 					Effect.gen(function* () {
 						const thread = yield* findThread(input.threadId);
 						if (Option.isNone(thread)) return { _tag: "threadNotFound" } as const;
@@ -549,6 +558,7 @@ export const layer = Layer.effect(
 							data: input.data,
 							label: Option.none(),
 							metadata: Option.fromUndefinedOr(input.metadata),
+							rev: yield* store.rev,
 						});
 						const inserted = yield* insertEntry(entryRow);
 						if (inserted.length === 0) {
@@ -618,7 +628,7 @@ export const layer = Layer.effect(
 		});
 
 		const replaceAssistant = Effect.fn("Thread.replaceAssistant")(function* (input: ReplaceAssistant) {
-			yield* sql.withTransaction(
+			yield* store.write(
 				Effect.gen(function* () {
 					const { entry, thread } = yield* requireDraft(input.id, input.threadId, "replaceAssistant");
 					const delta = yield* usageDelta(entry.data, input.data);
@@ -626,7 +636,7 @@ export const layer = Layer.effect(
 					yield* sql`DELETE FROM part WHERE entry_id = ${input.id}`;
 					yield* writeParts(input.id, input.threadId, input.parts);
 					yield* sql`
-						UPDATE entry SET data = ${input.data}, updated_at = ${now}
+						UPDATE entry SET data = ${input.data}, updated_at = ${now}, rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
 					yield* touch(thread, delta);
@@ -635,7 +645,7 @@ export const layer = Layer.effect(
 		}, Effect.orDie);
 
 		const progress = Effect.fn("Thread.progress")(function* (input: ProgressAssistant) {
-			yield* sql.withTransaction(
+			yield* store.write(
 				Effect.gen(function* () {
 					yield* requireDraft(input.id, input.threadId, "progress");
 					const now = yield* epochNow;
@@ -661,18 +671,19 @@ export const layer = Layer.effect(
 							WHERE entry_id = ${input.id} AND part_index = ${change.partIndex}
 						`;
 					}
-					yield* sql`UPDATE entry SET updated_at = ${now} WHERE id = ${input.id}`;
+					yield* sql`UPDATE entry SET updated_at = ${now}, rev = ${yield* store.rev} WHERE id = ${input.id}`;
 				}),
 			);
 		}, Effect.orDie);
 
-		const settleToolCall = Effect.fn("Thread.settleToolCall")(function* (input: SettleToolCall) {
-			const data = yield* decodeJsonObject(input.data).pipe(Effect.orDie);
-			if (data["type"] !== "toolCall" || data["callID"] !== input.callId || data["status"] !== input.status) {
-				return yield* Effect.die(`settled tool payload does not match call ${input.callId}`);
-			}
-			const now = yield* epochNow;
-			const rows = yield* sql`
+		const settleToolCall = Effect.fn("Thread.settleToolCall")(
+			function* (input: SettleToolCall) {
+				const data = yield* decodeJsonObject(input.data).pipe(Effect.orDie);
+				if (data["type"] !== "toolCall" || data["callID"] !== input.callId || data["status"] !== input.status) {
+					return yield* Effect.die(`settled tool payload does not match call ${input.callId}`);
+				}
+				const now = yield* epochNow;
+				const rows = yield* sql`
 				UPDATE part
 				SET data = ${input.data}, status = ${input.status}, updated_at = ${now}
 				WHERE entry_id = ${input.entryId}
@@ -682,15 +693,21 @@ export const layer = Layer.effect(
 					AND EXISTS (SELECT 1 FROM entry WHERE id = ${input.entryId} AND state = 'draft')
 				RETURNING id
 			`;
-			if (rows.length !== 1) {
-				return yield* Effect.die(`settleToolCall requires one unsettled call ${input.entryId}/${input.callId}`);
-			}
-		}, Effect.orDie);
+				if (rows.length !== 1) {
+					return yield* Effect.die(`settleToolCall requires one unsettled call ${input.entryId}/${input.callId}`);
+				}
+				// The entry's rev covers its parts.
+				yield* sql`UPDATE entry SET updated_at = ${now}, rev = ${yield* store.rev} WHERE id = ${input.entryId}`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const commit = Effect.fn("Thread.commit")(function* (input: EndAssistant) {
-			const now = yield* epochNow;
-			const rows = yield* sql`
-				UPDATE entry SET state = 'committed', committed_seq = ${input.seq}, updated_at = ${now}
+		const commit = Effect.fn("Thread.commit")(
+			function* (input: EndAssistant) {
+				const now = yield* epochNow;
+				const rows = yield* sql`
+				UPDATE entry SET state = 'committed', committed_seq = ${input.seq}, updated_at = ${now}, rev = ${yield* store.rev}
 				WHERE id = ${input.id}
 					AND thread_id = ${input.threadId}
 					AND type = 'assistant'
@@ -700,12 +717,15 @@ export const layer = Layer.effect(
 					)
 				RETURNING id
 			`;
-			if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
-			yield* sql`UPDATE thread SET updated_at = ${now} WHERE id = ${input.threadId}`;
-		}, Effect.orDie);
+				if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
+				yield* sql`UPDATE thread SET updated_at = ${now}, rev = ${yield* store.rev} WHERE id = ${input.threadId}`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		const abort = Effect.fn("Thread.abort")(function* (input: ReplaceAssistant & EndAssistant) {
-			yield* sql.withTransaction(
+			yield* store.write(
 				Effect.gen(function* () {
 					const { entry, thread } = yield* requireDraft(input.id, input.threadId, "abort");
 					const delta = yield* usageDelta(entry.data, input.data);
@@ -714,7 +734,8 @@ export const layer = Layer.effect(
 					yield* writeParts(input.id, input.threadId, input.parts);
 					yield* sql`
 						UPDATE entry
-						SET state = 'aborted', committed_seq = ${input.seq}, data = ${input.data}, updated_at = ${now}
+						SET state = 'aborted', committed_seq = ${input.seq}, data = ${input.data}, updated_at = ${now},
+							rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
 					yield* touch(thread, delta);
@@ -764,122 +785,155 @@ export const layer = Layer.effect(
 			return { thread: created.value, ...(text === undefined ? {} : { text }) } satisfies Forked;
 		});
 
-		const projectForked = Effect.fn("Thread.projectForked")(function* (
-			input: EventList.ThreadForked["data"],
-			seq: number,
-		) {
-			// Checked again inside the commit: the session may have been deleted since the request was read.
-			const point = yield* findEntry(input.entryId).pipe(Effect.orDie);
-			if (
-				Option.isNone(point) ||
-				point.value.threadId !== input.originThreadId ||
-				point.value.state !== "committed" ||
-				Option.isNone(point.value.committedSeq)
-			) {
-				return yield* Effect.die(`fork point ${input.entryId} is not a committed entry of ${input.originThreadId}`);
-			}
-			const cut = point.value.committedSeq.value;
-			yield* insert({
-				id: input.threadId,
-				sessionId: input.sessionId,
-				origin: { kind: "fork", threadId: input.originThreadId, entryId: input.entryId },
-				seq,
-			});
-			// The documents in effect at the cut are the owner's: every thread between the source and
-			// the owner was created after it.
-			for (const document of yield* documents.ofThread(input.sourceThreadId)) {
-				const policy = Option.getOrUndefined(document.fork);
-				if (policy === undefined || policy === "initial") continue;
-				const owned =
-					policy === "asOf" ? yield* documents.find(input.originThreadId, document.kind) : Option.some(document);
-				if (Option.isNone(owned)) continue;
-				const value =
-					policy === "asOf"
-						? yield* documents.asOf(owned.value.id, cut)
-						: yield* documents.current(owned.value.id);
-				if (Option.isNone(value)) continue;
-				yield* documents.create({
+		const projectForked = Effect.fn("Thread.projectForked")(
+			function* (input: EventList.ThreadForked["data"], seq: number) {
+				// Checked again inside the commit: the session may have been deleted since the request was read.
+				const point = yield* findEntry(input.entryId).pipe(Effect.orDie);
+				if (
+					Option.isNone(point) ||
+					point.value.threadId !== input.originThreadId ||
+					point.value.state !== "committed" ||
+					Option.isNone(point.value.committedSeq)
+				) {
+					return yield* Effect.die(
+						`fork point ${input.entryId} is not a committed entry of ${input.originThreadId}`,
+					);
+				}
+				const cut = point.value.committedSeq.value;
+				yield* insert({
+					id: input.threadId,
 					sessionId: input.sessionId,
-					threadId: input.threadId,
-					definition: {
-						kind: document.kind,
-						version: value.value.version,
-						scope: "thread",
-						...Option.match(document.history, { onNone: () => ({}), onSome: (history) => ({ history }) }),
-						fork: policy,
-					},
-					value: value.value.value,
+					origin: { kind: "fork", threadId: input.originThreadId, entryId: input.entryId },
 					seq,
 				});
-			}
-			// Every thread has an agent document, whatever its source held.
-			if (Option.isNone(yield* documents.find(input.threadId, DocumentSchema.agent.kind))) {
-				yield* documents.create({
-					sessionId: input.sessionId,
-					threadId: input.threadId,
-					definition: DocumentSchema.agent,
-					value: {},
-					seq,
-				});
-			}
-		});
+				// The documents in effect at the cut are the owner's: every thread between the source and
+				// the owner was created after it.
+				for (const document of yield* documents.ofThread(input.sourceThreadId)) {
+					const policy = Option.getOrUndefined(document.fork);
+					if (policy === undefined || policy === "initial") continue;
+					const owned =
+						policy === "asOf"
+							? yield* documents.find(input.originThreadId, document.kind)
+							: Option.some(document);
+					if (Option.isNone(owned)) continue;
+					const value =
+						policy === "asOf"
+							? yield* documents.asOf(owned.value.id, cut)
+							: yield* documents.current(owned.value.id);
+					if (Option.isNone(value)) continue;
+					yield* documents.create({
+						sessionId: input.sessionId,
+						threadId: input.threadId,
+						definition: {
+							kind: document.kind,
+							version: value.value.version,
+							scope: "thread",
+							...Option.match(document.history, { onNone: () => ({}), onSome: (history) => ({ history }) }),
+							fork: policy,
+						},
+						value: value.value.value,
+						seq,
+					});
+				}
+				// Every thread has an agent document, whatever its source held.
+				if (Option.isNone(yield* documents.find(input.threadId, DocumentSchema.agent.kind))) {
+					yield* documents.create({
+						sessionId: input.sessionId,
+						threadId: input.threadId,
+						definition: DocumentSchema.agent,
+						value: {},
+						seq,
+					});
+				}
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const retitle = Effect.fn("Thread.retitle")(function* (threadId: ThreadSchema.ID, title: string) {
-			const changed = yield* sql<{ readonly id: string }>`
-				UPDATE thread SET title = ${title} WHERE id = ${threadId} AND title IS NULL RETURNING id
-			`.pipe(Effect.orDie);
-			return changed.length > 0;
-		});
+		const retitle = Effect.fn("Thread.retitle")(
+			function* (threadId: ThreadSchema.ID, title: string) {
+				const changed = yield* sql<{ readonly id: string }>`
+				UPDATE thread SET title = ${title}, rev = ${yield* store.rev} WHERE id = ${threadId} AND title IS NULL RETURNING id
+			`;
+				return changed.length > 0;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const markRunning = Effect.fn("Thread.markRunning")(function* (threadId: ThreadSchema.ID) {
-			yield* sql`UPDATE thread SET execution = 'running' WHERE id = ${threadId}`;
-		}, Effect.orDie);
+		const markRunning = Effect.fn("Thread.markRunning")(
+			function* (threadId: ThreadSchema.ID) {
+				yield* sql`UPDATE thread SET execution = 'running', rev = ${yield* store.rev} WHERE id = ${threadId}`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const endExecution = Effect.fn("Thread.endExecution")(function* (
-			threadId: ThreadSchema.ID,
-			end: "finished" | "stopped" | "closed",
-			stoppedAt?: number,
-		) {
-			// A run that ended in this process has no request in flight: only a dead host leaves one.
-			if (end === "closed") {
-				yield* sql`UPDATE thread SET execution = 'closed', attempt = NULL WHERE id = ${threadId}`;
-				return;
-			}
-			yield* sql`UPDATE thread SET attempt = NULL WHERE id = ${threadId}`;
-			// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
-			// after it, since what was queued before it stays parked by the user's choice.
-			const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
-			yield* sql`
-				UPDATE thread SET execution = NULL, restarts = 0
+		const endExecution = Effect.fn("Thread.endExecution")(
+			function* (threadId: ThreadSchema.ID, end: "finished" | "stopped" | "closed", stoppedAt?: number) {
+				// A run that ended in this process has no request in flight: only a dead host leaves one.
+				const rev = yield* store.rev;
+				if (end === "closed") {
+					yield* sql`UPDATE thread SET execution = 'closed', attempt = NULL, rev = ${rev} WHERE id = ${threadId}`;
+					return;
+				}
+				yield* sql`UPDATE thread SET attempt = NULL, rev = ${rev} WHERE id = ${threadId}`;
+				// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
+				// after it, since what was queued before it stays parked by the user's choice.
+				const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
+				yield* sql`
+				UPDATE thread SET execution = NULL, restarts = 0, rev = ${rev}
 				WHERE id = ${threadId} AND NOT EXISTS (
 					SELECT 1 FROM inbox
 					WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
 						AND admitted_seq > ${after}
 				)
 			`;
-		}, Effect.orDie);
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const claimRestart = Effect.fn("Thread.claimRestart")(function* (threadId: ThreadSchema.ID) {
-			const rows = yield* sql<{ restarts: number }>`
+		const claimRestart = Effect.fn("Thread.claimRestart")(
+			function* (threadId: ThreadSchema.ID) {
+				const rows = yield* sql<{ restarts: number }>`
 				UPDATE thread
-				SET restarts = restarts + (CASE WHEN execution = 'running' THEN 1 ELSE 0 END), execution = 'running'
+				SET restarts = restarts + (CASE WHEN execution = 'running' THEN 1 ELSE 0 END), execution = 'running',
+					rev = ${yield* store.rev}
 				WHERE id = ${threadId} AND execution IS NOT NULL
 				RETURNING restarts
 			`;
-			return Option.fromUndefinedOr(rows[0]?.restarts);
-		}, Effect.orDie);
+				return Option.fromUndefinedOr(rows[0]?.restarts);
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const resetRestarts = Effect.fn("Thread.resetRestarts")(function* (threadId: ThreadSchema.ID) {
-			yield* sql`UPDATE thread SET restarts = 0 WHERE id = ${threadId} AND restarts > 0`;
-		}, Effect.orDie);
+		const resetRestarts = Effect.fn("Thread.resetRestarts")(
+			function* (threadId: ThreadSchema.ID) {
+				yield* sql`UPDATE thread SET restarts = 0, rev = ${yield* store.rev} WHERE id = ${threadId} AND restarts > 0`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const setAttempt = Effect.fn("Thread.setAttempt")(function* (threadId: ThreadSchema.ID, attempt: number | null) {
-			yield* sql`UPDATE thread SET attempt = ${attempt} WHERE id = ${threadId}`;
-		}, Effect.orDie);
+		const setAttempt = Effect.fn("Thread.setAttempt")(
+			function* (threadId: ThreadSchema.ID, attempt: number | null) {
+				yield* sql`UPDATE thread SET attempt = ${attempt}, rev = ${yield* store.rev} WHERE id = ${threadId}`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const idle = Effect.fn("Thread.idle")(function* (threadId: ThreadSchema.ID) {
-			yield* sql`UPDATE thread SET execution = NULL, restarts = 0, attempt = NULL WHERE id = ${threadId}`;
-		}, Effect.orDie);
+		const idle = Effect.fn("Thread.idle")(
+			function* (threadId: ThreadSchema.ID) {
+				yield* sql`
+				UPDATE thread SET execution = NULL, restarts = 0, attempt = NULL, rev = ${yield* store.rev} WHERE id = ${threadId}
+			`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		const findUnfinished = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -895,12 +949,14 @@ export const layer = Layer.effect(
 			entryId: string;
 			label: string | null;
 		}) {
-			const now = yield* epochNow;
-			const rows = yield* sql`
-				UPDATE entry SET label = ${input.label}, updated_at = ${now}
-				WHERE id = ${input.entryId} AND thread_id = ${input.threadId}
-				RETURNING id
-			`.pipe(Effect.orDie);
+			const rows = yield* Effect.gen(function* () {
+				const now = yield* epochNow;
+				return yield* sql`
+					UPDATE entry SET label = ${input.label}, updated_at = ${now}, rev = ${yield* store.rev}
+					WHERE id = ${input.entryId} AND thread_id = ${input.threadId}
+					RETURNING id
+				`;
+			}).pipe(store.write, Effect.orDie);
 			if (rows.length === 0) {
 				return yield* new EntryNotFoundError({ threadId: input.threadId, entryId: input.entryId });
 			}

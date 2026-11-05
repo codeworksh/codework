@@ -70,6 +70,8 @@ const space = (input: {
 		kind: input.kind,
 		env: instance(input.env),
 		status: "active",
+		// Nothing here takes a revision, so the store is still at 0.
+		rev: 0,
 	});
 
 const registerInstances = (...ids: ReadonlyArray<string>) =>
@@ -102,11 +104,13 @@ describe("Database", () => {
 					"inbox",
 					"part",
 					"project",
+					"removed",
 					"revision",
 					"sandbox",
 					"sequence",
 					"session",
 					"space",
+					"store",
 					"thread",
 				]);
 			}),
@@ -132,7 +136,7 @@ describe("Database", () => {
 				expect(orphanExit._tag).toBe("Failure");
 
 				yield* db.insertProject(
-					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active", rev: 0 }),
 				);
 				yield* db.insertSpace(
 					yield* space({
@@ -188,7 +192,7 @@ describe("Database", () => {
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(
-					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active", rev: 0 }),
 				);
 				yield* db.insertSpace(
 					yield* space({
@@ -216,7 +220,7 @@ describe("Database", () => {
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(
-					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active", rev: 0 }),
 				);
 
 				yield* sql.withTransaction(
@@ -226,7 +230,7 @@ describe("Database", () => {
 						// old drizzle wrapper had to forbid this
 						yield* Effect.promise(() => Promise.resolve());
 						yield* db.insertProject(
-							yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget", status: "active" }),
+							yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget", status: "active", rev: 0 }),
 						);
 					}),
 				);
@@ -244,18 +248,28 @@ describe("Database", () => {
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(
-					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active", rev: 0 }),
 				);
 
 				const exit = yield* sql
 					.withTransaction(
 						Effect.gen(function* () {
 							yield* db.insertProject(
-								yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget", status: "active" }),
+								yield* ProjectRow.insert.makeEffect({
+									id: "project-2",
+									name: "widget",
+									status: "active",
+									rev: 0,
+								}),
 							);
 							// duplicate primary key forces the transaction to fail
 							yield* db.insertProject(
-								yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "dupe", status: "active" }),
+								yield* ProjectRow.insert.makeEffect({
+									id: "project-1",
+									name: "dupe",
+									status: "active",
+									rev: 0,
+								}),
 							);
 						}),
 					)

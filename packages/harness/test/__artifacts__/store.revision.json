@@ -1,0 +1,271 @@
+{
+	"store": {
+		"idIsSet": true,
+		"startRev": 0,
+		"sameId": true,
+		"head": 22
+	},
+	"doorbellRang": true,
+	"steps": [
+		{
+			"step": "start",
+			"head": 0
+		},
+		{
+			"step": "seed project and space",
+			"head": 1
+		},
+		{
+			"step": "session.create",
+			"head": 2
+		},
+		{
+			"step": "thread.configure (thread-scoped agent document)",
+			"head": 3
+		},
+		{
+			"step": "prompt (tool call, settle, reply)",
+			"head": 19
+		},
+		{
+			"step": "fork",
+			"head": 20
+		},
+		{
+			"step": "session-scoped document",
+			"head": 21
+		},
+		{
+			"step": "session.delete",
+			"head": 22
+		}
+	],
+	"commits": [
+		{
+			"rev": 1,
+			"by": "plain write",
+			"writes": [
+				"project P1 insert",
+				"space SP1 insert"
+			]
+		},
+		{
+			"rev": 2,
+			"by": "session.created",
+			"writes": [
+				"session S1 insert",
+				"thread T1 insert",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 3,
+			"by": "session.thread.configured",
+			"writes": [
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 4,
+			"by": "session.prompt.admitted",
+			"writes": [
+				"inbox E1 insert"
+			]
+		},
+		{
+			"rev": 5,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 6,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 7,
+			"by": "plain write",
+			"writes": [
+				"project P1 update",
+				"space SP1 update"
+			]
+		},
+		{
+			"rev": 8,
+			"by": "session.prompt.promoted",
+			"writes": [
+				"inbox E1 update",
+				"entry E1 insert",
+				"thread T1 update",
+				"session S1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 9,
+			"by": "session.thread.system.changed",
+			"writes": [
+				"entry E2 insert",
+				"thread T1 update",
+				"session S1 update"
+			]
+		},
+		{
+			"rev": 10,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 11,
+			"by": "session.llm.started",
+			"writes": [
+				"entry E3 insert",
+				"thread T1 update",
+				"session S1 update"
+			]
+		},
+		{
+			"rev": 12,
+			"by": "session.llm.ended",
+			"writes": [
+				"entry E3 update",
+				"thread T1 update",
+				"session S1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 13,
+			"by": "session.tool.settled",
+			"writes": [
+				"entry E3 update"
+			]
+		},
+		{
+			"rev": 14,
+			"by": "session.turn.ended",
+			"writes": [
+				"entry E3 update",
+				"thread T1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 15,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 16,
+			"by": "session.llm.started",
+			"writes": [
+				"entry E4 insert",
+				"thread T1 update",
+				"session S1 update"
+			]
+		},
+		{
+			"rev": 17,
+			"by": "session.llm.ended",
+			"writes": [
+				"entry E4 update",
+				"thread T1 update",
+				"session S1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 18,
+			"by": "session.turn.ended",
+			"writes": [
+				"entry E4 update",
+				"thread T1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 19,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 20,
+			"by": "session.thread.forked",
+			"writes": [
+				"thread T2 insert",
+				"thread T2 update"
+			]
+		},
+		{
+			"rev": 21,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update",
+				"thread T2 update"
+			]
+		},
+		{
+			"rev": 22,
+			"by": "plain write",
+			"writes": [
+				"removed S1"
+			]
+		}
+	],
+	"rowsBeforeDelete": {
+		"project": [
+			"P1 rev=7"
+		],
+		"space": [
+			"SP1 rev=7"
+		],
+		"session": [
+			"S1 rev=17"
+		],
+		"thread": [
+			"T1 rev=21",
+			"T2 rev=21"
+		],
+		"entry": [
+			"E1 rev=8",
+			"E2 rev=9",
+			"E3 rev=14",
+			"E4 rev=18"
+		],
+		"inbox": [
+			"E1 rev=8"
+		]
+	},
+	"rowsAfterDelete": {
+		"project": [
+			"P1 rev=7"
+		],
+		"space": [
+			"SP1 rev=7"
+		],
+		"session": [],
+		"thread": [],
+		"entry": [],
+		"inbox": []
+	},
+	"removed": [
+		"session S1 rev=22"
+	],
+	"rejected": {
+		"staleRev": "rev is not the current revision",
+		"forgotStamp": "rev is not the current revision",
+		"insertWithoutRevision": "rev is not the current revision",
+		"headUnchanged": true
+	}
+}

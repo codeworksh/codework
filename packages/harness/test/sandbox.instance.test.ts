@@ -16,7 +16,7 @@ const sandboxStore = SandboxStore.make;
 
 const seedProject = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, status, created_at, updated_at) VALUES ('p', 'p', 'active', 0, 0)`;
+	yield* sql`INSERT OR IGNORE INTO project (id, name, status, created_at, updated_at, rev) VALUES ('p', 'p', 'active', 0, 0, (SELECT rev FROM store))`;
 });
 
 describe("SandboxInstance", () => {
@@ -43,8 +43,8 @@ describe("SandboxInstance", () => {
 				yield* seedProject;
 
 				const space = (rowId: string, env: string | null) => sql`
-					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'plain', ${env}, 'active', 0, 0)
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
+					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'plain', ${env}, 'active', 0, 0, (SELECT rev FROM store))
 				`;
 
 				// positive control: NULL is the host and needs no registration at
@@ -65,8 +65,8 @@ describe("SandboxInstance", () => {
 				yield* seedProject;
 				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 				yield* sql`
-					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-					VALUES ('s', 'p', '/workspace', 'plain', 'sbx_a', 'active', 0, 0)
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
+					VALUES ('s', 'p', '/workspace', 'plain', 'sbx_a', 'active', 0, 0, (SELECT rev FROM store))
 				`;
 
 				const deletion = sql`DELETE FROM sandbox WHERE id = 'sbx_a'`;
@@ -85,8 +85,8 @@ describe("SandboxInstance", () => {
 				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 
 				const insert = (rowId: string, env: string | null) => sql`
-					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-					VALUES (${rowId}, 'p', '/workspace', 'plain', ${env}, 'active', 0, 0)
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
+					VALUES (${rowId}, 'p', '/workspace', 'plain', ${env}, 'active', 0, 0, (SELECT rev FROM store))
 				`;
 
 				// one path, two namespaces — the host and a registered one

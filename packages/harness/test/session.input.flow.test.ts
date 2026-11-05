@@ -59,8 +59,8 @@ describe("Inbox admission", () => {
 			const input = yield* setup;
 			const id = SessionMessageSchema.ID.create();
 			yield* sql`
-				INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at)
-				VALUES (${id}, ${sessionId}, ${threadId}, 1, 1, 'user', 'committed', '{}', 0, 0)
+				INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at, rev)
+				VALUES (${id}, ${sessionId}, ${threadId}, 1, 1, 'user', 'committed', '{}', 0, 0, (SELECT rev FROM store))
 			`;
 
 			const exit = yield* input.admit({ id, sessionId, threadId, prompt, delivery: "steer" }).pipe(Effect.exit);

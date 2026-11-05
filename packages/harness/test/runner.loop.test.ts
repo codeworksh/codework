@@ -12,6 +12,7 @@ import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { InboxRow } from "../src/db/schema.sql.ts";
+import { Store } from "../src/db/store.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { EventRegistry } from "../src/event/registry.ts";
@@ -981,7 +982,7 @@ describe("runner loop — queued input", () => {
 
 	/** Cancels `id` the first time a turn loads settings: inside the window between the pending check and promotion. */
 	const cancelBeforePromotion = Effect.fnUntraced(function* (threadId: ThreadSchema.ID, id: string) {
-		const services = yield* Effect.context<SqlClient.SqlClient | Event.Service>();
+		const services = yield* Effect.context<SqlClient.SqlClient | Store.Service | Event.Service>();
 		beforeSettings.run = Effect.gen(function* () {
 			beforeSettings.run = Effect.void;
 			const inputs = yield* Inbox.make;
@@ -1321,7 +1322,7 @@ describe("runner loop — resume after restart", () => {
 					: Effect.void,
 			);
 			yield* crashedMidReply(threadId, "A");
-			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${threadId}`;
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1}, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
 
 			yield* control.resumeUnfinished;
 
@@ -1350,7 +1351,7 @@ describe("runner loop — resume after restart", () => {
 			const sql = yield* SqlClient.SqlClient;
 			const execution = yield* RunnerExecution.Service;
 			const { threadId } = yield* seedSession();
-			yield* sql`UPDATE thread SET restarts = 3 WHERE id = ${threadId}`;
+			yield* sql`UPDATE thread SET restarts = 3, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
 			const streaming = yield* hanging;
 			const services = yield* Effect.context<Control.Service | Thread.Service>();
 			script.push("answer", "hang");

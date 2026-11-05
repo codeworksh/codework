@@ -38,7 +38,7 @@ const seedProject = (id: string) =>
 	Effect.flatMap(
 		SqlClient.SqlClient,
 		(sql) =>
-			sql`INSERT INTO project (id, name, status, created_at, updated_at) VALUES (${id}, ${id}, 'active', 0, 0)`,
+			sql`INSERT INTO project (id, name, status, created_at, updated_at, rev) VALUES (${id}, ${id}, 'active', 0, 0, (SELECT rev FROM store))`,
 	);
 
 // The host is NULL; anything else must exist in sandbox first.
@@ -65,9 +65,9 @@ const seedSpace = Effect.fnUntraced(function* (seed: Seed) {
 	const env = seed.env ?? local;
 	const id = Space.id(env, seed.location);
 	yield* sql`
-		INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
+		INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
 		VALUES (${id}, ${seed.projectId}, ${seed.location}, ${seed.kind}, ${SandboxInstance.toColumn(env)},
-			${seed.status ?? "active"}, ${seed.createdAt ?? 0}, 0)
+			${seed.status ?? "active"}, ${seed.createdAt ?? 0}, 0, (SELECT rev FROM store))
 	`;
 	return id;
 });
