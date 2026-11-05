@@ -51,7 +51,7 @@ export const projectsAtom = Server.runtime
 	.pipe(Atom.keepAlive);
 
 /** The sessions whose main thread has a run going, as synced. */
-export const runningAtom = Atom.make((get) => {
+const mainsRunningAtom = Atom.make((get) => {
 	const result = get(projectsAtom);
 	if (!AsyncResult.isSuccess(result)) return new Set<string>();
 	return new Set(
@@ -60,6 +60,51 @@ export const runningAtom = Atom.make((get) => {
 		),
 	);
 });
+
+/** Whether a thread other than its session's main one has a run going: its own synced row, read again as it changes. */
+const forkRunningAtom = Atom.family((key: string) => {
+	const [sessionId = "", threadId = ""] = key.split("/");
+	return Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: [syncTopics.changed] }).pipe(
+						Stream.filter(
+							(item) =>
+								"_tag" in item ||
+								Option.exists(decodeChanged(item.payload), (notice) => notice.thread.includes(threadId)),
+						),
+						Stream.mapEffect(() =>
+							client("threads.line", { sessionId, threadId, limit: 0 }).pipe(
+								Effect.map((line) => line.thread.runState !== "idle"),
+								Effect.orElseSucceed(() => false),
+							),
+						),
+						Stream.changes,
+					),
+				),
+			),
+		).pipe(Stream.retry(Schedule.spaced("1 second"))),
+	);
+});
+
+/**
+ * Of the threads named by these {@link threadKey}s, one per line, those with a run going: a main
+ * thread as the sidebar has it, any other by its own row.
+ */
+export const runningAtom = Atom.family((keys: string) =>
+	Atom.make((get) => {
+		const mains = get(mainsRunningAtom);
+		return new Set(
+			keys.split("\n").filter((key) => {
+				if (key === "") return false;
+				if (!key.includes("/")) return mains.has(key);
+				const fork = get(forkRunningAtom(key));
+				return AsyncResult.isSuccess(fork) && fork.value;
+			}),
+		);
+	}),
+);
 
 const listedAtom = Atom.family((id: string) =>
 	Atom.make((get) => {

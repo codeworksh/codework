@@ -195,26 +195,27 @@ const head = (sql: SqlClient.SqlClient, { sessionId, threadId }: LineRequest) =>
 		hostdir: string | null;
 		projectId: string;
 		projectName: string;
+		removed: number;
 	}>`
 		SELECT thread.id, thread.session_id, session.machine_id, thread.title, thread.model_provider, thread.model_id,
 			thread.thinking_level, thread.run_state, thread.run_started_at, thread.run_ended_at, thread.run_outcome,
 			thread.run_error, thread.updated_at, thread.floor, session.dir, session.hostdir,
-			project.id AS project_id, project.name AS project_name
+			project.id AS project_id, project.name AS project_name,
+			thread.deleted_at IS NOT NULL OR session.deleted_at IS NOT NULL AS removed
 		FROM thread
 		JOIN session ON session.id = thread.session_id
 		JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id
 		JOIN project ON project.machine_id = space.machine_id AND project.id = space.project_id
-		WHERE thread.session_id = ${sessionId} AND thread.deleted_at IS NULL AND session.deleted_at IS NULL
+		WHERE thread.session_id = ${sessionId}
 			AND ${threadId === undefined ? sql`thread.origin_kind = 'main'` : sql`thread.id = ${threadId}`}
 	`;
 
 export const line = Effect.fn("Reads.line")(function* (request: LineRequest) {
 	const sql = yield* SqlClient.SqlClient;
 	const [row] = yield* head(sql, request).pipe(Effect.orDie);
-	if (row === undefined)
-		return yield* new SyncError({
-			message: `No thread ${request.threadId ?? "(main)"} of session ${request.sessionId} is synced.`,
-		});
+	const name = `thread ${request.threadId ?? "(main)"} of session ${request.sessionId}`;
+	if (row === undefined) return yield* new SyncError({ message: `No ${name} is synced.` });
+	if (row.removed === 1) return yield* new SyncError({ message: `The ${name} was deleted.`, removed: true });
 	return yield* Effect.gen(function* () {
 		const lineOf = walk(sql, row.id);
 		const [titled] =

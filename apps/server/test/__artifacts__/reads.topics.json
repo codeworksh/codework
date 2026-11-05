@@ -54,6 +54,10 @@
 				}
 			],
 			"size": 37
+		},
+		"removedWhileWaiting": {
+			"_tag": "Failed",
+			"message": "This session no longer exists."
 		}
 	}
 }

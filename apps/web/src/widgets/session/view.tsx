@@ -1,5 +1,5 @@
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
+import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
@@ -56,6 +56,8 @@ type State =
 			readonly queued: readonly QueuedPrompt[];
 			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
+			/** Parts streamed into replies not in `messages` yet, by entry id; merged in once each lands. */
+			readonly early?: ReadonlyMap<string, readonly Part[]>;
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
@@ -114,6 +116,30 @@ const streamedPast = (held: Part, part: Part) =>
 		held.thinking.length > part.thinking.length &&
 		held.thinking.startsWith(part.thinking));
 
+const streamedText = (part: Part | undefined) =>
+	part?.type === "text" ? part.text : part?.type === "thinking" ? part.thinking : undefined;
+
+/**
+ * `parts` with a delta folded in where it continues the held text exactly: at the held length, or
+ * at 0 for a part not held yet, which it starts. Undefined drops it until the next checkpoint. A
+ * part index past the held ones (a tool call between is not streamed) is padded with blank text.
+ */
+const foldDelta = (parts: readonly Part[], { partIndex, kind, offset, delta }: LiveDelta): Part[] | undefined => {
+	const part = parts[partIndex];
+	const held = streamedText(part);
+	const starts = offset === 0 && (part === undefined || held === "");
+	if (!starts && (part?.type !== kind || held?.length !== offset)) return undefined;
+	const text = (starts ? "" : held) + delta;
+	const next: Part =
+		kind === "text"
+			? { ...(part?.type === "text" ? part : { type: "text" as const }), text }
+			: { ...(part?.type === "thinking" ? part : { type: "thinking" as const }), thinking: text };
+	const padded = [...parts];
+	while (padded.length < partIndex) padded.push({ type: "text", text: "" });
+	padded[partIndex] = next;
+	return padded;
+};
+
 const apply = (state: State, update: Update): State => {
 	if (state.status !== "ready") return state;
 	switch (update._tag) {
@@ -122,21 +148,17 @@ const apply = (state: State, update: Update): State => {
 		case "Queue":
 			return { ...state, queued: update.queued };
 		case "Delta": {
-			const { entryId, partIndex, kind, offset, delta } = update.delta;
+			const { entryId } = update.delta;
 			const index = state.messages.findIndex((message) => message.id === entryId);
 			const draft = state.messages[index];
-			// Only text that continues the draft exactly; anything else waits for its next checkpoint.
-			if (draft === undefined || draft.state !== "draft") return state;
-			const part = draft.parts[partIndex];
-			const text = part?.type === "text" ? part.text : part?.type === "thinking" ? part.thinking : undefined;
-			if ((text ?? "").length !== offset || (part !== undefined && part.type !== kind)) return state;
-			if (part === undefined && partIndex !== draft.parts.length) return state;
-			const next: Part =
-				kind === "text"
-					? { ...(part?.type === "text" ? part : { type: "text" }), text: (text ?? "") + delta }
-					: { ...(part?.type === "thinking" ? part : { type: "thinking" }), thinking: (text ?? "") + delta };
-			const parts = part === undefined ? [...draft.parts, next] : draft.parts.with(partIndex, next);
-			return { ...state, messages: state.messages.with(index, { ...draft, parts }) };
+			if (draft === undefined) {
+				// The reply's row has not landed yet: its first deltas wait for it here.
+				const parts = foldDelta(state.early?.get(entryId) ?? [], update.delta);
+				return parts === undefined ? state : { ...state, early: new Map(state.early).set(entryId, parts) };
+			}
+			if (draft.state !== "draft") return state;
+			const parts = foldDelta(draft.parts, update.delta);
+			return parts === undefined ? state : { ...state, messages: state.messages.with(index, { ...draft, parts }) };
 		}
 		case "Message": {
 			const { id } = update.message;
@@ -148,21 +170,31 @@ const apply = (state: State, update: Update): State => {
 			const previous = state.messages[index];
 			if (previous !== undefined && update.message.state === "draft" && previous.state !== "draft") return state;
 			// Unchanged parts keep their objects, so their rows skip re-rendering as the message streams.
-			// A draft's checkpoint can trail the deltas already folded in: the longer text is the newer.
-			const streaming = previous?.state === "draft" && update.message.state === "draft";
-			const message =
-				previous === undefined
-					? update.message
-					: {
-							...update.message,
-							parts: update.message.parts.map((part, at) => {
-								const old = previous.parts[at];
-								if (old === undefined) return part;
-								return samePart(old, part) || (streaming && streamedPast(old, part)) ? old : part;
-							}),
-						};
+			// A draft's checkpoint can trail the deltas already folded in, or that came before its row:
+			// the longer text is the newer, and parts started since it was taken stay.
+			const held = previous?.parts ?? state.early?.get(id);
+			const streaming = update.message.state === "draft" && (previous === undefined || previous.state === "draft");
+			const merged =
+				held === undefined
+					? update.message.parts
+					: update.message.parts.map((part, at) => {
+							const old = held[at];
+							if (old === undefined) return part;
+							return samePart(old, part) || (streaming && streamedPast(old, part)) ? old : part;
+						});
+			const message = {
+				...update.message,
+				parts: streaming && held !== undefined ? [...merged, ...held.slice(merged.length)] : merged,
+			};
+			let early = state.early;
+			if (early?.has(id) === true) {
+				const rest = new Map(early);
+				rest.delete(id);
+				early = rest;
+			}
 			return {
 				...state,
+				...(early === undefined ? {} : { early }),
 				messages: previous === undefined ? [...state.messages, message] : state.messages.with(index, message),
 				// Promoted: it is in the conversation now, whatever the next queue update says.
 				queued: state.queued.some((prompt) => prompt.id === id)

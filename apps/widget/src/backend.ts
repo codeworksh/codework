@@ -51,9 +51,10 @@ export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>
 export const SyncThread = Schema.Struct({ sessionId: Schema.String, threadId: Schema.String });
 export type SyncThread = typeof SyncThread.Type;
 
-/** A thread whose detail is not synced, or not known yet. */
+/** A thread whose detail is not synced, or not known yet; `removed` when its session or itself was deleted. */
 export class SyncError extends Schema.TaggedError<SyncError>()("Server.SyncError", {
 	message: Schema.String,
+	removed: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**

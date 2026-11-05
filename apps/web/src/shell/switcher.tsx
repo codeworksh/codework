@@ -7,6 +7,7 @@ import { isMac } from "@codeworksh/widget/view";
 import { PixelLoader } from "@/components/loader";
 import { registry } from "../widgets";
 import { threadRef } from "../widgets/session/address";
+import { threadKey } from "../widgets/session/schema";
 import { runningAtom } from "../widgets/session/projects";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
@@ -35,7 +36,12 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const owners = useAtomValue(tabOwnerAtom);
-	const working = useAtomValue(runningAtom);
+	// Each frame's own thread: a fork's tab spins for the fork's run, not its session's main thread.
+	const keyOf = (address: string | undefined) => {
+		const ref = threadRef(address);
+		return ref === undefined ? "" : threadKey(ref);
+	};
+	const working = useAtomValue(runningAtom(instances.map((instance) => keyOf(instance.address)).join("\n")));
 	const navigate = useNavigate();
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
@@ -108,9 +114,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
 				const busy = instances.some(
-					(instance) =>
-						(instance.tags & workspaceTag(workspace)) !== 0 &&
-						working.has(threadRef(instance.address)?.sessionId ?? ""),
+					(instance) => (instance.tags & workspaceTag(workspace)) !== 0 && working.has(keyOf(instance.address)),
 				);
 				return (
 					<div key={workspace.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">

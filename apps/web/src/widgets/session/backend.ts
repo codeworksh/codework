@@ -1,5 +1,13 @@
 import { readTopics, SyncChanged, syncTopics } from "@codeworksh/contract";
-import { Bus, Codework, defineBackend, handle, type LineThread, Sync } from "@codeworksh/widget/backend";
+import {
+	Bus,
+	Codework,
+	defineBackend,
+	handle,
+	type LineThread,
+	Sync,
+	type ThreadLine,
+} from "@codeworksh/widget/backend";
 import { LiveDelta, QueuedPrompt, UNTITLED } from "@codeworksh/widget/codework";
 import type { Event } from "@codeworksh/widget/event";
 import { Deferred, Effect, Fiber, Option, Schema, Stream } from "effect";
@@ -126,14 +134,28 @@ export const session = defineBackend({
 			.subscribe({ topics: [] })
 			.pipe(Stream.runHead, Effect.map(Option.match({ onNone: () => 0, onSome: (item) => item.seq ?? 0 })));
 
-		/** The thread's head as app.db holds it, once it does: a session just created arrives with the next index batch. */
+		/**
+		 * The thread's head as app.db holds it, once it does: a session just created arrives with the
+		 * next index batch. None as soon as it is known deleted, or once it has not come for a while.
+		 */
 		const arrival = (ref: ThreadRef) =>
 			bus.subscribe({ topics: [syncTopics.changed] }).pipe(
-				Stream.mapEffect(() => sync.line({ ...ref, limit: 0 }).pipe(Effect.option)),
+				Stream.mapEffect((item) => {
+					const removed =
+						!("_tag" in item) &&
+						Option.exists(decodeChanged(item.payload), (notice) => notice.removed.includes(ref.sessionId));
+					if (removed) return Effect.succeed(Option.some(Option.none<ThreadLine>()));
+					return sync.line({ ...ref, limit: 0 }).pipe(
+						Effect.map((line) => Option.some(Option.some(line))),
+						Effect.catch((error) =>
+							Effect.succeed(error.removed === true ? Option.some(Option.none<ThreadLine>()) : Option.none()),
+						),
+					);
+				}),
 				Stream.filter(Option.isSome),
 				Stream.runHead,
-				Effect.map(Option.flatten),
-				Effect.timeoutOrElse({ duration: ARRIVAL, orElse: () => Effect.succeed(Option.none()) }),
+				Effect.map((found) => Option.flatten(Option.flatten(found))),
+				Effect.timeoutOrElse({ duration: ARRIVAL, orElse: () => Effect.succeed(Option.none<ThreadLine>()) }),
 			);
 
 		/** Publishes the thread's info and queue where they changed since last published. */

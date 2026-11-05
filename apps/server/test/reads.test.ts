@@ -421,6 +421,15 @@ it("each read's topics fire after the change it shows, and the session backend f
 	expect(runStates).toContain("running");
 	expect(infos.at(-1)).toBe("idle");
 
+	// A follow waiting for a thread the app has not seen ends as soon as its session is removed.
+	const startedAt = Date.now();
+	const waiting = request("codework/session.follow", { sessionId: ref.sessionId, threadId: "thr_not_synced" });
+	await new Promise((resolve) => setTimeout(resolve, 500));
+	await server.run((rpc) => rpc["session.delete"]({ sessionId: ref.sessionId }));
+	const gone = await waiting;
+	expect(gone).toEqual({ _tag: "Failed", message: "This session no longer exists." });
+	expect(Date.now() - startedAt).toBeLessThan(10_000);
+
 	const { storeId } = await synced(appHome, machineId, server);
 	await snapshot(
 		"topics",
@@ -438,6 +447,7 @@ it("each read's topics fire after the change it shows, and the session backend f
 					tags,
 					runStates,
 					answered: answered.message,
+					removedWhileWaiting: gone,
 				},
 			}),
 		),
