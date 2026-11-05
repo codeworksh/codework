@@ -421,12 +421,13 @@ it("each read's topics fire after the change it shows, and the session backend f
 	expect(runStates).toContain("running");
 	expect(infos.at(-1)).toBe("idle");
 
-	// A follow waiting for a thread the app has not seen ends as soon as its session is removed.
+	// Not held once the machine's index is at its head: a missing thread, then a removed session, fail at once.
 	const startedAt = Date.now();
-	const waiting = request("codework/session.follow", { sessionId: ref.sessionId, threadId: "thr_not_synced" });
-	await new Promise((resolve) => setTimeout(resolve, 500));
+	const missing = await request("codework/session.follow", { sessionId: ref.sessionId, threadId: "thr_not_synced" });
 	await server.run((rpc) => rpc["session.delete"]({ sessionId: ref.sessionId }));
-	const gone = await waiting;
+	await synced(appHome, machineId, server);
+	const gone = await request("codework/session.follow", { sessionId: ref.sessionId, threadId: ref.threadId });
+	expect(missing).toEqual({ _tag: "Failed", message: "This thread no longer exists." });
 	expect(gone).toEqual({ _tag: "Failed", message: "This session no longer exists." });
 	expect(Date.now() - startedAt).toBeLessThan(10_000);
 
@@ -447,7 +448,8 @@ it("each read's topics fire after the change it shows, and the session backend f
 					tags,
 					runStates,
 					answered: answered.message,
-					removedWhileWaiting: gone,
+					missingThread: missing,
+					removedSession: gone,
 				},
 			}),
 		),

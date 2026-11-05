@@ -1,6 +1,6 @@
 import { Codework as Client } from "@codeworksh/widget/backend";
 import type { Codework as Wire } from "@codeworksh/widget/codework";
-import { Clock, Context, Deferred, Effect, FiberMap, FileSystem, Layer, Option, Stream } from "effect";
+import { Clock, Context, Deferred, Effect, FiberMap, FileSystem, Layer, Option, Stream, SubscriptionRef } from "effect";
 import { SqlClient } from "effect/sql";
 import type { Publish } from "@codeworksh/widget/event";
 import { CodeworkUnavailable, SyncError, type SyncThread, syncTopics } from "@codeworksh/contract";
@@ -33,6 +33,11 @@ export interface Interface {
 	readonly client: (machineId: string) => Effect.Effect<Connection, CodeworkUnavailable>;
 	/** The machine a synced session is on. */
 	readonly machineOf: (sessionId: string) => Effect.Effect<Option.Option<string>>;
+	/**
+	 * Done once the machine a session is on (the default one for a session not synced) has applied
+	 * its index up to the head its store has now; at once while that machine is away.
+	 */
+	readonly settle: (sessionId: string) => Effect.Effect<void>;
 }
 
 /**
@@ -92,6 +97,8 @@ export const layer = Layer.effect(
 		const readiness = new Map<string, Deferred.Deferred<void>>();
 		// The open drafts of opened threads, by thread, entry and part: their text as last known.
 		const drafts = new Map<string, Map<string, Map<number, string>>>();
+		// Each live machine's index cursor as last applied, including batches that carried no rows.
+		const applied = yield* SubscriptionRef.make<ReadonlyMap<string, number>>(new Map());
 
 		// Each batch in one transaction, foreign keys checked at its commit: rows arrive in revision
 		// order, so a session can come before the latest version of its space.
@@ -286,6 +293,7 @@ export const layer = Layer.effect(
 							);
 							full = false;
 							lives.set(machineId, live);
+							yield* SubscriptionRef.update(applied, (cursors) => new Map(cursors).set(machineId, synced.rev));
 							yield* startOpened(machineId, live);
 						}),
 				);
@@ -336,6 +344,29 @@ export const layer = Layer.effect(
 
 		return Service.of({
 			machineOf,
+			settle: Effect.fn("Sync.settle")(function* (sessionId) {
+				const known = yield* machineOf(sessionId);
+				const machineId = Option.isSome(known)
+					? known.value
+					: (yield* sql<{ id: string }>`SELECT id FROM machine WHERE is_default = 1`.pipe(Effect.orDie))[0]?.id;
+				// Its connection, live or still on its first batch (the app just started); none once removed.
+				const client =
+					machineId === undefined ? undefined : (lives.get(machineId)?.client ?? clients.get(machineId));
+				if (machineId === undefined || client === undefined) return;
+				// An unreachable machine fails this within the call's timeout.
+				const info = yield* Codework.call((client) => client("server.info", {})).pipe(
+					Effect.provideService(Client, client),
+					Effect.option,
+				);
+				if (Option.isNone(info)) return;
+				const head = info.value.rev;
+				// Bounded: a machine that drops mid-wait sends no more batches.
+				yield* SubscriptionRef.changes(applied).pipe(
+					Stream.filter((cursors) => (cursors.get(machineId) ?? -1) >= head),
+					Stream.runHead,
+					Effect.timeoutOption("10 seconds"),
+				);
+			}),
 			client: (machineId) =>
 				Effect.suspend(() => {
 					const client = clients.get(machineId);

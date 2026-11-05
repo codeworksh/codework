@@ -27,6 +27,7 @@ export const layer = Layer.effectDiscard(
 			page: sync.page,
 			line: (input) => read(Reads.line(input)),
 			entries: (ids) => read(Reads.entries(ids)),
+			settle: sync.settle,
 			// A session the index has not brought yet was just created, on the default machine.
 			machine: (sessionId) =>
 				sync.machineOf(sessionId).pipe(

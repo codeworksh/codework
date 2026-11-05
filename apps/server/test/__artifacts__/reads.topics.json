@@ -55,7 +55,11 @@
 			],
 			"size": 37
 		},
-		"removedWhileWaiting": {
+		"missingThread": {
+			"_tag": "Failed",
+			"message": "This thread no longer exists."
+		},
+		"removedSession": {
 			"_tag": "Failed",
 			"message": "This session no longer exists."
 		}

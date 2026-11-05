@@ -1,16 +1,8 @@
 import { readTopics, SyncChanged, syncTopics } from "@codeworksh/contract";
-import {
-	Bus,
-	Codework,
-	defineBackend,
-	handle,
-	type LineThread,
-	Sync,
-	type ThreadLine,
-} from "@codeworksh/widget/backend";
+import { Bus, Codework, defineBackend, handle, type LineThread, Sync } from "@codeworksh/widget/backend";
 import { LiveDelta, QueuedPrompt, UNTITLED } from "@codeworksh/widget/codework";
 import type { Event } from "@codeworksh/widget/event";
-import { Deferred, Effect, Fiber, Option, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Option, Result, Schema, Stream } from "effect";
 
 import {
 	Cancel,
@@ -90,9 +82,6 @@ const encodeCreated = Schema.encodeEffect(Json.Created);
 const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
 
-/** How long a follow waits for a thread the app has not synced yet, such as a session just created. */
-const ARRIVAL = "30 seconds";
-
 /**
  * Follows threads for their views over the app's synced copy: a follow opens the thread's sync,
  * pages read the copy (fetching below its floor), and the sync's notices and live deltas for the
@@ -135,28 +124,24 @@ export const session = defineBackend({
 			.pipe(Stream.runHead, Effect.map(Option.match({ onNone: () => 0, onSome: (item) => item.seq ?? 0 })));
 
 		/**
-		 * The thread's head as app.db holds it, once it does: a session just created arrives with the
-		 * next index batch. None as soon as it is known deleted, or once it has not come for a while.
+		 * The thread's head as app.db holds it, or which of session and thread is gone: deleted, or
+		 * still missing once its machine's index has reached the head it had when asked.
 		 */
 		const arrival = (ref: ThreadRef) =>
-			bus.subscribe({ topics: [syncTopics.changed] }).pipe(
-				Stream.mapEffect((item) => {
-					const removed =
-						!("_tag" in item) &&
-						Option.exists(decodeChanged(item.payload), (notice) => notice.removed.includes(ref.sessionId));
-					if (removed) return Effect.succeed(Option.some(Option.none<ThreadLine>()));
-					return sync.line({ ...ref, limit: 0 }).pipe(
-						Effect.map((line) => Option.some(Option.some(line))),
-						Effect.catch((error) =>
-							Effect.succeed(error.removed === true ? Option.some(Option.none<ThreadLine>()) : Option.none()),
-						),
-					);
-				}),
-				Stream.filter(Option.isSome),
-				Stream.runHead,
-				Effect.map((found) => Option.flatten(Option.flatten(found))),
-				Effect.timeoutOrElse({ duration: ARRIVAL, orElse: () => Effect.succeed(Option.none<ThreadLine>()) }),
-			);
+			Effect.gen(function* () {
+				const read = sync.line({ ...ref, limit: 0 }).pipe(Effect.result);
+				let found = yield* read;
+				// Not held yet: a row the machine wrote before now (a session just created) lands by the
+				// time its index reaches the head; one still missing then does not exist.
+				if (Result.isFailure(found) && found.failure.removed !== true) {
+					yield* sync.settle(ref.sessionId);
+					found = yield* read;
+				}
+				if (Result.isSuccess(found)) return Result.succeed(found.success);
+				if (found.failure.removed === true || ref.threadId === undefined) return Result.fail("session" as const);
+				const session = yield* sync.line({ sessionId: ref.sessionId, limit: 0 }).pipe(Effect.result);
+				return Result.fail(Result.isSuccess(session) ? ("thread" as const) : ("session" as const));
+			});
 
 		/** Publishes the thread's info and queue where they changed since last published. */
 		const refresh = (key: string) =>
@@ -201,13 +186,16 @@ export const session = defineBackend({
 			const key = threadKey(ref);
 			return Effect.gen(function* () {
 				const found = yield* arrival(ref);
-				if (Option.isNone(found)) {
+				if (Result.isFailure(found)) {
 					following.delete(key);
-					return yield* Deferred.succeed(ready, { _tag: "Failed", message: "This session no longer exists." });
+					return yield* Deferred.succeed(ready, {
+						_tag: "Failed",
+						message: `This ${found.failure} no longer exists.`,
+					});
 				}
-				const target = { sessionId: ref.sessionId, threadId: found.value.thread.id };
+				const target = { sessionId: ref.sessionId, threadId: found.success.thread.id };
 				yield* Effect.acquireRelease(sync.open(target), () => sync.close(target));
-				open.set(key, { ...target, info: toInfo(found.value.thread), queued: found.value.inbox });
+				open.set(key, { ...target, info: toInfo(found.success.thread), queued: found.success.inbox });
 				yield* bus
 					.subscribe({ topics: readTopics.line(target.threadId) })
 					.pipe(

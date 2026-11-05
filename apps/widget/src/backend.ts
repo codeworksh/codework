@@ -121,6 +121,11 @@ export class Sync extends Context.Service<
 		readonly entries: (ids: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<HistoryEntry>>;
 		/** The CodeWork server of the machine a session is on; the default one for a session not synced yet. */
 		readonly machine: (sessionId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
+		/**
+		 * Done once that machine's index is applied up to its store's head now, so a row written
+		 * before the call is held; at once while the machine is away.
+		 */
+		readonly settle: (sessionId: string) => Effect.Effect<void>;
 	}
 >()("@codeworksh/widget/backend/Sync") {}
 
