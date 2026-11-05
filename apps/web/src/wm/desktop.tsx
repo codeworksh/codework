@@ -21,7 +21,7 @@ import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
-import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { Frame, FRAME_HEADER_HEIGHT, SURFACE_CLASS } from "./frame";
 import { Overflow } from "./overflow";
 import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
@@ -390,7 +390,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const togglePin = (instance: Instance) =>
 		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
 
-	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
+	const mainClass = SURFACE_CLASS;
 	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
 	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
 
