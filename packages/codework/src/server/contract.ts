@@ -627,6 +627,21 @@ export const Api = RpcGroup.make(
 		error: Schema.Union([ThreadErrors, Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,
 	}),
+	/**
+	 * Older entries of a thread's line (inherited ones included), oldest first: the newest `limit`
+	 * whose `seq` is below `before`, cut to `budget` bytes (default 1 MiB). The newest is always sent.
+	 */
+	Rpc.make("thread.page", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: ThreadSchema.ID,
+			before: Schema.Int,
+			limit: Schema.Int,
+			budget: optional(Schema.Int),
+		},
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
+		error: ThreadErrors,
+	}),
 	Rpc.make("thread.configure", {
 		payload: { ...ThreadRef, runtime: RuntimeConfig },
 		success: ThreadInfo,

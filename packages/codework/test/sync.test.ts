@@ -388,3 +388,109 @@ it("thread.sync opens a fork's line within a budget, resumes from a revision, an
 		rmSync(home, { recursive: true, force: true });
 	}
 }, 40_000);
+
+it("thread.page reads a fork's line below thread.sync's floor, page by page, within a budget", async () => {
+	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-page-")));
+	try {
+		const artifact = await Effect.gen(function* () {
+			const listener = yield* HttpServer.HttpServer;
+			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
+			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+
+			const created = yield* rpc["session.create"]({ directory: home });
+			const sessionId = created.session.id;
+			for (const text of ["First prompt", "Second prompt", "Third prompt"]) {
+				yield* rpc["thread.prompt"]({ sessionId, text });
+				yield* rpc["thread.wait"]({ sessionId });
+			}
+			const cut = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
+			if (cut === undefined) return yield* Effect.die("main thread has no reply");
+			const forkId = (yield* rpc["thread.fork"]({ sessionId, entryId: cut.id })).thread.id;
+			const fork = { sessionId, threadId: forkId };
+			yield* rpc["thread.prompt"]({ ...fork, text: "Fork prompt" });
+			yield* rpc["thread.wait"](fork);
+
+			// Six inherited entries, then the fork's own two.
+			const line = (yield* rpc["thread.history"](fork)).entries;
+			type Entries = typeof line;
+			const sizeOf = (entries: Entries) => entries.reduce((total, entry) => total + entry.size, 0);
+
+			// A first open whose budget fits only the fork's own two entries.
+			const opened = yield* rpc["thread.sync"]({ ...fork, budget: sizeOf(line.slice(-2)) }).pipe(
+				Stream.takeUntil((item) => item._tag === "Synced"),
+				Stream.runCollect,
+			);
+			const synced = opened.at(-1);
+			if (synced?._tag !== "Synced" || synced.floor === undefined) return yield* Effect.die("open sent no floor");
+
+			const limit = 3;
+			const page = (before: number, budget?: number) =>
+				rpc["thread.page"]({ ...fork, before, limit, ...(budget === undefined ? {} : { budget }) }).pipe(
+					Effect.map(({ entries }) => ({ before, limit, ...(budget === undefined ? {} : { budget }), entries })),
+				);
+			const oldest = (entries: Entries) => entries[0]?.seq ?? 0;
+			const first = yield* page(synced.floor);
+			// Of the three entries below the first page, the budget fits the newest two: the oldest is left out.
+			const below = line.filter((entry) => entry.seq < oldest(first.entries)).slice(-limit);
+			const cutByBudget = yield* page(oldest(first.entries), sizeOf(below.slice(-2)));
+			const last = yield* page(oldest(cutByBudget.entries));
+			const past = yield* page(oldest(last.entries));
+
+			const labels = new Map<string, string>([
+				[home, "<home>"],
+				[synced.storeId, "<store>"],
+				[sessionId, "<session>"],
+				[created.id, "<main>"],
+				[forkId, "<fork>"],
+			]);
+			let users = 0;
+			for (const entry of line)
+				if (!labels.has(entry.id) && entry.role === "user") labels.set(entry.id, `<user ${(users += 1)}>`);
+			// Seqs by rank in the line: their order is the contract, their values are not.
+			const seqs = line.map((entry) => entry.seq);
+			const normalize = (value: unknown, key?: string): unknown => {
+				if (typeof value === "string") return labels.get(value) ?? value;
+				if (typeof value === "number") {
+					if (key === "seq" || key === "floor" || key === "before")
+						return seqs.includes(value) ? `<seq ${seqs.indexOf(value)}>` : "<seq>";
+					if (key === "rev") return "<rev>";
+					return key?.endsWith("At") ? "<time>" : value;
+				}
+				if (Array.isArray(value)) return value.map((item) => normalize(item));
+				if (typeof value === "object" && value !== null)
+					return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, normalize(v, k)]));
+				return value;
+			};
+
+			const ids = (entries: Entries) => entries.map((entry) => entry.id);
+			expect(line).toHaveLength(8);
+			expect(synced.floor).toBe(line.at(-2)?.seq);
+			expect(ids(first.entries)).toEqual(ids(line.slice(3, 6)));
+			expect(first.entries.every((entry) => entry.threadId === created.id)).toBe(true);
+			expect(ids(cutByBudget.entries)).toEqual(ids(line.slice(1, 3)));
+			expect(ids(last.entries)).toEqual(ids(line.slice(0, 1)));
+			expect(past.entries).toEqual([]);
+
+			return normalize({
+				line: line.map(({ id, threadId, seq, role, size }) => ({ id, threadId, seq, role, size })),
+				opened,
+				pages: [first, cutByBudget, last, past],
+			});
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(
+				Server.layer({
+					host: "127.0.0.1",
+					port: 0,
+					harness: { home, hostCwd: home, plugins: [], llm: immediateOpen() },
+				}),
+			),
+			Effect.timeout("30 seconds"),
+			Effect.runPromise,
+		);
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/sync.page.json");
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+}, 40_000);

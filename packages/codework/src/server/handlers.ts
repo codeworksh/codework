@@ -185,7 +185,7 @@ const toDeltaItem = (envelope: EventEnvelope): ThreadItem | undefined => {
 	});
 };
 
-/** Bytes of entries a first `thread.sync` sends when the client names no budget. */
+/** Bytes of entries a first `thread.sync` or a `thread.page` sends when the client names no budget. */
 const defaultBudget = 1024 * 1024;
 
 const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
@@ -443,6 +443,15 @@ export const layer = Contract.Api.toLayer(
 						);
 					}),
 				),
+			"thread.page": Effect.fnUntraced(function* ({ before, limit, budget, ...ref }) {
+				const entries = yield* threads.linePage({
+					threadId: yield* resolve(ref),
+					before,
+					limit,
+					budget: budget ?? defaultBudget,
+				});
+				return { entries: entries.toReversed().flatMap(toHistoryEntries) };
+			}),
 			"thread.prompt": Effect.fnUntraced(function* ({ text, delivery, id, ...ref }) {
 				const admitted = yield* control.prompt({
 					...ref,
