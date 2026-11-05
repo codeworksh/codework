@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, GitFork } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 /** Wall-clock stamp for a message or finished turn, in the reader's own locale. */
@@ -30,6 +30,20 @@ function CopyButton({ text, label }: { readonly text: string; readonly label: st
 	);
 }
 
+function ForkButton({ onFork }: { readonly onFork: () => void }) {
+	return (
+		<button
+			type="button"
+			title="Fork from here"
+			aria-label="Fork from here"
+			onClick={onFork}
+			className="-ml-1 rounded-md p-1 text-ink-muted hover:bg-ink/8 hover:text-ink"
+		>
+			<GitFork className="size-3.5" strokeWidth={1.75} aria-hidden />
+		</button>
+	);
+}
+
 /**
  * A user message sits in a right-aligned bubble with its actions and timestamp tucked beneath; an
  * assistant reply flows directly down the reading column and signs off with its copy action and time.
@@ -40,6 +54,7 @@ export function Message({
 	at,
 	ended,
 	copyText,
+	onFork,
 	children,
 }: {
 	readonly role: "user" | "assistant";
@@ -47,6 +62,8 @@ export function Message({
 	readonly at: number | undefined;
 	readonly ended?: number | undefined;
 	readonly copyText?: string | undefined;
+	/** Forks the conversation at this message; absent where it cannot be forked. */
+	readonly onFork?: (() => void) | undefined;
 	readonly children: ReactNode;
 }) {
 	if (role === "user") {
@@ -61,9 +78,10 @@ export function Message({
 					<div className="w-fit max-w-full min-w-0 rounded-xl bg-message px-3 py-2 text-body text-message-ink transition-colors duration-200 sm:max-w-xl">
 						{children}
 					</div>
-					{(hasCopy || at !== undefined) && (
+					{(hasCopy || onFork !== undefined || at !== undefined) && (
 						<div className="user-message-actions flex items-center gap-1 px-3 pt-1">
 							{hasCopy && <CopyButton text={copyText} label="Copy message" />}
+							{onFork !== undefined && <ForkButton onFork={onFork} />}
 							{at !== undefined && (
 								<time
 									dateTime={new Date(at).toISOString()}
@@ -96,6 +114,7 @@ export function Message({
 						) : (
 							<Check className="size-3.5 text-ink-muted" strokeWidth={1.75} aria-hidden />
 						)}
+						{onFork !== undefined && <ForkButton onFork={onFork} />}
 					</span>
 					{ended > 0 && (
 						<span className="flex shrink-0 items-center gap-2.5">

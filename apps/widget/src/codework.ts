@@ -437,6 +437,13 @@ export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>
 
 const ThreadError = Schema.Union([SessionNotFoundError, ThreadNotFoundError]);
 
+/** The server's "cannot fork there" (the harness `ForkError`), by its wire tag. */
+export class ForkError extends Schema.TaggedError<ForkError>()("ForkError", {
+	threadId: Schema.String,
+	entryId: Schema.String,
+	reason: Schema.String,
+}) {}
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
@@ -520,6 +527,12 @@ export const Api = RpcGroup.make(
 		payload: { ...ThreadRef, runtime: RuntimeConfig },
 		success: ThreadInfo,
 		error: ThreadError,
+	}),
+	/** A new thread whose history continues from this one's line through `entryId`, which must be committed. */
+	Rpc.make("thread.fork", {
+		payload: { ...ThreadRef, entryId: Schema.String },
+		success: Schema.Struct({ thread: ThreadInfo }),
+		error: Schema.Union([ThreadError, ForkError]),
 	}),
 	Rpc.make("thread.info", {
 		payload: ThreadRef,

@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
-import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
+import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
@@ -11,7 +11,7 @@ import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
 import { Monogram } from "@/components/monogram";
 import { useModelName, useModelsNotice } from "@/components/model";
-import { threadRef } from "./address";
+import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
@@ -23,6 +23,8 @@ import { useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
+const decodeForked = Schema.decodeUnknownOption(Json.Forked);
+const encodeFork = Schema.encodeSync(Json.Fork);
 const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 const samePart = Schema.toEquivalence(Part);
@@ -257,6 +259,9 @@ function conversationStore(initial: State) {
 	return { live, quiet, message };
 }
 
+/** Forks the conversation at an entry, for an entry it can be forked at: committed, and not a stand-in. */
+const ForkContext = createContext<(entry: HistoryEntry | undefined) => (() => void) | undefined>(() => undefined);
+
 const noMessage = Atom.make<HistoryEntry | undefined>(undefined);
 const StreamedContext = createContext<(id: string) => Atom.Atom<HistoryEntry | undefined>>(() => noMessage);
 
@@ -464,6 +469,31 @@ function Conversation({
 	useEffect(() => () => forget(key), [key, forget]);
 	const phase = useRunDisplay([{ key, runState: loaded.status === "ready" ? loaded.info.runState : "idle" }]);
 	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
+	// A fork opens in a frame of its own once the backend answers, by then in app.db.
+	const bus = useBus();
+	const shell = useShell();
+	const [forkError, setForkError] = useState<string>();
+	const forkAt = useCallback(
+		(entry: HistoryEntry | undefined) => {
+			if (entry === undefined || entry.state !== "committed" || sent.some((message) => message.id === entry.id))
+				return undefined;
+			return () => {
+				setForkError(undefined);
+				void bus
+					.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
+					.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
+					.catch(() => undefined)
+					.then((forked) => {
+						if (forked?._tag === "Forked")
+							shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), {
+								mode: "new",
+							});
+						else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
+					});
+			};
+		},
+		[bus, shell, thread, sent],
+	);
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
@@ -495,9 +525,11 @@ function Conversation({
 	const notice: Notice | undefined =
 		sendError !== undefined
 			? { title: "Not sent", description: sendError, tone: "error" }
-			: state.status === "ready" && state.info.failure !== undefined
-				? noticeOf(state.info.failure.kind, state.info.failure.message)
-				: undefined;
+			: forkError !== undefined
+				? { title: "Not forked", description: forkError, tone: "error" }
+				: state.status === "ready" && state.info.failure !== undefined
+					? noticeOf(state.info.failure.kind, state.info.failure.message)
+					: undefined;
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
 
@@ -530,14 +562,16 @@ function Conversation({
 	return (
 		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
 			<StreamedContext value={message}>
-				<Transcript
-					key={stand === undefined ? "own" : "stand"}
-					state={view}
-					running={running}
-					phase={stand === undefined ? phase : view.info.runState}
-					loadOlder={loadOlder}
-					inset={inset}
-				/>
+				<ForkContext value={forkAt}>
+					<Transcript
+						key={stand === undefined ? "own" : "stand"}
+						state={view}
+						running={running}
+						phase={stand === undefined ? phase : view.info.runState}
+						loadOlder={loadOlder}
+						inset={inset}
+					/>
+				</ForkContext>
 			</StreamedContext>
 			<div
 				ref={composer}
@@ -552,6 +586,7 @@ function Conversation({
 							onDismiss={() => {
 								setDismissed(notice);
 								setSendError(undefined);
+								setForkError(undefined);
 							}}
 						/>
 					)
@@ -780,6 +815,7 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 	);
 	const working = active && (last?.state !== "draft" || !answer || toolRunning);
 	const started = turn.user?.createdAt ?? turn.replies[0]?.createdAt;
+	const forkAt = use(ForkContext);
 	const ended = active ? undefined : endOf(turn.replies);
 
 	return (
@@ -787,13 +823,14 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 			data-prompt-pending={pending || undefined}
 			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-2 text-body`}
 		>
-			{turn.user !== undefined && <UserMessage entry={turn.user} />}
+			{turn.user !== undefined && <UserMessage entry={turn.user} onFork={forkAt(turn.user)} />}
 			{(work.length > 0 || working || answer || interrupted || failed) && (
 				<Message
 					role="assistant"
 					at={turn.replies[0]?.createdAt}
 					ended={ended}
 					copyText={last === undefined ? "" : textOf(last)}
+					onFork={forkAt(last)}
 				>
 					<WorkLog
 						steps={work}
@@ -824,7 +861,7 @@ function Answer({ reply }: { readonly reply: HistoryEntry }) {
 	);
 }
 
-function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
+function UserMessage({ entry, onFork }: { readonly entry: HistoryEntry; readonly onFork: (() => void) | undefined }) {
 	const [expanded, setExpanded] = useState(false);
 	const [overflows, setOverflows] = useState(false);
 	const textRef = useRef<HTMLParagraphElement>(null);
@@ -845,7 +882,7 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 		return () => observer.disconnect();
 	}, [text, expanded]);
 	return (
-		<Message role="user" promptId={entry.id} at={entry.createdAt} copyText={text}>
+		<Message role="user" promptId={entry.id} at={entry.createdAt} copyText={text} onFork={onFork}>
 			{text !== "" && (
 				<p
 					ref={textRef}

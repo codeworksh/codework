@@ -30,6 +30,8 @@ export const topics = {
 	cancel: "codework/session.cancel",
 	/** Requests: move a queued prompt to the other lane, or rewrite it, in place. */
 	change: "codework/session.change",
+	/** Requests: fork a thread at a committed message; answered with the new thread once app.db holds it. */
+	fork: "codework/session.fork",
 	/** Requests: a window of a followed thread's conversation, newest first back from `before`. */
 	page: "codework/session.page",
 	/** Updates to one thread's conversation, by its {@link threadKey}. */
@@ -100,6 +102,15 @@ export const Configure = Schema.Struct({
 	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
 export type Configure = typeof Configure.Type;
+
+export const Fork = Schema.Struct({ ...ThreadRef.fields, entryId: Schema.String });
+
+/** The answer to a fork: the new thread of the same session, or why there is none. */
+export const Forked = Schema.Union([
+	Schema.TaggedStruct("Forked", { threadId: Schema.String }),
+	Schema.TaggedStruct("Failed", { message: Schema.String }),
+]);
+export type Forked = typeof Forked.Type;
 
 export const Page = Schema.Struct({
 	...ThreadRef.fields,
@@ -173,6 +184,8 @@ export const Json = {
 	Cancelled: Schema.toCodecJson(Cancelled),
 	Change: Schema.toCodecJson(Change),
 	Configure: Schema.toCodecJson(Configure),
+	Fork: Schema.toCodecJson(Fork),
+	Forked: Schema.toCodecJson(Forked),
 	Window: Schema.toCodecJson(Window),
 	Reply: Schema.toCodecJson(Reply),
 	Update: Schema.toCodecJson(Update),

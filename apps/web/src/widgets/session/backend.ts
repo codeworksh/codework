@@ -12,6 +12,8 @@ import {
 	Create,
 	type Created,
 	Follow,
+	Fork,
+	type Forked,
 	Info,
 	Interrupt,
 	Json,
@@ -64,6 +66,8 @@ const describe = (error: { readonly _tag: string }) => {
 			return "This thread no longer exists.";
 		case "PromptConflictError":
 			return "That message was already sent.";
+		case "ForkError":
+			return "The conversation cannot be forked at that message.";
 		case "Location.DirectoryNotFoundError":
 			return "That folder no longer exists.";
 		case "Location.NotDirectoryError":
@@ -79,6 +83,7 @@ const describe = (error: { readonly _tag: string }) => {
 const encodeReply = Schema.encodeEffect(Json.Reply);
 const encodeCancelled = Schema.encodeEffect(Json.Cancelled);
 const encodeCreated = Schema.encodeEffect(Json.Created);
+const encodeForked = Schema.encodeEffect(Json.Forked);
 const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
 
@@ -368,6 +373,16 @@ export const session = defineBackend({
 				),
 				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),
+			),
+		);
+
+		// Answered once the fork's row is in app.db, so the view it opens finds the thread.
+		yield* handle(topics.fork, Fork, ({ entryId, ...ref }) =>
+			on(ref.sessionId, (client) => client("thread.fork", { ...addressed(ref), entryId })).pipe(
+				Effect.tap(() => sync.settle(ref.sessionId)),
+				Effect.map(({ thread }): Forked => ({ _tag: "Forked", threadId: thread.id })),
+				Effect.catch((error) => Effect.succeed<Forked>({ _tag: "Failed", message: describe(error) })),
+				Effect.flatMap((reply) => encodeForked(reply).pipe(Effect.orDie)),
 			),
 		);
 

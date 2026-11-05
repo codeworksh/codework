@@ -17,5 +17,17 @@
 			"state": "aborted"
 		}
 	],
+	"forked": {
+		"_tag": "Forked",
+		"threadId": "<thr 1>"
+	},
+	"forkRow": [
+		{
+			"session_id": "<ses 1>",
+			"origin_kind": "fork",
+			"origin_thread_id": "<thr 2>",
+			"origin_entry_id": "<message>"
+		}
+	],
 	"onLocal": []
 }

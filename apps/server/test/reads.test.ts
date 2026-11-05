@@ -292,7 +292,7 @@ it("a fork's line pages through inherited entries by keyset, takes its ancestor'
 	);
 }, 120_000);
 
-it("a command on a remote machine's session reaches that machine", async () => {
+it("a command on a remote machine's session reaches that machine, and a fork's thread is in app.db once answered", async () => {
 	const localHome = tempDir("command-local");
 	const remoteHome = tempDir("command-remote");
 	const appHome = tempDir("command-app");
@@ -319,11 +319,26 @@ it("a command on a remote machine's session reaches that machine", async () => {
 	const interrupted = await request("codework/session.interrupt", { sessionId: ref.sessionId });
 	await remote.run((rpc) => rpc["thread.wait"](ref));
 	const history = (await remote.run((rpc) => rpc["thread.history"](ref))).entries;
+	const forked = (await request("codework/session.fork", { sessionId: ref.sessionId, entryId: messageId })) as Row;
+	// Read at once: the reply waits for the machine's index to bring the fork's row.
+	const forkRow = query(
+		appHome,
+		"SELECT session_id, origin_kind, origin_thread_id, origin_entry_id FROM thread WHERE id = ?",
+		forked.threadId as string,
+	);
+	const onRemote = (await remote.run((rpc) => rpc["thread.list"]({ sessionId: ref.sessionId }))).map(
+		(thread) => thread.id,
+	);
 	const onLocal = await local.run((rpc) => rpc["thread.list"]({}));
 
 	expect(prompted).toEqual({ _tag: "Done" });
 	expect(interrupted).toEqual({ _tag: "Done" });
 	expect(history[0]).toMatchObject({ id: messageId, role: "user" });
+	expect(forked._tag).toBe("Forked");
+	expect(onRemote).toContain(forked.threadId);
+	expect(forkRow).toEqual([
+		{ session_id: ref.sessionId, origin_kind: "fork", origin_thread_id: ref.threadId, origin_entry_id: messageId },
+	]);
 	expect(onLocal).toEqual([]);
 
 	await snapshot(
@@ -339,6 +354,8 @@ it("a command on a remote machine's session reaches that machine", async () => {
 				prompted,
 				interrupted,
 				history: history.map(({ id, role, state }) => ({ id, role, state })),
+				forked,
+				forkRow,
 				onLocal,
 			}),
 		),
