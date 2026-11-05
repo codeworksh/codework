@@ -1,5 +1,5 @@
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
-import { ListFilter, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { ListFilter, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -52,25 +51,9 @@ export function Toolbar({
 	return (
 		<div className="flex shrink-0 flex-col border-b border-edge">
 			<div className="flex h-10 items-center gap-1.5 px-3">
-				<span className="text-xs text-ink-muted tabular-nums">
+				<span className="mr-auto text-xs text-ink-muted tabular-nums">
 					{count} {count === 1 ? "thread" : "threads"}
 				</span>
-				<div className="relative ml-auto w-40 min-w-0">
-					<Search
-						className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-ink-muted"
-						aria-hidden
-					/>
-					<Input
-						value={options.text}
-						onChange={(event) => onChange({ text: event.currentTarget.value })}
-						onKeyDown={(event) => {
-							if (event.key === "Escape") onChange({ text: "" });
-						}}
-						placeholder="Filter by Title"
-						aria-label="Filter by Title"
-						className="h-7 pl-7 text-xs"
-					/>
-				</div>
 				{options.group === "grouping" && (
 					<Button variant="ghost" size="xs" onClick={onNewGroup}>
 						<Plus aria-hidden />
@@ -136,7 +119,7 @@ export function Toolbar({
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem onSelect={() => onChange({ status: [], priority: [], machine: [], text: "" })}>
+						<DropdownMenuItem onSelect={() => onChange({ status: [], priority: [], machine: [] })}>
 							Clear Filters
 						</DropdownMenuItem>
 					</DropdownMenuContent>

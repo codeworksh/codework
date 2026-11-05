@@ -19,7 +19,6 @@ export const Options = Schema.Struct({
 	status: Schema.Array(ThreadStatus),
 	priority: Schema.Array(Priority),
 	machine: Schema.Array(Schema.String),
-	text: Schema.String,
 });
 export type Options = typeof Options.Type;
 
@@ -30,7 +29,6 @@ const DEFAULTS: Options = {
 	status: [],
 	priority: [],
 	machine: [],
-	text: "",
 };
 
 const decode = Schema.decodeUnknownOption(Options);
@@ -67,7 +65,7 @@ export const byOf = (options: Options): ThreadsBy => (options.group === "none" ?
 
 /** Whether any filter narrows the list. */
 export const filtering = (options: Options) =>
-	options.status.length + options.priority.length + options.machine.length > 0 || options.text.trim() !== "";
+	options.status.length + options.priority.length + options.machine.length > 0;
 
 /** One section as drawn: a list of the split, or the whole list ungrouped. */
 export interface Section {
@@ -87,12 +85,10 @@ const compare: Record<Options["order"], (a: ListedThread, b: ListedThread) => nu
 
 /** `all` as the view draws it: filtered, split into sections, each in the chosen order. */
 export const sections = (all: AllThreads, options: Options, keyOf: (list: ThreadList) => string): Section[] => {
-	const text = options.text.trim().toLowerCase();
 	const keep = (thread: ListedThread) =>
 		(options.status.length === 0 || options.status.includes(thread.status)) &&
 		(options.priority.length === 0 || options.priority.includes(thread.priority)) &&
-		(options.machine.length === 0 || options.machine.includes(thread.machine.id)) &&
-		(text === "" || thread.title.toLowerCase().includes(text));
+		(options.machine.length === 0 || options.machine.includes(thread.machine.id));
 	const shape = (threads: ReadonlyArray<ListedThread>) => threads.filter(keep).toSorted(compare[options.order]);
 	if (options.group === "none")
 		return [{ key: "all", list: undefined, threads: shape(all.lists.flatMap((list) => list.threads)) }];
