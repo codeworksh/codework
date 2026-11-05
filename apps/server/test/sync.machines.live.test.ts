@@ -191,13 +191,34 @@ const rowsOf = (machineId: string) =>
 const census = () => Object.fromEntries([...members].map(([name, id]) => [name, rowsOf(id)]));
 const bucket = (ms: number) => (ms < 10_000 ? "<10s" : ms < 30_000 ? "<30s" : ms < 120_000 ? "<120s" : ">=120s");
 /** Runs a move of the machine set and records it; `move` returns the sync path each machine took. */
-const step = async (name: string, move: () => Promise<Record<string, string>>) => {
+/**
+ * Runs a move of the machine set and records it; `move` returns the sync path each machine took. A
+ * move that waits on something other than the sync (a machine booting) times the sync itself with
+ * `sync`: the artifact keeps that time, the printed timings keep both.
+ */
+const step = async (
+	name: string,
+	move: (sync: <A>(effect: () => Promise<A>) => Promise<A>) => Promise<Record<string, string>>,
+) => {
 	const before = census();
 	const started = performance.now();
-	const paths = await move();
+	let synced: number | undefined;
+	const paths = await move(async (effect) => {
+		const from = performance.now();
+		const result = await effect();
+		synced = Math.round(performance.now() - from);
+		return result;
+	});
 	const ms = Math.round(performance.now() - started);
-	timings.push({ step: name, ms });
-	shuffle.push({ step: name, machines: [...members.keys()], before, after: census(), paths, time: bucket(ms) });
+	timings.push(synced === undefined ? { step: name, ms } : { step: name, ms, sync: synced });
+	shuffle.push({
+		step: name,
+		machines: [...members.keys()],
+		before,
+		after: census(),
+		paths,
+		time: bucket(synced ?? ms),
+	});
 };
 /** The path a machine's sync took since `after`: a full sync, or a resume from its cursor. */
 const pathOf = (machineId: string, after: number) =>
@@ -842,19 +863,21 @@ describeMachines("sync across OrbStack machines", () => {
 
 	it("shuffle: a stopped machine resumes, a removed one cascades, a removed one comes back", async () => {
 		const machineId = idOf(cwC);
-		await step("stop cw-c (orb stop) and start it again", async () => {
+		await step("stop cw-c (orb stop) and start it again", async (sync) => {
 			const at = lastSeq(appHome);
 			await orb(["stop", "cw-c"], { timeout: 120_000 });
 			await orb(["start", "cw-c"], { timeout: 300_000 });
 			await cwC.start();
-			// The machine's name answers again a moment after it boots, sometimes after a minute.
+			// The machine's name answers again a moment after it boots, sometimes after minutes.
 			const bootedAt = performance.now();
 			await waitFor(
 				() => cwC.run((rpc) => rpc["server.info"]({}).pipe(Effect.timeout("5 seconds"))).catch(() => undefined),
 				"cw-c reachable from the Mac",
-				240_000,
+				480_000,
 			);
 			measure("cw-c reachable after boot (ms)", Math.round(performance.now() - bootedAt));
+			// The resume: from the server answering again to the app's cursor at its head.
+			await sync(() => caughtUp(machineId, cwC));
 			await session(cwC, work(cwC), "After a machine restart");
 			await caughtUp(machineId, cwC);
 			return { "cw-c": pathOf(machineId, at) };
@@ -873,7 +896,7 @@ describeMachines("sync across OrbStack machines", () => {
 			return { fedora: pathOf(id, at) };
 		});
 		expect(differences(appTables(idOf(fedora)), await harnessTables(fedora))).toEqual([]);
-	}, 600_000);
+	}, 900_000);
 
 	it("10. concurrent writes take strictly increasing revisions; a write without the current one is refused", async () => {
 		const machineId = idOf(fedora);
