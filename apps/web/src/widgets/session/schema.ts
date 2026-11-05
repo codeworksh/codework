@@ -166,7 +166,7 @@ export const Window = Schema.Union([
 export type Window = typeof Window.Type;
 
 /** The sessions the agent works on: a run is going, or a prompt this app sent is about to start one. */
-export const Activity = Schema.Struct({ working: Schema.Array(Schema.String) });
+const Activity = Schema.Struct({ working: Schema.Array(Schema.String) });
 
 /** Published on a session's topic as its conversation changes. */
 export const Update = Schema.Union([

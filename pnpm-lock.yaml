@@ -183,6 +183,9 @@ catalogs:
 overrides:
   run: 2.1.8
 
+patchedDependencies:
+  '@legendapp/list@3.3.5': 6cbdacd8c380d9a5afb9f73d4198dc2cc44be6ef28a955b1183c781469307896
+
 importers:
 
   .:
@@ -305,7 +308,7 @@ importers:
         version: 1.1.10(react@19.3.1)
       '@legendapp/list':
         specifier: 3.3.5
-        version: 3.3.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 3.3.5(patch_hash=6cbdacd8c380d9a5afb9f73d4198dc2cc44be6ef28a955b1183c781469307896)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/trees':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.4.3)
@@ -10962,7 +10965,7 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@legendapp/list@3.3.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@legendapp/list@3.3.5(patch_hash=6cbdacd8c380d9a5afb9f73d4198dc2cc44be6ef28a955b1183c781469307896)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       react: 19.3.1
       use-sync-external-store: 1.7.0(react@19.3.1)

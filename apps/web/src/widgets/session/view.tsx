@@ -3,6 +3,7 @@ import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@code
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
+import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
 import { createContext, memo, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -12,6 +13,7 @@ import { Monogram } from "@/components/monogram";
 import { useModelName, useModelsNotice } from "@/components/model";
 import { threadRef } from "./address";
 import { SessionComposer } from "./composer";
+import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
@@ -319,27 +321,23 @@ function useConversation(thread: ThreadRef) {
 	});
 
 	const oldest = state.status === "ready" && state.more ? state.messages[0]?.id : undefined;
-	const loadOlder = useCallback(
-		(beforePrepend: () => void) => {
-			if (oldest === undefined || paging.current) return;
-			paging.current = true;
-			void page(oldest)
-				.then((window) => {
-					if (window?._tag !== "Window") return;
-					beforePrepend();
-					setState((current) => {
-						if (current.status !== "ready") return current;
-						const known = new Set(current.messages.map((message) => message.id));
-						const older = window.messages.filter((message) => !known.has(message.id));
-						return { ...current, messages: [...older, ...current.messages], more: window.more };
-					});
-				})
-				.finally(() => {
-					paging.current = false;
+	const loadOlder = useCallback(() => {
+		if (oldest === undefined || paging.current) return;
+		paging.current = true;
+		void page(oldest)
+			.then((window) => {
+				if (window?._tag !== "Window") return;
+				setState((current) => {
+					if (current.status !== "ready") return current;
+					const known = new Set(current.messages.map((message) => message.id));
+					const older = window.messages.filter((message) => !known.has(message.id));
+					return { ...current, messages: [...older, ...current.messages], more: window.more };
 				});
-		},
-		[oldest, page],
-	);
+			})
+			.finally(() => {
+				paging.current = false;
+			});
+	}, [oldest, page]);
 
 	return { state, loadOlder, message: store.message };
 }
@@ -453,18 +451,19 @@ function Conversation({
 
 	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
-	// Before paint, so the first frame is laid out with both heights.
+	const [inset, setInset] = useState(0);
+	// Before paint, so the first frame is laid out with the composer's height.
 	useLayoutEffect(() => {
 		const root = surface.current;
 		const element = composer.current;
 		if (root === null || element === null) return;
 		const sync = () => {
-			root.style.setProperty("--transcript-height", `${root.getBoundingClientRect().height}px`);
-			root.style.setProperty("--composer-height", `${element.getBoundingClientRect().height}px`);
+			const height = element.getBoundingClientRect().height;
+			root.style.setProperty("--composer-height", `${height}px`);
+			setInset(Math.ceil(height));
 		};
 		sync();
 		const observer = new ResizeObserver(sync);
-		observer.observe(root);
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [state.status]);
@@ -484,6 +483,7 @@ function Conversation({
 					state={view}
 					running={running}
 					loadOlder={loadOlder}
+					inset={inset}
 				/>
 			</StreamedContext>
 			<div
@@ -550,166 +550,52 @@ function Loading({ slow }: { readonly slow: boolean }) {
 
 const turnKey = (turn: Turn) => turn.user?.id ?? turn.replies[0]?.id ?? "empty";
 
+// LegendList averages sizes by type; length buckets prevent inflated estimates and nested-update loops.
+function turnType(turn: Turn) {
+	const length =
+		(turn.user === undefined ? 0 : textOf(turn.user).length) +
+		turn.replies.reduce((sum, reply) => sum + textOf(reply).length, 0);
+	return `turn:${Math.max(0, Math.floor(Math.log2(length / 1000)))}`;
+}
+
 const PROMPT_JUST_SENT_MS = 1500;
-const PROMPT_RISE_MS = 560;
-const PROMPT_REVEAL_MS = 320;
-const PROMPT_FADE_MS = 480;
-const PROMPT_RISE_FROM = 0.3;
+const PROMPT_RECENT_MS = 5000;
 
-/**
- * Keeps the live turn's min-height equal to the visible transcript height above the composer, so
- * pinning to the bottom places the latest user prompt at the very top of the viewport.
- */
-function syncTranscriptViewport(el: HTMLElement | null) {
-	if (el === null || el.clientHeight <= 0) return;
-	const inner = el.querySelector<HTMLElement>("[data-transcript-content]");
-	const style = inner !== null ? getComputedStyle(inner) : null;
-	const pad =
-		style !== null ? (Number.parseFloat(style.paddingBottom) || 0) + (Number.parseFloat(style.paddingTop) || 0) : 0;
-	el.style.setProperty("--transcript-viewport", `${Math.max(0, el.clientHeight - pad)}px`);
-}
-
-/** Fades a freshly sent prompt in while sliding it from the upper viewport into its top anchor. */
-function riseIntoAnchor(scroller: HTMLElement | null, promptId: string) {
-	if (scroller === null) return undefined;
-	const row = scroller.querySelector<HTMLElement>(`[data-prompt-anchor="${CSS.escape(promptId)}"]`);
-	if (row === null || typeof row.animate !== "function") return undefined;
-	if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
-	const view = scroller.getBoundingClientRect();
-	const dy = view.top + view.height * PROMPT_RISE_FROM - row.getBoundingClientRect().top;
-	if (dy <= 1) return undefined;
-	const animation = row.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], {
-		duration: PROMPT_RISE_MS,
-		easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-	});
-	const fade = row.animate([{ opacity: 0 }, { opacity: 1 }], {
-		duration: PROMPT_FADE_MS,
-		easing: "ease-out",
-	});
-	const turn = row.closest<HTMLElement>(".transcript-turn");
-	let revealTimer: ReturnType<typeof setTimeout> | undefined;
-	turn?.setAttribute("data-prompt-rise", "rising");
-	animation.onfinish = () => {
-		turn?.setAttribute("data-prompt-rise", "revealing");
-		revealTimer = setTimeout(() => turn?.removeAttribute("data-prompt-rise"), PROMPT_REVEAL_MS);
-	};
-	return () => {
-		animation.cancel();
-		fade.cancel();
-		clearTimeout(revealTimer);
-		turn?.removeAttribute("data-prompt-rise");
-	};
-}
+const TRANSCRIPT_HEADER = <div className="h-5" />;
+const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true };
 
 /**
  * The conversation as a list of turns. Sending a prompt anchors the new turn to the top of the
- * viewport (`.transcript-turn-anchor`) so older turns scroll above the screen unless the reader
- * scrolls up.
+ * viewport, so older turns scroll above the screen unless the reader scrolls up.
  */
 function Transcript({
 	state,
 	running,
 	loadOlder,
+	inset,
 }: {
 	readonly state: Ready;
 	readonly running: boolean;
-	readonly loadOlder: (beforePrepend: () => void) => void;
+	readonly loadOlder: () => void;
+	/** The composer overlay's height. */
+	readonly inset: number;
 }) {
-	const scroller = useRef<HTMLDivElement>(null);
-	const stickToBottom = useRef(true);
-	const lastScrollTop = useRef(0);
-	const touchY = useRef<number | undefined>(undefined);
-	const prependHeight = useRef<number | null>(null);
 	const [scrolled, setScrolled] = useState(false);
 	const modelName = useModelName(state.info.hostDir, state.info.model);
-	const turns = useMemo(() => turnsOf(state.messages), [state.messages]);
+	const turns = useTurns(state.messages);
 	const lastUser = turns.at(-1)?.user;
-	const lastUserId = lastUser?.id;
-	const [anchorTurn, setAnchorTurn] = useState(
-		() => running || (lastUser !== undefined && Date.now() - lastUser.createdAt < 5000),
-	);
-	const seenUserId = useRef(lastUserId);
-	if (lastUserId !== seenUserId.current) {
-		seenUserId.current = lastUserId;
-		if (lastUserId !== undefined && !anchorTurn) setAnchorTurn(true);
-	}
-
-	const pinToBottom = useCallback((el: HTMLElement | null) => {
-		if (el === null) return;
-		el.scrollTop = el.scrollHeight;
-		lastScrollTop.current = el.scrollTop;
-		setScrolled(el.scrollTop > 1);
-	}, []);
-
-	useLayoutEffect(() => {
-		stickToBottom.current = true;
-		const el = scroller.current;
-		syncTranscriptViewport(el);
-		pinToBottom(el);
-	}, [lastUserId, anchorTurn, pinToBottom]);
-
-	const introducedPrompt = useRef<{ id: string | undefined; cancel: (() => void) | undefined }>(undefined);
-	useLayoutEffect(() => {
-		const previous = introducedPrompt.current;
-		if (previous !== undefined && previous.id === lastUserId) return;
-		const mounting = previous === undefined;
-		previous?.cancel?.();
-		const current: { id: string | undefined; cancel: (() => void) | undefined } = {
-			id: lastUserId,
-			cancel: undefined,
-		};
-		introducedPrompt.current = current;
-		if (lastUserId === undefined || !anchorTurn) return;
-		if (
-			mounting &&
-			!(
-				running &&
-				turns.length === 1 &&
-				lastUser !== undefined &&
-				Date.now() - lastUser.createdAt < PROMPT_JUST_SENT_MS
-			)
-		)
-			return;
-		current.cancel = riseIntoAnchor(scroller.current, lastUserId);
-	}, [lastUserId, anchorTurn, running, turns.length, lastUser]);
-
-	const firstTurnKey = turns[0] !== undefined ? turnKey(turns[0]) : undefined;
-	const seenFirstTurnKey = useRef(firstTurnKey);
-	useLayoutEffect(() => {
-		const el = scroller.current;
-		if (el === null) return;
-		if (seenFirstTurnKey.current !== firstTurnKey && prependHeight.current !== null) {
-			const delta = el.scrollHeight - prependHeight.current;
-			prependHeight.current = null;
-			seenFirstTurnKey.current = firstTurnKey;
-			if (delta > 0) {
-				el.scrollTop += delta;
-				lastScrollTop.current = el.scrollTop;
-			}
-			return;
-		}
-		seenFirstTurnKey.current = firstTurnKey;
-		prependHeight.current = null;
-		// Growth is pinned by the resize observer below, once per layout rather than once per update.
-	}, [turns, firstTurnKey]);
-
-	useLayoutEffect(() => {
-		const el = scroller.current;
-		const inner = el?.firstElementChild;
-		if (el === null || inner === null || inner === undefined) return;
-		// Runs after layout and before paint. The viewport is measured again only when the scroller
-		// itself resizes; content growing only needs pinning.
-		const observer = new ResizeObserver((entries) => {
-			if (!el.isConnected) return;
-			if (entries.some((entry) => entry.target === el)) syncTranscriptViewport(el);
-			if (stickToBottom.current) pinToBottom(el);
-		});
-		observer.observe(el);
-		observer.observe(inner);
-		syncTranscriptViewport(el);
-		if (stickToBottom.current) pinToBottom(el);
-		return () => observer.disconnect();
-	}, [pinToBottom, turns.length]);
+	const sentAgo = lastUser === undefined ? Infinity : Date.now() - lastUser.createdAt;
+	const follow = useFollow({
+		lastUserId: lastUser?.id,
+		anchored: running || sentAgo < PROMPT_RECENT_MS,
+		// The start page's first prompt, handed over with the new session.
+		rise: running && turns.length === 1 && sentAgo < PROMPT_JUST_SENT_MS,
+		running,
+		inset,
+		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
+	});
+	const { pending } = follow;
+	const extraData = useMemo(() => ({ running, modelName, pending }), [running, modelName, pending]);
 
 	if (turns.length === 0)
 		return (
@@ -717,67 +603,44 @@ function Transcript({
 				<p className="text-center text-body text-ink-muted">Send a message to start the conversation.</p>
 			</div>
 		);
+	const renderItem = ({ item, index }: LegendListRenderItemProps<Turn>) => (
+		<TurnView
+			turn={item}
+			active={running && index === turns.length - 1}
+			pending={item.user !== undefined && item.user.id === pending}
+			modelName={modelName}
+		/>
+	);
 	return (
-		<div
-			ref={scroller}
+		<LegendList<Turn>
+			ref={follow.ref}
+			data={turns}
+			extraData={extraData}
+			keyExtractor={turnKey}
+			getItemType={turnType}
+			renderItem={renderItem}
+			estimatedItemSize={90}
+			recycleItems={false}
+			initialScrollAtEnd
+			onLoad={follow.onLoad}
+			{...(follow.anchoredEndSpace === undefined ? {} : { anchoredEndSpace: follow.anchoredEndSpace })}
+			contentInsetEndAdjustment={follow.anchoredEndSpace === undefined ? 0 : inset}
+			maintainScrollAtEnd={follow.maintainScrollAtEnd}
+			maintainScrollAtEndThreshold={1}
+			maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
+			onStartReached={state.more ? loadOlder : undefined}
+			onScroll={(event) => {
+				follow.onScroll();
+				setScrolled(event.nativeEvent.contentOffset.y > 1);
+			}}
 			tabIndex={0}
 			aria-label="Conversation"
-			onKeyDown={(event) => {
-				if (event.target !== event.currentTarget) return;
-				if (["ArrowUp", "PageUp", "Home"].includes(event.key) || (event.key === " " && event.shiftKey)) {
-					stickToBottom.current = false;
-				}
-			}}
-			onTouchStart={(event) => {
-				touchY.current = event.touches[0]?.clientY;
-			}}
-			onTouchMove={(event) => {
-				const next = event.touches[0]?.clientY;
-				if (next !== undefined && touchY.current !== undefined && next > touchY.current) {
-					stickToBottom.current = false;
-				}
-				touchY.current = next;
-			}}
-			onWheel={(event) => {
-				if (event.deltaY < 0) stickToBottom.current = false;
-			}}
-			onScroll={(event) => {
-				const el = event.currentTarget;
-				const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop <= 16;
-				if (el.scrollTop < lastScrollTop.current - 1 && !nearBottom) {
-					stickToBottom.current = false;
-				} else if (nearBottom && el.scrollTop > lastScrollTop.current) {
-					stickToBottom.current = true;
-				}
-				lastScrollTop.current = el.scrollTop;
-				setScrolled(el.scrollTop > 1);
-				if (state.more && el.scrollTop < 120 && prependHeight.current === null) {
-					// Capture just before insertion: streamed updates may arrive while the page loads.
-					loadOlder(() => {
-						prependHeight.current = el.scrollHeight;
-					});
-				}
-			}}
-			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
-		>
-			<div
-				data-transcript-content=""
-				className="flex min-w-0 flex-col gap-1 pt-5 pb-[calc(var(--composer-height,60px)+24px)]"
-			>
-				{turns.map((item, index) => {
-					const last = index === turns.length - 1;
-					return (
-						<TurnView
-							key={turnKey(item)}
-							turn={item}
-							active={running && last}
-							anchored={anchorTurn && last && item.user !== undefined}
-							modelName={modelName}
-						/>
-					);
-				})}
-			</div>
-		</div>
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
+			ListHeaderComponent={TRANSCRIPT_HEADER}
+			ListFooterComponent={
+				<div aria-hidden style={{ height: (follow.anchoredEndSpace === undefined ? inset : 0) + 24 }} />
+			}
+		/>
 	);
 }
 
@@ -787,7 +650,13 @@ interface Turn {
 	readonly replies: readonly HistoryEntry[];
 }
 
-function turnsOf(entries: readonly HistoryEntry[]): Turn[] {
+// Messages are the same objects unless they changed, so an unchanged turn keeps its object too.
+const sameMessages = (a: Turn, b: Turn) =>
+	a.user === b.user &&
+	a.replies.length === b.replies.length &&
+	a.replies.every((reply, index) => reply === b.replies[index]);
+
+function turnsOf(entries: readonly HistoryEntry[], previous: readonly Turn[]): Turn[] {
 	const turns: { user: HistoryEntry | undefined; replies: HistoryEntry[] }[] = [];
 	for (const entry of entries) {
 		const current = turns.at(-1);
@@ -796,30 +665,32 @@ function turnsOf(entries: readonly HistoryEntry[]): Turn[] {
 		if (entry.role === "user") turn.user = entry;
 		else turn.replies.push(entry);
 	}
+	const known = new Map(previous.map((turn) => [turnKey(turn), turn]));
+	return turns.map((turn) => {
+		const old = known.get(turnKey(turn));
+		return old !== undefined && sameMessages(old, turn) ? old : turn;
+	});
+}
+
+/** Turns rebuilt on every structural update, keeping the objects of those that didn't change. */
+function useTurns(messages: readonly HistoryEntry[]) {
+	const [state, setState] = useState(() => ({ messages, turns: turnsOf(messages, []) }));
+	if (state.messages === messages) return state.turns;
+	const turns = turnsOf(messages, state.turns);
+	setState({ messages, turns });
 	return turns;
 }
 
-// Turns are rebuilt on every structural update, but their messages are the same objects unless they changed.
-const sameTurn = (
-	a: {
-		readonly turn: Turn;
-		readonly active: boolean;
-		readonly anchored: boolean;
-		readonly modelName: string | undefined;
-	},
-	b: {
-		readonly turn: Turn;
-		readonly active: boolean;
-		readonly anchored: boolean;
-		readonly modelName: string | undefined;
-	},
-) =>
-	a.active === b.active &&
-	a.anchored === b.anchored &&
-	a.modelName === b.modelName &&
-	a.turn.user === b.turn.user &&
-	a.turn.replies.length === b.turn.replies.length &&
-	a.turn.replies.every((reply, index) => reply === b.turn.replies[index]);
+interface TurnProps {
+	readonly turn: Turn;
+	readonly active: boolean;
+	/** Hidden until its prompt rises into its anchor. */
+	readonly pending: boolean;
+	readonly modelName: string | undefined;
+}
+
+const sameTurn = (a: TurnProps, b: TurnProps) =>
+	a.turn === b.turn && a.active === b.active && a.pending === b.pending && a.modelName === b.modelName;
 
 /**
  * What the work log can show: a tool call, readable thinking, or a note between calls. Thinking a
@@ -834,17 +705,7 @@ const isWork = (part: Part) =>
  * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
  * calls) is the work that led there, folded under one line.
  */
-const TurnView = memo(function TurnView({
-	turn,
-	active,
-	anchored,
-	modelName,
-}: {
-	readonly turn: Turn;
-	readonly active: boolean;
-	readonly anchored: boolean;
-	readonly modelName: string | undefined;
-}) {
+const TurnView = memo(function TurnView({ turn, active, pending, modelName }: TurnProps) {
 	const last = turn.replies.at(-1);
 	const answer = last?.parts.some((part) => part.type === "text") === true;
 	const work = turn.replies.flatMap((reply) =>
@@ -864,7 +725,8 @@ const TurnView = memo(function TurnView({
 
 	return (
 		<section
-			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-1 text-body ${anchored ? "transcript-turn-anchor" : ""}`}
+			data-prompt-pending={pending || undefined}
+			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-2 text-body`}
 		>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
 			{(work.length > 0 || working || answer || interrupted || failed) && (

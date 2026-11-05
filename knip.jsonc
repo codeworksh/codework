@@ -28,8 +28,8 @@
 				// Topic payloads named for their topic, though several share one shape.
 				"src/widgets/session/schema.ts": ["duplicates"],
 			},
-			// Installed ahead of the timeline and file explorer that will use them.
-			"ignoreDependencies": ["@legendapp/list", "@pierre/trees"],
+			// Installed ahead of the file explorer that will use it.
+			"ignoreDependencies": ["@pierre/trees"],
 		},
 		"packages/codework": {
 			// bundle.mjs builds the SEA binary from it by path.
