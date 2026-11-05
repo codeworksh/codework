@@ -249,6 +249,8 @@ export const syncTopics = {
 	status: "sync/status",
 	/** A thread's live text and thinking deltas (`LiveDelta`) that continue its draft; never stored. */
 	delta: (threadId: string) => `sync/delta/${threadId}`,
+	/** `SyncTracking` whenever the user edits a desktop column other than status; stored, in the transaction that wrote it. */
+	tracking: "sync/tracking",
 };
 
 /**
@@ -283,6 +285,52 @@ export const SyncStatus = Schema.Struct({
 	at: Schema.Number,
 });
 export type SyncStatus = typeof SyncStatus.Type;
+
+/** Linear's scale: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+export const Priority = Schema.Literals([0, 1, 2, 3, 4]);
+export type Priority = typeof Priority.Type;
+
+/** A custom group of an organization's threads, in its own `ordering`. */
+export const Grouping = Schema.Struct({
+	id: Schema.String,
+	organizationId: Schema.String,
+	name: Schema.String,
+	/** Hex, `#rrggbb`. */
+	color: Schema.NullOr(Schema.String),
+	ordering: Schema.Number,
+});
+export type Grouping = typeof Grouping.Type;
+
+/** Where a moved thread or group goes in its organization's list: first, last, or between two neighbours. */
+export const Position = Schema.Union([
+	Schema.Literals(["first", "last"]),
+	Schema.Struct({ after: Schema.String, before: Schema.String }),
+]);
+export type Position = typeof Position.Type;
+
+/**
+ * A user edit of a desktop column: a thread's (only the field that changed; a `null` group is
+ * ungrouped, a `null` color falls back to the session's), a session's color, a group created or
+ * changed (the whole row), or a group deleted with the threads it left ungrouped.
+ */
+export const SyncTracking = Schema.Union([
+	Schema.TaggedStruct("Thread", {
+		threadId: Schema.String,
+		priority: Schema.optionalKey(Priority),
+		groupingId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		ordering: Schema.optionalKey(Schema.Number),
+		color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	}),
+	Schema.TaggedStruct("Session", { sessionId: Schema.String, color: Schema.NullOr(Schema.String) }),
+	Schema.TaggedStruct("Group", Grouping.fields),
+	Schema.TaggedStruct("GroupDeleted", { groupingId: Schema.String, threads: Schema.Array(Schema.String) }),
+]);
+export type SyncTracking = typeof SyncTracking.Type;
+
+/** A desktop edit refused: a value out of range, or a thread, session, group or organization not found. */
+export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.TrackingError", {
+	message: Schema.String,
+}) {}
 
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
@@ -465,6 +513,72 @@ export const Api = RpcGroup.make(
 		payload: { ...SyncThread.fields, limit: Schema.Int },
 		success: Schema.Struct({ entries: Schema.Int, floor: Schema.NullOr(Schema.Int) }),
 		error: Schema.Union([CodeworkUnavailable, SyncError]),
+	}),
+	/** Sets a thread's status until its next run change; published on `sync/status`. */
+	Rpc.make("threads.setStatus", {
+		payload: { threadId: Schema.String, status: ThreadStatus },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** `priority` must be one of `Priority`. */
+	Rpc.make("threads.setPriority", {
+		payload: { threadId: Schema.String, priority: Schema.Int },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A hex `#rrggbb` color over the session's; `null` falls back to it. */
+	Rpc.make("threads.setColor", {
+		payload: { threadId: Schema.String, color: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** Puts a thread in a group of its organization; `null` ungroups it. */
+	Rpc.make("threads.setGroup", {
+		payload: { threadId: Schema.String, groupingId: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	Rpc.make("threads.move", {
+		payload: { threadId: Schema.String, to: Position },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A hex `#rrggbb` color; `null` is the default. */
+	Rpc.make("sessions.setColor", {
+		payload: { sessionId: Schema.String, color: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A new group, last in its organization. */
+	Rpc.make("groups.create", {
+		payload: {
+			organizationId: Schema.String,
+			name: Schema.String,
+			color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		},
+		success: Grouping,
+		error: TrackingError,
+	}),
+	/** Renames or recolors a group; an absent field is left as it is. */
+	Rpc.make("groups.update", {
+		payload: {
+			groupingId: Schema.String,
+			name: Schema.optionalKey(Schema.String),
+			color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		},
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	Rpc.make("groups.move", {
+		payload: { groupingId: Schema.String, to: Position },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** Its threads are left ungrouped. */
+	Rpc.make("groups.delete", {
+		payload: { groupingId: Schema.String },
+		success: Schema.Void,
+		error: TrackingError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

@@ -2,6 +2,7 @@ import { Effect, String as Str } from "effect";
 import { SqlClient } from "effect/sql";
 import type { Publish } from "@codeworksh/widget/event";
 import type { Codework } from "@codeworksh/widget/codework";
+import { Ordering } from "./ordering.ts";
 import { syncTopics, type SyncChanged, type SyncStatus, type ThreadStatus } from "@codeworksh/contract";
 
 /*
@@ -124,9 +125,6 @@ const storeThread = (thread: Codework.ThreadSummary, now: number, append: Append
 			const organizationId = yield* organizationOf(
 				sql`SELECT organization_id FROM session WHERE id = ${thread.sessionId}`,
 			);
-			const [first] = yield* sql<{ ordering: number }>`
-				SELECT COALESCE(MIN(ordering), 1) - 1 AS ordering FROM thread WHERE organization_id = ${organizationId}
-			`;
 			yield* sql`INSERT INTO thread ${sql.insert({
 				id: thread.id,
 				...core,
@@ -134,7 +132,7 @@ const storeThread = (thread: Codework.ThreadSummary, now: number, append: Append
 				status: firstSeen(thread),
 				statusAt: now,
 				priority: 0,
-				ordering: first?.ordering ?? 0,
+				ordering: yield* Ordering.edge("thread", organizationId, "first"),
 			})}`;
 			return;
 		}

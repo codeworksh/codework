@@ -15,6 +15,7 @@ import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
 import { Servers } from "./servers.ts";
 import { Sync } from "./sync.ts";
+import { Tracking } from "./tracking.ts";
 import { Workspaces } from "./workspaces.ts";
 
 /**
@@ -50,6 +51,7 @@ export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const workspaces = yield* Workspaces.handlers;
 		const desk = yield* Desk.handlers;
+		const tracking = yield* Tracking.handlers;
 		const events = yield* Event.Service;
 		const kv = yield* Kv.Service;
 		const servers = yield* Servers.Service;
@@ -73,6 +75,7 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			...workspaces,
 			...desk,
+			...tracking,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				return byProject(yield* call((client) => client("thread.list", {})));
