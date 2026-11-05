@@ -184,9 +184,6 @@
 			"type": "session.run.failed",
 			"reason": "crashloop",
 			"message": "The run was interrupted 5 times in a row; it is not resumed again"
-		},
-		{
-			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [

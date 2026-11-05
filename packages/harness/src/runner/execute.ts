@@ -77,6 +77,8 @@ export const layer = Layer.effect(
 		const abandoning = new Map<ThreadId, string>();
 		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
 		const stoppedAt = new Map<ThreadId, number>();
+		// Threads whose last drain ended its run itself, by publishing `session.run.failed`.
+		const ended = new Set<ThreadId>();
 
 		const coordinator = yield* RunCoordinator.make<ThreadId, Runner.RunError, SessionSchema.InterruptReason>({
 			// The run is recorded unfinished before it starts, so a process dying anywhere in it
@@ -110,6 +112,9 @@ export const layer = Layer.effect(
 							!interrupted ? "finished" : reason === "user" ? "stopped" : "closed",
 							stop,
 						);
+						// One terminal per run: an abandoned run already ended with its failure and reason, which a
+						// success published after it would overwrite.
+						if (ended.delete(threadId) && Exit.isSuccess(exit)) return;
 						const sessionId = yield* sessionOf(threadId);
 						if (Option.isNone(sessionId)) return;
 						const base = { sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now };
@@ -127,6 +132,11 @@ export const layer = Layer.effect(
 					}),
 				),
 			drain: Effect.fnUntraced(function* (threadId: ThreadId, force) {
+				ended.delete(threadId);
+				const record = (outcome: Runner.Outcome) =>
+					Effect.sync(() => {
+						if (outcome === "ended") ended.add(threadId);
+					});
 				const thread = yield* threads.get(threadId);
 				// Deleted with its session after something woke it: nothing is left to run.
 				if (Option.isNone(thread)) return;
@@ -135,7 +145,8 @@ export const layer = Layer.effect(
 				if (recovered && Option.isNone(thread.value.execution)) return;
 				// Only the drain the abandon itself started: one it joined is a live run, which must stand.
 				const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
-				if (abandoned !== undefined) return yield* runner.abandon({ threadId, message: abandoned });
+				if (abandoned !== undefined)
+					return yield* runner.abandon({ threadId, message: abandoned }).pipe(Effect.flatMap(record));
 				// The thread's placement, else the session's space and directory. A placement names its
 				// space in a document no FK guards, so a space gone since is typed: `relink --thread`
 				// is the repair.
@@ -179,7 +190,7 @@ export const layer = Layer.effect(
 					yield* mcp.lease({ sessionId, threadId });
 					return yield* runner
 						.run({ threadId, force, recovered })
-						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));
+						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)), Effect.flatMap(record));
 				});
 
 				return yield* scopedRun.pipe(

@@ -277,6 +277,7 @@ export const layer = (options: Options = {}) =>
 						yield* threads.idle(threadId);
 					}),
 				);
+				return "ended" as const;
 			});
 
 			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
@@ -616,7 +617,7 @@ export const layer = (options: Options = {}) =>
 
 				const hasSteer = yield* inputs.hasPending(input.threadId, "steer");
 				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.threadId, "followUp");
-				if (!input.force && !hasSteer && !hasFollowUp) return;
+				if (!input.force && !hasSteer && !hasFollowUp) return "drained" as const;
 				yield* Effect.annotateCurrentSpan({
 					"gen_ai.operation.name": "invoke_agent",
 					"gen_ai.agent.name": "codework",
@@ -674,7 +675,7 @@ export const layer = (options: Options = {}) =>
 									};
 						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
 						// Queued steers and follow-ups stay for the next run.
-						if (decision === "end") return;
+						if (decision === "end") return "drained" as const;
 						if (truncations >= TRUNCATION_LIMIT) {
 							return yield* endRun(
 								snapshot.sessionId,
@@ -691,14 +692,14 @@ export const layer = (options: Options = {}) =>
 						// Only tool results outrank a follow-up. A forced continuation rides along with it: the
 						// follow-up is the natural next request, and the continuation only its fallback.
 						const followUp = !toolUse && !steer && (yield* inputs.hasPending(input.threadId, "followUp"));
-						if (!continuing && !steer && !followUp) return;
+						if (!continuing && !steer && !followUp) return "drained" as const;
 						promotion = followUp ? "followUp" : "steer";
 
 						const next = holdServers(start, yield* state.snapshot(input.threadId));
 						snapshot = completed === undefined ? next : yield* hooks.prepareNextTurn(completed, next);
 					}
 				});
-				yield* Telemetry.timed(drain, (seconds, exit) =>
+				return yield* Telemetry.timed(drain, (seconds, exit) =>
 					Telemetry.record(Telemetry.agentDuration, seconds, Telemetry.withError({}, exit)),
 				);
 			});
@@ -708,9 +709,14 @@ export const layer = (options: Options = {}) =>
 				readonly message: string;
 			}) {
 				const thread = yield* threads.get(input.threadId);
-				if (Option.isNone(thread)) return;
+				if (Option.isNone(thread)) return "drained" as const;
 				yield* healDraft(input.threadId, Option.isSome(thread.value.attempt) ? input.message : undefined);
-				yield* endRun(SessionSchema.ID.make(thread.value.sessionId), input.threadId, "crashloop", input.message);
+				return yield* endRun(
+					SessionSchema.ID.make(thread.value.sessionId),
+					input.threadId,
+					"crashloop",
+					input.message,
+				);
 			});
 
 			return Runner.Service.of({ run, abandon });

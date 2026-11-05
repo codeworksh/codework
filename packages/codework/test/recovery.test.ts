@@ -239,6 +239,13 @@ const runRow = (home: string, threadId: string, events: ReadonlyArray<EventEnvel
 	};
 };
 
+/** The stored run of a thread a run ended on its own: idle, failed, with the reason it ended for. */
+const endedRow = async (url: string, home: string, ids: Ids & { readonly threadId: string }, reason: string) => {
+	const row = runRow(home, ids.threadId, await log(url, ids));
+	expect(row).toMatchObject({ state: "idle", outcome: "failed", error: { _tag: "runFailed", reason } });
+	return row;
+};
+
 describe("recovery after the host is killed", () => {
 	it("the stored run of a killed host is swept as a crash before clients connect, then resumed", async () => {
 		const resend = gate();
@@ -400,7 +407,7 @@ describe("recovery after the host is killed", () => {
 
 	it("a request killed with no retry left ends the run as interrupted, its follow-up still queued", async () => {
 		const fake = await streaming((_body, response) => hang(response));
-		const { start } = setup(fake.url, { retry: { maxRetries: 1, baseDelayMs: 10, maxDelayMs: 1_000 } });
+		const { home, start } = setup(fake.url, { retry: { maxRetries: 1, baseDelayMs: 10, maxDelayMs: 1_000 } });
 
 		const first = await start();
 		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
@@ -420,6 +427,7 @@ describe("recovery after the host is killed", () => {
 		const events = await logged(third.url, ids, "session.run.failed");
 		await call(third.url, (rpc) => rpc["thread.wait"](ids));
 		const queue = await call(third.url, (rpc) => rpc["thread.queue"](ids));
+		const run = await endedRow(third.url, home, ids, "interrupted");
 
 		expect(fake.requests).toHaveLength(2);
 		expect(summary(events.find((event) => event.type === "session.run.failed")!)).toEqual({
@@ -434,6 +442,7 @@ describe("recovery after the host is killed", () => {
 				log: events.map(summary),
 				history: await history(third.url, ids),
 				queue: queue.entries.map(({ delivery, text }) => ({ delivery, text })),
+				run,
 				requests: fake.requests.map(sent),
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.interrupted.json");
@@ -444,7 +453,7 @@ describe("recovery after the host is killed", () => {
 		const fake = await streaming((_body, response) =>
 			answering ? answer(response, "Back to normal.") : hang(response),
 		);
-		const { start } = setup(fake.url, { retry: { maxRetries: 10, baseDelayMs: 10, maxDelayMs: 1_000 } });
+		const { home, start } = setup(fake.url, { retry: { maxRetries: 10, baseDelayMs: 10, maxDelayMs: 1_000 } });
 
 		let server = await start();
 		const created = await call(server.url, (rpc) => rpc["session.create"]({}));
@@ -463,6 +472,7 @@ describe("recovery after the host is killed", () => {
 		expect(summary(ended.find((event) => event.type === "session.run.failed")!)).toMatchObject({
 			reason: "crashloop",
 		});
+		const run = await endedRow(server.url, home, ids, "crashloop");
 
 		answering = true;
 		await call(server.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Try again." }));
@@ -474,6 +484,8 @@ describe("recovery after the host is killed", () => {
 			artifact({
 				log: events.map(summary),
 				history: await history(server.url, ids),
+				// Before the next prompt.
+				run,
 				requests: fake.requests.map(sent),
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.crashloop.json");
@@ -523,7 +535,7 @@ describe("recovery after the host is killed", () => {
 			response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
 			response.finish("length");
 		});
-		const { start } = setup(fake.url, retry);
+		const { home, start } = setup(fake.url, retry);
 
 		const server = await start();
 		const created = await call(server.url, (rpc) => rpc["session.create"]({}));
@@ -532,6 +544,7 @@ describe("recovery after the host is killed", () => {
 		const events = await logged(server.url, ids, "session.run.failed");
 		await call(server.url, (rpc) => rpc["thread.wait"](ids));
 
+		const run = await endedRow(server.url, home, ids, "truncated");
 		expect(fake.requests).toHaveLength(2);
 		const settled = events.filter((event) => event.type === "session.tool.settled").map(summary);
 		expect(settled).toHaveLength(2);
@@ -546,6 +559,7 @@ describe("recovery after the host is killed", () => {
 			artifact({
 				log: events.map(summary),
 				history: await history(server.url, ids),
+				run,
 				requests: fake.requests.map(sent),
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.truncated.json");

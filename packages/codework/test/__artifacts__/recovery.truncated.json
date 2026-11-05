@@ -72,9 +72,6 @@
 			"type": "session.run.failed",
 			"reason": "truncated",
 			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
-		},
-		{
-			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [
@@ -110,6 +107,19 @@
 			]
 		}
 	],
+	"run": {
+		"state": "idle",
+		"stateAt": "14 session.run.failed",
+		"startedAt": "3 session.execution.started",
+		"endedAt": "14 session.run.failed",
+		"outcome": "failed",
+		"error": {
+			"_tag": "runFailed",
+			"reason": "truncated",
+			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
+		},
+		"execution": null
+	},
 	"requests": [
 		[
 			{

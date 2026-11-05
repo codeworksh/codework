@@ -70,9 +70,6 @@
 			"type": "session.run.failed",
 			"reason": "interrupted",
 			"message": "The host stopped while the model was answering, on attempt 2"
-		},
-		{
-			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [
@@ -102,6 +99,19 @@
 			"text": "Then this."
 		}
 	],
+	"run": {
+		"state": "idle",
+		"stateAt": "16 session.run.failed",
+		"startedAt": "14 session.execution.started",
+		"endedAt": "16 session.run.failed",
+		"outcome": "failed",
+		"error": {
+			"_tag": "runFailed",
+			"reason": "interrupted",
+			"message": "The host stopped while the model was answering, on attempt 2"
+		},
+		"execution": null
+	},
 	"requests": [
 		[
 			{

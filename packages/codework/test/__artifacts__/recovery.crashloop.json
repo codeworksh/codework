@@ -139,9 +139,6 @@
 			"message": "The run was interrupted 5 times in a row; it is not resumed again"
 		},
 		{
-			"type": "session.execution.succeeded"
-		},
-		{
 			"type": "session.prompt.admitted",
 			"delivery": "steer",
 			"text": "Try again."
@@ -228,6 +225,19 @@
 			]
 		}
 	],
+	"run": {
+		"state": "idle",
+		"stateAt": "30 session.run.failed",
+		"startedAt": "28 session.execution.started",
+		"endedAt": "30 session.run.failed",
+		"outcome": "failed",
+		"error": {
+			"_tag": "runFailed",
+			"reason": "crashloop",
+			"message": "The run was interrupted 5 times in a row; it is not resumed again"
+		},
+		"execution": null
+	},
 	"requests": [
 		[
 			{
