@@ -14,6 +14,8 @@ import {
 	SessionStore,
 	Settings,
 	State,
+	Store,
+	Sync,
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
@@ -21,11 +23,13 @@ import { DateTime, Effect, Option, Schema, Stream } from "effect";
 import {
 	Contract,
 	type HistoryEntry,
+	type IndexItem,
 	type LogSynced,
 	type RuntimeConfig,
 	type SandboxInfo,
 	type SessionInfo,
 	type ThreadInfo,
+	type ThreadSummary,
 } from "./contract.ts";
 import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
 import { Clones } from "./clones.ts";
@@ -34,6 +38,7 @@ import { Host } from "./host.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
 import { MessagePart } from "./part.ts";
+import { Rows } from "./rows.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -50,16 +55,22 @@ const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 
 const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	id: info.id,
+	spaceId: info.spaceId,
+	slug: info.slug,
 	directory: info.directory,
 	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
 	...(info.project === undefined ? {} : { project: info.project }),
+	...(info.tag === undefined ? {} : { tag: info.tag }),
+	...(info.metadata === undefined ? {} : { metadata: info.metadata }),
+	createdAt: info.createdAt,
 	updatedAt: info.updatedAt,
 	mainThreadId: info.mainThreadId,
 });
 
-const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
+const toThreadSummary = (info: Session.ThreadSummary): ThreadSummary => ({
 	id: info.id,
+	sessionId: info.sessionId,
 	origin: info.origin,
 	...(info.title === undefined ? {} : { title: info.title }),
 	updatedAt: info.updatedAt,
@@ -68,8 +79,30 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	...(info.foundation === undefined ? {} : { foundation: info.foundation }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
 	usage: info.usage,
-	session: toSessionInfo(info.session),
+	runState: info.runState,
+	...(info.runStateAt === undefined ? {} : { runStateAt: info.runStateAt }),
+	...(info.lastRun === undefined ? {} : { lastRun: info.lastRun }),
+	restarts: info.restarts,
+	...(info.attempt === undefined ? {} : { attempt: info.attempt }),
+	createdSeq: info.createdSeq,
+	createdAt: info.createdAt,
 });
+
+const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => {
+	const { sessionId: _, ...summary } = toThreadSummary(info);
+	return { ...summary, session: toSessionInfo(info.session) };
+};
+
+const toIndexItem = (change: Sync.IndexChange): IndexItem => {
+	switch (change._tag) {
+		case "Session":
+			return { _tag: "Session", session: toSessionInfo(change.session), rev: change.rev };
+		case "Thread":
+			return { _tag: "Thread", thread: toThreadSummary(change.thread), rev: change.rev };
+		default:
+			return change;
+	}
+};
 
 // Wire configs name only the keys they set, so `undefined` never reaches the harness under
 // exactOptionalPropertyTypes. Creating takes choices only; `null` clears nothing there.
@@ -132,13 +165,29 @@ export const layer = Contract.Api.toLayer(
 		const mcp = yield* Mcp.Service;
 		const host = yield* Host.Service;
 		const clones = yield* Clones.Service;
+		const store = yield* Store.Service;
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
 			});
 
 		return Contract.Api.of({
-			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
+			"server.info": Effect.fnUntraced(function* () {
+				const head = yield* store.head;
+				return { pid: identity.pid, version: identity.version, storeId: head.id, rev: head.rev };
+			}),
+			"index.sync": ({ after }) =>
+				Rows.follow(
+					after,
+					(from, upto) =>
+						Sync.index(from, upto, Rows.batch).pipe(
+							Effect.map(({ items, next }) => ({
+								items: items.map(toIndexItem),
+								...(next === undefined ? {} : { next }),
+							})),
+						),
+					(head): IndexItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
+				),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
