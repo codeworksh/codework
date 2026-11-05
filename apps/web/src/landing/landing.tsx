@@ -7,6 +7,7 @@ import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
+import { handoffs } from "../widgets/session/handoff";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
@@ -50,13 +51,14 @@ export function Landing() {
 		const where: Where = { _tag: "Folder", path: place.path };
 		setPending(true);
 		setError(undefined);
+		const prompt = { id: crypto.randomUUID(), text: query.trim(), createdAt: Date.now() };
 		const created = await bus
 			.request({
 				topic: topics.create,
 				payload: encodeCreate({
 					place: where,
-					messageId: crypto.randomUUID(),
-					text: query.trim(),
+					messageId: prompt.id,
+					text: prompt.text,
 					...(model === undefined ? {} : { model }),
 					...(thinking === undefined ? {} : { thinkingLevel: thinking }),
 				}),
@@ -68,6 +70,7 @@ export function Landing() {
 			setError(created?.message ?? "The CodeWork server is not reachable.");
 			return;
 		}
+		handoffs.set(created.sessionId, prompt);
 		refreshProjects();
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};

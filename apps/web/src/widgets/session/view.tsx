@@ -15,6 +15,7 @@ import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
+import { type Handoff, handoffs } from "./handoff";
 import { projectsAtom, useListedSession, useSessionRunning } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
@@ -343,6 +344,18 @@ function useConversation(thread: ThreadRef) {
 	return { state, loadOlder, message: store.message };
 }
 
+/** A sent prompt as the conversation shows it until the backend echoes it. */
+const standIn = (thread: ThreadRef, prompt: Handoff): HistoryEntry => ({
+	id: prompt.id,
+	threadId: thread.threadId ?? thread.sessionId,
+	seq: Number.MAX_SAFE_INTEGER,
+	role: "user",
+	state: "committed",
+	createdAt: prompt.createdAt,
+	updatedAt: prompt.createdAt,
+	parts: [{ type: "text", text: prompt.text }],
+});
+
 function Conversation({
 	thread,
 	instanceId,
@@ -358,7 +371,12 @@ function Conversation({
 	const slow = useSlow(loaded.status === "loading");
 	// Prompts sent while idle, shown before the backend echoes them: it queues a prompt before the
 	// conversation takes it in, which would otherwise flash a queue row. Each leaves once echoed.
-	const [sent, setSent] = useState<readonly HistoryEntry[]>([]);
+	// The start page's first prompt arrives the same way, handed over with the new session.
+	const [sent, setSent] = useState<readonly HistoryEntry[]>(() => {
+		const handoff = thread.threadId === undefined ? handoffs.get(thread.sessionId) : undefined;
+		return handoff === undefined ? [] : [standIn(thread, handoff)];
+	});
+	useEffect(() => void handoffs.delete(thread.sessionId), [thread.sessionId]);
 	if (loaded.status === "ready" && sent.length > 0) {
 		const echoed = new Set(loaded.messages.map((message) => message.id));
 		if (sent.some((message) => echoed.has(message.id))) setSent(sent.filter((message) => !echoed.has(message.id)));
@@ -377,6 +395,8 @@ function Conversation({
 		const ids = new Set(sent.map((message) => message.id));
 		return {
 			...loaded,
+			// A prompt not yet taken in is about to wake the agent: busy until the server says otherwise.
+			running: loaded.running ?? true,
 			messages: [...loaded.messages, ...sent],
 			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
 				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
@@ -385,20 +405,7 @@ function Conversation({
 	}, [loaded, sent]);
 	useSessionRunning(instanceId, thread.sessionId, state.status === "ready" && isRunning(state));
 	const sending = useCallback(
-		(prompt: { readonly id: string; readonly text: string; readonly createdAt: number }) =>
-			setSent((current) => [
-				...current,
-				{
-					id: prompt.id,
-					threadId: thread.threadId ?? thread.sessionId,
-					seq: Number.MAX_SAFE_INTEGER,
-					role: "user",
-					state: "committed",
-					createdAt: prompt.createdAt,
-					updatedAt: prompt.createdAt,
-					parts: [{ type: "text", text: prompt.text }],
-				},
-			]),
+		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
 		[thread],
 	);
 	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
