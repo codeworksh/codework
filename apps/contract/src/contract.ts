@@ -346,6 +346,52 @@ export const SyncTracking = Schema.Union([
 ]);
 export type SyncTracking = typeof SyncTracking.Type;
 
+/** What the dashboard splits an organization's threads by. */
+export const DashboardBy = Schema.Literals(["status", "priority", "grouping"]);
+export type DashboardBy = typeof DashboardBy.Type;
+
+/** A thread as the dashboard lists it, with its desktop columns. */
+export const DashboardThread = Schema.Struct({
+	id: Schema.String,
+	sessionId: Schema.String,
+	originKind: Schema.Literals(["main", "fork", "subagent"]),
+	/** Its own title, else its nearest titled ancestor's, else what an untitled one is called. */
+	title: Schema.String,
+	project: Schema.Struct({ id: Schema.String, name: Schema.String }),
+	runState: RunState,
+	status: ThreadStatus,
+	priority: Priority,
+	groupingId: Schema.NullOr(Schema.String),
+	ordering: Schema.Number,
+	/** Its own color, else its session's; null is the default. */
+	color: Schema.NullOr(Schema.String),
+	/** Last activity, epoch milliseconds. */
+	updatedAt: Schema.Number,
+});
+export type DashboardThread = typeof DashboardThread.Type;
+
+/** One list of the dashboard: the threads with one status, one priority, or in one group (`null` is ungrouped), in `ordering`. */
+export const DashboardList = Schema.Union([
+	Schema.TaggedStruct("Status", { status: ThreadStatus, threads: Schema.Array(DashboardThread) }),
+	Schema.TaggedStruct("Priority", { priority: Priority, threads: Schema.Array(DashboardThread) }),
+	Schema.TaggedStruct("Grouping", {
+		groupingId: Schema.NullOr(Schema.String),
+		threads: Schema.Array(DashboardThread),
+	}),
+]);
+export type DashboardList = typeof DashboardList.Type;
+
+/**
+ * An organization's threads split into lists, each present even when empty: by status, by priority
+ * (urgent first, none last), or by group (groups in their `ordering`, ungrouped last). The
+ * organization's groups come with it, in their `ordering`, whatever the split.
+ */
+export const Dashboard = Schema.Struct({
+	lists: Schema.Array(DashboardList),
+	groups: Schema.Array(Grouping),
+});
+export type Dashboard = typeof Dashboard.Type;
+
 /**
  * The topics a client follows to keep each read current; it reads again when one fires.
  * - `sidebar.list`: `sync/changed` naming a project, space, session or thread, or a removed session;
@@ -353,9 +399,12 @@ export type SyncTracking = typeof SyncTracking.Type;
  * - `threads.line`: `sync/changed` whose `threadId` is the thread (its entries and inbox) or that
  *   names a thread (the thread itself, or the ancestor an untitled fork takes its title from);
  *   `sync/delta/<thread>` streams its draft between checkpoints.
+ * - `dashboard.list`: `sync/changed` naming a thread or a removed session; every `sync/status` and
+ *   `sync/tracking`.
  */
 export const readTopics = {
 	sidebar: [syncTopics.changed, syncTopics.tracking],
+	dashboard: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
 };
 
@@ -381,6 +430,11 @@ export const Api = RpcGroup.make(
 		payload: LineRequest,
 		success: ThreadLine,
 		error: SyncError,
+	}),
+	/** An organization's threads that are not deleted, split by `by` into lists in `ordering`. Read from app.db alone. */
+	Rpc.make("dashboard.list", {
+		payload: { organizationId: Schema.String, by: DashboardBy },
+		success: Dashboard,
 	}),
 	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
 	Rpc.make("models.list", {

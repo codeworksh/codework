@@ -1,0 +1,123 @@
+{
+	"lists": [
+		{
+			"_tag": "Grouping",
+			"groupingId": "<group Second>",
+			"threads": [
+				{
+					"id": "<thread B>",
+					"sessionId": "<session B>",
+					"originKind": "main",
+					"title": "Thread B",
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": "<group Second>",
+					"ordering": -1,
+					"color": "#0000cc",
+					"updatedAt": "<time>"
+				}
+			]
+		},
+		{
+			"_tag": "Grouping",
+			"groupingId": "<group First>",
+			"threads": [
+				{
+					"id": "<thread C>",
+					"sessionId": "<session C>",
+					"originKind": "main",
+					"title": "Thread C",
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": "<group First>",
+					"ordering": -2,
+					"color": null,
+					"updatedAt": "<time>"
+				},
+				{
+					"id": "<thread A>",
+					"sessionId": "<session A>",
+					"originKind": "main",
+					"title": "Thread A",
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": "<group First>",
+					"ordering": 0,
+					"color": "#aa0000",
+					"updatedAt": "<time>"
+				}
+			]
+		},
+		{
+			"_tag": "Grouping",
+			"groupingId": null,
+			"threads": [
+				{
+					"id": "<thread A fork>",
+					"sessionId": "<session A>",
+					"originKind": "fork",
+					"title": "Thread A",
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": null,
+					"ordering": -4,
+					"color": "#aa0000",
+					"updatedAt": "<time>"
+				},
+				{
+					"id": "<thread D>",
+					"sessionId": "<session D>",
+					"originKind": "main",
+					"title": "Thread D",
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": null,
+					"ordering": -3,
+					"color": null,
+					"updatedAt": "<time>"
+				}
+			]
+		}
+	],
+	"groups": [
+		{
+			"id": "<group Second>",
+			"organizationId": "personal",
+			"name": "Second",
+			"color": null,
+			"ordering": -1
+		},
+		{
+			"id": "<group First>",
+			"organizationId": "personal",
+			"name": "First",
+			"color": "#112233",
+			"ordering": 0
+		}
+	]
+}

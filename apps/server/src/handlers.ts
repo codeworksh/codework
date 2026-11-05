@@ -45,6 +45,7 @@ export const layer = Contract.Api.toLayer(
 			...tracking,
 
 			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"dashboard.list": (input) => Reads.dashboard(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
 			"host.info": Effect.fn("host.info")(function* () {

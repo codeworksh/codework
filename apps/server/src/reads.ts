@@ -1,12 +1,19 @@
 import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import {
+	type Dashboard,
+	type DashboardBy,
+	type DashboardList,
+	type DashboardThread,
+	type Grouping,
 	type LineRequest,
 	LineThread,
+	type Priority,
 	type SidebarProject,
 	type SidebarSession,
 	SyncError,
 	type ThreadLine,
+	type ThreadStatus,
 } from "@codeworksh/contract";
 import { HistoryEntry, Part, QueuedPrompt, RunError, UNTITLED } from "@codeworksh/widget/codework";
 
@@ -109,6 +116,102 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 	// Newest activity first; a project without sessions by its own last change.
 	const activity = (project: SidebarProject) => project.sessions[0]?.updated ?? -1;
 	return listed.toSorted((a, b) => activity(b) - activity(a));
+}, Effect.orDie);
+
+/** The status lists in the order the dashboard shows them: what needs the user first. */
+const STATUSES: ReadonlyArray<ThreadStatus> = ["working", "attention", "settled", "cancelled"];
+/** Urgent first and none last, as Linear. */
+const PRIORITIES: ReadonlyArray<Priority> = [1, 2, 3, 4, 0];
+
+/** Each `by` reads its list column then `ordering`, as its index (`thread_<by>_idx`) holds them. */
+const SPLIT = {
+	status: "thread.status, thread.ordering",
+	priority: "thread.priority, thread.ordering",
+	grouping: "thread.grouping_id, thread.ordering",
+} satisfies Record<DashboardBy, string>;
+
+export const dashboard = Effect.fn("Reads.dashboard")(function* ({
+	organizationId,
+	by,
+}: {
+	readonly organizationId: string;
+	readonly by: DashboardBy;
+}) {
+	const sql = yield* SqlClient.SqlClient;
+	const rows = yield* sql<{
+		id: string;
+		sessionId: string;
+		originKind: DashboardThread["originKind"];
+		originThreadId: string | null;
+		title: string | null;
+		projectId: string;
+		projectName: string;
+		runState: DashboardThread["runState"];
+		status: ThreadStatus;
+		priority: Priority;
+		groupingId: string | null;
+		ordering: number;
+		color: string | null;
+		updatedAt: number;
+	}>`
+		SELECT thread.id, thread.session_id, thread.origin_kind, thread.origin_thread_id, thread.title,
+			project.id AS project_id, project.name AS project_name, thread.run_state, thread.status, thread.priority,
+			thread.grouping_id, thread.ordering, COALESCE(thread.color, session.color) AS color, thread.updated_at
+		FROM thread
+		JOIN session ON session.id = thread.session_id
+		JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id
+		JOIN project ON project.machine_id = space.machine_id AND project.id = space.project_id
+		WHERE thread.organization_id = ${organizationId} AND thread.deleted_at IS NULL
+		ORDER BY ${sql.literal(SPLIT[by])}
+	`;
+	const groups = yield* sql<Grouping>`
+		SELECT id, organization_id, name, color, ordering FROM grouping
+		WHERE organization_id = ${organizationId} ORDER BY ordering
+	`;
+	// An untitled fork reads as its nearest titled ancestor, as its line does.
+	const byId = new Map(rows.map((row) => [row.id, row]));
+	const titleOf = (row: (typeof rows)[number]) => {
+		const seen = new Set<string>();
+		for (let at: typeof row | undefined = row; at !== undefined && !seen.has(at.id);) {
+			if (at.title !== null) return at.title;
+			seen.add(at.id);
+			at = at.originThreadId === null ? undefined : byId.get(at.originThreadId);
+		}
+		return UNTITLED;
+	};
+	const threads = rows.map((row): DashboardThread => ({
+		id: row.id,
+		sessionId: row.sessionId,
+		originKind: row.originKind,
+		title: titleOf(row),
+		project: { id: row.projectId, name: row.projectName },
+		runState: row.runState,
+		status: row.status,
+		priority: row.priority,
+		groupingId: row.groupingId,
+		ordering: row.ordering,
+		color: row.color,
+		updatedAt: row.updatedAt,
+	}));
+	const lists: Array<DashboardList> =
+		by === "status"
+			? STATUSES.map((status) => ({
+					_tag: "Status",
+					status,
+					threads: threads.filter((thread) => thread.status === status),
+				}))
+			: by === "priority"
+				? PRIORITIES.map((priority) => ({
+						_tag: "Priority",
+						priority,
+						threads: threads.filter((thread) => thread.priority === priority),
+					}))
+				: [...groups.map((group) => group.id), null].map((groupingId) => ({
+						_tag: "Grouping",
+						groupingId,
+						threads: threads.filter((thread) => thread.groupingId === groupingId),
+					}));
+	return { lists, groups } satisfies Dashboard;
 }, Effect.orDie);
 
 /**
