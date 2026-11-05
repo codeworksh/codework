@@ -317,6 +317,13 @@ function Lists({
 							draggable={groupId !== null}
 							onDragStart={() => groupId !== null && setDrag({ kind: "group", id: groupId })}
 							onDragOver={(event) => {
+								// A thread over the header lands at the top of the list; its drop is the section's.
+								if (drag?.kind === "thread") {
+									event.preventDefault();
+									event.stopPropagation();
+									if (drop?.list !== key || drop.index !== 0) setDrop({ list: key, index: 0 });
+									return;
+								}
 								if (drag?.kind !== "group" || groupId === null) return;
 								event.preventDefault();
 								event.stopPropagation();
