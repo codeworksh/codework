@@ -2,7 +2,7 @@ import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { Check, ChevronRight, FolderKanban, FolderPlus, ListTodo, Settings } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
 	CommandDialog,
@@ -14,18 +14,14 @@ import {
 } from "@/components/ui/command";
 import { isTheme, previewTheme, THEMES, themeAtom } from "../theme";
 import { projects, projectsAddress } from "../widgets/projects";
-import { threads, threadsAddress } from "../widgets/threads";
 import { deskAtom } from "../wm/instances";
 import { lastWorkspaceAtom, openInWorkspaceRoute, useWorkspaces, workspaceTag } from "../wm/workspaces";
 import { AddProject, PALETTE_LIST, type View } from "./sources";
 import { paletteShortcut } from "./switcher";
 import { Swatch } from "./swatch";
 
-/** How long the highlight rests on a theme before it previews, so scrolling through doesn't strobe. */
-const PREVIEW_DELAY = 200;
-
 const OPEN_PROJECTS = "widgets:projects";
-const OPEN_THREADS = "widgets:threads";
+const GO_THREADS = "navigation:threads";
 const ADD_PROJECT = "projects:add";
 const THEME_SETTINGS = "settings:themes";
 
@@ -62,7 +58,7 @@ function useOpenWidget() {
 }
 
 /**
- * The Cmd+K command palette. Moving through the theme list with the keyboard previews each theme;
+ * The Cmd+K command palette. Highlighting a theme with the keyboard previews it;
  * Enter keeps the highlighted one and closing without choosing restores the saved one. The pointer
  * only picks: hovering neither moves the highlight nor previews.
  */
@@ -72,14 +68,12 @@ export function Palette() {
 	const step = stack.at(-1);
 	const [saved, setTheme] = useAtom(themeAtom);
 	// The highlighted item, controlled so each opening starts at the top.
-	const [value, setValue] = useState(OPEN_PROJECTS);
-	const pending = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const [value, setValue] = useState(GO_THREADS);
 	const openWidget = useOpenWidget();
 
 	const show = (next: boolean) => {
-		clearTimeout(pending.current);
 		if (next) {
-			setValue(OPEN_PROJECTS);
+			setValue(GO_THREADS);
 		} else {
 			previewTheme(saved);
 		}
@@ -111,10 +105,10 @@ export function Palette() {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	});
 
+	// Closes without putting the saved theme back: the action may have just chosen another.
 	const run = (action: () => void) => {
-		clearTimeout(pending.current);
+		setPalette({ open: false, stack: [] });
 		action();
-		close();
 	};
 
 	return (
@@ -132,10 +126,8 @@ export function Palette() {
 				shouldFilter: step === undefined || step.view.kind === "sources",
 				onValueChange: (next) => {
 					setValue(next);
-					clearTimeout(pending.current);
-					// Leaving the theme list restores the saved theme.
-					const shown = isTheme(next) ? next : saved;
-					pending.current = setTimeout(() => previewTheme(shown), PREVIEW_DELAY);
+					// A theme previews as soon as it is highlighted; leaving the list restores the saved one.
+					previewTheme(isTheme(next) ? next : saved);
 				},
 			}}
 		>
@@ -146,6 +138,26 @@ export function Palette() {
 					<CommandInput placeholder="Type a command or search…" />
 					<CommandList className={PALETTE_LIST}>
 						<CommandEmpty>No results.</CommandEmpty>
+						<CommandGroup heading="Navigation">
+							<CommandItem
+								value={GO_THREADS}
+								keywords={["all threads", "go", "issues", "list", "status", "priority", "groups"]}
+								onSelect={() => run(() => void navigate({ to: "/threads" }))}
+							>
+								<ListTodo strokeWidth={1.75} />
+								All Threads
+							</CommandItem>
+						</CommandGroup>
+						<CommandGroup heading="View">
+							<CommandItem
+								value={OPEN_PROJECTS}
+								keywords={["open", "projects", "sessions", "threads", "forks", "tree"]}
+								onSelect={() => run(() => openWidget(projects.kind, projectsAddress))}
+							>
+								<FolderKanban strokeWidth={1.75} />
+								Projects
+							</CommandItem>
+						</CommandGroup>
 						<CommandGroup heading="Projects">
 							<CommandItem
 								value={ADD_PROJECT}
@@ -163,24 +175,6 @@ export function Palette() {
 							>
 								<FolderPlus strokeWidth={1.75} />
 								Add Project…
-							</CommandItem>
-						</CommandGroup>
-						<CommandGroup heading="Open">
-							<CommandItem
-								value={OPEN_PROJECTS}
-								keywords={["open", "projects", "sessions"]}
-								onSelect={() => run(() => openWidget(projects.kind, projectsAddress))}
-							>
-								<FolderKanban strokeWidth={1.75} />
-								Projects
-							</CommandItem>
-							<CommandItem
-								value={OPEN_THREADS}
-								keywords={["all threads", "open", "issues", "list", "status", "priority", "groups"]}
-								onSelect={() => run(() => openWidget(threads.kind, threadsAddress))}
-							>
-								<ListTodo strokeWidth={1.75} />
-								All Threads
 							</CommandItem>
 						</CommandGroup>
 						<CommandGroup heading="Settings">
