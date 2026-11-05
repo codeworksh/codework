@@ -11,7 +11,7 @@ import { settingsShortcut, workspaceShortcut } from "./switcher";
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
  * the desktop: widget order, pins, and per-workspace layout survive navigation.
- * Settings opens over the desktop, which stays mounted underneath.
+ * Settings and All Threads open over the desktop, which stays mounted underneath.
  */
 export function Shell() {
 	const { workspaceId } = useParams({ strict: false });
@@ -20,11 +20,14 @@ export function Shell() {
 	// From the location, which changes before route params do: a match-based check lags a
 	// render behind, in which the first workspace would pass for the one settings returns to.
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
+	const overDesktop = useLocation({
+		select: (location) => location.pathname.startsWith("/settings") || location.pathname === "/threads",
+	});
 	// An id that no longer exists (a deleted workspace) shows the first one.
 	const shown = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
 	// The workspace settings returns to; the one on screen when it opened.
 	const [lastId, setLastId] = useState<string>();
-	if (!inSettings && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
+	if (!overDesktop && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
 	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
 
 	// With every workspace deleted there is nothing to show here; the start page needs none. Only once
@@ -35,14 +38,14 @@ export function Shell() {
 	const desk = useAtomValue(deskQueryAtom);
 	const ready = AsyncResult.isSuccess(listed) && AsyncResult.isSuccess(desk);
 	useEffect(() => {
-		if (loaded && workspaces.length === 0 && !inSettings) void navigate({ to: "/", replace: true });
-	}, [loaded, workspaces.length, inSettings, navigate]);
+		if (loaded && workspaces.length === 0 && !overDesktop) void navigate({ to: "/", replace: true });
+	}, [loaded, workspaces.length, overDesktop, navigate]);
 
 	// Remembered past this route, so the start page opens things where the user last was.
 	const setLastWorkspace = useAtomSet(lastWorkspaceAtom);
 	useEffect(() => {
-		if (!inSettings && shown !== undefined) setLastWorkspace(shown.id);
-	}, [inSettings, shown, setLastWorkspace]);
+		if (!overDesktop && shown !== undefined) setLastWorkspace(shown.id);
+	}, [overDesktop, shown, setLastWorkspace]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -67,12 +70,12 @@ export function Shell() {
 			<div className="relative min-h-0 flex-1">
 				{ready &&
 					shown !== undefined && (
-						// Hidden, not unmounted, so widgets keep their state behind settings.
-						<div className={`h-full ${inSettings ? "paused-animations invisible" : ""}`} inert={inSettings}>
+						// Hidden, not unmounted, so widgets keep their state behind settings and All Threads.
+						<div className={`h-full ${overDesktop ? "paused-animations invisible" : ""}`} inert={overDesktop}>
 							<Desktop workspace={shown} />
 						</div>
 					)}
-				{inSettings && (
+				{overDesktop && (
 					<div className="absolute inset-0">
 						<Outlet />
 					</div>

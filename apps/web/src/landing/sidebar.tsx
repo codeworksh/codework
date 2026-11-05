@@ -26,8 +26,7 @@ import { OpenProviderSettings } from "@/components/offline";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
-import { useAddProject, useOpenWidget } from "../shell/palette";
-import { threads, threadsAddress } from "../widgets/threads";
+import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
 import { useRunDisplay } from "../widgets/session/display";
 import { RunMark } from "../widgets/session/run";
@@ -47,7 +46,6 @@ export function SessionsSidebar() {
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
 	const addProject = useAddProject();
-	const openWidget = useOpenWidget();
 	const navigate = useNavigate();
 	// The session in front on the workspace on screen reads as current.
 	const { workspaceId } = useParams({ strict: false });
@@ -111,10 +109,13 @@ export function SessionsSidebar() {
 						className="h-8 rounded-md border-transparent bg-transparent pr-2 pl-8 text-ui font-medium shadow-none dark:bg-transparent placeholder:text-ink-muted hover:bg-selection-subtle focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
 					/>
 				</div>
-				<button type="button" onClick={() => openWidget(threads.kind, threadsAddress)} className={NAV_ROW}>
+				<Link
+					to="/threads"
+					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:text-ink`}
+				>
 					<HugeiconsIcon icon={ListViewIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
 					All Threads
-				</button>
+				</Link>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
 				{problem !== undefined ? (

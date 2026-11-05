@@ -45,7 +45,7 @@ export function useAddProject() {
  * Opens a widget by kind and address: where it already is, so the desktop reveals it there; else
  * in the workspace on screen, else the last used.
  */
-export function useOpenWidget() {
+function useOpenWidget() {
 	const navigate = useNavigate();
 	const workspaces = useWorkspaces();
 	const { instances } = useAtomValue(deskAtom);
