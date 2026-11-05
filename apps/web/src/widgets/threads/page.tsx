@@ -4,7 +4,6 @@ import { ListTodo } from "lucide-react";
 import { useContext, useLayoutEffect, useMemo, useRef } from "react";
 
 import { makeHost } from "../../kernel/host";
-import { PageFrame } from "../../wm/frame";
 import { useOpenElsewhere } from "../../wm/open";
 import { AllThreads } from "./threads";
 
@@ -32,9 +31,15 @@ export function ThreadsPage() {
 	return (
 		<ShellContext value={shell}>
 			<HostContext value={host}>
-				<PageFrame title="All Threads" icon={ListTodo}>
-					<AllThreads instanceId={PAGE} props={{}} address={undefined} params={{}} />
-				</PageFrame>
+				<div className="flex h-full min-h-0 flex-col">
+					<header className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-4">
+						<ListTodo className="size-4 text-ink-muted" strokeWidth={1.75} aria-hidden />
+						<h1 className="text-ui font-medium text-ink">All Threads</h1>
+					</header>
+					<div className="min-h-0 flex-1">
+						<AllThreads instanceId={PAGE} props={{}} address={undefined} params={{}} />
+					</div>
+				</div>
 			</HostContext>
 		</ShellContext>
 	);

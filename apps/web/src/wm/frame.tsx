@@ -1,5 +1,5 @@
 import { AppWindow, GripVertical, Maximize2, Minimize2, Pin, PinOff, Plus, X, type LucideIcon } from "lucide-react";
-import { isValidElement, type ReactNode, type Ref } from "react";
+import { isValidElement, type ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
@@ -89,7 +89,22 @@ export function Frame(props: FrameProps) {
 			<div
 				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]/frame:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
 			>
-				<FrameHeader title={title} lead={lead} icon={icon} handleRef={handleRef} canDrag={canDrag}>
+				<header className="flex h-pane shrink-0 items-center gap-1 border-b border-edge pr-2 pl-1.5 select-none">
+					<div
+						ref={handleRef}
+						className={`flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+					>
+						<GripVertical
+							className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`}
+							aria-hidden
+						/>
+						{icon !== undefined && <IconOf icon={icon} className="mr-0.5 size-4 shrink-0 text-ink-muted" />}
+						{lead !== undefined && <Lead text={lead} />}
+						<Title
+							text={title}
+							className="font-semibold text-ink-muted group-data-[focused=true]/frame:text-ink"
+						/>
+					</div>
 					<Action
 						icon={pinned ? PinOff : Pin}
 						label={pinned ? "Unpin" : "Pin"}
@@ -104,73 +119,13 @@ export function Frame(props: FrameProps) {
 					/>
 					<Move destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew} />
 					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
-				</FrameHeader>
+				</header>
 				{/* A collapsed frame keeps its widget mounted, so it keeps working and keeps its state. */}
 				<div className="min-h-0 flex-1 overflow-hidden" hidden={collapsed}>
 					{props.children}
 				</div>
 			</div>
 		</article>
-	);
-}
-
-/** A frame's header: the grip, icon, lead and title, then `children`, its actions. */
-function FrameHeader({
-	title,
-	lead,
-	icon,
-	handleRef,
-	canDrag,
-	children,
-}: {
-	readonly title: string;
-	readonly lead?: string | undefined;
-	readonly icon?: FrameIcon | undefined;
-	readonly handleRef?: Ref<HTMLDivElement>;
-	readonly canDrag: boolean;
-	readonly children?: ReactNode;
-}) {
-	return (
-		<header className="flex h-pane shrink-0 items-center gap-1 border-b border-edge pr-2 pl-1.5 select-none">
-			<div
-				ref={handleRef}
-				className={`flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
-			>
-				<GripVertical className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`} aria-hidden />
-				{icon !== undefined && <IconOf icon={icon} className="mr-0.5 size-4 shrink-0 text-ink-muted" />}
-				{lead !== undefined && <Lead text={lead} />}
-				<Title text={title} className="font-semibold text-ink-muted group-data-[focused=true]/frame:text-ink" />
-			</div>
-			{children}
-		</header>
-	);
-}
-
-/** The desktop's surface around its frames, so a page drawn as a frame sits where a frame does. */
-export const SURFACE_CLASS = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
-
-/**
- * A page drawn as a lone, focused frame, without a frame's controls: its title sits where a widget's
- * does, so moving between a workspace and the page keeps it still.
- */
-export function PageFrame({
-	title,
-	icon,
-	children,
-}: {
-	readonly title: string;
-	readonly icon: FrameIcon;
-	readonly children: ReactNode;
-}) {
-	return (
-		<main className={SURFACE_CLASS}>
-			<article className="group/frame box-border h-full p-1" data-focused>
-				<div className="flex h-full flex-col overflow-hidden">
-					<FrameHeader title={title} icon={icon} canDrag={false} />
-					<div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-				</div>
-			</article>
-		</main>
 	);
 }
 
