@@ -1,7 +1,7 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { Check, ChevronRight, FolderKanban, FolderPlus, KanbanSquare, Settings } from "lucide-react";
+import { Check, ChevronRight, FolderKanban, FolderPlus, ListTodo, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -13,8 +13,8 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { isTheme, previewTheme, THEMES, themeAtom } from "../theme";
-import { dashboard, dashboardAddress } from "../widgets/dashboard";
 import { projects, projectsAddress } from "../widgets/projects";
+import { threads, threadsAddress } from "../widgets/threads";
 import { deskAtom } from "../wm/instances";
 import { lastWorkspaceAtom, openInWorkspaceRoute, useWorkspaces, workspaceTag } from "../wm/workspaces";
 import { AddProject, PALETTE_LIST, type View } from "./sources";
@@ -25,7 +25,7 @@ import { Swatch } from "./swatch";
 const PREVIEW_DELAY = 200;
 
 const OPEN_PROJECTS = "widgets:projects";
-const OPEN_DASHBOARD = "widgets:dashboard";
+const OPEN_THREADS = "widgets:threads";
 const ADD_PROJECT = "projects:add";
 const THEME_SETTINGS = "settings:themes";
 
@@ -42,6 +42,26 @@ export function useAddProject() {
 }
 
 /**
+ * Opens a widget by kind and address: where it already is, so the desktop reveals it there; else
+ * in the workspace on screen, else the last used.
+ */
+export function useOpenWidget() {
+	const navigate = useNavigate();
+	const workspaces = useWorkspaces();
+	const { instances } = useAtomValue(deskAtom);
+	const lastId = useAtomValue(lastWorkspaceAtom);
+	const { workspaceId } = useParams({ strict: false });
+	return (kind: string, address: string) => {
+		const open = instances.find((instance) => instance.kind === kind);
+		const target =
+			(open && workspaces.find((workspace) => (open.tags & workspaceTag(workspace)) !== 0)) ??
+			workspaces.find((workspace) => workspace.id === (workspaceId ?? lastId)) ??
+			workspaces[0];
+		if (target !== undefined) void navigate(openInWorkspaceRoute(target, address, "replace"));
+	};
+}
+
+/**
  * The Cmd+K command palette. Moving through the theme list with the keyboard previews each theme;
  * Enter keeps the highlighted one and closing without choosing restores the saved one. The pointer
  * only picks: hovering neither moves the highlight nor previews.
@@ -54,20 +74,7 @@ export function Palette() {
 	// The highlighted item, controlled so each opening starts at the top.
 	const [value, setValue] = useState(OPEN_PROJECTS);
 	const pending = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const workspaces = useWorkspaces();
-	const { instances } = useAtomValue(deskAtom);
-	const lastId = useAtomValue(lastWorkspaceAtom);
-	const { workspaceId } = useParams({ strict: false });
-
-	// Where the widget already is, so the desktop reveals it there; else the workspace on screen, else the last used.
-	const openWidget = (kind: string, address: string) => {
-		const open = instances.find((instance) => instance.kind === kind);
-		const target =
-			(open && workspaces.find((workspace) => (open.tags & workspaceTag(workspace)) !== 0)) ??
-			workspaces.find((workspace) => workspace.id === (workspaceId ?? lastId)) ??
-			workspaces[0];
-		if (target !== undefined) void navigate(openInWorkspaceRoute(target, address, "replace"));
-	};
+	const openWidget = useOpenWidget();
 
 	const show = (next: boolean) => {
 		clearTimeout(pending.current);
@@ -158,22 +165,22 @@ export function Palette() {
 								Add Project…
 							</CommandItem>
 						</CommandGroup>
-						<CommandGroup heading="Widgets">
+						<CommandGroup heading="Open">
 							<CommandItem
 								value={OPEN_PROJECTS}
-								keywords={["open projects", "sessions"]}
+								keywords={["open", "projects", "sessions"]}
 								onSelect={() => run(() => openWidget(projects.kind, projectsAddress))}
 							>
 								<FolderKanban strokeWidth={1.75} />
-								Open Projects
+								Projects
 							</CommandItem>
 							<CommandItem
-								value={OPEN_DASHBOARD}
-								keywords={["open dashboard", "board", "threads", "status", "priority", "groups"]}
-								onSelect={() => run(() => openWidget(dashboard.kind, dashboardAddress))}
+								value={OPEN_THREADS}
+								keywords={["all threads", "open", "issues", "list", "status", "priority", "groups"]}
+								onSelect={() => run(() => openWidget(threads.kind, threadsAddress))}
 							>
-								<KanbanSquare strokeWidth={1.75} />
-								Open Dashboard
+								<ListTodo strokeWidth={1.75} />
+								All Threads
 							</CommandItem>
 						</CommandGroup>
 						<CommandGroup heading="Settings">

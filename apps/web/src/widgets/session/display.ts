@@ -103,7 +103,7 @@ export function useDrawn(display: Display): Display {
 /**
  * Whether each mounted display reads a thread idle, by thread key. Displays read different copies
  * of `run_state` (the view its thread's updates, a tab and the sidebar the sidebar list, the
- * dashboard its own list), each refreshed on its own; a stop clears once all of them read idle, so
+ * All Threads its own list), each refreshed on its own; a stop clears once all of them read idle, so
  * no display whose copy still says running draws the run again for the moment between.
  */
 const idleBy = new Map<string, Map<symbol, boolean>>();
