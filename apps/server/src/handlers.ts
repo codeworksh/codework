@@ -14,6 +14,7 @@ import { Event } from "./event.ts";
 import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
 import { Servers } from "./servers.ts";
+import { Sync } from "./sync.ts";
 import { Workspaces } from "./workspaces.ts";
 
 /**
@@ -53,6 +54,7 @@ export const layer = Contract.Api.toLayer(
 		const kv = yield* Kv.Service;
 		const servers = yield* Servers.Service;
 		const health = yield* Health.Service;
+		const sync = yield* Sync.Service;
 		// A failed call is the first sign the default server went down.
 		const call = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0], options?: Codework.CallOptions) =>
 			Codework.call(use, options).pipe(Effect.tapError(() => health.poke));
@@ -161,6 +163,10 @@ export const layer = Contract.Api.toLayer(
 				// Checked again whether it worked or not, so the status shows what the CLI left.
 				yield* Cli.service(yield* servers.getLocal(id), action).pipe(Effect.ensuring(health.check));
 			}),
+
+			"sync.open": (ref) => sync.open(ref),
+			"sync.close": (ref) => sync.close(ref),
+			"sync.page": (input) => sync.page(input),
 
 			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),
 			"kv.set": ({ package: pkg, key, value }) => kv.set(pkg, key, value),

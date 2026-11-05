@@ -232,6 +232,58 @@ export class ServersError extends Schema.TaggedError<ServersError>()("Server.Ser
 	message: Schema.String,
 }) {}
 
+/** A thread of a synced session. */
+export const SyncThread = Schema.Struct({ sessionId: Schema.String, threadId: Schema.String });
+export type SyncThread = typeof SyncThread.Type;
+
+/** A thread whose detail is not synced, or not known yet. */
+export class SyncError extends Schema.TaggedError<SyncError>()("Server.SyncError", {
+	message: Schema.String,
+}) {}
+
+/** The app bus topics the sync publishes on. */
+export const syncTopics = {
+	/** `SyncChanged` after each applied batch; stored. */
+	changed: "sync/changed",
+	/** `SyncStatus` whenever a thread's status moves; stored, in the transaction that moved it. */
+	status: "sync/status",
+	/** A thread's live text and thinking deltas (`LiveDelta`) that continue its draft; never stored. */
+	delta: (threadId: string) => `sync/delta/${threadId}`,
+};
+
+/**
+ * The rows one applied batch wrote, by table, for one machine. Projects and spaces are keyed by
+ * `machineId` and id, the rest by id. `threadId` names the thread whose detail the batch was;
+ * `items` counts the rows it carried; `full` marks the first batch of a full sync.
+ */
+export const SyncChanged = Schema.Struct({
+	machineId: Schema.String,
+	threadId: Schema.optionalKey(Schema.String),
+	full: Schema.Boolean,
+	items: Schema.Int,
+	project: Schema.Array(Schema.String),
+	space: Schema.Array(Schema.String),
+	session: Schema.Array(Schema.String),
+	thread: Schema.Array(Schema.String),
+	entry: Schema.Array(Schema.String),
+	inbox: Schema.Array(Schema.String),
+	/** Sessions soft-deleted, with their threads. */
+	removed: Schema.Array(Schema.String),
+});
+export type SyncChanged = typeof SyncChanged.Type;
+
+export const ThreadStatus = Schema.Literals(["working", "settled", "attention", "cancelled"]);
+export type ThreadStatus = typeof ThreadStatus.Type;
+
+/** A thread's status moved; `at` is the app server's clock. */
+export const SyncStatus = Schema.Struct({
+	threadId: Schema.String,
+	status: ThreadStatus,
+	previous: ThreadStatus,
+	at: Schema.Number,
+});
+export type SyncStatus = typeof SyncStatus.Type;
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
@@ -393,6 +445,26 @@ export const Api = RpcGroup.make(
 		payload: { id: Schema.String, action: CliAction },
 		success: Schema.Void,
 		error: ServersError,
+	}),
+	/**
+	 * Keeps a thread's detail in sync while it is open: the first open stores its newest page, a
+	 * reopen resumes from where it stopped. Opens are counted; done once the detail is current, or
+	 * at once while its machine is unreachable.
+	 */
+	Rpc.make("sync.open", {
+		payload: SyncThread,
+		success: Schema.Void,
+	}),
+	/** Stops syncing a thread's detail once every open is closed; what is stored stays. */
+	Rpc.make("sync.close", {
+		payload: SyncThread,
+		success: Schema.Void,
+	}),
+	/** Stores up to `limit` entries of an opened thread's line below its floor; `floor` is the new one. */
+	Rpc.make("sync.page", {
+		payload: { ...SyncThread.fields, limit: Schema.Int },
+		success: Schema.Struct({ entries: Schema.Int, floor: Schema.NullOr(Schema.Int) }),
+		error: Schema.Union([CodeworkUnavailable, SyncError]),
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

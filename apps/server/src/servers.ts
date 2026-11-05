@@ -132,6 +132,8 @@ export class Service extends Context.Service<
 		readonly defaultHome: Effect.Effect<string>;
 		/** The default server's home each time it changes, without the current one. */
 		readonly homeChanges: Stream.Stream<string>;
+		/** Every server now, then again after each change to any of them. */
+		readonly watch: Stream.Stream<ReadonlyArray<Row>>;
 		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError>;
 		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError>;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
@@ -190,13 +192,17 @@ export const layer = Layer.effect(
 
 		const defaultHome = locals.pipe(Effect.map((rows) => homeOf(rows.find((row) => row.isDefault) ?? rows[0]!).path));
 		const current = yield* SubscriptionRef.make(yield* defaultHome);
-		// Told after every write, so a new default or a new home for it reaches the connection.
+		const machines = yield* SubscriptionRef.make(yield* list);
+		// Told after every write, so a new default or a new home for it reaches the connection, and
+		// every change of a server reaches the sync.
 		const announce = defaultHome.pipe(
 			Effect.flatMap((home) =>
 				SubscriptionRef.get(current).pipe(
 					Effect.flatMap((was) => (was === home ? Effect.void : SubscriptionRef.set(current, home))),
 				),
 			),
+			Effect.andThen(list),
+			Effect.flatMap((rows) => SubscriptionRef.set(machines, rows)),
 		);
 
 		// A home names one server, so no two servers share one.
@@ -225,6 +231,7 @@ export const layer = Layer.effect(
 			homeOf,
 			defaultHome,
 			homeChanges: SubscriptionRef.changes(current).pipe(Stream.drop(1)),
+			watch: SubscriptionRef.changes(machines),
 
 			add: Effect.fn("Servers.add")(function* (input) {
 				const id = yield* Effect.sync(() => crypto.randomUUID().slice(0, 8));
@@ -249,6 +256,7 @@ export const layer = Layer.effect(
 						})}`;
 					}),
 				);
+				yield* announce;
 				return id;
 			}),
 
@@ -288,6 +296,7 @@ export const layer = Layer.effect(
 				if (row.id === LOCAL_SERVER) return yield* fail("The built-in local server cannot be removed.");
 				if (row.isDefault) return yield* fail("Make another server the default before removing this one.");
 				yield* sql`DELETE FROM machine WHERE id = ${id}`.pipe(Effect.orDie);
+				yield* announce;
 			}),
 
 			setDefault: Effect.fn("Servers.setDefault")(function* (id) {

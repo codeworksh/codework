@@ -1,0 +1,72 @@
+{
+	"steps": [
+		{
+			"step": "first seen",
+			"status": "settled",
+			"run_outcome": null,
+			"run_error": null
+		},
+		{
+			"step": "run started",
+			"status": "working",
+			"run_outcome": null,
+			"run_error": null
+		},
+		{
+			"step": "user interrupt",
+			"status": "cancelled",
+			"run_outcome": "interrupted",
+			"run_error": "{\"_tag\":\"interrupted\",\"reason\":\"user\"}"
+		},
+		{
+			"step": "run started again",
+			"status": "working",
+			"run_outcome": null,
+			"run_error": null
+		},
+		{
+			"step": "succeeded",
+			"status": "attention",
+			"run_outcome": "succeeded",
+			"run_error": null
+		},
+		{
+			"step": "crash sweep and resume",
+			"status": "working",
+			"run_outcome": null,
+			"run_error": null
+		}
+	],
+	"moves": [
+		{
+			"threadId": "<thr 1>",
+			"status": "working",
+			"previous": "settled",
+			"at": "<time>"
+		},
+		{
+			"threadId": "<thr 1>",
+			"status": "cancelled",
+			"previous": "working",
+			"at": "<time>"
+		},
+		{
+			"threadId": "<thr 1>",
+			"status": "working",
+			"previous": "cancelled",
+			"at": "<time>"
+		},
+		{
+			"threadId": "<thr 1>",
+			"status": "attention",
+			"previous": "working",
+			"at": "<time>"
+		},
+		{
+			"threadId": "<thr 1>",
+			"status": "working",
+			"previous": "attention",
+			"at": "<time>"
+		}
+	]
+}
