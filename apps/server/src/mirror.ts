@@ -111,6 +111,8 @@ const threadCore = (thread: Codework.ThreadSummary) => {
 		createdSeq: thread.createdSeq,
 		createdAt: thread.createdAt,
 		updatedAt: thread.updatedAt,
+		// The store has the row, so a soft delete from an earlier full sync (a restored store) is undone.
+		deletedAt: null,
 	};
 };
 
@@ -218,6 +220,7 @@ export const index = (
 							metadata: session.metadata === undefined ? null : JSON.stringify(session.metadata),
 							createdAt: session.createdAt,
 							updatedAt: session.updatedAt,
+							deletedAt: null,
 						},
 						{ organizationId },
 					);
@@ -300,7 +303,7 @@ export const entries = (list: ReadonlyArray<Codework.HistoryEntry>, changes: Cha
 	});
 
 /** Applies one `thread.sync` batch of a thread's rows; deltas are never stored. */
-export const thread = (rows: ReadonlyArray<ThreadRow>) =>
+export const thread = (threadId: string, rows: ReadonlyArray<ThreadRow>) =>
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		const changes = new Changes();
@@ -310,10 +313,17 @@ export const thread = (rows: ReadonlyArray<ThreadRow>) =>
 		);
 		for (const row of rows) {
 			if (row._tag !== "Inbox") continue;
-			// A pending prompt is not stored: the wire's `QueuedPrompt` has no `admitted_seq`, which the
-			// inbox table requires.
-			if (row.state === "pending") continue;
-			yield* sql`DELETE FROM inbox WHERE id = ${row.prompt.id}`;
+			const { prompt } = row;
+			if (row.state === "pending")
+				yield* upsert("inbox", ["id"], {
+					id: prompt.id,
+					threadId,
+					delivery: prompt.delivery,
+					text: prompt.text,
+					admittedSeq: prompt.admittedSeq,
+					createdAt: prompt.createdAt,
+				});
+			else yield* sql`DELETE FROM inbox WHERE id = ${prompt.id}`;
 			changes.inbox.add(row.prompt.id);
 		}
 		return changes;

@@ -211,6 +211,8 @@ export const QueuedPrompt = Schema.Struct({
 	id: Schema.String,
 	delivery: PromptSchema.Delivery,
 	text: Schema.String,
+	/** The thread's sequence number at admission; orders the queue. */
+	admittedSeq: Schema.Int,
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
 });

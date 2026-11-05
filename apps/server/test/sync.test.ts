@@ -303,6 +303,57 @@ it("an opened thread keeps its detail: first page with a floor, resume after clo
 	);
 }, 120_000);
 
+it("a follow-up queued behind a reply is a pending inbox row until it is promoted", async () => {
+	const cwHome = tempDir("inbox-cw");
+	const appHome = tempDir("inbox-app");
+	const server = await codework(cwHome, await freePort());
+	const created = await server.run((rpc) => rpc["session.create"]({ directory: cwHome }));
+	const ref = { sessionId: created.session.id, threadId: created.id };
+	const desk = await app(appHome);
+	const machineId = await addMachine(appHome, server, desk.run);
+	await desk.run((rpc) => rpc["sync.open"](ref));
+
+	const queue = () => server.run((rpc) => rpc["thread.queue"](ref)).then((queued) => queued.entries);
+	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "gate" }));
+	// The held reply has taken its own prompt, so the queue holds only the follow-up.
+	await waitFor(async () => ((await queue()).length === 0 ? true : undefined), "the held reply");
+	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "Queued", delivery: "followUp" }));
+	const [prompt] = await queue();
+	expect(prompt).toBeDefined();
+	const pending = await waitFor(
+		() => query(appHome, "SELECT * FROM inbox WHERE id = ?", prompt!.id)[0],
+		"the pending inbox row",
+	);
+	expect(pending).toEqual({
+		id: prompt!.id,
+		thread_id: ref.threadId,
+		delivery: "followUp",
+		text: "Queued",
+		admitted_seq: prompt!.admittedSeq,
+		created_at: prompt!.createdAt,
+	});
+
+	for (let step = 0; step < 4; step++) server.release();
+	await server.run((rpc) => rpc["thread.wait"](ref));
+	const promoted = () => query(appHome, "SELECT id FROM entry WHERE id = ?", prompt!.id).length === 1;
+	await waitFor(
+		() => (query(appHome, tables.inbox).length === 0 && promoted() ? true : undefined),
+		"the promoted follow-up",
+	);
+
+	const { storeId } = await synced(appHome, machineId, server);
+	await snapshot(
+		"inbox",
+		normalizer(
+			[cwHome, appHome],
+			[[storeId, "<store>"]],
+		)({
+			pending: [pending],
+			promoted: dump(appHome, "inbox", "entry"),
+		}),
+	);
+}, 90_000);
+
 it("a restored store is read again in full: returning rows keep their desktop columns, the rest are soft-deleted", async () => {
 	const cwHome = tempDir("restored-cw");
 	const appHome = tempDir("restored-app");
@@ -323,6 +374,7 @@ it("a restored store is read again in full: returning rows keep their desktop co
 
 	await stop(desk.proc);
 	await stop(server.proc, "SIGTERM");
+	copyFileSync(server.database, join(backup, "later.db"));
 	for (const suffix of ["-wal", "-shm"]) rmSync(`${server.database}${suffix}`, { force: true });
 	copyFileSync(join(backup, "codework.db"), server.database);
 	server = await codework(cwHome, port);
@@ -347,6 +399,33 @@ it("a restored store is read again in full: returning rows keep their desktop co
 	expect(rows.session!.find((row) => row.id === after.session.id)?.deleted_at).not.toBeNull();
 	expect(rows.thread!.find((row) => row.id === after.id)?.deleted_at).not.toBeNull();
 
+	// Restored again, to the later copy that has the soft-deleted session: past the cursor, so a resume brings it back.
+	write(appHome, "UPDATE session SET color = '#0088ff' WHERE id = ?", after.session.id);
+	write(appHome, "UPDATE thread SET priority = 3, color = '#0088ff' WHERE id = ?", after.id);
+	await stop(desk.proc);
+	await stop(server.proc, "SIGTERM");
+	for (const suffix of ["-wal", "-shm"]) rmSync(`${server.database}${suffix}`, { force: true });
+	copyFileSync(join(backup, "later.db"), server.database);
+	server = await codework(cwHome, port);
+	const later = await server.run((rpc) => rpc["server.info"]({}));
+	expect(later.storeId).toBe(restored.storeId);
+	expect(later.rev).toBeGreaterThan(restored.rev);
+	const againAt = lastSeq(appHome);
+	desk = await app(appHome);
+	await synced(appHome, machineId, server);
+	const again = dump(appHome, "session", "thread");
+	const changedAgain = notices(appHome, Contract.syncTopics.changed, againAt);
+	expect(changedAgain.every((notice) => notice.full === false)).toBe(true);
+	expect(again.session!.find((row) => row.id === after.session.id)).toMatchObject({
+		color: "#0088ff",
+		deleted_at: null,
+	});
+	expect(again.thread!.find((row) => row.id === after.id)).toMatchObject({
+		priority: 3,
+		color: "#0088ff",
+		deleted_at: null,
+	});
+
 	await snapshot(
 		"restored",
 		normalizer(
@@ -356,6 +435,7 @@ it("a restored store is read again in full: returning rows keep their desktop co
 			heads: [{ rev: head }, { rev: restored.rev }],
 			changed: changed,
 			...rows,
+			again: { head: { rev: later.rev }, changed: changedAgain, ...again },
 		}),
 	);
 }, 120_000);
