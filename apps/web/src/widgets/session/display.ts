@@ -100,16 +100,41 @@ export function useDrawn(display: Display): Display {
 	return immediate ? display : drawn.display;
 }
 
+/**
+ * Whether each mounted display reads a thread idle, by thread key. Displays read different copies
+ * of `run_state` (the view its thread's updates, a tab and the sidebar the sidebar list, the
+ * dashboard its own list), each refreshed on its own; a stop clears once all of them read idle, so
+ * no display whose copy still says running draws the run again for the moment between.
+ */
+const idleBy = new Map<string, Map<symbol, boolean>>();
+
 /** What to draw for these threads' runs, by key and stored run state: the one that says most. */
 export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; readonly runState: RunState }>) {
 	const sent = useAtomValue(sentAtom);
 	const { unstop } = useSent();
-	// A stop settles once its thread's row arrives idle, whichever view sees it first.
-	const settled = threads.filter(({ key, runState }) => runState === "idle" && sent.get(key)?.stopping === true);
-	const settledKeys = settled.map(({ key }) => key).join("\n");
+	const [self] = useState(() => Symbol("display"));
+	const reads = threads.map(({ key, runState }) => `${key}\t${runState}`).join("\n");
+	const stopping = [...sent].flatMap(([key, { stopping }]) => (stopping ? [key] : [])).join("\n");
 	useEffect(() => {
-		for (const key of settledKeys.split("\n")) if (key !== "") unstop(key);
-	}, [settledKeys, unstop]);
+		const keys = new Set<string>();
+		for (const line of reads.split("\n")) {
+			if (line === "") continue;
+			const [key = "", runState] = line.split("\t");
+			keys.add(key);
+			const readers = idleBy.get(key) ?? new Map<symbol, boolean>();
+			readers.set(self, runState === "idle");
+			idleBy.set(key, readers);
+		}
+		for (const key of stopping.split("\n"))
+			if (keys.has(key) && [...idleBy.get(key)!.values()].every(Boolean)) unstop(key);
+		return () => {
+			for (const key of keys) {
+				const readers = idleBy.get(key);
+				readers?.delete(self);
+				if (readers?.size === 0) idleBy.delete(key);
+			}
+		};
+	}, [reads, stopping, self, unstop]);
 	const display = threads.reduce<Display>((most, { key, runState }) => {
 		const next = displayOf(sent.get(key), runState);
 		return WEIGHT[next] > WEIGHT[most] ? next : most;

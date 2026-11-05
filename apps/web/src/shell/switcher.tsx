@@ -8,7 +8,7 @@ import { registry } from "../widgets";
 import { threadRef } from "../widgets/session/address";
 import { useRunDisplay } from "../widgets/session/display";
 import { threadKey } from "../widgets/session/schema";
-import { runningAtom } from "../widgets/session/projects";
+import { runStatesAtom } from "../widgets/session/projects";
 import { RunMark } from "../widgets/session/run";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
@@ -42,7 +42,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 		const ref = threadRef(address);
 		return ref === undefined ? "" : threadKey(ref);
 	};
-	const working = useAtomValue(runningAtom(instances.map((instance) => keyOf(instance.address)).join("\n")));
+	const runStates = useAtomValue(runStatesAtom(instances.map((instance) => keyOf(instance.address)).join("\n")));
 	const navigate = useNavigate();
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
@@ -117,7 +117,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 				const threads = instances.flatMap((instance) => {
 					const key = keyOf(instance.address);
 					return key !== "" && (instance.tags & workspaceTag(workspace)) !== 0
-						? [{ key, runState: working.has(key) ? ("running" as const) : ("idle" as const) }]
+						? [{ key, runState: runStates.get(key) ?? "idle" }]
 						: [];
 				});
 				return (

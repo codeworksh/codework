@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { PERSONAL_ORGANIZATION, readTopics, SyncChanged, SyncTracking, syncTopics } from "@codeworksh/contract";
+import type { RunState } from "@codeworksh/widget/codework";
 import type { Event } from "@codeworksh/widget/event";
 import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -50,19 +51,17 @@ export const projectsAtom = Server.runtime
 	)
 	.pipe(Atom.keepAlive);
 
-/** The sessions whose main thread has a run going, as synced. */
-const mainsRunningAtom = Atom.make((get) => {
+/** Each session's main thread's run state, as synced. */
+const mainRunStatesAtom = Atom.make((get) => {
 	const result = get(projectsAtom);
-	if (!AsyncResult.isSuccess(result)) return new Set<string>();
-	return new Set(
-		result.value.flatMap((project) =>
-			project.sessions.flatMap((session) => (session.runState === "idle" ? [] : [session.id])),
-		),
+	if (!AsyncResult.isSuccess(result)) return new Map<string, RunState>();
+	return new Map(
+		result.value.flatMap((project) => project.sessions.map((session) => [session.id, session.runState] as const)),
 	);
 });
 
-/** Whether a thread other than its session's main one has a run going: its own synced row, read again as it changes. */
-const forkRunningAtom = Atom.family((key: string) => {
+/** The run state of a thread other than its session's main one: its own synced row, read again as it changes. */
+const threadRunStateAtom = Atom.family((key: string) => {
 	const [sessionId = "", threadId = ""] = key.split("/");
 	return Server.runtime.atom(
 		Stream.unwrap(
@@ -76,8 +75,8 @@ const forkRunningAtom = Atom.family((key: string) => {
 						),
 						Stream.mapEffect(() =>
 							client("threads.line", { sessionId, threadId, limit: 0 }).pipe(
-								Effect.map((line) => line.thread.runState !== "idle"),
-								Effect.orElseSucceed(() => false),
+								Effect.map((line) => line.thread.runState),
+								Effect.orElseSucceed((): RunState => "idle"),
 							),
 						),
 						Stream.changes,
@@ -89,19 +88,21 @@ const forkRunningAtom = Atom.family((key: string) => {
 });
 
 /**
- * Of the threads named by these {@link threadKey}s, one per line, those with a run going: a main
- * thread as the sidebar has it, any other by its own row.
+ * The run state of each thread named by these {@link threadKey}s, one per line: a main thread as
+ * the sidebar has it, any other by its own row; idle until read.
  */
-export const runningAtom = Atom.family((keys: string) =>
+export const runStatesAtom = Atom.family((keys: string) =>
 	Atom.make((get) => {
-		const mains = get(mainsRunningAtom);
-		return new Set(
-			keys.split("\n").filter((key) => {
-				if (key === "") return false;
-				if (!key.includes("/")) return mains.has(key);
-				const fork = get(forkRunningAtom(key));
-				return AsyncResult.isSuccess(fork) && fork.value;
-			}),
+		const mains = get(mainRunStatesAtom);
+		return new Map(
+			keys
+				.split("\n")
+				.filter((key) => key !== "")
+				.map((key): [string, RunState] => {
+					if (!key.includes("/")) return [key, mains.get(key) ?? "idle"];
+					const thread = get(threadRunStateAtom(key));
+					return [key, AsyncResult.isSuccess(thread) ? thread.value : "idle"];
+				}),
 		);
 	}),
 );
