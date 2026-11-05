@@ -7,6 +7,7 @@ import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
+import { useSent } from "../widgets/session/display";
 import { handoffs } from "../widgets/session/handoff";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
@@ -28,6 +29,7 @@ export function Landing() {
 	// The start page asks the Session backend as the "landing" source, outside any widget frame.
 	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "landing" }).bus, [registry]);
 	const openElsewhere = useOpenElsewhere();
+	const inFlight = useSent();
 	const [query, setQuery] = useState("");
 	const [playing, setPlaying] = useState(false);
 	const place = useAtomValue(placeAtom);
@@ -68,6 +70,8 @@ export function Landing() {
 			setError(created?.message ?? "The CodeWork server is not reachable.");
 			return;
 		}
+		// Pending under the main thread's key (its session's id) until its row lands in app.db.
+		inFlight.prompt(created.sessionId, prompt.id);
 		handoffs.set(created.sessionId, prompt);
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};
