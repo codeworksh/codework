@@ -964,19 +964,20 @@ export const layer = Layer.effect(
 			change: RunChange,
 		) {
 			const time = DateTime.toEpochMillis(at);
+			const rev = yield* store.rev;
 			const state: ThreadSchema.RunState =
 				change._tag === "started" ? "starting" : change._tag === "running" ? "running" : "idle";
 			// SET reads the old row, so `run_state_at` moves only when the state does.
 			const stateAt = sql`CASE WHEN run_state = ${state} THEN run_state_at ELSE ${time} END`;
 			if (change._tag === "running") {
-				yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state} WHERE id = ${threadId}`;
+				yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state}, rev = ${rev} WHERE id = ${threadId}`;
 				return;
 			}
 			if (change._tag === "started") {
 				yield* sql`
 					UPDATE thread SET
 						run_state_at = ${stateAt}, run_state = ${state}, run_started_at = ${time},
-						run_ended_at = NULL, run_outcome = NULL, run_error = NULL
+						run_ended_at = NULL, run_outcome = NULL, run_error = NULL, rev = ${rev}
 					WHERE id = ${threadId}
 				`;
 				return;
@@ -985,7 +986,7 @@ export const layer = Layer.effect(
 			yield* sql`
 				UPDATE thread SET
 					run_state_at = ${stateAt}, run_state = ${state}, run_ended_at = ${time},
-					run_outcome = ${change.outcome}, run_error = ${error}
+					run_outcome = ${change.outcome}, run_error = ${error}, rev = ${rev}
 				WHERE id = ${threadId}
 			`;
 		}, Effect.orDie);
