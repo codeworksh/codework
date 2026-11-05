@@ -159,6 +159,7 @@
 				"id": "<user 5>",
 				"delivery": "steer",
 				"text": "Busy prompt",
+				"admittedSeq": 25,
 				"createdAt": "<time>"
 			},
 			"state": "promoted",
@@ -185,6 +186,7 @@
 				"id": "<user 6>",
 				"delivery": "followUp",
 				"text": "Queued prompt",
+				"admittedSeq": 29,
 				"createdAt": "<time>"
 			},
 			"state": "pending",
@@ -247,6 +249,7 @@
 				"id": "<user 6>",
 				"delivery": "followUp",
 				"text": "Queued prompt",
+				"admittedSeq": 29,
 				"createdAt": "<time>"
 			},
 			"state": "promoted",

@@ -156,6 +156,7 @@ const toQueuedPrompt = (input: Extract<Sync.ThreadChange, { _tag: "Inbox" }>["pr
 	id: input.id,
 	delivery: input.delivery,
 	text: PromptSchema.Prompt.text(input.prompt),
+	admittedSeq: input.admittedSeq,
 	createdAt: DateTime.toEpochMillis(input.timeCreated),
 });
 
