@@ -141,6 +141,7 @@ const encodeCreated = Schema.encodeEffect(Json.Created);
 const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
 const encodeSnapshot = Schema.encodeEffect(Json.Snapshot);
+const encodeActivity = Schema.encodeEffect(Json.Activity);
 const decodeSnapshot = Schema.decodeUnknownEffect(Json.Snapshot);
 
 /**
@@ -276,6 +277,37 @@ export const session = defineBackend({
 		const publishEach = (event: { readonly sessionId: string; readonly threadId: string }, update: Update) =>
 			Effect.forEach(keysFor(event), (key) => publishLive(key, update), { discard: true });
 
+		// Every session's work, followed or not, so the sidebar and tabs show it without a view open:
+		// threads mid-run, and sessions whose prompt this app sent before their run starts.
+		const runs = new Set<string>();
+		const waking = new Set<string>();
+		let shown = "";
+		const working = () => [...new Set([...waking, ...[...runs].map((run) => run.split("/")[0]!)])].sort();
+		const publishActivity = Effect.suspend(() => {
+			const list = working();
+			const key = list.join("\n");
+			if (key === shown) return Effect.void;
+			shown = key;
+			return encodeActivity({ working: list }).pipe(
+				Effect.orDie,
+				Effect.flatMap((payload) => bus.publish({ topic: topics.working, payload, ephemeral: true })),
+				Effect.asVoid,
+			);
+		});
+		const track = (event: { readonly sessionId: string; readonly threadId: string }, running: boolean) =>
+			Effect.suspend(() => {
+				waking.delete(event.sessionId);
+				const run = `${event.sessionId}/${event.threadId}`;
+				if (running) runs.add(run);
+				else runs.delete(run);
+				return publishActivity;
+			});
+		const wake = (sessionId: string) =>
+			Effect.suspend(() => {
+				waking.add(sessionId);
+				return publishActivity;
+			});
+
 		/** Folds what CodeWork only says live: deltas into their drafts, and whether the agent works. */
 		const observe = (envelope: EventEnvelope): Effect.Effect<void> => {
 			switch (envelope.type) {
@@ -317,8 +349,10 @@ export const session = defineBackend({
 				// in the session's log records it: this is the only place the reason shows.
 				case "session.execution.failed": {
 					const failed = Option.getOrUndefined(decodeFailed(envelope.data));
-					if (failed === undefined || keysFor(failed).length === 0) return Effect.void;
-					return publishEach(failed, { _tag: "Running", running: false }).pipe(
+					if (failed === undefined) return Effect.void;
+					if (keysFor(failed).length === 0) return track(failed, false);
+					return track(failed, false).pipe(
+						Effect.andThen(publishEach(failed, { _tag: "Running", running: false })),
 						Effect.andThen(
 							publishEach(failed, {
 								_tag: "Failed",
@@ -332,11 +366,13 @@ export const session = defineBackend({
 				case "session.execution.succeeded":
 				case "session.execution.interrupted": {
 					const event = Option.getOrUndefined(decodeOfThread(envelope.data));
-					if (event === undefined || keysFor(event).length === 0) return Effect.void;
-					return publishEach(event, {
-						_tag: "Running",
-						running: envelope.type === "session.execution.started",
-					});
+					if (event === undefined) return Effect.void;
+					const running = envelope.type === "session.execution.started";
+					return track(event, running).pipe(
+						Effect.andThen(
+							keysFor(event).length === 0 ? Effect.void : publishEach(event, { _tag: "Running", running }),
+						),
+					);
 				}
 				default:
 					return Effect.void;
@@ -530,13 +566,21 @@ export const session = defineBackend({
 			{ ephemeral: true },
 		);
 
+		// A sent prompt wakes its thread, so its session reads as working before the run starts.
 		const prompt = ({ messageId, text, delivery, ...ref }: Prompt) =>
 			codework("thread.prompt", {
 				...addressed(ref),
 				text,
 				id: messageId,
 				...(delivery === undefined ? {} : { delivery }),
-			});
+			}).pipe(Effect.tap(() => wake(ref.sessionId)));
+
+		yield* handle(
+			topics.activity,
+			Schema.Struct({}),
+			() => encodeActivity({ working: working() }).pipe(Effect.orDie),
+			{ ephemeral: true },
+		);
 
 		yield* handle(topics.prompt, Prompt, (input) =>
 			prompt(input).pipe(

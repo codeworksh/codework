@@ -1,28 +1,41 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useEffect } from "react";
+import { useContext, useEffect, useMemo } from "react";
 
+import { makeHost } from "../../kernel/host";
 import { Server } from "../../kernel/rpc";
 import { codeworkKey } from "../../kernel/servers";
+import { Json, topics } from "./schema";
+
+const decodeActivity = Schema.decodeUnknownOption(Json.Activity);
 
 /** Every project with its sessions, as the sidebar lists them; refresh it once a new session exists. */
 export const projectsAtom = Server.query("projects.list", undefined, { reactivityKeys: codeworkKey });
 
-/** Running session frames, keyed by instance so closing one never clears another's activity. */
-export const runningAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
+/** The sessions the agent works on, followed or not, as the Session backend sees runs start and end. */
+export const workingAtom = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
 
-export function useSessionRunning(instanceId: string, sessionId: string, running: boolean) {
-	const setRunning = useAtomSet(runningAtom);
+/** Keeps {@link workingAtom} current; mounted once, at the app's root. */
+export function useWorkingFeed() {
+	const registry = useContext(RegistryContext);
+	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "activity" }).bus, [registry]);
+	const setWorking = useAtomSet(workingAtom);
 	useEffect(() => {
-		if (!running) return;
-		setRunning((current) => new Map(current).set(instanceId, sessionId));
-		return () =>
-			setRunning((current) => {
-				const next = new Map(current);
-				next.delete(instanceId);
-				return next;
-			});
-	}, [instanceId, sessionId, running, setRunning]);
+		// A live change beats the answer to the first read, which may have been taken before it.
+		let live = false;
+		const apply = (payload: unknown) =>
+			Option.map(decodeActivity(payload), ({ working }) => setWorking(new Set(working)));
+		const stop = bus.subscribe({ topics: [topics.working] }, (item) => {
+			if ("_tag" in item) return;
+			live = true;
+			apply(item.payload);
+		});
+		bus.request({ topic: topics.activity, payload: {} })
+			.then((reply) => live || apply(reply.payload))
+			.catch(() => undefined);
+		return stop;
+	}, [bus, setWorking]);
 }
 
 const listedAtom = Atom.family((id: string) =>

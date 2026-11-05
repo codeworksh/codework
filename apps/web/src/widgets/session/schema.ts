@@ -32,6 +32,10 @@ export const topics = {
 	change: "codework/session.change",
 	/** Requests: a window of a followed thread's conversation, newest first back from `before`. */
 	page: "codework/session.page",
+	/** Requests: the sessions the agent works on now; answered with `Activity`. */
+	activity: "codework/session.activity",
+	/** `Activity` again whenever a session starts or stops working; sent live only. */
+	working: "codework/session.working",
 	/** Updates to one thread's conversation, by its {@link threadKey}. */
 	thread: (key: string) => `codework/session/${key}`,
 };
@@ -161,6 +165,9 @@ export const Window = Schema.Union([
 ]);
 export type Window = typeof Window.Type;
 
+/** The sessions the agent works on: a run is going, or a prompt this app sent is about to start one. */
+export const Activity = Schema.Struct({ working: Schema.Array(Schema.String) });
+
 /** Published on a session's topic as its conversation changes. */
 export const Update = Schema.Union([
 	Schema.TaggedStruct("Info", { info: Info }),
@@ -195,4 +202,5 @@ export const Json = {
 	Reply: Schema.toCodecJson(Reply),
 	Snapshot: Schema.toCodecJson(Snapshot),
 	Update: Schema.toCodecJson(Update),
+	Activity: Schema.toCodecJson(Activity),
 };

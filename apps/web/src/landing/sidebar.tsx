@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
-import { projectsAtom, runningAtom } from "../widgets/session/projects";
+import { projectsAtom, workingAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -37,8 +37,7 @@ import { PixelLoader } from "@/components/loader";
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
-	const running = useAtomValue(runningAtom);
-	const working = useMemo(() => new Set(running.values()), [running]);
+	const working = useAtomValue(workingAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);

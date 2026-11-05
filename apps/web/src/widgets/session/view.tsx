@@ -16,7 +16,7 @@ import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
-import { projectsAtom, useListedSession, useSessionRunning } from "./projects";
+import { projectsAtom, useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -403,7 +403,6 @@ function Conversation({
 				: loaded.queued,
 		};
 	}, [loaded, sent]);
-	useSessionRunning(instanceId, thread.sessionId, state.status === "ready" && isRunning(state));
 	const sending = useCallback(
 		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
 		[thread],

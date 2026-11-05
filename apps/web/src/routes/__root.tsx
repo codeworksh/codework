@@ -8,9 +8,11 @@ import { NavigationControls } from "../shell/titlebar";
 import { Palette } from "../shell/palette";
 import { Toasts } from "../shell/toasts";
 import { Splash } from "../splash";
+import { useWorkingFeed } from "../widgets/session/projects";
 
 // The sessions sidebar wraps every page but settings, which has its own; its open state carries over.
 function Root() {
+	useWorkingFeed();
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
 	return (
 		<SidebarProvider
