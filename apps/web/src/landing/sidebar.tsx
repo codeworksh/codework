@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
-import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
+import { ListViewIcon, PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
@@ -26,7 +26,8 @@ import { OpenProviderSettings } from "@/components/offline";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
-import { useAddProject } from "../shell/palette";
+import { useAddProject, useOpenWidget } from "../shell/palette";
+import { threads, threadsAddress } from "../widgets/threads";
 import { placeAtom } from "./place";
 import { useRunDisplay } from "../widgets/session/display";
 import { RunMark } from "../widgets/session/run";
@@ -35,6 +36,10 @@ import { RunMark } from "../widgets/session/run";
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
+/** A sidebar action: New, All Threads, Settings. */
+const NAV_ROW =
+	"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press";
+
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
@@ -42,6 +47,7 @@ export function SessionsSidebar() {
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
 	const addProject = useAddProject();
+	const openWidget = useOpenWidget();
 	const navigate = useNavigate();
 	// The session in front on the workspace on screen reads as current.
 	const { workspaceId } = useParams({ strict: false });
@@ -84,7 +90,11 @@ export function SessionsSidebar() {
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
-			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
+			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-3">
+				<button type="button" onClick={startNew} className={NAV_ROW}>
+					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					New
+				</button>
 				<div className="relative">
 					<HugeiconsIcon
 						icon={Search01Icon}
@@ -98,16 +108,12 @@ export function SessionsSidebar() {
 						aria-label="Search threads"
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
-						className="h-8 rounded-md border-edge bg-transparent pr-2 pl-8 text-ui shadow-sm placeholder:text-ink-muted focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
+						className="h-8 rounded-md border-transparent bg-transparent pr-2 pl-8 text-ui font-medium shadow-none dark:bg-transparent placeholder:text-ink-muted hover:bg-selection-subtle focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
 					/>
 				</div>
-				<button
-					type="button"
-					onClick={startNew}
-					className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
-				>
-					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
-					New
+				<button type="button" onClick={() => openWidget(threads.kind, threadsAddress)} className={NAV_ROW}>
+					<HugeiconsIcon icon={ListViewIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					All Threads
 				</button>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
@@ -160,10 +166,7 @@ export function SessionsSidebar() {
 				)}
 			</SidebarContent>
 			<SidebarFooter className="p-2">
-				<Link
-					to="/settings/workspaces"
-					className="flex h-8 items-center gap-2 rounded-md px-2 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
-				>
+				<Link to="/settings/workspaces" className={NAV_ROW}>
 					<HugeiconsIcon icon={Settings02Icon} size={16} className="shrink-0 opacity-70" aria-hidden />
 					Settings
 				</Link>
@@ -201,7 +204,7 @@ const SessionRow = memo(function SessionRow({
 					<span className="flex shrink-0 text-ink-muted empty:hidden">
 						<RunMark display={display} />
 					</span>
-					<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
+					<span className="min-w-0 flex-1 truncate text-body leading-snug group-aria-current/row:font-medium">
 						{session.title}
 					</span>
 					<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
