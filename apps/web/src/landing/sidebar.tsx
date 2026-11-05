@@ -205,9 +205,7 @@ const SessionRow = memo(function SessionRow({
 					<span className="flex shrink-0 text-ink-muted empty:hidden">
 						<RunMark display={display} />
 					</span>
-					<span className="min-w-0 flex-1 truncate text-body leading-snug group-aria-current/row:font-medium">
-						{session.title}
-					</span>
+					<span className="min-w-0 flex-1 truncate text-body leading-snug">{session.title}</span>
 					<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
 						{ago(session.updated)}
 					</span>

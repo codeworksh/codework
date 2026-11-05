@@ -77,14 +77,15 @@ export function Picker({
 				tabIndex={-1}
 				onMouseDown={(event) => event.stopPropagation()}
 				className={`flex h-6 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-ink/8 hover:text-ink ${
-					narrow ? "w-2" : "min-w-6 px-1"
+					narrow ? "w-3" : "min-w-6 px-1"
 				}`}
 			>
 				{icon}
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className="w-52 p-0"
+				// Opened from a key, many times a day: shown at once, without the popover's zoom.
+				className="w-52 p-0 data-[state=closed]:animate-none data-[state=open]:animate-none"
 				// The list takes focus back, so the keyboard stays on it.
 				onCloseAutoFocus={(event) => event.preventDefault()}
 				onMouseDown={(event) => event.stopPropagation()}

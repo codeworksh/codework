@@ -78,7 +78,10 @@ export function SectionHeader({
 				onClick={onCollapse}
 				className="grid size-5 place-items-center rounded-md text-ink-muted hover:bg-ink/8"
 			>
-				<ChevronRight className={`size-3.5 transition-transform ${collapsed ? "" : "rotate-90"}`} aria-hidden />
+				<ChevronRight
+					className={`size-3.5 transition-transform motion-reduce:transition-none ${collapsed ? "" : "rotate-90"}`}
+					aria-hidden
+				/>
 			</button>
 			{mark}
 			{group !== undefined && renaming === group.id ? (

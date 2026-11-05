@@ -100,8 +100,8 @@ export function Row({
 					icon={
 						<span
 							aria-hidden
-							className="h-4 w-1 rounded-full"
-							style={{ backgroundColor: thread.color ?? "transparent" }}
+							className={`h-4 w-1 rounded-full ${thread.color === null ? "bg-ink/20 opacity-0 group-hover/row:opacity-100" : ""}`}
+							style={thread.color === null ? undefined : { backgroundColor: thread.color }}
 						/>
 					}
 					value={thread.color ?? "none"}
