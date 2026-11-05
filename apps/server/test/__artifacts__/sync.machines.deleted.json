@@ -1,0 +1,132 @@
+{
+	"changed": [
+		{
+			"machineId": "<machine fedora>",
+			"full": false,
+			"items": 1,
+			"project": [],
+			"space": [],
+			"session": [],
+			"thread": [],
+			"entry": [],
+			"inbox": [],
+			"removed": [
+				"<ses 1>"
+			]
+		}
+	],
+	"harness": {
+		"removed": [
+			{
+				"kind": "session",
+				"id": "<ses 1>",
+				"rev": "<rev 1>"
+			}
+		]
+	},
+	"session": [
+		{
+			"id": "<ses 2>",
+			"machine_id": "<machine fedora>",
+			"organization_id": "personal",
+			"space_id": "<id 1>",
+			"slug": "<id 2>",
+			"dir": "<home>/cw-home/work",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": null,
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<ses 1>",
+			"machine_id": "<machine fedora>",
+			"organization_id": "personal",
+			"space_id": "<id 1>",
+			"slug": "<id 3>",
+			"dir": "<home>/cw-home/work",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": null,
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	],
+	"thread": [
+		{
+			"id": "<thr 1>",
+			"organization_id": "personal",
+			"session_id": "<ses 1>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "Doomed",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 1,
+			"tokens_output": 1,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "attention",
+			"status_at": "<time>",
+			"priority": 0,
+			"grouping_id": null,
+			"ordering": -434,
+			"color": null,
+			"cursor": "<rev 0>",
+			"floor": "<seq 1>",
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	],
+	"entry": [
+		{
+			"id": "<id 4>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 1>",
+			"type": "user",
+			"state": "committed",
+			"error": null,
+			"size": 31,
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		},
+		{
+			"id": "<assistant 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 2>",
+			"type": "assistant",
+			"state": "committed",
+			"error": null,
+			"size": 40,
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"listed": [
+		{
+			"id": "<ses 2>"
+		}
+	]
+}

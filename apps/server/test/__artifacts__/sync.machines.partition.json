@@ -1,0 +1,141 @@
+{
+	"rows": {
+		"sent": 5,
+		"total": 865
+	},
+	"changed": [
+		{
+			"machineId": "<machine cw-a>",
+			"full": false,
+			"items": 5,
+			"project": [
+				"<id 1>"
+			],
+			"space": [
+				"<id 2>"
+			],
+			"session": [
+				"<ses 1>"
+			],
+			"thread": [
+				"<thr 1>",
+				"<thr 2>"
+			],
+			"entry": [],
+			"inbox": [],
+			"removed": []
+		}
+	],
+	"project": [
+		{
+			"machine_id": "<machine cw-a>",
+			"id": "<id 1>",
+			"organization_id": "personal",
+			"namespace": "codework",
+			"name": "Renamed while cut",
+			"status": "active",
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"space": [
+		{
+			"machine_id": "<machine cw-a>",
+			"id": "<id 2>",
+			"organization_id": "personal",
+			"project_id": "<id 1>",
+			"location": "<home>/cw-home/work",
+			"kind": "plain",
+			"env": null,
+			"status": "archived",
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"thread": [
+		{
+			"id": "<thr 2>",
+			"organization_id": "personal",
+			"session_id": "<ses 1>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "Before the cut",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 2,
+			"tokens_output": 2,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "attention",
+			"status_at": "<time>",
+			"priority": 0,
+			"grouping_id": null,
+			"ordering": -431,
+			"color": null,
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<thr 1>",
+			"organization_id": "personal",
+			"session_id": "<ses 1>",
+			"origin_kind": "fork",
+			"origin_thread_id": "<thr 2>",
+			"origin_entry_id": "<assistant 1>",
+			"origin_call_id": null,
+			"origin_committed_seq": "<seq 1>",
+			"title": null,
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": null,
+			"run_started_at": null,
+			"run_ended_at": null,
+			"run_outcome": null,
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 0,
+			"tokens_output": 0,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "settled",
+			"status_at": "<time>",
+			"priority": 0,
+			"grouping_id": null,
+			"ordering": -432,
+			"color": null,
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 2>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		}
+	]
+}

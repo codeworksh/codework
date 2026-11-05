@@ -6,18 +6,23 @@ import { createInterface } from "node:readline";
 import { assistant } from "../../../../packages/harness/test/fixtures/llm.ts";
 import type { LLM } from "../../../../packages/harness/src/runner/llm.ts";
 import { Server } from "../../../../packages/codework/src/server/server.ts";
+import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
 
 /*
- * `node --conditions=development codework.ts <home> <port>`: a real CodeWork server in `home` on
- * `port`, with a scripted model. A prompt's text picks the reply:
+ * `node --conditions=development codework.ts <home> <port> [host] [sweep]`: a real CodeWork server
+ * in `home` on `port` (bound to `host`, 127.0.0.1 unless given), with a scripted model. A prompt's
+ * text picks the reply:
  * - `gate`: "Hello " | "wor" | "ld" | "!" | end, held before each step after the first;
  * - `hold`: held after its start, until interrupted;
+ * - `long <n>`: n chunks of 32 characters, one every 10 ms;
  * - anything else: `reply to <text>`, at once.
  * Each line `release` on stdin lets the oldest held reply take its next step.
+ * With `sweep`, it only ends the runs the last server left open, as a start does before it listens,
+ * prints `swept` and exits: the store can then be read as no client has seen it.
  */
 
-const [home, port] = process.argv.slice(2);
-if (home === undefined || port === undefined) throw new Error("usage: codework.ts <home> <port>");
+const [home, port, host = "127.0.0.1", mode] = process.argv.slice(2);
+if (home === undefined || port === undefined) throw new Error("usage: codework.ts <home> <port> [host] [sweep]");
 
 const waiting: Array<() => void> = [];
 let credits = 0;
@@ -48,7 +53,17 @@ const scripted: LLM.Open = (input, signal) =>
 		const index = count;
 		const messageId = `assistant_${process.pid}_${index}`;
 		const text = promptOf(input);
-		const chunks = text === "gate" ? ["Hello ", "wor", "ld", "!"] : text === "hold" ? [] : [`reply to ${text}`];
+		const long = /^long (\d+)$/.exec(text);
+		const chunks =
+			text === "gate"
+				? ["Hello ", "wor", "ld", "!"]
+				: text === "hold"
+					? []
+					: long !== null
+						? Array.from({ length: Number(long[1]) }, (_, step) =>
+								`chunk ${String(step).padStart(5, "0")} `.padEnd(32, "."),
+							)
+						: [`reply to ${text}`];
 		const message = assistant(input, index, { messageId, parts: [{ type: "text", text: chunks.join("") }] });
 		const partial = assistant(input, index, { messageId, parts: [] });
 		const events = createAssistantMessageEventStream();
@@ -71,6 +86,7 @@ const scripted: LLM.Open = (input, signal) =>
 			events.push({ type: "text.start", partIndex: 0, partial });
 			for (const [step, delta] of chunks.entries()) {
 				if (text === "gate" && step > 0) await gate();
+				if (long !== null) await new Promise((resolve) => setTimeout(resolve, 10));
 				part.text += delta;
 				events.push({ type: "text.delta", partIndex: 0, delta, partial });
 			}
@@ -81,16 +97,19 @@ const scripted: LLM.Open = (input, signal) =>
 		return events;
 	});
 
-const server = Server.layer({
-	host: "127.0.0.1",
-	port: Number(port),
-	harness: { home, hostCwd: home, plugins: [], llm: scripted },
-});
+const harness = { home, hostCwd: home, plugins: [], llm: scripted };
 
 NodeRuntime.runMain(
-	Effect.gen(function* () {
-		yield* Layer.build(server);
-		yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`));
-		return yield* Effect.never;
-	}).pipe(Effect.scoped),
+	mode === "sweep"
+		? Effect.gen(function* () {
+				yield* Effect.flatMap(Control.Service, (control) => control.sweep).pipe(
+					Effect.provide(Harness.layer(harness)),
+				);
+				yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "swept" })}\n`));
+			})
+		: Effect.gen(function* () {
+				yield* Layer.build(Server.layer({ host, port: Number(port), harness }));
+				yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`));
+				return yield* Effect.never;
+			}).pipe(Effect.scoped),
 );
