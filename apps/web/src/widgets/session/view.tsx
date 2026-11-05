@@ -29,6 +29,9 @@ const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 const samePart = Schema.toEquivalence(Part);
 
+/** The composer overlay's height as last measured, by any conversation. */
+let lastInset = 0;
+
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
 
@@ -535,7 +538,9 @@ function Conversation({
 
 	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
-	const [inset, setInset] = useState(0);
+	// The last composer's height, so a conversation opens at its end with the composer already
+	// counted and the list does not scroll again once it is measured.
+	const [inset, setInset] = useState(lastInset);
 	// Before paint, so the first frame is laid out with the composer's height.
 	useLayoutEffect(() => {
 		const root = surface.current;
@@ -544,7 +549,8 @@ function Conversation({
 		const sync = () => {
 			const height = element.getBoundingClientRect().height;
 			root.style.setProperty("--composer-height", `${height}px`);
-			setInset(Math.ceil(height));
+			lastInset = Math.ceil(height);
+			setInset(lastInset);
 		};
 		sync();
 		const observer = new ResizeObserver(sync);
@@ -727,7 +733,8 @@ function Transcript({
 			}}
 			tabIndex={0}
 			aria-label="Conversation"
-			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
+			data-settled={follow.settled}
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""} ${follow.settled ? "" : "invisible"}`}
 			ListHeaderComponent={TRANSCRIPT_HEADER}
 			ListFooterComponent={
 				<div aria-hidden style={{ height: (follow.anchoredEndSpace === undefined ? inset : 0) + 24 }} />

@@ -339,6 +339,8 @@ export function useFollow({
 		ref,
 		onScroll,
 		onLoad: () => setSettled(true),
+		/** Laid out and scrolled into place: before this the list is measuring and may still move. */
+		settled,
 		anchoredEndSpace,
 		maintainScrollAtEnd: anchoredEndSpace !== undefined || !following ? false : smooth ? END_SMOOTH : END,
 		/** The prompt hidden until it rises into its anchor. */
