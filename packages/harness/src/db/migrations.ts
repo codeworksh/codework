@@ -123,6 +123,13 @@ export const migrations = {
 				origin_call_id     TEXT,
 				title              TEXT,
 				execution          TEXT,
+				-- the run lifecycle, projected from the execution.* events; times are the events'
+				run_state          TEXT NOT NULL DEFAULT 'idle',
+				run_state_at       INTEGER,
+				run_started_at     INTEGER,
+				run_ended_at       INTEGER,
+				run_outcome        TEXT,
+				run_error          TEXT,
 				restarts           INTEGER NOT NULL DEFAULT 0,
 				attempt            INTEGER,
 				cost               REAL NOT NULL DEFAULT 0,

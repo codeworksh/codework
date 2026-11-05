@@ -9,6 +9,10 @@
 			"text": "First."
 		},
 		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "First."
@@ -25,13 +29,36 @@
 			"text": "Then this."
 		},
 		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
 			"type": "session.llm.failed",
 			"reason": "error",
 			"errorMessage": "The host stopped while the model was answering, on attempt 1",
 			"parts": []
 		},
 		{
+			"type": "session.retry.scheduled",
+			"attempt": 1,
+			"maxRetries": 1,
+			"delayMs": 10,
+			"message": "The host stopped while the model was answering, on attempt 1"
+		},
+		{
 			"type": "session.llm.started"
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.llm.failed",
@@ -43,6 +70,9 @@
 			"type": "session.run.failed",
 			"reason": "interrupted",
 			"message": "The host stopped while the model was answering, on attempt 2"
+		},
+		{
+			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [

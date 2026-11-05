@@ -170,6 +170,7 @@ export type TurnAborted = typeof TurnAborted.Type;
  */
 export const RetryScheduled = EventSchema.define({
 	type: "session.retry.scheduled",
+	...durableOptions,
 	schema: {
 		...baseOptions,
 		attempt: NonNegativeInt,
@@ -323,24 +324,29 @@ export type ToolSettled = typeof ToolSettled.Type;
  */
 export const ExecutionStarted = EventSchema.define({
 	type: "session.execution.started",
-	schema: baseOptions,
+	...durableOptions,
+	/** `resumed`: recovery started it after a restart, for a run the last process left unfinished. */
+	schema: { ...baseOptions, resumed: Schema.Boolean },
 });
 export type ExecutionStarted = typeof ExecutionStarted.Type;
 
 export const ExecutionSucceeded = EventSchema.define({
 	type: "session.execution.succeeded",
+	...durableOptions,
 	schema: baseOptions,
 });
 export type ExecutionSucceeded = typeof ExecutionSucceeded.Type;
 
 export const ExecutionFailed = EventSchema.define({
 	type: "session.execution.failed",
+	...durableOptions,
 	schema: { ...baseOptions, error: SessionFailure.Error },
 });
 export type ExecutionFailed = typeof ExecutionFailed.Type;
 
 export const ExecutionInterrupted = EventSchema.define({
 	type: "session.execution.interrupted",
+	...durableOptions,
 	schema: { ...baseOptions, reason: SessionSchema.InterruptReason },
 });
 export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
@@ -355,7 +361,7 @@ export const RunFailed = EventSchema.define({
 	...durableOptions,
 	schema: {
 		...baseOptions,
-		reason: Schema.Literals(["crashloop", "interrupted", "truncated"]),
+		reason: ThreadSchema.RunFailedReason,
 		message: Schema.String,
 	},
 });
@@ -474,6 +480,10 @@ export const Definitions = EventSchema.inventory(
 export const PublicDefinitions = Definitions;
 
 export const DurableDefinitions = EventSchema.inventory(
+	ExecutionStarted,
+	ExecutionSucceeded,
+	ExecutionFailed,
+	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
 	PromptCancelled,
@@ -483,6 +493,7 @@ export const DurableDefinitions = EventSchema.inventory(
 	ThreadConfigured,
 	SystemChanged,
 	TurnEnded,
+	RetryScheduled,
 	LLMStarted,
 	LLMProgress,
 	LLMEnded,

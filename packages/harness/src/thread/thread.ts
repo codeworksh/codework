@@ -140,6 +140,12 @@ export interface InsertThread {
 	readonly seq: number;
 }
 
+/** One step of a thread's run lifecycle, from the event that projects it. */
+export type RunChange =
+	| { readonly _tag: "started" }
+	| { readonly _tag: "running" }
+	| { readonly _tag: "ended"; readonly outcome: ThreadSchema.RunOutcome; readonly error?: ThreadSchema.RunError };
+
 // Entry row + its part rows, zipped. Message decode happens above this layer.
 export interface HydratedEntry {
 	readonly entry: EntryRow;
@@ -213,6 +219,13 @@ export interface Interface {
 	readonly idle: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/** Root threads with a run left unfinished, oldest first. */
 	readonly unfinished: Effect.Effect<ReadonlyArray<ThreadRow>>;
+	/**
+	 * Projector-only: the `run_*` columns, at the time `at` of the event that changed them. The one
+	 * writer of those columns.
+	 */
+	readonly projectRun: (threadId: ThreadSchema.ID, at: DateTime.Utc, change: RunChange) => Effect.Effect<void>;
+	/** Threads whose stored run is not idle: at startup, the runs a dead process left open. */
+	readonly open: Effect.Effect<ReadonlyArray<ThreadRow>>;
 	/** Set or clear (null) the bookmark label on an entry of the thread. */
 	readonly setLabel: (input: {
 		threadId: ThreadSchema.ID;
@@ -232,6 +245,7 @@ const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(SessionSchema.M
 const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
 const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
 const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
+const encodeRunError = Schema.encodeEffect(Schema.fromJsonString(ThreadSchema.RunError));
 const decodeUserText = Schema.decodeUnknownOption(
 	Schema.fromJsonString(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
 );
@@ -890,6 +904,45 @@ export const layer = Layer.effect(
 		});
 		const unfinished = findUnfinished(undefined).pipe(Effect.orDie, Effect.withSpan("Thread.unfinished"));
 
+		const projectRun = Effect.fn("Thread.projectRun")(function* (
+			threadId: ThreadSchema.ID,
+			at: DateTime.Utc,
+			change: RunChange,
+		) {
+			const time = DateTime.toEpochMillis(at);
+			const state: ThreadSchema.RunState =
+				change._tag === "started" ? "starting" : change._tag === "running" ? "running" : "idle";
+			// SET reads the old row, so `run_state_at` moves only when the state does.
+			const stateAt = sql`CASE WHEN run_state = ${state} THEN run_state_at ELSE ${time} END`;
+			if (change._tag === "running") {
+				yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state} WHERE id = ${threadId}`;
+				return;
+			}
+			if (change._tag === "started") {
+				yield* sql`
+					UPDATE thread SET
+						run_state_at = ${stateAt}, run_state = ${state}, run_started_at = ${time},
+						run_ended_at = NULL, run_outcome = NULL, run_error = NULL
+					WHERE id = ${threadId}
+				`;
+				return;
+			}
+			const error = change.error === undefined ? null : yield* encodeRunError(change.error);
+			yield* sql`
+				UPDATE thread SET
+					run_state_at = ${stateAt}, run_state = ${state}, run_ended_at = ${time},
+					run_outcome = ${change.outcome}, run_error = ${error}
+				WHERE id = ${threadId}
+			`;
+		}, Effect.orDie);
+
+		const findOpen = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: ThreadRow,
+			execute: () => sql`SELECT * FROM thread WHERE run_state <> 'idle' ORDER BY updated_at`,
+		});
+		const open = findOpen(undefined).pipe(Effect.orDie, Effect.withSpan("Thread.open"));
+
 		const setLabel = Effect.fn("Thread.setLabel")(function* (input: {
 			threadId: ThreadSchema.ID;
 			entryId: string;
@@ -931,6 +984,8 @@ export const layer = Layer.effect(
 			setAttempt,
 			idle,
 			unfinished,
+			projectRun,
+			open,
 			setLabel,
 		});
 	}),

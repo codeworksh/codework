@@ -142,6 +142,14 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	// Absent until the thread's first own prompt names it.
 	title: Model.FieldOption(Schema.String),
 	execution: Model.FieldOption(ThreadSchema.Execution),
+	// The run lifecycle, written only by the session projector (`Thread.projectRun`). `runStateAt` is
+	// when `runState` last changed; the rest describe the last run, absent before the first.
+	runState: Model.GeneratedByDb(ThreadSchema.RunState),
+	runStateAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runStartedAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runEndedAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runOutcome: Model.GeneratedByDb(Schema.OptionFromNullOr(ThreadSchema.RunOutcome)),
+	runError: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.fromJsonString(ThreadSchema.RunError))),
 	restarts: Model.GeneratedByDb(Schema.Int),
 	// The 1-based number of the provider request in flight, from its start until its response ends, the
 	// turn commits or the run ends: still set on recovery, the host died with that request out.

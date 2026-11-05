@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
-import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Context } from "../src/context/context.ts";
@@ -10,6 +10,7 @@ import { Document } from "../src/document/document.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { EventRegistry } from "../src/event/registry.ts";
+import { Inbox } from "../src/inbox/inbox.ts";
 import { Global } from "../src/global.ts";
 import { builtins } from "../src/plugin/builtin.ts";
 import type { Plugin } from "../src/plugin/plugin.ts";
@@ -613,6 +614,171 @@ describe("threads", () => {
 			yield* artifact("thread.constraints.json", {
 				...results,
 				staleSeq: stale._tag === "InvalidEntryDataError" ? stale.reason : stale._tag,
+			});
+		}),
+	);
+
+	it(
+		"the stored run follows a run, a stop, a dead process, the startup sweep and the resume",
+		Effect.gen(function* () {
+			yield* reset;
+			const threads = yield* Thread.Service;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const inputs = yield* Inbox.make;
+			const sql = yield* SqlClient.SqlClient;
+			const { sessionId, main } = yield* createSession;
+
+			const lifecycle = [
+				"session.execution.started.1",
+				"session.execution.succeeded.1",
+				"session.execution.failed.1",
+				"session.execution.interrupted.1",
+				"session.run.failed.1",
+				"session.llm.started.1",
+			];
+			const journal = Effect.gen(function* () {
+				const rows = yield* sql<{ seq: number; type: string; data: string }>`
+					SELECT seq, type, data FROM event WHERE aggregate_id = ${sessionId} ORDER BY seq
+				`;
+				return rows
+					.filter((row) => lifecycle.includes(row.type))
+					.map((row) => ({ seq: row.seq, type: row.type, data: JSON.parse(row.data) as Record<string, unknown> }));
+			});
+			const name = aliases();
+			name("T", main);
+			// A stored time, named by the thread's event of `types` it came from: the latest one at that instant.
+			const at = (
+				log: ReadonlyArray<{ seq: number; type: string; data: Record<string, unknown> }>,
+				threadId: string,
+				time: Option.Option<DateTime.Utc>,
+				types: ReadonlyArray<string>,
+			) =>
+				Option.match(time, {
+					onNone: () => null,
+					onSome: (value) => {
+						const from = log.findLast(
+							(event) =>
+								event.data["threadId"] === threadId &&
+								types.includes(event.type) &&
+								event.data["timestamp"] === DateTime.toEpochMillis(value),
+						);
+						return from === undefined ? `unmatched ${DateTime.toEpochMillis(value)}` : `${from.seq} ${from.type}`;
+					},
+				});
+			const terminals = lifecycle.slice(1, 5);
+			const stateTypes = { starting: [lifecycle[0]!], running: ["session.llm.started.1"], idle: terminals };
+			const states: Array<unknown> = [];
+			const record = (step: string) =>
+				Effect.gen(function* () {
+					const log = yield* journal;
+					const rows = [...(yield* threads.list(sessionId))].sort((a, b) =>
+						name("T", a.id).localeCompare(name("T", b.id)),
+					);
+					for (const row of rows) {
+						states.push({
+							step,
+							thread: name("T", row.id),
+							state: row.runState,
+							stateAt: at(log, row.id, row.runStateAt, stateTypes[row.runState]),
+							startedAt: at(log, row.id, row.runStartedAt, [lifecycle[0]!]),
+							endedAt: at(log, row.id, row.runEndedAt, terminals),
+							outcome: Option.getOrNull(row.runOutcome),
+							error: Option.getOrNull(row.runError),
+							execution: Option.getOrNull(row.execution),
+						});
+					}
+				});
+			const gated = (threadId: ThreadSchema.ID) =>
+				Effect.gen(function* () {
+					const gate = yield* Deferred.make<void>();
+					const opened = yield* Deferred.make<void>();
+					script.set(threadId, [{ _tag: "gate", gate, opened }]);
+					// Held until its draft is in: `llm.started` committed.
+					const drafted = Deferred.await(opened).pipe(
+						Effect.andThen(threads.draft(threadId)),
+						Effect.tap(() => Effect.yieldNow),
+						Effect.repeat({ until: Option.isSome }),
+					);
+					return { gate, drafted };
+				});
+
+			yield* record("created");
+			yield* run(sessionId, main, "first");
+			yield* record("succeeded");
+
+			const second = yield* gated(main);
+			yield* control.prompt({ sessionId, threadId: main, prompt: PromptSchema.Prompt.fromText("second") });
+			yield* second.drafted;
+			yield* record("in flight");
+			yield* control.interrupt(main, { awaitSettlement: true });
+			yield* record("stopped");
+
+			// What a process dying mid-run leaves: a follow-up admitted, its run started and marked, never ended.
+			const died = (threadId: ThreadSchema.ID) =>
+				Effect.gen(function* () {
+					yield* events.publish(EventList.ExecutionStarted, {
+						timestamp: yield* DateTime.now,
+						sessionId,
+						threadId,
+						resumed: false,
+					});
+					yield* threads.markRunning(threadId);
+				});
+			yield* inputs.admit({
+				id: SessionMessageSchema.ID.make("prompt_cut"),
+				sessionId,
+				threadId: main,
+				prompt: PromptSchema.Prompt.fromText("third"),
+				delivery: "followUp",
+			});
+			yield* died(main);
+			yield* record("died");
+
+			yield* control.sweep;
+			yield* record("swept");
+			const swept = Option.getOrThrow(yield* threads.get(main));
+			expect(swept.runState).toBe("idle");
+			expect(Option.getOrUndefined(swept.runOutcome)).toBe("interrupted");
+			expect(Option.getOrUndefined(swept.runError)).toEqual({ _tag: "interrupted", reason: "crash" });
+			// Nothing is left open, so a second sweep writes nothing.
+			const before = (yield* journal).length;
+			yield* control.sweep;
+			expect((yield* journal).length).toBe(before);
+
+			const third = yield* gated(main);
+			const resuming = yield* Effect.forkChild(control.resumeUnfinished);
+			yield* third.drafted;
+			yield* record("resumed");
+			expect(Option.getOrThrow(yield* threads.get(main)).runState).toBe("running");
+			yield* Deferred.succeed(third.gate, undefined);
+			yield* Fiber.join(resuming);
+			yield* record("finished");
+
+			// A shutdown that closed the run and died before publishing its end: the sweep says `shutdown`.
+			const [first] = yield* threads.line(main);
+			const fork = ThreadSchema.ID.make(
+				(yield* threads.fork({ threadId: main, entryId: first!.entry.id })).thread.id,
+			);
+			name("T", fork);
+			yield* died(fork);
+			yield* threads.endExecution(fork, "closed");
+			yield* control.sweep;
+			yield* record("swept after shutdown");
+			expect(Option.getOrUndefined(Option.getOrThrow(yield* threads.get(fork)).runError)).toEqual({
+				_tag: "interrupted",
+				reason: "shutdown",
+			});
+
+			const log = yield* journal;
+			const resumed = log.filter((event) => event.type === lifecycle[0] && event.data["resumed"] === true);
+			expect(resumed.map((event) => event.data["threadId"])).toEqual([main]);
+			yield* artifact("thread.lifecycle.json", {
+				log: log.map((event) => {
+					const { timestamp: _t, sessionId: _s, threadId, message: _m, messageId: _id, ...rest } = event.data;
+					return `${event.seq} ${event.type} ${name("T", String(threadId))}${Object.keys(rest).length === 0 ? "" : ` ${JSON.stringify(rest)}`}`;
+				}),
+				states,
 			});
 		}),
 	);

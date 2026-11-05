@@ -75,6 +75,10 @@
 			"thread": "<fork>"
 		},
 		{
+			"type": "session.execution.started",
+			"thread": "<fork>"
+		},
+		{
 			"type": "session.prompt.promoted",
 			"thread": "<fork>"
 		},
@@ -88,6 +92,10 @@
 		},
 		{
 			"type": "session.turn.ended",
+			"thread": "<fork>"
+		},
+		{
+			"type": "session.execution.succeeded",
 			"thread": "<fork>"
 		},
 		{

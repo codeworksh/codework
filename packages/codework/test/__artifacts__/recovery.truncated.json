@@ -9,6 +9,10 @@
 			"text": "Run a long command."
 		},
 		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Run a long command."
@@ -68,6 +72,9 @@
 			"type": "session.run.failed",
 			"reason": "truncated",
 			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
+		},
+		{
+			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [

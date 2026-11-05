@@ -51,19 +51,10 @@ export const layer = Layer.effect(
 				Effect.ignore,
 			);
 
-		// The session a thread belongs to, for the lifecycle events its log carries. Threads never
-		// move between sessions, so one lookup per thread is enough.
-		const owners = new Map<ThreadId, SessionSchema.ID>();
+		// The session a thread belongs to, for the lifecycle events its log carries. Read every time, not
+		// cached: the events are durable, and one for a session deleted since would recreate its log.
 		const sessionOf = (threadId: ThreadId) =>
-			Effect.gen(function* () {
-				const known = owners.get(threadId);
-				if (known !== undefined) return Option.some(known);
-				const thread = yield* threads.get(threadId);
-				if (Option.isNone(thread)) return Option.none<SessionSchema.ID>();
-				const sessionId = SessionSchema.ID.make(thread.value.sessionId);
-				owners.set(threadId, sessionId);
-				return Option.some(sessionId);
-			});
+			threads.get(threadId).pipe(Effect.map(Option.map((thread) => SessionSchema.ID.make(thread.sessionId))));
 		const publishLifecycle = (
 			threadId: ThreadId,
 			publish: (base: {
@@ -89,14 +80,19 @@ export const layer = Layer.effect(
 			// The run is recorded unfinished before it starts, so a process dying anywhere in it
 			// leaves the thread for the next server start to resume. A recovered one already is.
 			started: (threadId) =>
-				reportLifecycle(
-					threadId,
-					(recovering.has(threadId) ? Effect.void : threads.markRunning(threadId)).pipe(
-						Effect.andThen(
-							publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionStarted, base)),
+				Effect.suspend(() => {
+					const resumed = recovering.has(threadId);
+					return reportLifecycle(
+						threadId,
+						(resumed ? Effect.void : threads.markRunning(threadId)).pipe(
+							Effect.andThen(
+								publishLifecycle(threadId, (base) =>
+									events.publish(EventList.ExecutionStarted, { ...base, resumed }),
+								),
+							),
 						),
-					),
-				),
+					);
+				}),
 			// One terminal per busy period, covering every drain it coalesced.
 			settled: (threadId, exit, reason) =>
 				reportLifecycle(
