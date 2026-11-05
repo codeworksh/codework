@@ -1,7 +1,7 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { Check, ChevronRight, FolderKanban, FolderPlus, Settings } from "lucide-react";
+import { Check, ChevronRight, FolderKanban, FolderPlus, KanbanSquare, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -13,6 +13,7 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { isTheme, previewTheme, THEMES, themeAtom } from "../theme";
+import { dashboard, dashboardAddress } from "../widgets/dashboard";
 import { projects, projectsAddress } from "../widgets/projects";
 import { deskAtom } from "../wm/instances";
 import { lastWorkspaceAtom, openInWorkspaceRoute, useWorkspaces, workspaceTag } from "../wm/workspaces";
@@ -24,6 +25,7 @@ import { Swatch } from "./swatch";
 const PREVIEW_DELAY = 200;
 
 const OPEN_PROJECTS = "widgets:projects";
+const OPEN_DASHBOARD = "widgets:dashboard";
 const ADD_PROJECT = "projects:add";
 const THEME_SETTINGS = "settings:themes";
 
@@ -57,14 +59,14 @@ export function Palette() {
 	const lastId = useAtomValue(lastWorkspaceAtom);
 	const { workspaceId } = useParams({ strict: false });
 
-	// Where Projects already is, so the desktop reveals it there; else the workspace on screen, else the last used.
-	const openProjects = () => {
-		const open = instances.find((instance) => instance.kind === projects.kind);
+	// Where the widget already is, so the desktop reveals it there; else the workspace on screen, else the last used.
+	const openWidget = (kind: string, address: string) => {
+		const open = instances.find((instance) => instance.kind === kind);
 		const target =
 			(open && workspaces.find((workspace) => (open.tags & workspaceTag(workspace)) !== 0)) ??
 			workspaces.find((workspace) => workspace.id === (workspaceId ?? lastId)) ??
 			workspaces[0];
-		if (target !== undefined) void navigate(openInWorkspaceRoute(target, projectsAddress, "replace"));
+		if (target !== undefined) void navigate(openInWorkspaceRoute(target, address, "replace"));
 	};
 
 	const show = (next: boolean) => {
@@ -160,10 +162,18 @@ export function Palette() {
 							<CommandItem
 								value={OPEN_PROJECTS}
 								keywords={["open projects", "sessions"]}
-								onSelect={() => run(openProjects)}
+								onSelect={() => run(() => openWidget(projects.kind, projectsAddress))}
 							>
 								<FolderKanban strokeWidth={1.75} />
 								Open Projects
+							</CommandItem>
+							<CommandItem
+								value={OPEN_DASHBOARD}
+								keywords={["open dashboard", "board", "threads", "status", "priority", "groups"]}
+								onSelect={() => run(() => openWidget(dashboard.kind, dashboardAddress))}
+							>
+								<KanbanSquare strokeWidth={1.75} />
+								Open Dashboard
 							</CommandItem>
 						</CommandGroup>
 						<CommandGroup heading="Settings">

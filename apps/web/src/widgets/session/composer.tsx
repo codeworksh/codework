@@ -6,7 +6,8 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Composer, ComposerButton, ComposerSubmit, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
-import { type Info, Json, type ThreadRef, topics } from "./schema";
+import { useSent } from "./display";
+import { type Info, Json, type ThreadRef, threadKey, topics } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
 const encodePrompt = Schema.encodeSync(Json.Prompt);
@@ -32,6 +33,7 @@ export const SessionComposer = memo(function SessionComposer({
 	thread,
 	instanceId,
 	running,
+	stopping,
 	info,
 	onError,
 	onSending,
@@ -41,6 +43,8 @@ export const SessionComposer = memo(function SessionComposer({
 	readonly thread: ThreadRef;
 	readonly instanceId: string;
 	readonly running: boolean;
+	/** A stop is drawn on its way: the run has not ended yet. */
+	readonly stopping: boolean;
 	readonly info: Info;
 	/** A send or configure the backend refused, or undefined as a new one starts; the view shows it. */
 	readonly onError: (message: string | undefined) => void;
@@ -53,6 +57,8 @@ export const SessionComposer = memo(function SessionComposer({
 }) {
 	const input = useRef<HTMLTextAreaElement>(null);
 	const bus = useBus();
+	const inFlight = useSent();
+	const key = threadKey(thread);
 	const kv = useKv();
 	const [text, setText] = useState("");
 	const [loaded, setLoaded] = useState(false);
@@ -118,6 +124,7 @@ export const SessionComposer = memo(function SessionComposer({
 			setText("");
 		}
 		setPending(true);
+		inFlight.prompt(key, messageId);
 		const sent = await ask(
 			topics.prompt,
 			encodePrompt({ ...thread, messageId, text: prompt, ...(delivery === undefined ? {} : { delivery }) }),
@@ -125,10 +132,19 @@ export const SessionComposer = memo(function SessionComposer({
 		setPending(false);
 		if (sent) {
 			if (!immediate) setText("");
-		} else if (immediate) {
+			return;
+		}
+		// Refused: never pending again.
+		inFlight.landed(key, [messageId]);
+		if (immediate) {
 			onUnsent(messageId);
 			setText((current) => (current.trim() === "" ? text : `${text}\n\n${current}`));
 		}
+	};
+
+	const stop = async () => {
+		inFlight.stop(key);
+		if (!(await ask(topics.interrupt, { ...thread }))) inFlight.unstop(key);
 	};
 
 	const configure = (change: { model?: ModelRef; thinkingLevel?: ThinkingLevel }) => {
@@ -158,7 +174,11 @@ export const SessionComposer = memo(function SessionComposer({
 			actions={
 				<>
 					{running && (
-						<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { ...thread })}>
+						<ComposerButton
+							label={stopping ? "Stopping" : "Stop"}
+							disabled={stopping}
+							onClick={() => void stop()}
+						>
 							<Square className="size-2.5" fill="currentColor" strokeWidth={0} aria-hidden />
 						</ComposerButton>
 					)}

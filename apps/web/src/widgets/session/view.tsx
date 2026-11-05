@@ -18,6 +18,7 @@ import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
+import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
 import { useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
@@ -447,6 +448,21 @@ function Conversation({
 		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
 		[thread],
 	);
+	// A prompt this window sent is pending until it lands in app.db, as a message or a queued prompt.
+	const key = threadKey(thread);
+	const inFlight = usePendingPrompts(key);
+	const { landed, forget } = useSent();
+	useEffect(() => {
+		if (loaded.status !== "ready" || inFlight.size === 0) return;
+		const known = new Set([...loaded.messages, ...loaded.queued].map((item) => item.id));
+		landed(
+			key,
+			[...inFlight].filter((id) => known.has(id)),
+		);
+	}, [loaded, inFlight, key, landed]);
+	// Only this view hears the thread's rows land, so what it sent goes with it.
+	useEffect(() => () => forget(key), [key, forget]);
+	const phase = useRunDisplay([{ key, runState: loaded.status === "ready" ? loaded.info.runState : "idle" }]);
 	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
@@ -518,6 +534,7 @@ function Conversation({
 					key={stand === undefined ? "own" : "stand"}
 					state={view}
 					running={running}
+					phase={stand === undefined ? phase : view.info.runState}
 					loadOlder={loadOlder}
 					inset={inset}
 				/>
@@ -553,6 +570,7 @@ function Conversation({
 					thread={thread}
 					instanceId={instanceId}
 					running={running}
+					stopping={phase === "stopping"}
 					info={view.info}
 					onError={setSendError}
 					onSending={sending}
@@ -607,11 +625,14 @@ const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true };
 function Transcript({
 	state,
 	running,
+	phase,
 	loadOlder,
 	inset,
 }: {
 	readonly state: Ready;
 	readonly running: boolean;
+	/** The run as drawn: the stored run state joined by a prompt or stop on its way. */
+	readonly phase: Display;
 	readonly loadOlder: () => void;
 	/** The composer overlay's height. */
 	readonly inset: number;
@@ -631,7 +652,7 @@ function Transcript({
 		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
 	});
 	const { pending } = follow;
-	const extraData = useMemo(() => ({ running, modelName, pending }), [running, modelName, pending]);
+	const extraData = useMemo(() => ({ phase, modelName, pending }), [phase, modelName, pending]);
 
 	if (turns.length === 0)
 		return (
@@ -642,7 +663,7 @@ function Transcript({
 	const renderItem = ({ item, index }: LegendListRenderItemProps<Turn>) => (
 		<TurnView
 			turn={item}
-			active={running && index === turns.length - 1}
+			phase={index === turns.length - 1 ? phase : "idle"}
 			pending={item.user !== undefined && item.user.id === pending}
 			modelName={modelName}
 		/>
@@ -719,14 +740,15 @@ function useTurns(messages: readonly HistoryEntry[]) {
 
 interface TurnProps {
 	readonly turn: Turn;
-	readonly active: boolean;
+	/** The run as drawn, for the last turn; idle for every other. */
+	readonly phase: Display;
 	/** Hidden until its prompt rises into its anchor. */
 	readonly pending: boolean;
 	readonly modelName: string | undefined;
 }
 
 const sameTurn = (a: TurnProps, b: TurnProps) =>
-	a.turn === b.turn && a.active === b.active && a.pending === b.pending && a.modelName === b.modelName;
+	a.turn === b.turn && a.phase === b.phase && a.pending === b.pending && a.modelName === b.modelName;
 
 /**
  * What the work log can show: a tool call, readable thinking, or a note between calls. Thinking a
@@ -741,7 +763,8 @@ const isWork = (part: Part) =>
  * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
  * calls) is the work that led there, folded under one line.
  */
-const TurnView = memo(function TurnView({ turn, active, pending, modelName }: TurnProps) {
+const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: TurnProps) {
+	const active = phase !== "idle";
 	const last = turn.replies.at(-1);
 	const answer = last?.parts.some((part) => part.type === "text") === true;
 	const work = turn.replies.flatMap((reply) =>
@@ -772,7 +795,14 @@ const TurnView = memo(function TurnView({ turn, active, pending, modelName }: Tu
 					ended={ended}
 					copyText={last === undefined ? "" : textOf(last)}
 				>
-					<WorkLog steps={work} started={started} ended={ended} working={working} modelName={modelName} />
+					<WorkLog
+						steps={work}
+						started={started}
+						ended={ended}
+						working={working}
+						phase={phase}
+						modelName={modelName}
+					/>
 					{answer && last !== undefined && <Answer reply={last} />}
 					{last?.error !== undefined ? (
 						<p className="px-4 py-1 text-xs text-destructive">{last.error}</p>
@@ -886,15 +916,19 @@ function useElapsedFrom(startedAt: number | undefined, active: boolean): number 
 function WorkLabel({
 	started,
 	ended,
+	phase,
 	modelName,
 }: {
 	readonly started: number | undefined;
 	readonly ended: number | undefined;
+	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
 	const live = ended === undefined;
 	const liveElapsed = useElapsedFrom(started, live);
 	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
+	// Before the run takes the prompt in, and while a stop reaches it, the state says more than the time.
+	if (phase === "pending" || phase === "starting" || phase === "stopping") return `${displayLabel[phase]}…`;
 	return formatWorkingDuration(elapsedMs, modelName, !live);
 }
 
@@ -993,6 +1027,7 @@ function WorkLog({
 	started,
 	ended,
 	working,
+	phase,
 	modelName,
 }: {
 	readonly steps: readonly Step[];
@@ -1001,6 +1036,7 @@ function WorkLog({
 	readonly ended: number | undefined;
 	/** True while the agent is in its work phase (thinking or running tools before the answer). */
 	readonly working: boolean;
+	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
 	const [override, setOverride] = useState<boolean | null>(null);
@@ -1009,7 +1045,7 @@ function WorkLog({
 	const expandable = steps.length > 0;
 	const open = expandable && (override ?? working);
 	useLivePhaseScroll(liveScroller, open, steps);
-	const label = <WorkLabel started={started} ended={ended} modelName={modelName} />;
+	const label = <WorkLabel started={started} ended={ended} phase={phase} modelName={modelName} />;
 	const icon = (
 		<span className="relative flex size-3.5 shrink-0 items-center justify-center">
 			{open && expandable ? (

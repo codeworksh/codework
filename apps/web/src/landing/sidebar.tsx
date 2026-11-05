@@ -28,7 +28,8 @@ import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
-import { PixelLoader } from "@/components/loader";
+import { useRunDisplay } from "../widgets/session/display";
+import { RunMark } from "../widgets/session/run";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -152,7 +153,6 @@ export function SessionsSidebar() {
 								key={session.id}
 								session={session}
 								current={sessionAddress(session.id) === current}
-								working={session.runState !== "idle"}
 								onOpen={open}
 							/>
 						))}
@@ -179,14 +179,14 @@ type Listed = SidebarProject["sessions"][number] & { readonly project: SidebarPr
 const SessionRow = memo(function SessionRow({
 	session,
 	current,
-	working,
 	onOpen,
 }: {
 	readonly session: Listed;
 	readonly current: boolean;
-	readonly working: boolean;
 	readonly onOpen: (session: Listed, event: MouseEvent) => void;
 }) {
+	// The main thread's key is its session's id.
+	const display = useRunDisplay([{ key: session.id, runState: session.runState }]);
 	return (
 		<li className="[contain-intrinsic-size:auto_50px] [content-visibility:auto]">
 			<button
@@ -198,11 +198,9 @@ const SessionRow = memo(function SessionRow({
 				onAuxClick={(event) => onOpen(session, event)}
 			>
 				<span className="flex min-w-0 items-center gap-1.5">
-					{working && (
-						<span role="img" aria-label="Agent working" className="flex shrink-0 text-ink-muted">
-							<PixelLoader />
-						</span>
-					)}
+					<span className="flex shrink-0 text-ink-muted empty:hidden">
+						<RunMark display={display} />
+					</span>
 					<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
 						{session.title}
 					</span>
