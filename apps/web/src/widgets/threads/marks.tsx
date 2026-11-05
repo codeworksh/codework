@@ -19,17 +19,20 @@ export const PRIORITY: Record<Priority, { readonly label: string }> = {
 export const PRIORITIES: ReadonlyArray<Priority> = [1, 2, 3, 4, 0];
 
 /** The colors a group or thread can take, Linear's label hues. */
-export const COLORS = [
-	"#e5484d",
-	"#f76b15",
-	"#ffc53d",
-	"#46a758",
-	"#12a594",
-	"#0090ff",
-	"#8e4ec6",
-	"#d6409f",
-	"#8b8d98",
+export const COLORS: ReadonlyArray<{ readonly name: string; readonly hex: string }> = [
+	{ name: "Red", hex: "#e5484d" },
+	{ name: "Orange", hex: "#f76b15" },
+	{ name: "Yellow", hex: "#ffc53d" },
+	{ name: "Green", hex: "#46a758" },
+	{ name: "Teal", hex: "#12a594" },
+	{ name: "Blue", hex: "#0090ff" },
+	{ name: "Purple", hex: "#8e4ec6" },
+	{ name: "Pink", hex: "#d6409f" },
+	{ name: "Gray", hex: "#8b8d98" },
 ];
+
+/** A color's name, or the hex of one not in `COLORS`. */
+export const colorName = (hex: string) => COLORS.find((color) => color.hex === hex)?.name ?? hex;
 
 /** A status as Linear draws one: a ring, half full while working, filled with a mark once done. */
 export function StatusIcon({ status }: { readonly status: ThreadStatus }) {

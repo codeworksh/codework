@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { failed } from "./common";
 import { deleteGroup, updateGroup } from "./data";
-import { COLORS, Dot, PRIORITY, PriorityIcon, STATUS, StatusIcon } from "./marks";
+import { COLORS, colorName, Dot, PRIORITY, PriorityIcon, STATUS, StatusIcon } from "./marks";
 import type { Section } from "./options";
 
 /** What a section is called and how it is marked. */
@@ -119,10 +119,10 @@ export function SectionHeader({
 							<DropdownMenuItem onSelect={() => onRename(group.id)}>Rename</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<div className="flex flex-wrap gap-1 px-2 py-1" role="group" aria-label="Color">
-								{[...COLORS, null].map((color) => (
+								{[...COLORS.map((color) => color.hex), null].map((color) => (
 									<DropdownMenuItem
 										key={color ?? "none"}
-										aria-label={color ?? "No Color"}
+										aria-label={color === null ? "No Color" : colorName(color)}
 										onSelect={() => void update({ payload: { groupingId: group.id, color } }).catch(failed)}
 										className="grid size-6 min-h-0 place-items-center p-0"
 									>

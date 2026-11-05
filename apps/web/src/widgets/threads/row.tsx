@@ -1,24 +1,17 @@
 import { useAtomSet } from "@effect/atom-react";
-import type { Grouping, ListedThread } from "@codeworksh/contract";
+import { type Grouping, type ListedThread, PERSONAL_ORGANIZATION } from "@codeworksh/contract";
 import { isMac } from "@codeworksh/widget/view";
 import { Box, Tag } from "lucide-react";
-import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { DragEvent, MouseEvent } from "react";
 
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuShortcut,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useRunDisplay } from "../session/display";
 import { RunMark } from "../session/run";
 import { threadKey } from "../session/schema";
 import { failed, refOf } from "./common";
-import { setColor, setGroup, setPriority, setStatus } from "./data";
+import { createGroup, setColor, setGroup, setPriority, setStatus } from "./data";
 import {
 	COLORS,
+	colorName,
 	Dot,
 	MachineAvatar,
 	PRIORITIES,
@@ -29,6 +22,7 @@ import {
 	StatusIcon,
 	shortDate,
 } from "./marks";
+import { Picker as Pick } from "./picker";
 
 /** The pickers a row has, each opened by its key from the keyboard. */
 export type Picker = "status" | "priority" | "group" | "color";
@@ -67,6 +61,7 @@ export function Row({
 	const priority = useAtomSet(setPriority, { mode: "promise" });
 	const group = useAtomSet(setGroup, { mode: "promise" });
 	const color = useAtomSet(setColor, { mode: "promise" });
+	const create = useAtomSet(createGroup, { mode: "promise" });
 	const display = useRunDisplay([{ key: threadKey(refOf(thread)), runState: thread.runState }]);
 	const grouping = groups.find((candidate) => candidate.id === thread.groupingId);
 	const picker = (kind: Picker) => ({
@@ -98,8 +93,10 @@ export function Row({
 			>
 				<Pick
 					{...picker("color")}
-					label={`Color: ${thread.color ?? "Session Color"}`}
+					label={`Color: ${thread.color === null ? "Session Color" : colorName(thread.color)}`}
+					placeholder="Change color…"
 					shortcut="C"
+					digits
 					icon={
 						<span
 							aria-hidden
@@ -109,7 +106,7 @@ export function Row({
 					}
 					value={thread.color ?? "none"}
 					options={[
-						...COLORS.map((value) => ({ value, label: value, mark: <Dot color={value} /> })),
+						...COLORS.map(({ name, hex }) => ({ value: hex, label: name, mark: <Dot color={hex} /> })),
 						{ value: "none", label: "Session Color", mark: <Dot color={null} /> },
 					]}
 					onPick={(value) =>
@@ -120,7 +117,9 @@ export function Row({
 				<Pick
 					{...picker("priority")}
 					label={`Priority: ${PRIORITY[thread.priority].label}`}
+					placeholder="Change priority…"
 					shortcut="P"
+					digits
 					icon={<PriorityIcon priority={thread.priority} />}
 					value={String(thread.priority)}
 					options={PRIORITIES.map((value) => ({
@@ -135,7 +134,9 @@ export function Row({
 				<Pick
 					{...picker("status")}
 					label={`Status: ${STATUS[thread.status].label}`}
+					placeholder="Change status…"
 					shortcut="S"
+					digits
 					icon={<StatusIcon status={thread.status} />}
 					value={thread.status}
 					options={STATUSES.map((value) => ({
@@ -167,7 +168,16 @@ export function Row({
 				<Pick
 					{...picker("group")}
 					label={`Group: ${grouping?.name ?? "No Group"}`}
+					placeholder="Change or add group…"
 					shortcut="L"
+					heading={groups.length > 0 ? "Groups" : undefined}
+					onCreate={{
+						noun: "group",
+						create: (name) =>
+							void create({ payload: { organizationId: PERSONAL_ORGANIZATION, name } })
+								.then((created) => group({ payload: { threadId: thread.id, groupingId: created.id } }))
+								.catch(failed),
+					}}
 					icon={
 						grouping === undefined ? (
 							<Tag className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
@@ -209,66 +219,5 @@ export function Row({
 				</span>
 			</div>
 		</li>
-	);
-}
-
-/** A small menu button that picks one of `options`; open from outside so the keyboard reaches it. */
-function Pick({
-	label,
-	shortcut,
-	icon,
-	value,
-	options,
-	onPick,
-	open,
-	onOpenChange,
-	narrow = false,
-}: {
-	readonly label: string;
-	readonly shortcut: string;
-	readonly icon: ReactNode;
-	readonly value: string;
-	readonly options: ReadonlyArray<{ readonly value: string; readonly label: string; readonly mark: ReactNode }>;
-	readonly onPick: (value: string) => void;
-	readonly open: boolean;
-	readonly onOpenChange: (open: boolean) => void;
-	readonly narrow?: boolean;
-}) {
-	return (
-		<DropdownMenu open={open} onOpenChange={onOpenChange}>
-			<DropdownMenuTrigger
-				aria-label={label}
-				title={`${label} (${shortcut})`}
-				tabIndex={-1}
-				onMouseDown={(event) => event.stopPropagation()}
-				className={`flex h-6 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-ink/8 hover:text-ink ${
-					narrow ? "w-2" : "min-w-6 px-1"
-				}`}
-			>
-				{icon}
-			</DropdownMenuTrigger>
-			<DropdownMenuContent
-				align="start"
-				// The list takes focus back, so the keyboard stays on it.
-				onCloseAutoFocus={(event) => event.preventDefault()}
-				onKeyDown={(event) => {
-					const option = /^[1-9]$/.test(event.key) ? options[Number(event.key) - 1] : undefined;
-					if (option === undefined) return;
-					event.preventDefault();
-					if (option.value !== value) onPick(option.value);
-					onOpenChange(false);
-				}}
-			>
-				<DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onPick(next)}>
-					{options.map((option, index) => (
-						<DropdownMenuRadioItem key={option.value} value={option.value} className="gap-2">
-							{option.mark}
-							{option.label}
-							{index < 9 && <DropdownMenuShortcut>{index + 1}</DropdownMenuShortcut>}
-						</DropdownMenuRadioItem>
-					))}
-				</DropdownMenuRadioGroup>
-			</DropdownMenuContent>
-		</DropdownMenu>
 	);
 }
