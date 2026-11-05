@@ -9,10 +9,10 @@ import { Switcher } from "./switcher";
 
 // The window has no native title bar on macOS; a title bar is its drag region and leaves room for the
 // inset traffic lights.
-export const insetTitleBar = window.desktopBridge?.platform === "darwin";
+const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
-export const chromeButton =
+const chromeButton =
 	"grid size-7 shrink-0 place-items-center rounded-md text-ink-muted press [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 /** Window-level navigation remains available on Home, workspaces, and settings. */

@@ -33,6 +33,9 @@ allowBuilds:
    # electron-builder's Windows installer; the desktop app builds no Windows targets.
    electron-winstaller: false
 
+patchedDependencies:
+   "@legendapp/list@3.3.5": patches/@legendapp__list@3.3.5.patch
+
 # just-bash pins `run` exactly; the harness uses a newer one, and the binary unpacks one copy.
 overrides:
    run: 2.1.8

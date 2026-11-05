@@ -3,7 +3,8 @@ import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@huge
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { type MouseEvent, useMemo, useState } from "react";
+import type { Project } from "@codeworksh/contract";
+import { type MouseEvent, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
 	Sidebar,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
-import { projectsAtom } from "../widgets/session/projects";
+import { projectsAtom, workingAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -27,6 +28,7 @@ import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
+import { PixelLoader } from "@/components/loader";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -35,6 +37,7 @@ import { placeAtom } from "./place";
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
+	const working = useAtomValue(workingAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
@@ -56,11 +59,16 @@ export function SessionsSidebar() {
 	};
 	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
 	// browser's new window, asks for a workspace of its own.
-	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
+	// Read through a ref, so rows keep one handler and skip re-rendering when the desk changes.
+	const opener = useRef(openElsewhere);
+	useLayoutEffect(() => {
+		opener.current = openElsewhere;
+	});
+	const open = useCallback((session: Listed, event: MouseEvent) => {
 		if (event.button > 1) return;
 		const placement = event.shiftKey ? "workspace" : openMode(event);
-		void openElsewhere(sessionAddress(session.id), session.project.name, placement);
-	};
+		void opener.current(sessionAddress(session.id), session.project.name, placement);
+	}, []);
 
 	const needle = query.trim().toLowerCase();
 	const sessions = useMemo(
@@ -141,43 +149,13 @@ export function SessionsSidebar() {
 				) : (
 					<ul aria-label="Threads" className="flex flex-col gap-0.5">
 						{sessions.map((session) => (
-							<li key={session.id}>
-								<button
-									type="button"
-									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
-									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="group/row relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:text-ink"
-									onClick={(event) => open(session, event)}
-									onAuxClick={(event) => open(session, event)}
-								>
-									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
-											{session.title}
-										</span>
-										<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
-											{ago(session.updated)}
-										</span>
-									</span>
-									<span className="mt-1 flex min-w-0 items-center gap-2 text-2xs text-ink-muted">
-										<span className="flex min-w-0 flex-1 items-center gap-1.5">
-											<Monogram id={session.project.id} name={session.project.name} />
-											<span className="min-w-0 truncate">{session.project.name}</span>
-										</span>
-										{session.model !== undefined && (
-											<span className="flex shrink-0 items-center text-2xs text-ink-muted">
-												<span className="max-w-32 truncate pr-1.5 opacity-0 transition-opacity duration-150 ease-out group-hover/row:opacity-100 group-focus-visible/row:opacity-100">
-													{session.model.id}
-												</span>
-												<ProviderIcon
-													id={session.model.provider}
-													name={session.model.provider}
-													className="size-3.5 shrink-0"
-												/>
-											</span>
-										)}
-									</span>
-								</button>
-							</li>
+							<SessionRow
+								key={session.id}
+								session={session}
+								current={sessionAddress(session.id) === current}
+								working={working.has(session.id)}
+								onOpen={open}
+							/>
 						))}
 					</ul>
 				)}
@@ -195,3 +173,63 @@ export function SessionsSidebar() {
 		</Sidebar>
 	);
 }
+
+type Listed = Project["sessions"][number] & { readonly project: Project };
+
+/** Off-screen rows skip layout and paint until scrolled near; memoized so a loader or focus change repaints one row. */
+const SessionRow = memo(function SessionRow({
+	session,
+	current,
+	working,
+	onOpen,
+}: {
+	readonly session: Listed;
+	readonly current: boolean;
+	readonly working: boolean;
+	readonly onOpen: (session: Listed, event: MouseEvent) => void;
+}) {
+	return (
+		<li className="[contain-intrinsic-size:auto_50px] [content-visibility:auto]">
+			<button
+				type="button"
+				title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
+				aria-current={current ? "true" : undefined}
+				className="group/row relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:text-ink"
+				onClick={(event) => onOpen(session, event)}
+				onAuxClick={(event) => onOpen(session, event)}
+			>
+				<span className="flex min-w-0 items-center gap-1.5">
+					{working && (
+						<span role="img" aria-label="Agent working" className="flex shrink-0 text-ink-muted">
+							<PixelLoader />
+						</span>
+					)}
+					<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
+						{session.title}
+					</span>
+					<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
+						{ago(session.updated)}
+					</span>
+				</span>
+				<span className="mt-1 flex min-w-0 items-center gap-2 text-2xs text-ink-muted">
+					<span className="flex min-w-0 flex-1 items-center gap-1.5">
+						<Monogram id={session.project.id} name={session.project.name} />
+						<span className="min-w-0 truncate">{session.project.name}</span>
+					</span>
+					{session.model !== undefined && (
+						<span className="flex shrink-0 items-center text-2xs text-ink-muted">
+							<span className="max-w-32 truncate pr-1.5 opacity-0 transition-opacity duration-150 ease-out group-hover/row:opacity-100 group-focus-visible/row:opacity-100">
+								{session.model.id}
+							</span>
+							<ProviderIcon
+								id={session.model.provider}
+								name={session.model.provider}
+								className="size-3.5 shrink-0"
+							/>
+						</span>
+					)}
+				</span>
+			</button>
+		</li>
+	);
+});

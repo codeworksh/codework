@@ -15,7 +15,7 @@ export interface Problem {
 }
 
 /** The default server's problem from its status; undefined while the app can work with it. */
-export function problemOf(status: ServerStatus): Problem | undefined {
+function problemOf(status: ServerStatus): Problem | undefined {
 	const { cli, server } = status;
 	// An already running, compatible server is usable even without a local CLI.
 	if (server._tag === "Running") return undefined;

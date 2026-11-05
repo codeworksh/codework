@@ -10,7 +10,7 @@ import { Server } from "../kernel/rpc";
 import { placeAtom } from "../landing/place";
 
 /** Every clone the server tracks, as one list: the current one first, then each change. */
-export const clonesAtom = Server.runtime
+const clonesAtom = Server.runtime
 	.atom(
 		Stream.unwrap(Server.use((client) => Effect.succeed(client("host.clones", undefined)))).pipe(
 			// A dropped stream is a reconnect; the next list is whole again.

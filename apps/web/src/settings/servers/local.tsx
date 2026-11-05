@@ -26,7 +26,7 @@ const updateAtom = Server.mutation("servers.update");
 const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
 
-export const INSTALL = "curl -fsSL https://codework.sh/install | sh";
+const INSTALL = "curl -fsSL https://codework.sh/install | sh";
 
 type Tone = "success" | "warning" | "danger" | "info" | "muted";
 
@@ -347,7 +347,7 @@ function ServerActions({ status, onError }: { status: ServerStatus; onError: (me
 	);
 }
 
-export const Card = ({ children }: { children: ReactNode }) => (
+const Card = ({ children }: { children: ReactNode }) => (
 	<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">{children}</div>
 );
 
@@ -450,7 +450,7 @@ function ServerLine({ status }: { status: ServerStatus }) {
 	return "Not running. Once started, it keeps running in the background after the app quits.";
 }
 
-export function CopyCommand({ command }: { command: string }) {
+function CopyCommand({ command }: { command: string }) {
 	const [copied, setCopied] = useState(false);
 	return (
 		<span className="flex items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">

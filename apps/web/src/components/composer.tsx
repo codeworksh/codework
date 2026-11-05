@@ -1,4 +1,4 @@
-import { ArrowUp, X, type LucideIcon } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
@@ -96,34 +96,6 @@ export function Composer({
 				<div className="flex min-w-0 items-center gap-2.5 overflow-hidden px-[15px] pt-1.5 text-ui text-ink-muted">
 					{tray}
 				</div>
-			)}
-		</div>
-	);
-}
-
-export function ComposerHeader({
-	title,
-	icon: Icon,
-	onClose,
-}: {
-	readonly title: string;
-	readonly icon: LucideIcon;
-	readonly onClose?: () => void;
-}) {
-	return (
-		<div className="flex h-pane items-center gap-2 px-3 text-ui text-ink-muted">
-			<Icon className="size-3.5" aria-hidden />
-			<span className="flex-1 font-medium">{title}</span>
-			{onClose !== undefined && (
-				<button
-					type="button"
-					onClick={onClose}
-					aria-label="Minimize reply"
-					className="flex items-center gap-2 rounded-md p-1 text-ink-muted outline-none hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
-				>
-					<kbd className="text-[10px]">esc</kbd>
-					<X className="size-3.5" aria-hidden />
-				</button>
 			)}
 		</div>
 	);

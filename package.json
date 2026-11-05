@@ -18,6 +18,8 @@
 		"dev:cli": "vp run --filter @codeworksh/cli start",
 		"dev:desktop": "vp run --filter @codeworksh/desktop dev",
 		"dev:www": "vp run --filter @codeworksh/www dev",
+		"knip": "knip",
+		"knip:check": "knip --no-config-hints --workspace apps/web --workspace apps/desktop --workspace apps/contract --workspace apps/widget",
 		"lint": "vp lint",
 		"prepare": "node scripts/clean-tsgo-backups.mjs && effect-tsgo patch --typescript --oxlint",
 		"test": "vp test",
@@ -33,6 +35,7 @@
 		"@shadcn/lint": "0.1.5",
 		"@types/node": "catalog:",
 		"eslint-plugin-better-tailwindcss": "4.10.0",
+		"knip": "6.34.0",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

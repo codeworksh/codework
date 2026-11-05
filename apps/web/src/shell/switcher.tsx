@@ -4,7 +4,10 @@ import { AppWindow, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { isMac } from "@codeworksh/widget/view";
+import { PixelLoader } from "@/components/loader";
 import { registry } from "../widgets";
+import { threadRef } from "../widgets/session/address";
+import { workingAtom } from "../widgets/session/projects";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
 import {
@@ -32,6 +35,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const owners = useAtomValue(tabOwnerAtom);
+	const working = useAtomValue(workingAtom);
 	const navigate = useNavigate();
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
@@ -103,6 +107,11 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
+				const busy = instances.some(
+					(instance) =>
+						(instance.tags & workspaceTag(workspace)) !== 0 &&
+						working.has(threadRef(instance.address)?.sessionId ?? ""),
+				);
 				return (
 					<div key={workspace.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
 						<Link
@@ -116,9 +125,11 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							}`}
 						>
 							<span
+								role={busy ? "img" : undefined}
+								aria-label={busy ? "Agent working" : undefined}
 								className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
 							>
-								<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
+								{busy ? <PixelLoader /> : <AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />}
 							</span>
 							<span className="truncate text-xs font-medium">{tab}</span>
 						</Link>

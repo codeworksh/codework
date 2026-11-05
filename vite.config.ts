@@ -118,6 +118,8 @@ export default defineConfig({
 				command: [
 					"vp check packages scripts .github infra",
 					"vp run --filter './packages/*' --concurrency-limit 2 typecheck",
+					// Dead files, dependencies and exports, in the workspaces kept clean so far.
+					"vp run knip:check",
 				],
 				dependsOn: ["@codeworksh/aikit#build"],
 				cache: false,
