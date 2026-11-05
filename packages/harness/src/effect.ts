@@ -1,6 +1,7 @@
 export { Harness } from "./effect/harness.ts";
 export { Sandbox } from "./effect/sandbox.ts";
 export { Session } from "./effect/session.ts";
+export { Sync } from "./effect/sync.ts";
 export { Control } from "./control.ts";
 export { Database } from "./db/db.ts";
 export { Store } from "./db/store.ts";

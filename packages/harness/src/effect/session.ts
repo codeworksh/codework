@@ -99,6 +99,8 @@ type PromptResult = Effect.Effect<Effect.Success<Admission>, Effect.Error<Admiss
 
 export interface Info {
 	readonly id: SessionSchema.ID;
+	readonly spaceId: string;
+	readonly slug: string;
 	readonly directory: AbsolutePath;
 	/** Absent when the session has no host anchor; see {@link CreateInput.hostDir}. */
 	readonly hostDir?: AbsolutePath;
@@ -107,15 +109,33 @@ export interface Info {
 	readonly sandbox?: SandboxInfo;
 	/** Absent only when the session's space or project row is missing. */
 	readonly project?: { readonly id: ProjectSchema.ID; readonly name: string };
+	readonly tag?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+	/** Epoch milliseconds. */
+	readonly createdAt: number;
 	/** Last activity in any of its threads, epoch milliseconds. */
 	readonly updatedAt: number;
 	readonly mainThreadId: ThreadSchema.ID;
 }
 
-export interface ThreadInfo {
+/** How a thread came to exist; `cut` is the committed seq its inherited line ends at. */
+export type ThreadOrigin =
+	| { readonly kind: "main" }
+	| { readonly kind: "fork"; readonly threadId: ThreadSchema.ID; readonly entryId: string; readonly cut: number }
+	| {
+			readonly kind: "subagent";
+			readonly threadId: ThreadSchema.ID;
+			readonly callId: string;
+			readonly entryId?: string;
+			/** Present once `entryId` is committed. */
+			readonly cut?: number;
+	  };
+
+/** A thread without its session. */
+export interface ThreadSummary {
 	readonly id: ThreadSchema.ID;
 	readonly sessionId: SessionSchema.ID;
-	readonly origin: ThreadSchema.Origin;
+	readonly origin: ThreadOrigin;
 	/** Absent until its first own prompt; clients show a fork's source title until then. */
 	readonly title?: string;
 	/** Last activity, epoch milliseconds: every appended entry moves it. */
@@ -141,6 +161,17 @@ export interface ThreadInfo {
 		readonly outcome?: ThreadSchema.RunOutcome;
 		readonly error?: ThreadSchema.RunError;
 	};
+	/** Automatic restarts of the current run. */
+	readonly restarts: number;
+	/** The 1-based provider request in flight; absent when none is. */
+	readonly attempt?: number;
+	/** The seq of the event that created it. */
+	readonly createdSeq: number;
+	/** Epoch milliseconds. */
+	readonly createdAt: number;
+}
+
+export interface ThreadInfo extends ThreadSummary {
 	readonly session: Info;
 }
 
@@ -259,30 +290,44 @@ export const info = Effect.fn("Session.info")(function* (id: SessionSchema.ID) {
 			: Option.getOrUndefined(yield* sandboxes.get(space.env));
 	const hostDir = Option.getOrUndefined(row.hostDir);
 	const project = Option.getOrUndefined(yield* sessions.project(id));
+	const tag = Option.getOrUndefined(row.tag);
+	const metadata = Option.getOrUndefined(row.metadata);
 	return {
 		id,
+		spaceId: row.spaceId,
+		slug: row.slug,
 		directory: row.directory,
 		...(hostDir === undefined ? {} : { hostDir }),
 		hasHostLink: hostDir !== undefined,
 		...(sandbox === undefined ? {} : { sandbox }),
 		...(project === undefined ? {} : { project: { id: project.id, name: project.name } }),
+		...(tag === undefined ? {} : { tag }),
+		...(metadata === undefined ? {} : { metadata }),
+		createdAt: DateTime.toEpochMillis(row.createdAt),
 		updatedAt: DateTime.toEpochMillis(row.updatedAt),
 		mainThreadId: ThreadSchema.ID.make(main.value.id),
 	} satisfies Info;
 });
 
-const originOf = (row: ThreadRow): ThreadSchema.Origin => {
+const originOf = (row: ThreadRow, cut: number | undefined): ThreadOrigin => {
 	const threadId = Option.getOrUndefined(row.originThreadId);
 	const entryId = Option.getOrUndefined(row.originEntryId);
 	const callId = Option.getOrUndefined(row.originCallId);
-	if (row.originKind === "fork" && threadId !== undefined && entryId !== undefined)
-		return { kind: "fork", threadId, entryId };
+	// A fork is only ever cut at a committed entry (`Thread.projectForked`).
+	if (row.originKind === "fork" && threadId !== undefined && entryId !== undefined && cut !== undefined)
+		return { kind: "fork", threadId, entryId, cut };
 	if (row.originKind === "subagent" && threadId !== undefined && callId !== undefined)
-		return { kind: "subagent", threadId, callId, ...(entryId === undefined ? {} : { entryId }) };
+		return {
+			kind: "subagent",
+			threadId,
+			callId,
+			...(entryId === undefined ? {} : { entryId }),
+			...(cut === undefined ? {} : { cut }),
+		};
 	return { kind: "main" };
 };
 
-export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadSchema.ID) {
+export const threadSummary = Effect.fn("Session.threadSummary")(function* (id: ThreadSchema.ID) {
 	const threads = yield* Thread.Service;
 	const documents = yield* Document.Service;
 	const found = yield* threads.get(id);
@@ -297,10 +342,14 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 	const endedAt = millis(row.runEndedAt);
 	const outcome = Option.getOrUndefined(row.runOutcome);
 	const error = Option.getOrUndefined(row.runError);
+	const attempt = Option.getOrUndefined(row.attempt);
 	return {
 		id,
 		sessionId: SessionSchema.ID.make(row.sessionId),
-		origin: originOf(row),
+		origin: originOf(
+			row,
+			Option.isSome(row.originEntryId) ? Option.getOrUndefined(yield* threads.cut(id)) : undefined,
+		),
 		...(title === undefined ? {} : { title }),
 		updatedAt: DateTime.toEpochMillis(row.updatedAt),
 		...(agent.model === undefined ? {} : { model: agent.model }),
@@ -326,8 +375,16 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 						...(error === undefined ? {} : { error }),
 					},
 				}),
-		session: yield* info(SessionSchema.ID.make(row.sessionId)),
-	} satisfies ThreadInfo;
+		restarts: row.restarts,
+		...(attempt === undefined ? {} : { attempt }),
+		createdSeq: row.createdSeq,
+		createdAt: DateTime.toEpochMillis(row.createdAt),
+	} satisfies ThreadSummary;
+});
+
+export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadSchema.ID) {
+	const summary = yield* threadSummary(id);
+	return { ...summary, session: yield* info(summary.sessionId) } satisfies ThreadInfo;
 });
 
 const makeThread = Effect.fn("Session.makeThread")(function* (sessionId: SessionSchema.ID, id: ThreadSchema.ID) {

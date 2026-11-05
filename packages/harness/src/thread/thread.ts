@@ -12,6 +12,7 @@ import {
 	type ToolStatus,
 } from "../db/schema.sql.ts";
 import { Store } from "../db/store.ts";
+import { NonNegativeInt } from "../schema.ts";
 import { Document } from "../document/document.ts";
 import { DocumentSchema } from "../document/schema.ts";
 import { Event } from "../event/event.ts";
@@ -160,6 +161,8 @@ export interface Interface {
 	/** Threads newest first: of one session, or of the whole database. */
 	readonly list: (sessionId?: SessionSchema.ID) => Effect.Effect<ReadonlyArray<ThreadRow>>;
 	readonly entry: (entryId: string) => Effect.Effect<Option.Option<HydratedEntry>>;
+	/** Where the thread's inherited line ends: its origin entry's committed seq; none when it inherits nothing. */
+	readonly cut: (threadId: string) => Effect.Effect<Option.Option<number>>;
 	/**
 	 * The thread's line: its own entries, then its source's through the fork entry, recursively, in
 	 * seq order. Every state is included; context assembly drops what is not committed.
@@ -294,6 +297,15 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM entry WHERE id = ${id}`,
 		});
 
+		const findCut = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: Schema.Struct({ cut: NonNegativeInt }),
+			execute: (threadId) => sql`
+				SELECT e.committed_seq AS cut FROM thread t JOIN entry e ON e.id = t.origin_entry_id
+				WHERE t.id = ${threadId} AND e.committed_seq IS NOT NULL
+			`,
+		});
+
 		// The WHERE NOT EXISTS keeps a thread's positions strictly advancing: seq comes from the
 		// event that produced the entry, and a stale one would sort the thread out of order.
 		// Inserting zero rows is the signal, checked by the callers.
@@ -404,6 +416,10 @@ export const layer = Layer.effect(
 			if (Option.isNone(found)) return Option.none<HydratedEntry>();
 			const parts = yield* partsFor([found.value]);
 			return Option.some(hydrate([found.value], parts)[0]!);
+		});
+
+		const cut = Effect.fn("Thread.cut")(function* (threadId: string) {
+			return Option.map(yield* findCut(threadId).pipe(Effect.orDie), (row) => row.cut);
 		});
 
 		const line = Effect.fn("Thread.line")(function* (threadId: ThreadSchema.ID) {
@@ -1021,6 +1037,7 @@ export const layer = Layer.effect(
 			main,
 			list,
 			entry,
+			cut,
 			line,
 			draft,
 			unsettled,
