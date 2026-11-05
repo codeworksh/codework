@@ -21,7 +21,7 @@ import { ago } from "../widgets/time";
 
 /** What a tree path stands for: a project (it only folds) or a thread that opens. */
 type Entry =
-	| { readonly kind: "project"; readonly path: string }
+	| { readonly kind: "project"; readonly path: string; readonly sessions: number }
 	| { readonly kind: "thread"; readonly ref: ThreadRef; readonly updated: number; readonly running: boolean };
 
 /** The tree's colors and type from the app's theme tokens, so it follows light and dark. */
@@ -36,8 +36,30 @@ const TREE_STYLE = {
 	"--trees-accent-override": "var(--color-brand)",
 	"--trees-focus-ring-color-override": "var(--color-ring)",
 	"--trees-font-family-override": "inherit",
-	"--trees-font-size-override": "12px",
+	"--trees-font-size-override": "13px",
+	// Bands run edge to edge, as All Threads' sections do; rows keep a small inset.
+	"--trees-padding-inline-override": "0px",
+	"--trees-item-margin-x-override": "6px",
 } as CSSProperties;
+
+/** A project's row as All Threads draws a section: a full-width band, its count quiet on the right. */
+const SECTION_CSS = `
+[data-type="item"][aria-level="1"] {
+	margin-inline: 0;
+	border-radius: 0;
+	background: color-mix(in oklab, var(--color-frame), var(--color-ink) 4%);
+	box-shadow: inset 0 -1px color-mix(in oklab, var(--color-edge) 50%, transparent);
+	color: var(--color-ink);
+	font-weight: 500;
+}
+[data-type="item"][aria-level="1"]:hover {
+	background: color-mix(in oklab, var(--color-frame), var(--color-ink) 7%);
+}
+[data-type="item"][aria-level="1"] [data-item-section="decoration"] {
+	color: var(--color-ink-muted);
+	font-weight: 400;
+}
+`;
 
 /** A thread is a conversation, not a file: a chat bubble in the file slot. */
 const SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="codework-thread" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol></svg>`;
@@ -67,7 +89,7 @@ function layout(projects: ReadonlyArray<SidebarProject>, threads: ReadonlyArray<
 	for (const project of projects) {
 		const projectPath = `${segment("", machines > 1 ? `${project.name} · ${project.machine.name}` : project.name)}/`;
 		paths.push(projectPath);
-		entries.set(projectPath, { kind: "project", path: project.path });
+		entries.set(projectPath, { kind: "project", path: project.path, sessions: project.sessions.length });
 		for (const session of project.sessions) {
 			const own = (forks.get(session.id) ?? []).toSorted((a, b) => b.updatedAt - a.updatedAt);
 			const name = segment(projectPath, session.title);
@@ -121,11 +143,15 @@ export function Projects() {
 		paths: [],
 		// The sidebar's order (newest first), not the tree's alphabetical one.
 		sort: (a, b) => (rank.current.get(a.path) ?? 0) - (rank.current.get(b.path) ?? 0),
-		density: "compact",
+		itemHeight: 32,
+		// A project's row stays at the top while its sessions scroll under it, as All Threads' sections do.
+		stickyFolders: true,
 		icons: ICONS,
+		unsafeCSS: SECTION_CSS,
 		renderRowDecoration: ({ row }) => {
 			const entry = entries.current.get(row.path);
-			if (entry?.kind !== "thread") return null;
+			if (entry === undefined) return null;
+			if (entry.kind === "project") return { text: String(entry.sessions), title: entry.path };
 			return entry.running ? { text: "Working" } : { text: ago(entry.updated) };
 		},
 	});
@@ -156,16 +182,25 @@ export function Projects() {
 	};
 
 	if (AsyncResult.isFailure(projects)) return <p className="p-3 text-ink-muted">Could not load projects.</p>;
+	const count = AsyncResult.isSuccess(projects) ? projects.value.length : 0;
 	return (
-		<FileTree
-			model={model}
-			style={TREE_STYLE}
-			className="px-1 pb-2"
-			onClick={(event) => open(pathOf(event), openMode(event))}
-			onAuxClick={(event) => event.button === 1 && open(pathOf(event), "new")}
-			onKeyDown={(event: KeyboardEvent) => {
-				if (event.key === "Enter") open(model.getFocusedPath(), event.metaKey || event.ctrlKey ? "new" : "replace");
-			}}
-		/>
+		<div className="flex h-full flex-col">
+			<div className="flex h-10 shrink-0 items-center border-b border-edge px-3">
+				<span className="text-xs text-ink-muted tabular-nums">
+					{count} {count === 1 ? "project" : "projects"}
+				</span>
+			</div>
+			<FileTree
+				model={model}
+				style={TREE_STYLE}
+				className="min-h-0 flex-1 pb-2"
+				onClick={(event) => open(pathOf(event), openMode(event))}
+				onAuxClick={(event) => event.button === 1 && open(pathOf(event), "new")}
+				onKeyDown={(event: KeyboardEvent) => {
+					if (event.key === "Enter")
+						open(model.getFocusedPath(), event.metaKey || event.ctrlKey ? "new" : "replace");
+				}}
+			/>
+		</div>
 	);
 }
