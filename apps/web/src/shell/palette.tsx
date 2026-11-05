@@ -1,7 +1,7 @@
-import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useAtom, useAtomSet } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { Check, ChevronRight, FolderKanban, FolderPlus, ListTodo, Settings } from "lucide-react";
+import { Check, ChevronRight, FolderPlus, FolderTree, ListTodo, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -13,14 +13,11 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { isTheme, previewTheme, THEMES, themeAtom } from "../theme";
-import { projects, projectsAddress } from "../widgets/projects";
-import { deskAtom } from "../wm/instances";
-import { lastWorkspaceAtom, openInWorkspaceRoute, useWorkspaces, workspaceTag } from "../wm/workspaces";
 import { AddProject, PALETTE_LIST, type View } from "./sources";
 import { paletteShortcut } from "./switcher";
 import { Swatch } from "./swatch";
 
-const OPEN_PROJECTS = "widgets:projects";
+const GO_PROJECTS = "navigation:projects";
 const GO_THREADS = "navigation:threads";
 const ADD_PROJECT = "projects:add";
 const THEME_SETTINGS = "settings:themes";
@@ -38,26 +35,6 @@ export function useAddProject() {
 }
 
 /**
- * Opens a widget by kind and address: where it already is, so the desktop reveals it there; else
- * in the workspace on screen, else the last used.
- */
-function useOpenWidget() {
-	const navigate = useNavigate();
-	const workspaces = useWorkspaces();
-	const { instances } = useAtomValue(deskAtom);
-	const lastId = useAtomValue(lastWorkspaceAtom);
-	const { workspaceId } = useParams({ strict: false });
-	return (kind: string, address: string) => {
-		const open = instances.find((instance) => instance.kind === kind);
-		const target =
-			(open && workspaces.find((workspace) => (open.tags & workspaceTag(workspace)) !== 0)) ??
-			workspaces.find((workspace) => workspace.id === (workspaceId ?? lastId)) ??
-			workspaces[0];
-		if (target !== undefined) void navigate(openInWorkspaceRoute(target, address, "replace"));
-	};
-}
-
-/**
  * The Cmd+K command palette. Highlighting a theme with the keyboard previews it;
  * Enter keeps the highlighted one and closing without choosing restores the saved one. The pointer
  * only picks: hovering neither moves the highlight nor previews.
@@ -69,7 +46,6 @@ export function Palette() {
 	const [saved, setTheme] = useAtom(themeAtom);
 	// The highlighted item, controlled so each opening starts at the top.
 	const [value, setValue] = useState(GO_THREADS);
-	const openWidget = useOpenWidget();
 
 	const show = (next: boolean) => {
 		if (next) {
@@ -147,14 +123,12 @@ export function Palette() {
 								<ListTodo strokeWidth={1.75} />
 								All Threads
 							</CommandItem>
-						</CommandGroup>
-						<CommandGroup heading="View">
 							<CommandItem
-								value={OPEN_PROJECTS}
-								keywords={["open", "projects", "sessions", "threads", "forks", "tree"]}
-								onSelect={() => run(() => openWidget(projects.kind, projectsAddress))}
+								value={GO_PROJECTS}
+								keywords={["projects", "go", "sessions", "forks", "tree"]}
+								onSelect={() => run(() => void navigate({ to: "/projects" }))}
 							>
-								<FolderKanban strokeWidth={1.75} />
+								<FolderTree strokeWidth={1.75} />
 								Projects
 							</CommandItem>
 						</CommandGroup>

@@ -13,11 +13,11 @@ import {
 	useRef,
 } from "react";
 
-import { threadAddress } from "../session/address";
-import { projectsAtom } from "../session/projects";
-import type { ThreadRef } from "../session/schema";
-import { threadsAtom } from "../threads/data";
-import { ago } from "../time";
+import { threadAddress } from "../widgets/session/address";
+import { projectsAtom } from "../widgets/session/projects";
+import type { ThreadRef } from "../widgets/session/schema";
+import { threadsAtom } from "../widgets/threads/data";
+import { ago } from "../widgets/time";
 
 /** What a tree path stands for: a project (it only folds) or a thread that opens. */
 type Entry =

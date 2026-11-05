@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShellRouteImport } from './routes/_shell'
+import { Route as ShellProjectsRouteImport } from './routes/_shell.projects'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellThreadsRouteImport } from './routes/_shell.threads'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
@@ -27,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ShellProjectsRoute = ShellProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => ShellRoute,
 } as any)
 const ShellSettingsRoute = ShellSettingsRouteImport.update({
   id: '/settings',
@@ -67,6 +73,7 @@ const ShellWorkspacesWorkspaceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/projects': typeof ShellProjectsRoute
   '/settings': typeof ShellSettingsRouteWithChildren
   '/threads': typeof ShellThreadsRoute
   '/settings/servers': typeof ShellSettingsServersRoute
@@ -77,6 +84,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/projects': typeof ShellProjectsRoute
   '/threads': typeof ShellThreadsRoute
   '/settings/servers': typeof ShellSettingsServersRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_shell': typeof ShellRouteWithChildren
+  '/_shell/projects': typeof ShellProjectsRoute
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
   '/_shell/threads': typeof ShellThreadsRoute
   '/_shell/settings/servers': typeof ShellSettingsServersRoute
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/projects'
     | '/settings'
     | '/threads'
     | '/settings/servers'
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/projects'
     | '/threads'
     | '/settings/servers'
     | '/settings/themes'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_shell'
+    | '/_shell/projects'
     | '/_shell/settings'
     | '/_shell/threads'
     | '/_shell/settings/servers'
@@ -149,6 +161,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ShellRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_shell/projects': {
+      id: '/_shell/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ShellProjectsRouteImport
+      parentRoute: typeof ShellRoute
     }
     '/_shell/settings': {
       id: '/_shell/settings'
@@ -221,12 +240,14 @@ const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(
 )
 
 interface ShellRouteChildren {
+  ShellProjectsRoute: typeof ShellProjectsRoute
   ShellSettingsRoute: typeof ShellSettingsRouteWithChildren
   ShellThreadsRoute: typeof ShellThreadsRoute
   ShellWorkspacesWorkspaceIdRoute: typeof ShellWorkspacesWorkspaceIdRoute
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
+  ShellProjectsRoute: ShellProjectsRoute,
   ShellSettingsRoute: ShellSettingsRouteWithChildren,
   ShellThreadsRoute: ShellThreadsRoute,
   ShellWorkspacesWorkspaceIdRoute: ShellWorkspacesWorkspaceIdRoute,
