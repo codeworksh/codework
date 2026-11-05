@@ -40,6 +40,23 @@ import {
 
 const nmaster = 1;
 
+const unchanged = (desk: Desk) => desk;
+
+/**
+ * Whether `value` differs from the last render's. It compares against a ref in render, which the
+ * compiler cannot memoize, so this hook stays out of it rather than the whole desktop.
+ */
+function useChanged<T>(value: T) {
+	"use no memo";
+	const last = useRef(value);
+	// oxlint-disable-next-line react/refs -- the comparison is the point; the hook opts out of the compiler.
+	const changed = last.current !== value;
+	useEffect(() => {
+		last.current = value;
+	}, [value]);
+	return changed;
+}
+
 /** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
 const SHELL = "shell";
 
@@ -128,11 +145,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	// A window resize must not tween: frames would trail the window edge by the transition's length.
-	const lastSize = useRef(size);
-	const resized = lastSize.current !== size;
-	useEffect(() => {
-		lastSize.current = size;
-	}, [size]);
+	const resized = useChanged(size);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
 	const { instances, order } = desk;
@@ -236,7 +249,7 @@ export function Desktop({ workspace }: DesktopProps) {
 					return current;
 				return new Map(current).set(instanceId, next);
 			}),
-		[],
+		[setChrome],
 	);
 
 	// A frame showing something else, or gone, starts from the widget's defaults again.
@@ -256,7 +269,7 @@ export function Desktop({ workspace }: DesktopProps) {
 		instanceId: string,
 		change: (desk: Desk) => Desk,
 		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
-		bridge: (desk: Desk) => Desk = (current) => current,
+		bridge: (desk: Desk) => Desk = unchanged,
 	) => {
 		const leaver = byId.get(instanceId);
 		const emptied =

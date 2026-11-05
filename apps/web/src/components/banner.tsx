@@ -1,5 +1,5 @@
 import { CircleAlert, Clock, Download, type LucideIcon, TriangleAlert, X } from "lucide-react";
-import { useRef } from "react";
+import { useLast } from "@/hooks/last";
 
 /**
  * Something the reader should know before writing more: a short title, and a line only when it adds
@@ -106,9 +106,7 @@ export function ComposerNotice({
  * anything. It eases in, and fades out quicker on the last notice it showed.
  */
 export function NoticeSlot({ notice }: { readonly notice: Notice | undefined }) {
-	const last = useRef(notice);
-	if (notice !== undefined) last.current = notice;
-	const shown = notice ?? last.current;
+	const shown = useLast(notice);
 	if (shown === undefined) return null;
 	return (
 		<div

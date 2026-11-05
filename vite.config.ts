@@ -70,6 +70,22 @@ const effectRules = {
 	"effecttsgo/lazy-effect": "off",
 } as const;
 
+const reactCompilerRules: DummyRuleMap = {
+	"react/globals": "error",
+	"react/hooks": "error",
+	"react/immutability": "error",
+	"react/memo-dependencies": "error",
+	"react/preserve-manual-memoization": "error",
+	"react/purity": "error",
+	"react/refs": "error",
+	"react/set-state-in-render": "error",
+	"react/static-components": "error",
+	"react/unsupported-syntax": "error",
+	// Not compiler bailouts; effects stay as they are until they are reviewed on their own.
+	"react/set-state-in-effect": "off",
+	"react-hooks/exhaustive-deps": "off",
+};
+
 // Tailwind rules for the web app, from @shadcn/lint and eslint-plugin-better-tailwindcss. shadcn's
 // components/ui stays as the generator wrote it. The checked rules are clean and gate `vp check`;
 // `vp run lint:tailwind` adds the rest until each is clean enough to join them.
@@ -147,6 +163,13 @@ export default defineConfig({
 				files: effectPackages,
 				...(recommended.plugins && { plugins: recommended.plugins }),
 				rules: effectRules,
+			},
+			{
+				// The React Compiler memoizes apps/web; these are the rules its bailouts map to.
+				files: ["apps/web/src/**/*.{ts,tsx}"],
+				excludeFiles: ["apps/web/src/components/ui/**"],
+				plugins: ["react"],
+				rules: reactCompilerRules,
 			},
 			{
 				files: ["apps/web/src/**/*.tsx"],

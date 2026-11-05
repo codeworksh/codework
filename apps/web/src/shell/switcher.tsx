@@ -33,6 +33,8 @@ interface SwitcherProps {
  * A frame's title is saved with its workspace, so after a restart a workspace not opened yet still names what it shows.
  */
 export function Switcher({ workspaces, active }: SwitcherProps) {
+	// `shown` is written while rendering the tabs and read back by later renders, which the compiler cannot memoize.
+	"use no memo";
 	const { instances, order } = useAtomValue(deskAtom);
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
@@ -97,6 +99,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	// so the list refetch it triggers does not send it again.
 	const save = useAtomSet(updateWorkspace);
 	const sent = useRef(new Map<string, string>());
+	// oxlint-disable-next-line react/refs -- see "use no memo" above.
 	const changed = workspaces.flatMap((workspace) => {
 		const { text, live } = tabOf(workspace);
 		return live && text !== workspace.tab ? [[workspace.id, text] as const] : [];
@@ -111,6 +114,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 
 	return (
 		<nav aria-label="Workspaces" className="flex min-w-0 items-center gap-1 [-webkit-app-region:no-drag]">
+			{/* oxlint-disable-next-line react/refs -- see "use no memo" above. */}
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);

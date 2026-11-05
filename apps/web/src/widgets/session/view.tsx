@@ -388,7 +388,7 @@ function useConversation(thread: ThreadRef) {
 			.finally(() => {
 				paging.current = false;
 			});
-	}, [oldest, page]);
+	}, [oldest, page, setState]);
 
 	return { state, loadOlder, message: store.message };
 }
@@ -682,8 +682,9 @@ function Transcript({
 	const modelName = useModelName(state.info.hostDir, state.info.model);
 	const turns = useTurns(state.messages);
 	const lastUser = turns.at(-1)?.user;
+	// oxlint-disable-next-line react/purity -- useFollow reads what this decides on mount only.
 	const sentAgo = lastUser === undefined ? Infinity : Date.now() - lastUser.createdAt;
-	const follow = useFollow({
+	const { ref, onLoad, onScroll, anchoredEndSpace, maintainScrollAtEnd, pending } = useFollow({
 		lastUserId: lastUser?.id,
 		anchored: running || sentAgo < PROMPT_RECENT_MS,
 		// The start page's first prompt, handed over with the new session.
@@ -692,7 +693,6 @@ function Transcript({
 		inset,
 		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
 	});
-	const { pending } = follow;
 	const extraData = useMemo(() => ({ phase, modelName, pending }), [phase, modelName, pending]);
 
 	if (turns.length === 0)
@@ -711,7 +711,7 @@ function Transcript({
 	);
 	return (
 		<LegendList<Turn>
-			ref={follow.ref}
+			ref={ref}
 			data={turns}
 			extraData={extraData}
 			keyExtractor={turnKey}
@@ -720,15 +720,15 @@ function Transcript({
 			estimatedItemSize={90}
 			recycleItems={false}
 			initialScrollAtEnd
-			onLoad={follow.onLoad}
-			{...(follow.anchoredEndSpace === undefined ? {} : { anchoredEndSpace: follow.anchoredEndSpace })}
-			contentInsetEndAdjustment={follow.anchoredEndSpace === undefined ? 0 : inset}
-			maintainScrollAtEnd={follow.maintainScrollAtEnd}
+			onLoad={onLoad}
+			{...(anchoredEndSpace === undefined ? {} : { anchoredEndSpace })}
+			contentInsetEndAdjustment={anchoredEndSpace === undefined ? 0 : inset}
+			maintainScrollAtEnd={maintainScrollAtEnd}
 			maintainScrollAtEndThreshold={1}
 			maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
 			onStartReached={state.more ? loadOlder : undefined}
 			onScroll={(event) => {
-				follow.onScroll();
+				onScroll();
 				setScrolled(event.nativeEvent.contentOffset.y > 1);
 			}}
 			tabIndex={0}
@@ -736,9 +736,7 @@ function Transcript({
 			data-settled={follow.settled}
 			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""} ${follow.settled ? "" : "invisible"}`}
 			ListHeaderComponent={TRANSCRIPT_HEADER}
-			ListFooterComponent={
-				<div aria-hidden style={{ height: (follow.anchoredEndSpace === undefined ? inset : 0) + 24 }} />
-			}
+			ListFooterComponent={<div aria-hidden style={{ height: (anchoredEndSpace === undefined ? inset : 0) + 24 }} />}
 		/>
 	);
 }
@@ -1010,7 +1008,7 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: 
 		} else if (nearBottom) {
 			stickToBottom.current = true;
 		}
-		if (stickToBottom.current) el.scrollTop = el.scrollHeight;
+		if (stickToBottom.current) el.scrollTo({ top: el.scrollHeight });
 		lastScrollTop.current = el.scrollTop;
 		markScrollEdges(el);
 	}, [el]);

@@ -9,7 +9,7 @@ export default defineConfig({
 		// Route components load as split chunks so feature code stays out of the
 		// cold-start payload; the router prefetches them on navigation intent.
 		tanstackRouter({ autoCodeSplitting: true }),
-		react(),
+		react({ compiler: true }),
 		tailwindcss(),
 	],
 	// shadcn components import through "@/"; tsconfig.json declares the same alias.

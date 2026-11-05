@@ -253,36 +253,36 @@ export function useFollow({
 	};
 
 	const index = anchor === null ? -1 : anchorIndex(anchor);
-	const anchoredEndSpace: AnchoredEndSpaceConfig | undefined =
-		anchor === null || index === -1
-			? undefined
-			: {
-					anchorIndex: index,
-					anchorOffset: ANCHOR_OFFSET,
-					onReady: ({ anchorIndex: ready, size }) => {
-						anchorSize.current = size;
-						if (ready === undefined || positioned.current === anchor) return;
-						positioned.current = anchor;
-						// Its reply already reaches the composer: the end follows it instead.
-						if (following && size <= inset) {
-							releaseAnchor();
-							requestAnimationFrame(() => landed(anchor));
-							return;
-						}
-						const release = viewport.current?.hold() ?? (() => {});
-						void list.current
-							?.scrollToIndex({ index: ready, viewPosition: 0, viewOffset: ANCHOR_OFFSET, animated: false })
-							.then(() => {
-								release();
-								landed(anchor);
-							});
-					},
-					onSizeChanged: (size) => {
-						anchorSize.current = size;
-						if (positioned.current === anchor && store.read().mode === "following" && size <= inset)
-							releaseAnchor();
-					},
-				};
+	// Read in render instead of the config, whose callbacks write refs, so the compiler keeps the hook.
+	const anchoring = anchor !== null && index !== -1;
+	const anchoredEndSpace: AnchoredEndSpaceConfig | undefined = !anchoring
+		? undefined
+		: {
+				anchorIndex: index,
+				anchorOffset: ANCHOR_OFFSET,
+				onReady: ({ anchorIndex: ready, size }) => {
+					anchorSize.current = size;
+					if (ready === undefined || positioned.current === anchor) return;
+					positioned.current = anchor;
+					// Its reply already reaches the composer: the end follows it instead.
+					if (following && size <= inset) {
+						releaseAnchor();
+						requestAnimationFrame(() => landed(anchor));
+						return;
+					}
+					const release = viewport.current?.hold() ?? (() => {});
+					void list.current
+						?.scrollToIndex({ index: ready, viewPosition: 0, viewOffset: ANCHOR_OFFSET, animated: false })
+						.then(() => {
+							release();
+							landed(anchor);
+						});
+				},
+				onSizeChanged: (size) => {
+					anchorSize.current = size;
+					if (positioned.current === anchor && store.read().mode === "following" && size <= inset) releaseAnchor();
+				},
+			};
 
 	const navigate = useCallback(
 		(navigation: Navigation) => {
@@ -342,7 +342,7 @@ export function useFollow({
 		/** Laid out and scrolled into place: before this the list is measuring and may still move. */
 		settled,
 		anchoredEndSpace,
-		maintainScrollAtEnd: anchoredEndSpace !== undefined || !following ? false : smooth ? END_SMOOTH : END,
+		maintainScrollAtEnd: anchoring || !following ? false : smooth ? END_SMOOTH : END,
 		/** The prompt hidden until it rises into its anchor. */
 		pending: anchor !== null && rising === anchor ? rising : undefined,
 	};

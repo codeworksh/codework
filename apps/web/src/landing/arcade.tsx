@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
 	ARCADE_MODES,
@@ -216,8 +216,10 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 	const [hovered, setHovered] = useState(false);
 	const [focused, setFocused] = useState(false);
 
-	indexRef.current = slide.index;
-	playingRef.current = playing;
+	useLayoutEffect(() => {
+		indexRef.current = slide.index;
+		playingRef.current = playing;
+	});
 
 	const game = GRID_GAMES[slide.index] ?? GRID_GAMES[0]!;
 
