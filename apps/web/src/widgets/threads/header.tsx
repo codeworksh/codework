@@ -116,7 +116,7 @@ export function SectionHeader({
 							<MoreHorizontal className="size-3.5" aria-hidden />
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
-							<DropdownMenuItem className="text-ui" onSelect={() => onRename(group.id)}>
+							<DropdownMenuItem className="text-xs" onSelect={() => onRename(group.id)}>
 								Rename
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
@@ -135,7 +135,7 @@ export function SectionHeader({
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								variant="destructive"
-								className="text-ui"
+								className="text-xs"
 								onSelect={() => void remove({ payload: { groupingId: group.id } }).catch(failed)}
 							>
 								Delete group

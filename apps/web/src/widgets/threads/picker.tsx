@@ -104,17 +104,17 @@ export function Picker({
 							event.preventDefault();
 							pick(option);
 						}}
-						className="h-9 text-ui"
+						className="h-9 text-xs"
 					/>
 					<CommandList>
-						<CommandEmpty className="py-4 text-center text-ui text-ink-muted">No results.</CommandEmpty>
-						<CommandGroup heading={heading}>
+						<CommandEmpty className="py-4 text-center text-xs text-ink-muted">No results.</CommandEmpty>
+						<CommandGroup heading={heading} className="[&_[cmdk-group-heading]]:text-2xs">
 							{options.map((option, index) => (
 								<CommandItem
 									key={option.value}
 									value={`${option.label}\u0000${option.value}`}
 									onSelect={() => pick(option)}
-									className="text-ui"
+									className="text-xs"
 								>
 									{option.mark}
 									<span className="truncate">{option.label}</span>
@@ -129,7 +129,7 @@ export function Picker({
 						</CommandGroup>
 						{creatable && (
 							<CommandGroup forceMount>
-								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className="text-ui">
+								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className="text-xs">
 									<Plus aria-hidden />
 									<span className="truncate">
 										Create {onCreate.noun} <span className="text-ink-muted">“{name}”</span>

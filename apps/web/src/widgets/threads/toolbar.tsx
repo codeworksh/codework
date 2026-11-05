@@ -67,7 +67,7 @@ export function Toolbar({
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-44">
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger className="text-ui">Status</DropdownMenuSubTrigger>
+							<DropdownMenuSubTrigger className="text-xs">Status</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent className="min-w-44">
 								{STATUSES.map((status) => (
 									<FilterItem
@@ -81,7 +81,7 @@ export function Toolbar({
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger className="text-ui">Priority</DropdownMenuSubTrigger>
+							<DropdownMenuSubTrigger className="text-xs">Priority</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent className="min-w-44">
 								{PRIORITIES.map((priority) => (
 									<FilterItem
@@ -95,7 +95,7 @@ export function Toolbar({
 							</DropdownMenuSubContent>
 						</DropdownMenuSub>
 						<DropdownMenuSub>
-							<DropdownMenuSubTrigger className="text-ui">Machine</DropdownMenuSubTrigger>
+							<DropdownMenuSubTrigger className="text-xs">Machine</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent className="min-w-44">
 								{machines.map((machine) => (
 									<FilterItem
@@ -110,7 +110,7 @@ export function Toolbar({
 						</DropdownMenuSub>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
-							className="text-ui"
+							className="text-xs"
 							onSelect={() => onChange({ status: [], priority: [], machine: [] })}
 						>
 							Clear Filters
@@ -132,12 +132,12 @@ export function Toolbar({
 									if (next !== undefined) onChange({ group: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Grouping" className="w-36 text-ui">
+								<SelectTrigger size="sm" aria-label="Grouping" className="w-36 text-xs">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{GROUPS.map((group) => (
-										<SelectItem key={group.value} value={group.value} className="text-ui">
+										<SelectItem key={group.value} value={group.value} className="text-xs">
 											{group.label}
 										</SelectItem>
 									))}
@@ -152,12 +152,12 @@ export function Toolbar({
 									if (next !== undefined) onChange({ order: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Ordering" className="w-36 text-ui">
+								<SelectTrigger size="sm" aria-label="Ordering" className="w-36 text-xs">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{ORDERS.map((order) => (
-										<SelectItem key={order.value} value={order.value} className="text-ui">
+										<SelectItem key={order.value} value={order.value} className="text-xs">
 											{order.label}
 										</SelectItem>
 									))}
@@ -182,7 +182,7 @@ export function Toolbar({
 function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
 	return (
 		<div className="flex items-center justify-between gap-2">
-			<span className="text-ui text-ink-secondary">{label}</span>
+			<span className="text-xs text-ink-secondary">{label}</span>
 			{children}
 		</div>
 	);
@@ -208,7 +208,7 @@ function FilterItem({
 			}}
 			aria-checked={checked}
 			role="menuitemcheckbox"
-			className="text-ui"
+			className="text-xs"
 		>
 			{mark}
 			<span className="truncate">{label}</span>
