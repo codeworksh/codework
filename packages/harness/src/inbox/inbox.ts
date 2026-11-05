@@ -26,7 +26,7 @@ export class LifecycleConflict extends Schema.TaggedError<LifecycleConflict>()("
 
 const isLifecycleConflict = Schema.is(LifecycleConflict);
 
-const fromRow = (row: InboxRow): Admitted =>
+export const fromRow = (row: InboxRow): Admitted =>
 	Admitted.make({
 		admittedSeq: row.admittedSeq,
 		id: SessionMessageSchema.ID.make(row.id),

@@ -1,11 +1,14 @@
 import { DateTime, Effect, Option, Schema } from "effect";
 import { SqlClient, SqlSchema, type Statement } from "effect/sql";
-import { ProjectRow, SpaceRow } from "../db/schema.sql.ts";
+import { InboxRow, ProjectRow, SpaceRow } from "../db/schema.sql.ts";
+import { Inbox } from "../inbox/inbox.ts";
+import type { Admitted } from "../inbox/schema.ts";
 import type { ProjectSchema } from "../project/schema.ts";
 import type { AbsolutePath } from "../schema.ts";
 import type { SpaceSchema } from "../space/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { ThreadSchema } from "../thread/schema.ts";
+import { Thread } from "../thread/thread.ts";
 import { type Info, info, type ThreadSummary, threadSummary } from "./session.ts";
 
 /** Where a read in revision order stands: past revision `rev` whole, or past `key` within it. */
@@ -163,6 +166,97 @@ export const index = Effect.fn("Sync.index")(function* (from: Cursor, upto: numb
 					items: yield* Effect.forEach(items, change),
 					...(next === undefined ? {} : { next }),
 				} satisfies Page<IndexChange>;
+			}),
+		)
+		.pipe(Effect.orDie);
+});
+
+export type InboxState = "pending" | "promoted" | "cancelled";
+
+/** A row of one thread's detail at the revision that last wrote it. */
+export type ThreadChange =
+	| { readonly _tag: "Entry"; readonly entry: Thread.HydratedEntry; readonly rev: number }
+	| { readonly _tag: "Inbox"; readonly prompt: Admitted; readonly state: InboxState; readonly rev: number };
+
+const toInbox = (row: InboxRow): ThreadChange => {
+	const prompt = Inbox.fromRow(row);
+	const state =
+		prompt.promotedSeq !== undefined ? "promoted" : prompt.cancelledSeq !== undefined ? "cancelled" : "pending";
+	return { _tag: "Inbox", prompt, state, rev: row.rev };
+};
+
+/**
+ * One page of a thread's own user and assistant entries and inbox rows past `from`, up to revision
+ * `upto`, read as one snapshot. Inherited entries never change after the fork's cut, so a resume
+ * does not read them.
+ */
+export const thread = Effect.fn("Sync.thread")(function* (
+	threadId: ThreadSchema.ID,
+	from: Cursor,
+	upto: number,
+	limit: number,
+) {
+	const sql = yield* SqlClient.SqlClient;
+	const threads = yield* Thread.Service;
+	const findInbox = SqlSchema.findOne({
+		Request: Schema.String,
+		Result: InboxRow,
+		execute: (id) => sql`SELECT * FROM inbox WHERE id = ${id}`,
+	});
+	const select = (range: Statement.Fragment) => sql`
+		SELECT 'entry' AS kind, id, rev FROM entry
+		WHERE thread_id = ${threadId} AND type IN ('user', 'assistant') AND ${range}
+		UNION ALL SELECT 'inbox', id, rev FROM inbox WHERE thread_id = ${threadId} AND ${range}
+	`;
+	const change = Effect.fnUntraced(function* ({ kind, id, rev }: Row) {
+		if (kind === "inbox") return toInbox(yield* findInbox(id));
+		const entry = yield* threads.entry(id);
+		if (Option.isNone(entry)) return yield* Effect.die(new Error(`entry ${id} is missing`));
+		return { _tag: "Entry", entry: entry.value, rev } satisfies ThreadChange;
+	});
+	return yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				const { items, next } = yield* page(select, from, upto, limit);
+				return {
+					items: yield* Effect.forEach(items, change),
+					...(next === undefined ? {} : { next }),
+				} satisfies Page<ThreadChange>;
+			}),
+		)
+		.pipe(Effect.orDie);
+});
+
+/**
+ * A thread's first page, read as one snapshot: the newest entries of its line within `budget`
+ * bytes and `limit` entries (`Thread.linePage`), oldest first, then its pending inbox in admission
+ * order. `floor` is the oldest entry's seq.
+ */
+export const open = Effect.fn("Sync.open")(function* (threadId: ThreadSchema.ID, budget: number, limit: number) {
+	const sql = yield* SqlClient.SqlClient;
+	const threads = yield* Thread.Service;
+	const selectPending = SqlSchema.findAll({
+		Request: Schema.String,
+		Result: InboxRow,
+		execute: (id) => sql`
+			SELECT * FROM inbox
+			WHERE thread_id = ${id} AND promoted_seq IS NULL AND cancelled_seq IS NULL
+			ORDER BY admitted_seq
+		`,
+	});
+	return yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				const entries = (yield* threads.linePage({ threadId, budget, limit })).toReversed();
+				const pending = yield* selectPending(threadId);
+				const floor = entries[0]?.entry.seq;
+				return {
+					items: [
+						...entries.map((entry): ThreadChange => ({ _tag: "Entry", entry, rev: entry.entry.rev })),
+						...pending.map(toInbox),
+					],
+					...(floor === undefined ? {} : { floor }),
+				};
 			}),
 		)
 		.pipe(Effect.orDie);

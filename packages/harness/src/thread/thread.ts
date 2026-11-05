@@ -1,5 +1,5 @@
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/sql";
+import { SqlClient, SqlSchema, type Statement } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 import {
 	EntryPartRow,
@@ -152,6 +152,17 @@ export type RunChange =
 export interface HydratedEntry {
 	readonly entry: EntryRow;
 	readonly parts: ReadonlyArray<EntryPartRow>;
+	/** Bytes of its parts' stored `data`. */
+	readonly size: number;
+}
+
+export interface LinePageInput {
+	readonly threadId: ThreadSchema.ID;
+	/** Only entries with a lower seq; absent starts at the newest. */
+	readonly before?: number;
+	/** Bytes by `size`; the newest entry is always read, whatever its size. */
+	readonly budget: number;
+	readonly limit: number;
 }
 
 export interface Interface {
@@ -168,6 +179,12 @@ export interface Interface {
 	 * seq order. Every state is included; context assembly drops what is not committed.
 	 */
 	readonly line: (threadId: ThreadSchema.ID) => Effect.Effect<ReadonlyArray<HydratedEntry>>;
+	/**
+	 * One page of the conversation in the thread's line (user and assistant entries, inherited ones
+	 * included), newest first: past `before`, up to `limit` entries, stopping once `budget` bytes
+	 * are spent.
+	 */
+	readonly linePage: (input: LinePageInput) => Effect.Effect<ReadonlyArray<HydratedEntry>>;
 	/** The thread's open draft, if a run left one. */
 	readonly draft: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<HydratedEntry>>;
 	/** Unsettled toolCall parts of the thread's own entries (crash recovery / live status). */
@@ -242,6 +259,9 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 
 const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
 
+const SizedEntryRow = Schema.Struct({ ...EntryRow.fields, size: NonNegativeInt });
+type SizedEntryRow = typeof SizedEntryRow.Type;
+
 // Structural decode of the persisted envelope's usage; failures surface as
 // InvalidEntryDataError, never a defect — callers (Context Manager, UI) can act.
 const decodeEnvelopeUsage = Schema.decodeUnknownEffect(SessionSchema.AssistantEnvelopeUsage);
@@ -297,6 +317,15 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM entry WHERE id = ${id}`,
 		});
 
+		// An entry row with `size`, read as `e`.
+		const sized = sql`e.*, (SELECT coalesce(sum(length(CAST(p.data AS BLOB))), 0) FROM part p WHERE p.entry_id = e.id) AS size`;
+
+		const findSized = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: SizedEntryRow,
+			execute: (id) => sql`SELECT ${sized} FROM entry e WHERE e.id = ${id}`,
+		});
+
 		const findCut = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: Schema.Struct({ cut: NonNegativeInt }),
@@ -333,31 +362,61 @@ export const layer = Layer.effect(
 			execute: (row) => sql`INSERT INTO part ${sql.insert(row)}`,
 		});
 
-		// Seq order is enough: everything a thread inherits was written before the thread existed,
-		// and a thread has one entry per seq.
+		// The entries of a thread's line that match `where`: its own, then each source's through the
+		// cut, up the origin chain. Seq orders them: everything a thread inherits was written before
+		// the thread existed, and a thread has one entry per seq.
+		const lineOf = (threadId: string, where: ReadonlyArray<Statement.Fragment>) => sql`
+			WITH RECURSIVE line(thread_id, upto) AS (
+				SELECT id, NULL FROM thread WHERE id = ${threadId}
+				UNION ALL
+				SELECT t.origin_thread_id, e.committed_seq
+				FROM line l
+				JOIN thread t ON t.id = l.thread_id
+				JOIN entry e ON e.id = t.origin_entry_id
+			)
+			SELECT ${sized}
+			FROM line l
+			JOIN entry e ON e.thread_id = l.thread_id AND (l.upto IS NULL OR e.seq <= l.upto)
+			WHERE ${sql.and(where)}
+		`;
+
 		const selectLine = SqlSchema.findAll({
 			Request: Schema.String,
-			Result: EntryRow,
-			execute: (threadId) => sql`
-				WITH RECURSIVE line(thread_id, upto) AS (
-					SELECT id, NULL FROM thread WHERE id = ${threadId}
-					UNION ALL
-					SELECT t.origin_thread_id, e.committed_seq
-					FROM line l
-					JOIN thread t ON t.id = l.thread_id
-					JOIN entry e ON e.id = t.origin_entry_id
+			Result: SizedEntryRow,
+			execute: (threadId) => sql`${lineOf(threadId, [])} ORDER BY e.seq`,
+		});
+
+		// The budget is a running total over the newest `limit` entries, so it reads no further.
+		const selectLinePage = SqlSchema.findAll({
+			Request: Schema.Struct({
+				threadId: Schema.String,
+				before: Schema.optional(Schema.Int),
+				budget: Schema.Int,
+				limit: Schema.Int,
+			}),
+			Result: SizedEntryRow,
+			execute: ({ threadId, before, budget, limit }) => sql`
+				SELECT * FROM (
+					SELECT *, sum(size) OVER newest AS total, row_number() OVER newest AS n
+					FROM (
+						${lineOf(threadId, [
+							sql`e.type IN ('user', 'assistant')`,
+							...(before === undefined ? [] : [sql`e.seq < ${before}`]),
+						])}
+						ORDER BY e.seq DESC
+						LIMIT ${limit}
+					)
+					WINDOW newest AS (ORDER BY seq DESC)
 				)
-				SELECT e.*
-				FROM line l
-				JOIN entry e ON e.thread_id = l.thread_id AND (l.upto IS NULL OR e.seq <= l.upto)
-				ORDER BY e.seq
+				WHERE n = 1 OR total <= ${budget}
+				ORDER BY seq DESC
 			`,
 		});
 
 		const selectDraft = SqlSchema.findOneOption({
 			Request: Schema.String,
-			Result: EntryRow,
-			execute: (threadId) => sql`SELECT * FROM entry WHERE thread_id = ${threadId} AND state = 'draft'`,
+			Result: SizedEntryRow,
+			execute: (threadId) => sql`SELECT ${sized} FROM entry e WHERE e.thread_id = ${threadId} AND e.state = 'draft'`,
 		});
 
 		const selectPartsForEntries = SqlSchema.findAll({
@@ -383,17 +442,17 @@ export const layer = Layer.effect(
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
 		// entry.type says whether parts are expected; a mismatch is corruption, not an edge case.
-		const hydrate = (entries: ReadonlyArray<EntryRow>, parts: ReadonlyArray<EntryPartRow>): HydratedEntry[] => {
+		const hydrate = (entries: ReadonlyArray<SizedEntryRow>, parts: ReadonlyArray<EntryPartRow>): HydratedEntry[] => {
 			const byEntry = new Map<string, EntryPartRow[]>();
 			for (const part of parts) {
 				const bucket = byEntry.get(part.entryId);
 				if (bucket) bucket.push(part);
 				else byEntry.set(part.entryId, [part]);
 			}
-			return entries.map((entry) => ({ entry, parts: byEntry.get(entry.id) ?? [] }));
+			return entries.map(({ size, ...entry }) => ({ entry, parts: byEntry.get(entry.id) ?? [], size }));
 		};
 
-		const partsFor = Effect.fnUntraced(function* (entries: ReadonlyArray<EntryRow>) {
+		const partsFor = Effect.fnUntraced(function* (entries: ReadonlyArray<SizedEntryRow>) {
 			const ids = entries.filter((entry) => messageTypes.has(entry.type)).map((entry) => entry.id);
 			if (ids.length === 0) return [];
 			return yield* selectPartsForEntries(ids).pipe(Effect.orDie);
@@ -412,7 +471,7 @@ export const layer = Layer.effect(
 		});
 
 		const entry = Effect.fn("Thread.entry")(function* (entryId: string) {
-			const found = yield* findEntry(entryId).pipe(Effect.orDie);
+			const found = yield* findSized(entryId).pipe(Effect.orDie);
 			if (Option.isNone(found)) return Option.none<HydratedEntry>();
 			const parts = yield* partsFor([found.value]);
 			return Option.some(hydrate([found.value], parts)[0]!);
@@ -424,6 +483,11 @@ export const layer = Layer.effect(
 
 		const line = Effect.fn("Thread.line")(function* (threadId: ThreadSchema.ID) {
 			const entries = yield* selectLine(threadId).pipe(Effect.orDie);
+			return hydrate(entries, yield* partsFor(entries));
+		});
+
+		const linePage = Effect.fn("Thread.linePage")(function* (input: LinePageInput) {
+			const entries = yield* selectLinePage(input).pipe(Effect.orDie);
 			return hydrate(entries, yield* partsFor(entries));
 		});
 
@@ -1039,6 +1103,7 @@ export const layer = Layer.effect(
 			entry,
 			cut,
 			line,
+			linePage,
 			draft,
 			unsettled,
 			insert,
