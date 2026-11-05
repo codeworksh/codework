@@ -122,7 +122,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							}`}
 						>
 							<span
-								role={working ? "status" : undefined}
+								role={working ? "img" : undefined}
 								aria-label={working ? "Agent working" : undefined}
 								className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
 							>

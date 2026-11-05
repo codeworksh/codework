@@ -19,7 +19,8 @@ export function useScrollFade(viewport: RefObject<HTMLElement | null>) {
 			update();
 		};
 		const mutations = new MutationObserver(observe);
-		mutations.observe(element, { childList: true, subtree: true, characterData: true });
+		// Direct children only: their ResizeObserver entries already catch anything nested growing.
+		mutations.observe(element, { childList: true });
 		element.addEventListener("scroll", update, { passive: true });
 		observe();
 		return () => {
