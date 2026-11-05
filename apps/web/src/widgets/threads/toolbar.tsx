@@ -123,7 +123,7 @@ export function Toolbar({
 							<SlidersHorizontal aria-hidden />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="end" className="grid w-72 gap-3 p-4">
+					<PopoverContent align="end" className="grid w-60 gap-1.5 p-3">
 						<Field label="Grouping">
 							<Select
 								value={options.group}
@@ -132,7 +132,11 @@ export function Toolbar({
 									if (next !== undefined) onChange({ group: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Grouping" className="w-36 text-xs">
+								<SelectTrigger
+									size="sm"
+									aria-label="Grouping"
+									className="w-32 gap-1 border-transparent bg-ink/5 px-2 text-xs shadow-none hover:bg-ink/8 data-[size=sm]:h-7 dark:bg-ink/5 dark:hover:bg-ink/8 [&_svg:not([class*='size-'])]:size-3.5"
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -152,7 +156,11 @@ export function Toolbar({
 									if (next !== undefined) onChange({ order: next.value });
 								}}
 							>
-								<SelectTrigger size="sm" aria-label="Ordering" className="w-36 text-xs">
+								<SelectTrigger
+									size="sm"
+									aria-label="Ordering"
+									className="w-32 gap-1 border-transparent bg-ink/5 px-2 text-xs shadow-none hover:bg-ink/8 data-[size=sm]:h-7 dark:bg-ink/5 dark:hover:bg-ink/8 [&_svg:not([class*='size-'])]:size-3.5"
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -166,6 +174,7 @@ export function Toolbar({
 						</Field>
 						<Field label="Show Empty Groups">
 							<Switch
+								size="sm"
 								aria-label="Show Empty Groups"
 								checked={options.empty}
 								onCheckedChange={(empty) => onChange({ empty })}
@@ -181,7 +190,7 @@ export function Toolbar({
 
 function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
 	return (
-		<div className="flex items-center justify-between gap-2">
+		<div className="flex min-h-7 items-center justify-between gap-2">
 			<span className="text-xs text-ink-secondary">{label}</span>
 			{children}
 		</div>
