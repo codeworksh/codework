@@ -584,23 +584,23 @@ describe("threads", () => {
 				);
 			const results = {
 				secondMain: yield* refused(sql`
-					INSERT INTO thread (id, session_id, origin_kind, created_seq, created_at, updated_at)
-					VALUES ('thr_second', ${sessionId}, 'main', 99, 0, 0)
+					INSERT INTO thread (id, session_id, origin_kind, created_seq, created_at, updated_at, rev)
+					VALUES ('thr_second', ${sessionId}, 'main', 99, 0, 0, (SELECT rev FROM store))
 				`),
 				twoEntriesOneEvent: yield* refused(sql`
-					INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at)
-					VALUES ('entry_twin', ${sessionId}, ${main}, ${entry.seq}, ${entry.seq}, 'custom', 'committed', '{}', 0, 0)
+					INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at, rev)
+					VALUES ('entry_twin', ${sessionId}, ${main}, ${entry.seq}, ${entry.seq}, 'custom', 'committed', '{}', 0, 0, (SELECT rev FROM store))
 				`),
 				twoRevisionsOneEvent: yield* refused(sql`
 					INSERT INTO revision (document_id, seq, version, value) VALUES (${document.id}, 1, 1, '{}')
 				`),
 				draftWithCommit: yield* refused(sql`
-					INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at)
-					VALUES ('entry_draft', ${sessionId}, ${main}, 500, 500, 'assistant', 'draft', '{}', 0, 0)
+					INSERT INTO entry (id, session_id, thread_id, seq, committed_seq, type, state, data, created_at, updated_at, rev)
+					VALUES ('entry_draft', ${sessionId}, ${main}, 500, 500, 'assistant', 'draft', '{}', 0, 0, (SELECT rev FROM store))
 				`),
 				forkWithoutCut: yield* refused(sql`
-					INSERT INTO thread (id, session_id, origin_kind, origin_thread_id, created_seq, created_at, updated_at)
-					VALUES ('thr_nocut', ${sessionId}, 'fork', ${main}, 99, 0, 0)
+					INSERT INTO thread (id, session_id, origin_kind, origin_thread_id, created_seq, created_at, updated_at, rev)
+					VALUES ('thr_nocut', ${sessionId}, 'fork', ${main}, 99, 0, 0, (SELECT rev FROM store))
 				`),
 			};
 			expect(Object.values(results).every((result) => result.includes("constraint failed"))).toBe(true);

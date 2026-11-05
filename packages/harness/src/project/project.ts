@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { Database } from "../db/db.ts";
 import { ProjectRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { Git } from "../git/git.ts";
 import { DirectoryNotFoundError, NotDirectoryError, type Error as LocationError } from "../location/error.ts";
 import { Repo } from "../repo/repo.ts";
@@ -56,6 +57,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		const fs = yield* SandboxIO.FileSystem;
 		const repos = yield* Repo.Service;
 		const worktrees = yield* Worktree.Service;
@@ -83,7 +85,7 @@ export const layer = Layer.effect(
 			Request: ProjectRow.insert,
 			execute: (row) => sql`
 				INSERT INTO project ${sql.insert(row)}
-				ON CONFLICT(id) DO UPDATE SET status = 'active', updated_at = excluded.updated_at
+				ON CONFLICT(id) DO UPDATE SET status = 'active', updated_at = excluded.updated_at, rev = excluded.rev
 			`,
 		});
 
@@ -165,10 +167,15 @@ export const layer = Layer.effect(
 
 			const worktreeSpaceId = Space.id(env, worktree);
 
-			yield* sql
-				.withTransaction(
+			yield* store
+				.write(
 					Effect.gen(function* () {
-						const row = yield* ProjectRow.insert.makeEffect({ id: projectId, name, status: "active" });
+						const row = yield* ProjectRow.insert.makeEffect({
+							id: projectId,
+							name,
+							status: "active",
+							rev: yield* store.rev,
+						});
 						yield* upsertProject(row);
 
 						for (const member of members) {
@@ -234,14 +241,17 @@ export const rename = Effect.fn("Project.rename")(function* (input: {
 	readonly name: string;
 }) {
 	const sql = yield* SqlClient.SqlClient;
+	const store = yield* Store.Service;
 	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 	const update = SqlSchema.findOneOption({
-		Request: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		Request: Schema.Struct({ id: Schema.String, name: Schema.String, rev: Schema.Int }),
 		Result: ProjectRow,
-		execute: ({ id, name }) =>
-			sql`UPDATE project SET name = ${name}, updated_at = ${now} WHERE id = ${id} RETURNING *`,
+		execute: ({ id, name, rev }) =>
+			sql`UPDATE project SET name = ${name}, updated_at = ${now}, rev = ${rev} WHERE id = ${id} RETURNING *`,
 	});
-	const row = yield* update({ id: input.projectId, name: input.name }).pipe(Effect.orDie);
+	const row = yield* Effect.gen(function* () {
+		return yield* update({ id: input.projectId, name: input.name, rev: yield* store.rev });
+	}).pipe(store.write, Effect.orDie);
 	if (Option.isNone(row)) return yield* new ProjectNotFoundError({ projectId: input.projectId });
 	return new ProjectSchema.Info({
 		id: ProjectSchema.ID.make(row.value.id),

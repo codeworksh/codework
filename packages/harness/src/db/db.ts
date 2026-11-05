@@ -5,6 +5,7 @@ import { Global } from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
 import { migrations } from "./migrations.ts";
+import { Store } from "./store.ts";
 
 export { SqlClient, SqlSchema } from "effect/sql";
 
@@ -26,7 +27,8 @@ const setup = Effect.gen(function* () {
 });
 
 // Provides `SqlClient` (and `SqliteClient`) for the database at `location`,
-// with column-name transforms so camelCase fields map to snake_case columns.
+// with column-name transforms so camelCase fields map to snake_case columns,
+// and the database's `Store`: one per database, so its doorbell hears every write.
 export function layer(location: string) {
 	const client = Layer.unwrap(
 		Effect.gen(function* () {
@@ -43,6 +45,7 @@ export function layer(location: string) {
 	return client.pipe(
 		Layer.tap((context) => setup.pipe(Effect.provide(context))),
 		Layer.orDie,
+		(sqlite) => Layer.provideMerge(Store.layer, sqlite),
 	);
 }
 

@@ -26,11 +26,11 @@ const createStopped = Effect.gen(function* () {
 const seed = (project: string, spaces: ReadonlyArray<{ id: string; env: SandboxInstance.ID }>) =>
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-		yield* sql`INSERT INTO project (id, name, status, created_at, updated_at) VALUES (${project}, ${project}, 'active', 0, 0)`;
+		yield* sql`INSERT INTO project (id, name, status, created_at, updated_at, rev) VALUES (${project}, ${project}, 'active', 0, 0, (SELECT rev FROM store))`;
 		for (const space of spaces) {
 			yield* sql`
-				INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-				VALUES (${space.id}, ${project}, ${`/${space.id}`}, 'plain', ${SandboxInstance.toColumn(space.env)}, 'active', 0, 0)
+				INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
+				VALUES (${space.id}, ${project}, ${`/${space.id}`}, 'plain', ${SandboxInstance.toColumn(space.env)}, 'active', 0, 0, (SELECT rev FROM store))
 			`;
 		}
 	});
