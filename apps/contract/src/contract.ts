@@ -37,7 +37,7 @@ export const SidebarSession = Schema.Struct({
 	title: Schema.String,
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	runState: RunState,
-	/** The main thread's last activity, epoch milliseconds. */
+	/** The session's last activity: the newest change to any of its threads, forks included; epoch milliseconds. */
 	updated: Schema.Finite,
 	/** The host folder it is anchored to, else its directory. */
 	path: Schema.String,
@@ -354,7 +354,7 @@ export type DashboardBy = typeof DashboardBy.Type;
 export const DashboardThread = Schema.Struct({
 	id: Schema.String,
 	sessionId: Schema.String,
-	originKind: Schema.Literals(["main", "fork", "subagent"]),
+	originKind: Schema.Literals(["main", "fork"]),
 	/** Its own title, else its nearest titled ancestor's, else what an untitled one is called. */
 	title: Schema.String,
 	project: Schema.Struct({ id: Schema.String, name: Schema.String }),
@@ -431,7 +431,7 @@ export const Api = RpcGroup.make(
 		success: ThreadLine,
 		error: SyncError,
 	}),
-	/** An organization's threads that are not deleted, split by `by` into lists in `ordering`. Read from app.db alone. */
+	/** An organization's threads that are not deleted, subagents left out, split by `by` into lists in `ordering`. Read from app.db alone. */
 	Rpc.make("dashboard.list", {
 		payload: { organizationId: Schema.String, by: DashboardBy },
 		success: Dashboard,

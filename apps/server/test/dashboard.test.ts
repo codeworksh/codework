@@ -10,10 +10,12 @@ import {
 	freePort,
 	normalizer,
 	type Row,
+	query,
 	snapshot as match,
 	synced,
 	tempDir,
 	waitFor,
+	write,
 } from "./fixtures/apps.ts";
 
 afterEach(cleanup);
@@ -174,6 +176,36 @@ it("by grouping: groups in their ordering, ungrouped last, and a thread's color 
 			[...fixed, [first.id, "<group First>"], [second.id, "<group Second>"]],
 		)(elide(dashboard)),
 	);
+}, 90_000);
+
+it("subagent threads stay off the dashboard", async () => {
+	const { cwHome, appHome, desk, threads, label, fixed } = await setup("subagent");
+	// CodeWork does not start subagents yet, so the row is written as the sync would copy one: A's
+	// fork turned into a subagent of A's main thread, first in the whole order.
+	const columns = query(appHome, "SELECT name FROM pragma_table_info('thread')").map((row) => row.name as string);
+	const set: Record<string, string> = {
+		id: "'thr_subagent'",
+		origin_kind: "'subagent'",
+		origin_call_id: "'call_subagent'",
+		ordering: "ordering - 100",
+	};
+	write(
+		appHome,
+		`INSERT INTO thread (${columns.join(", ")}) SELECT ${columns.map((name) => set[name] ?? name).join(", ")}
+		 FROM thread WHERE id = ?`,
+		threads.get("A fork")!,
+	);
+	expect(query(appHome, "SELECT origin_kind FROM thread WHERE id = 'thr_subagent'")).toEqual([
+		{ origin_kind: "subagent" },
+	]);
+	const dashboard = await desk.run((rpc) => read(rpc, "status"));
+	expect(names(dashboard, label)).toEqual([
+		{ list: "working", names: [] },
+		{ list: "attention", names: [] },
+		{ list: "settled", names: ["A fork", "D", "C", "B", "A"] },
+		{ list: "cancelled", names: [] },
+	]);
+	await snapshot("subagent", normalizer([cwHome, appHome], fixed)(elide(dashboard)));
 }, 90_000);
 
 it("the dashboard's topics fire after a move, a status set and a group change, and the read after shows each", async () => {

@@ -78,13 +78,15 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 	}>`
 		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind, session.color,
 			session.dir, session.hostdir, thread.id AS thread_id, thread.title, thread.model_provider,
-			thread.model_id, thread.run_state, thread.updated_at
+			thread.model_id, thread.run_state,
+			(SELECT MAX(activity.updated_at) FROM thread AS activity
+				WHERE activity.session_id = session.id AND activity.deleted_at IS NULL) AS updated_at
 		FROM session
 		JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id
 		JOIN thread ON thread.session_id = session.id AND thread.origin_kind = 'main' AND thread.deleted_at IS NULL
 		JOIN machine ON machine.id = session.machine_id
 		WHERE session.organization_id = ${organizationId} AND session.deleted_at IS NULL ${onMachines(sql, machines)}
-		ORDER BY thread.updated_at DESC
+		ORDER BY updated_at DESC
 	`;
 	const byProject = new Map<string, Array<SidebarSession>>();
 	for (const row of sessions) {
@@ -161,7 +163,7 @@ export const dashboard = Effect.fn("Reads.dashboard")(function* ({
 		JOIN session ON session.id = thread.session_id
 		JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id
 		JOIN project ON project.machine_id = space.machine_id AND project.id = space.project_id
-		WHERE thread.organization_id = ${organizationId} AND thread.deleted_at IS NULL
+		WHERE thread.organization_id = ${organizationId} AND thread.deleted_at IS NULL AND thread.origin_kind <> 'subagent'
 		ORDER BY ${sql.literal(SPLIT[by])}
 	`;
 	const groups = yield* sql<Grouping>`

@@ -93,7 +93,7 @@ const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArr
 	return { events, stop: background.stop };
 };
 
-it("the sidebar reads app.db alone: a run started before the app shows running at launch, and stays while CodeWork is stopped", async () => {
+it("the sidebar reads app.db alone: a run started before the app shows running at launch, a fork's activity moves its session up, and it stays while CodeWork is stopped", async () => {
 	const cwHome = tempDir("sidebar-cw");
 	const appHome = tempDir("sidebar-app");
 	const server = await codework(cwHome, await freePort());
@@ -126,13 +126,35 @@ it("the sidebar reads app.db alone: a run started before the app shows running a
 		[idle.session.id, idle.id, "idle", "Idle prompt"],
 	]);
 
+	// A prompt on a fork of the idle session's main thread makes that session the newest, though its main thread is older.
+	const fork = await server.run((rpc) =>
+		Effect.gen(function* () {
+			const ref = { sessionId: idle.session.id };
+			const reply = (yield* rpc["thread.history"](ref)).entries.at(-1)!;
+			const fork = (yield* rpc["thread.fork"]({ ...ref, entryId: reply.id })).thread;
+			yield* rpc["thread.prompt"]({ ...ref, threadId: fork.id, text: "Fork prompt" });
+			yield* rpc["thread.wait"]({ ...ref, threadId: fork.id });
+			return fork;
+		}),
+	);
+	await synced(appHome, machineId, server);
+	const forked = await desk.run((rpc) => sidebar(rpc));
+	expect(forked[0]!.sessions.map((row) => [row.id, row.threadId, row.title])).toEqual([
+		[idle.session.id, idle.id, "Idle prompt"],
+		[busy.session.id, busy.id, "hold"],
+	]);
+	const [main] = query(appHome, "SELECT updated_at FROM thread WHERE id = ?", idle.id);
+	const [own] = query(appHome, "SELECT updated_at FROM thread WHERE id = ?", fork.id);
+	expect(forked[0]!.sessions[0]!.updated).toBe(own!.updated_at);
+	expect(own!.updated_at as number).toBeGreaterThan(main!.updated_at as number);
+
 	await stop(server.proc);
 	const stopped = await desk.run((rpc) => sidebar(rpc));
-	expect(stopped).toEqual(launched);
+	expect(stopped).toEqual(forked);
 
 	await snapshot(
 		"sidebar",
-		normalizer([cwHome, appHome], [[storeId, "<store>"]])(elide({ launched, stoppedEqualsLaunched: true })),
+		normalizer([cwHome, appHome], [[storeId, "<store>"]])(elide({ launched, forked, stoppedEqualsForked: true })),
 	);
 }, 90_000);
 
