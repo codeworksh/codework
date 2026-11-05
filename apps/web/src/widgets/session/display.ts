@@ -110,11 +110,33 @@ const idleBy = new Map<string, Map<symbol, boolean>>();
 
 /** What to draw for these threads' runs, by key and stored run state: the one that says most. */
 export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; readonly runState: RunState }>) {
-	const sent = useAtomValue(sentAtom);
 	const { unstop } = useSent();
 	const [self] = useState(() => Symbol("display"));
 	const reads = threads.map(({ key, runState }) => `${key}\t${runState}`).join("\n");
-	const stopping = [...sent].flatMap(([key, { stopping }]) => (stopping ? [key] : [])).join("\n");
+	const runStates = useMemo(() => new Map(threads.map(({ key, runState }) => [key, runState])), [reads]); // oxlint-disable-line react-hooks/exhaustive-deps -- `reads` is `threads` as text.
+	// Only these threads' part of what was sent: a send to any other thread renders nothing here.
+	const display = useAtomValue(
+		sentAtom,
+		useCallback(
+			(map: ReadonlyMap<string, Sent>) => {
+				let most: Display = "idle";
+				for (const [key, runState] of runStates) {
+					const next = displayOf(map.get(key), runState);
+					if (WEIGHT[next] > WEIGHT[most]) most = next;
+				}
+				return most;
+			},
+			[runStates],
+		),
+	);
+	const stopping = useAtomValue(
+		sentAtom,
+		useCallback(
+			(map: ReadonlyMap<string, Sent>) =>
+				[...runStates.keys()].filter((key) => map.get(key)?.stopping === true).join("\n"),
+			[runStates],
+		),
+	);
 	useEffect(() => {
 		const keys = new Set<string>();
 		for (const line of reads.split("\n")) {
@@ -135,10 +157,6 @@ export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; rea
 			}
 		};
 	}, [reads, stopping, self, unstop]);
-	const display = threads.reduce<Display>((most, { key, runState }) => {
-		const next = displayOf(sent.get(key), runState);
-		return WEIGHT[next] > WEIGHT[most] ? next : most;
-	}, "idle");
 	return useDrawn(display);
 }
 

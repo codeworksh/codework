@@ -1,8 +1,13 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { type AllThreads as Board, type ListedThread, PERSONAL_ORGANIZATION } from "@codeworksh/contract";
+import {
+	type AllThreads as Board,
+	type ListedThread,
+	PERSONAL_ORGANIZATION,
+	type Priority,
+} from "@codeworksh/contract";
 import { isMac, openMode, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { AsyncResult } from "effect/reactivity";
-import { type DragEvent, type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
+import { type DragEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { threadAddress } from "../session/address";
 import { failed, refOf } from "./common";
@@ -14,6 +19,7 @@ import {
 	moveThread,
 	orderingAt,
 	patched,
+	setColor,
 	setGroup,
 	setPriority,
 	setStatus,
@@ -22,7 +28,9 @@ import {
 } from "./data";
 import { heading, SectionHeader } from "./header";
 import { byOf, filtering, type Options, type Section, sections, useOptions } from "./options";
-import { PICKER_KEYS, type Picker, Row } from "./row";
+import { COLORS, Dot, PRIORITIES, PRIORITY, PriorityIcon, STATUS, STATUSES, StatusIcon } from "./marks";
+import { Picker } from "./picker";
+import { PICKER_KEYS, type Picker as Kind, Row, type RowActions } from "./row";
 import { Toolbar } from "./toolbar";
 
 /**
@@ -39,12 +47,15 @@ export function AllThreads({ instanceId }: WidgetProps<unknown>) {
 	const [optimistic, setOptimistic] = useState<{ readonly base: Board; readonly value: Board }>();
 	const board = AsyncResult.isSuccess(result) ? result.value : undefined;
 	const shown = board !== undefined && optimistic?.base === board ? optimistic.value : board;
-	const drawn = shown === undefined ? [] : sections(shown, options, listKey);
-	const machines = [
-		...new Map(
-			shown?.lists.flatMap((list) => list.threads.map((thread) => [thread.machine.id, thread.machine])),
-		).values(),
-	];
+	const drawn = useMemo(() => (shown === undefined ? [] : sections(shown, options, listKey)), [shown, options]);
+	const machines = useMemo(
+		() => [
+			...new Map(
+				shown?.lists.flatMap((list) => list.threads.map((thread) => [thread.machine.id, thread.machine])),
+			).values(),
+		],
+		[shown],
+	);
 	const newGroup = () =>
 		create({ payload: { organizationId: PERSONAL_ORGANIZATION, name: "New Group" } }).then(
 			(group) => setRenaming(group.id),
@@ -111,12 +122,46 @@ function List({
 	const [drop, setDrop] = useState<Drop>();
 	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 	const [selected, setSelected] = useState<string>();
-	const [menu, setMenu] = useState<{ readonly id: string; readonly kind: Picker }>();
+	const [menu, setMenu] = useState<{ readonly id: string; readonly kind: Kind; readonly anchor: HTMLElement }>();
 	const body = useRef<HTMLDivElement>(null);
 	const manual = options.order === "manual";
-	const groups = new Map(board.groups.map((candidate) => [candidate.id, candidate]));
-	const all = board.lists.flatMap((list) => list.threads).toSorted((a, b) => a.ordering - b.ordering);
-	const visible = sections.flatMap((section) => (collapsed.has(section.key) ? [] : section.threads));
+	const groups = useMemo(() => new Map(board.groups.map((candidate) => [candidate.id, candidate])), [board.groups]);
+	const visible = useMemo(
+		() => sections.flatMap((section) => (collapsed.has(section.key) ? [] : section.threads)),
+		[sections, collapsed],
+	);
+	/** Every thread in the one manual order, sorted only when a drop needs it. */
+	const ordered = () => board.lists.flatMap((list) => list.threads).toSorted((a, b) => a.ordering - b.ordering);
+
+	/** Opens `kind` at its button in the thread's row, or closes it when it is the one open. */
+	const openMenu = (id: string, kind: Kind) => {
+		setSelected(id);
+		if (menu?.id === id && menu.kind === kind) return setMenu(undefined);
+		const anchor = body.current?.querySelector<HTMLElement>(
+			`[data-thread="${CSS.escape(id)}"] [data-picker="${kind}"]`,
+		);
+		if (anchor !== null && anchor !== undefined) setMenu({ id, kind, anchor });
+	};
+
+	// A row that moved to another section while its picker is open is a new button: follow it, or
+	// close when it is gone (filtered out, collapsed).
+	useLayoutEffect(() => {
+		if (menu === undefined || menu.anchor.isConnected) return;
+		const anchor = body.current?.querySelector<HTMLElement>(
+			`[data-thread="${CSS.escape(menu.id)}"] [data-picker="${menu.kind}"]`,
+		);
+		setMenu(anchor === null || anchor === undefined ? undefined : { ...menu, anchor });
+	});
+
+	// Every drag ends here, inside the list or out (Escape, a drop elsewhere).
+	useEffect(() => {
+		const clear = () => {
+			setDrag(undefined);
+			setDrop(undefined);
+		};
+		window.addEventListener("dragend", clear);
+		return () => window.removeEventListener("dragend", clear);
+	}, []);
 
 	// A closed picker hands the keyboard back to the list.
 	const hadMenu = useRef(false);
@@ -152,7 +197,7 @@ function List({
 		const kind = event.metaKey || event.ctrlKey ? undefined : PICKER_KEYS[event.key.toLowerCase()];
 		if (kind !== undefined) {
 			event.preventDefault();
-			setMenu({ id: thread.id, kind });
+			openMenu(thread.id, kind);
 		}
 	};
 
@@ -168,6 +213,7 @@ function List({
 	};
 
 	const dropThread = async (target: Section, index: number) => {
+		const all = ordered();
 		const thread = all.find((candidate) => candidate.id === drag?.id);
 		if (thread === undefined) return;
 		const source = sections.find((section) => section.threads.some((candidate) => candidate.id === thread.id));
@@ -220,8 +266,9 @@ function List({
 	};
 
 	/** Where a drag over a row of `section` at `at` lands, as an index of the section without the dragged thread. */
-	const over = (event: DragEvent, section: Section, at: number) => {
-		if (drag?.kind !== "thread") return;
+	const over = (event: DragEvent, sectionKey: string, at: number) => {
+		const section = sections.find((candidate) => candidate.key === sectionKey);
+		if (drag?.kind !== "thread" || section === undefined) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const rect = event.currentTarget.getBoundingClientRect();
@@ -235,6 +282,25 @@ function List({
 		setDrag(undefined);
 		setDrop(undefined);
 	};
+
+	// Rows get one actions object for good; it calls this render's handlers, so a memoized row never
+	// renders again just for a new closure.
+	const latest = useRef({ openMenu, over, open });
+	useLayoutEffect(() => {
+		latest.current = { openMenu, over, open };
+	});
+	const actions = useMemo<RowActions>(
+		() => ({
+			select: (id) => setSelected(id),
+			open: (thread, event) => {
+				if (event.button <= 1) latest.current.open(thread, openMode(event));
+			},
+			menu: (id, kind) => latest.current.openMenu(id, kind),
+			dragStart: (id) => setDrag({ kind: "thread", id }),
+			over: (event, sectionKey, at) => latest.current.over(event, sectionKey, at),
+		}),
+		[],
+	);
 
 	if (
 		sections.every((section) => section.threads.length === 0) &&
@@ -255,16 +321,18 @@ function List({
 			aria-label="All Threads"
 			aria-activedescendant={selected === undefined ? undefined : `thread-${selected}`}
 			onKeyDown={keyDown}
-			onDragEnd={end}
 			className="min-h-0 flex-1 overflow-auto pb-3 outline-none"
 		>
 			{sections.map((section) => {
 				const key = section.key;
 				const groupId = section.list?._tag === "Grouping" ? section.list.groupingId : null;
-				const without = section.threads.filter((candidate) => candidate.id !== drag?.id);
+				// The dragged thread's index here, found once: each row's place without it follows from it.
+				const from =
+					drag?.kind === "thread" ? section.threads.findIndex((candidate) => candidate.id === drag.id) : -1;
+				const length = from === -1 ? section.threads.length : section.threads.length - 1;
 				const isCollapsed = collapsed.has(key);
 				const target = drag?.kind === "thread" && drop?.key === key;
-				const source = section.threads.some((candidate) => candidate.id === drag?.id);
+				const source = from !== -1;
 				// Outside the manual order a drop only moves a thread between sections: the section shows it.
 				const highlight = target && !manual && !source;
 				return (
@@ -275,7 +343,7 @@ function List({
 						onDragOver={(event) => {
 							if (drag?.kind !== "thread") return;
 							event.preventDefault();
-							if (drop?.key !== key) setDrop({ key, index: without.length });
+							if (drop?.key !== key) setDrop({ key, index: length });
 						}}
 						onDrop={(event) => {
 							event.preventDefault();
@@ -321,31 +389,23 @@ function List({
 						{!isCollapsed && (
 							<ul>
 								{section.threads.map((thread, at) => {
-									const index = without.findIndex((candidate) => candidate.id === thread.id);
+									const index = from === -1 || at < from ? at : at === from ? -1 : at - 1;
 									return (
 										<Row
 											key={thread.id}
 											thread={thread}
-											groups={board.groups}
+											grouping={thread.groupingId === null ? undefined : groups.get(thread.groupingId)}
 											showMachine={showMachine}
 											selected={selected === thread.id}
-											menu={menu?.id === thread.id ? menu.kind : undefined}
-											onMenu={(kind) => {
-												setSelected(thread.id);
-												setMenu(kind === undefined ? undefined : { id: thread.id, kind });
-											}}
 											dragging={drag?.id === thread.id}
 											above={manual && target && index !== -1 && drop.index === index}
-											onSelect={() => setSelected(thread.id)}
-											onOpen={(picked, event: MouseEvent) => {
-												if (event.button <= 1) open(picked, openMode(event));
-											}}
-											onDragStart={() => setDrag({ kind: "thread", id: thread.id })}
-											onDragOver={(event) => over(event, section, at)}
+											sectionKey={key}
+											at={at}
+											actions={actions}
 										/>
 									);
 								})}
-								{manual && target && drop.index === without.length && (
+								{manual && target && drop.index === length && (
 									<li aria-hidden className="mx-3 h-0.5 rounded bg-ring" />
 								)}
 							</ul>
@@ -353,6 +413,118 @@ function List({
 					</section>
 				);
 			})}
+			{menu !== undefined && (
+				<ThreadPicker
+					key={`${menu.id}:${menu.kind}`}
+					thread={board.lists.flatMap((list) => list.threads).find((candidate) => candidate.id === menu.id)}
+					kind={menu.kind}
+					anchor={menu.anchor}
+					groups={board.groups}
+					onClose={() => setMenu(undefined)}
+				/>
+			)}
 		</div>
+	);
+}
+
+/** The open picker's options and writes, built for its one thread only when it opens. */
+function ThreadPicker({
+	thread,
+	kind,
+	anchor,
+	groups,
+	onClose,
+}: {
+	readonly thread: ListedThread | undefined;
+	readonly kind: Kind;
+	readonly anchor: HTMLElement;
+	readonly groups: Board["groups"];
+	readonly onClose: () => void;
+}) {
+	const set = {
+		status: useAtomSet(setStatus, { mode: "promise" }),
+		priority: useAtomSet(setPriority, { mode: "promise" }),
+		group: useAtomSet(setGroup, { mode: "promise" }),
+		color: useAtomSet(setColor, { mode: "promise" }),
+		create: useAtomSet(createGroup, { mode: "promise" }),
+	};
+	if (thread === undefined) return null;
+	const threadId = thread.id;
+	const common = { anchor, onClose };
+	if (kind === "status")
+		return (
+			<Picker
+				{...common}
+				placeholder="Change status…"
+				digits
+				value={thread.status}
+				options={STATUSES.map((value) => ({
+					value,
+					label: STATUS[value].label,
+					mark: <StatusIcon status={value} />,
+				}))}
+				onPick={(value) => {
+					const next = STATUSES.find((candidate) => candidate === value);
+					if (next !== undefined) void set.status({ payload: { threadId, status: next } }).catch(failed);
+				}}
+			/>
+		);
+	if (kind === "priority")
+		return (
+			<Picker
+				{...common}
+				placeholder="Change priority…"
+				digits
+				value={String(thread.priority)}
+				options={PRIORITIES.map((value: Priority) => ({
+					value: String(value),
+					label: PRIORITY[value].label,
+					mark: <PriorityIcon priority={value} />,
+				}))}
+				onPick={(value) => void set.priority({ payload: { threadId, priority: Number(value) } }).catch(failed)}
+			/>
+		);
+	if (kind === "color")
+		return (
+			<Picker
+				{...common}
+				placeholder="Change color…"
+				digits
+				value={thread.color ?? "none"}
+				options={[
+					...COLORS.map(({ name, hex }) => ({ value: hex, label: name, mark: <Dot color={hex} /> })),
+					{ value: "none", label: "Session Color", mark: <Dot color={null} /> },
+				]}
+				onPick={(value) =>
+					void set.color({ payload: { threadId, color: value === "none" ? null : value } }).catch(failed)
+				}
+			/>
+		);
+	return (
+		<Picker
+			{...common}
+			placeholder="Change or add group…"
+			heading={groups.length > 0 ? "Groups" : undefined}
+			value={thread.groupingId ?? "none"}
+			options={[
+				...groups.map((candidate) => ({
+					value: candidate.id,
+					label: candidate.name,
+					mark: <Dot color={candidate.color} />,
+				})),
+				{ value: "none", label: "No Group", mark: <Dot color={null} /> },
+			]}
+			onPick={(value) =>
+				void set.group({ payload: { threadId, groupingId: value === "none" ? null : value } }).catch(failed)
+			}
+			onCreate={{
+				noun: "group",
+				create: (name) =>
+					void set
+						.create({ payload: { organizationId: PERSONAL_ORGANIZATION, name } })
+						.then((created) => set.group({ payload: { threadId, groupingId: created.id } }))
+						.catch(failed),
+			}}
+		/>
 	);
 }

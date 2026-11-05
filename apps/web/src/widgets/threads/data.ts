@@ -37,12 +37,61 @@ export const threadsAtom = Atom.family((by: ThreadsBy) =>
 						Stream.filter((item) => "_tag" in item || touches(item)),
 						Stream.debounce("50 millis"),
 						Stream.mapEffect(() => client("threads.list", { organizationId: PERSONAL_ORGANIZATION, by })),
+						Stream.mapAccum(
+							(): AllThreads | undefined => undefined,
+							(previous, next) => {
+								const kept = reuse(previous, next);
+								return [kept, [kept]] as const;
+							},
+						),
 					),
 				),
 			),
 		).pipe(Stream.retry(Schedule.spaced("1 second"))),
 	),
 );
+
+const sameThread = (a: ListedThread, b: ListedThread) =>
+	a.title === b.title &&
+	a.runState === b.runState &&
+	a.status === b.status &&
+	a.priority === b.priority &&
+	a.groupingId === b.groupingId &&
+	a.ordering === b.ordering &&
+	a.color === b.color &&
+	a.updatedAt === b.updatedAt &&
+	a.sessionId === b.sessionId &&
+	a.originKind === b.originKind &&
+	a.machine.id === b.machine.id &&
+	a.machine.name === b.machine.name &&
+	a.project.id === b.project.id &&
+	a.project.name === b.project.name;
+
+const sameGroup = (a: Grouping, b: Grouping) =>
+	a.name === b.name && a.color === b.color && a.ordering === b.ordering && a.organizationId === b.organizationId;
+
+/**
+ * `next` with every thread and group that did not change kept as the object `previous` had, so the
+ * rows drawing them skip rendering after a read: each read decodes all of them anew.
+ */
+const reuse = (previous: AllThreads | undefined, next: AllThreads): AllThreads => {
+	if (previous === undefined) return next;
+	const threads = new Map(previous.lists.flatMap((list) => list.threads.map((thread) => [thread.id, thread])));
+	const groups = new Map(previous.groups.map((group) => [group.id, group]));
+	return {
+		lists: next.lists.map((list) => ({
+			...list,
+			threads: list.threads.map((thread) => {
+				const before = threads.get(thread.id);
+				return before !== undefined && sameThread(before, thread) ? before : thread;
+			}),
+		})),
+		groups: next.groups.map((group) => {
+			const before = groups.get(group.id);
+			return before !== undefined && sameGroup(before, group) ? before : group;
+		}),
+	};
+};
 
 export const setStatus = Server.mutation("threads.setStatus");
 export const setPriority = Server.mutation("threads.setPriority");

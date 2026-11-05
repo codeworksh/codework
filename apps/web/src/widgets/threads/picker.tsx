@@ -10,7 +10,7 @@ import {
 	CommandList,
 	CommandShortcut,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 
 export interface Option {
 	readonly value: string;
@@ -19,37 +19,31 @@ export interface Option {
 }
 
 /**
- * A row's picker, as Linear's: a search field, then the options, the current one checked. With `digits`, 1-9 pick while the field is empty; with `onCreate`, a name
- * no option has offers to create it.
+ * The list's one picker, as Linear's: a search field, then the options, the current one checked.
+ * It opens at `anchor`, the row button it belongs to, so no row mounts a popover of its own. With
+ * `digits`, 1-9 pick while the field is empty; with `onCreate`, a name no option has offers to
+ * create it.
  */
 export function Picker({
-	label,
+	anchor,
 	placeholder,
-	shortcut,
-	icon,
 	value,
 	options,
 	heading,
 	onPick,
 	onCreate,
 	digits = false,
-	open,
-	onOpenChange,
-	narrow = false,
+	onClose,
 }: {
-	readonly label: string;
+	readonly anchor: HTMLElement;
 	readonly placeholder: string;
-	readonly shortcut: string;
-	readonly icon: ReactNode;
 	readonly value: string;
 	readonly options: ReadonlyArray<Option>;
 	readonly heading?: string | undefined;
 	readonly onPick: (value: string) => void;
-	readonly onCreate?: { readonly noun: string; readonly create: (name: string) => void };
+	readonly onCreate?: { readonly noun: string; readonly create: (name: string) => void } | undefined;
 	readonly digits?: boolean;
-	readonly open: boolean;
-	readonly onOpenChange: (open: boolean) => void;
-	readonly narrow?: boolean;
+	readonly onClose: () => void;
 }) {
 	const [search, setSearch] = useState("");
 	const name = search.trim();
@@ -57,37 +51,27 @@ export function Picker({
 		onCreate !== undefined &&
 		name !== "" &&
 		!options.some((option) => option.label.toLowerCase() === name.toLowerCase());
-	const change = (next: boolean) => {
-		if (!next) setSearch("");
-		onOpenChange(next);
-	};
 	const create = () => {
 		onCreate?.create(name);
-		change(false);
+		onClose();
 	};
 	const pick = (option: Option) => {
 		if (option.value !== value) onPick(option.value);
-		change(false);
+		onClose();
 	};
 	return (
-		<Popover open={open} onOpenChange={change}>
-			<PopoverTrigger
-				aria-label={label}
-				title={`${label} (${shortcut})`}
-				tabIndex={-1}
-				onMouseDown={(event) => event.stopPropagation()}
-				className={`flex h-6 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-ink/8 hover:text-ink ${
-					narrow ? "w-3" : "min-w-6 px-1"
-				}`}
-			>
-				{icon}
-			</PopoverTrigger>
+		<Popover open onOpenChange={(open) => !open && onClose()}>
+			<PopoverAnchor virtualRef={{ current: anchor }} />
 			<PopoverContent
 				align="start"
 				// Opened from a key, many times a day: shown at once, without the popover's zoom.
 				className="w-52 p-0 data-[state=closed]:animate-none data-[state=open]:animate-none"
 				// The list takes focus back, so the keyboard stays on it.
 				onCloseAutoFocus={(event) => event.preventDefault()}
+				// A click on its own button closes it there, rather than here and open again.
+				onInteractOutside={(event) => {
+					if (event.target instanceof Node && anchor.contains(event.target)) event.preventDefault();
+				}}
 				onMouseDown={(event) => event.stopPropagation()}
 			>
 				<Command loop>

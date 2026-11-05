@@ -1,83 +1,88 @@
-import { useAtomSet } from "@effect/atom-react";
-import { type Grouping, type ListedThread, PERSONAL_ORGANIZATION } from "@codeworksh/contract";
+import type { Grouping, ListedThread } from "@codeworksh/contract";
 import { isMac } from "@codeworksh/widget/view";
 import { Box, Tag } from "lucide-react";
-import type { DragEvent, MouseEvent } from "react";
+import { type DragEvent, memo, type MouseEvent, type ReactNode } from "react";
 
 import { useRunDisplay } from "../session/display";
 import { RunMark } from "../session/run";
 import { threadKey } from "../session/schema";
-import { failed, refOf } from "./common";
-import { createGroup, setColor, setGroup, setPriority, setStatus } from "./data";
+import { refOf } from "./common";
 import {
-	COLORS,
 	colorName,
 	Dot,
+	fullDate,
 	MachineAvatar,
-	PRIORITIES,
 	PRIORITY,
 	PriorityIcon,
 	STATUS,
-	STATUSES,
 	StatusIcon,
 	shortDate,
 } from "./marks";
-import { Picker as Pick } from "./picker";
 
 /** The pickers a row has, each opened by its key from the keyboard. */
 export type Picker = "status" | "priority" | "group" | "color";
 export const PICKER_KEYS: Record<string, Picker> = { s: "status", p: "priority", l: "group", c: "color" };
 
-export function Row({
+/** What a row asks of its list; one object for every row, so a memoized row keeps it across renders. */
+export interface RowActions {
+	readonly select: (threadId: string) => void;
+	readonly open: (thread: ListedThread, event: MouseEvent) => void;
+	readonly menu: (threadId: string, kind: Picker) => void;
+	readonly dragStart: (threadId: string) => void;
+	readonly over: (event: DragEvent, sectionKey: string, at: number) => void;
+}
+
+/**
+ * One thread. Memoized and given only values and the shared `actions`, so a key press, a drag over
+ * another row or a read that left this thread alone renders nothing here.
+ */
+export const Row = memo(function Row({
 	thread,
-	groups,
+	grouping,
 	showMachine,
 	selected,
-	menu,
-	onMenu,
 	dragging,
 	above,
-	onSelect,
-	onOpen,
-	onDragStart,
-	onDragOver,
+	sectionKey,
+	at,
+	actions,
 }: {
 	readonly thread: ListedThread;
-	readonly groups: ReadonlyArray<Grouping>;
+	readonly grouping: Grouping | undefined;
 	readonly showMachine: boolean;
 	readonly selected: boolean;
-	/** The picker open on this row. */
-	readonly menu: Picker | undefined;
-	readonly onMenu: (menu: Picker | undefined) => void;
 	readonly dragging: boolean;
 	/** The drop would land just above it. */
 	readonly above: boolean;
-	readonly onSelect: () => void;
-	readonly onOpen: (thread: ListedThread, event: MouseEvent) => void;
-	readonly onDragStart: () => void;
-	readonly onDragOver: (event: DragEvent) => void;
+	readonly sectionKey: string;
+	readonly at: number;
+	readonly actions: RowActions;
 }) {
-	const status = useAtomSet(setStatus, { mode: "promise" });
-	const priority = useAtomSet(setPriority, { mode: "promise" });
-	const group = useAtomSet(setGroup, { mode: "promise" });
-	const color = useAtomSet(setColor, { mode: "promise" });
-	const create = useAtomSet(createGroup, { mode: "promise" });
-	const display = useRunDisplay([{ key: threadKey(refOf(thread)), runState: thread.runState }]);
-	const grouping = groups.find((candidate) => candidate.id === thread.groupingId);
-	const picker = (kind: Picker) => ({
-		open: menu === kind,
-		onOpenChange: (open: boolean) => onMenu(open ? kind : undefined),
-	});
+	const pick = (kind: Picker, label: string, shortcut: string, icon: ReactNode, narrow = false) => (
+		<button
+			type="button"
+			tabIndex={-1}
+			data-picker={kind}
+			aria-label={label}
+			title={`${label} (${shortcut})`}
+			onClick={() => actions.menu(thread.id, kind)}
+			className={`flex h-6 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-ink/8 hover:text-ink ${
+				narrow ? "w-3" : "min-w-6 px-1"
+			}`}
+		>
+			{icon}
+		</button>
+	);
 	return (
 		<li
 			draggable
 			onDragStart={(event) => {
 				event.dataTransfer.effectAllowed = "move";
 				event.dataTransfer.setData("text/plain", thread.title);
-				onDragStart();
+				actions.dragStart(thread.id);
 			}}
-			onDragOver={onDragOver}
-			onMouseDown={onSelect}
+			onDragOver={(event) => actions.over(event, sectionKey, at)}
+			onMouseDown={() => actions.select(thread.id)}
 			id={`thread-${thread.id}`}
 			role="option"
 			data-thread={thread.id}
@@ -91,118 +96,51 @@ export function Row({
 					selected ? "bg-ink/7" : "hover:bg-ink/4"
 				}`}
 			>
-				<Pick
-					{...picker("color")}
-					label={`Color: ${thread.color === null ? "Session Color" : colorName(thread.color)}`}
-					placeholder="Change color…"
-					shortcut="C"
-					digits
-					icon={
-						<span
-							aria-hidden
-							className={`h-4 w-1 rounded-full ${thread.color === null ? "bg-ink/20 opacity-0 group-hover/row:opacity-100" : ""}`}
-							style={thread.color === null ? undefined : { backgroundColor: thread.color }}
-						/>
-					}
-					value={thread.color ?? "none"}
-					options={[
-						...COLORS.map(({ name, hex }) => ({ value: hex, label: name, mark: <Dot color={hex} /> })),
-						{ value: "none", label: "Session Color", mark: <Dot color={null} /> },
-					]}
-					onPick={(value) =>
-						void color({ payload: { threadId: thread.id, color: value === "none" ? null : value } }).catch(failed)
-					}
-					narrow
-				/>
-				<Pick
-					{...picker("priority")}
-					label={`Priority: ${PRIORITY[thread.priority].label}`}
-					placeholder="Change priority…"
-					shortcut="P"
-					digits
-					icon={<PriorityIcon priority={thread.priority} />}
-					value={String(thread.priority)}
-					options={PRIORITIES.map((value) => ({
-						value: String(value),
-						label: PRIORITY[value].label,
-						mark: <PriorityIcon priority={value} />,
-					}))}
-					onPick={(value) =>
-						void priority({ payload: { threadId: thread.id, priority: Number(value) } }).catch(failed)
-					}
-				/>
-				<Pick
-					{...picker("status")}
-					label={`Status: ${STATUS[thread.status].label}`}
-					placeholder="Change status…"
-					shortcut="S"
-					digits
-					icon={<StatusIcon status={thread.status} />}
-					value={thread.status}
-					options={STATUSES.map((value) => ({
-						value,
-						label: STATUS[value].label,
-						mark: <StatusIcon status={value} />,
-					}))}
-					onPick={(value) => {
-						const next = STATUSES.find((candidate) => candidate === value);
-						if (next !== undefined) void status({ payload: { threadId: thread.id, status: next } }).catch(failed);
-					}}
-				/>
+				{pick(
+					"color",
+					`Color: ${thread.color === null ? "Session Color" : colorName(thread.color)}`,
+					"C",
+					<span
+						aria-hidden
+						className={`h-4 w-1 rounded-full ${thread.color === null ? "bg-ink/20 opacity-0 group-hover/row:opacity-100" : ""}`}
+						style={thread.color === null ? undefined : { backgroundColor: thread.color }}
+					/>,
+					true,
+				)}
+				{pick(
+					"priority",
+					`Priority: ${PRIORITY[thread.priority].label}`,
+					"P",
+					<PriorityIcon priority={thread.priority} />,
+				)}
+				{pick("status", `Status: ${STATUS[thread.status].label}`, "S", <StatusIcon status={thread.status} />)}
 				<button
 					type="button"
 					tabIndex={-1}
 					title={`Open thread (${isMac ? "⌘" : "Ctrl"}-click or middle-click opens a new one)`}
-					onClick={(event) => onOpen(thread, event)}
-					onAuxClick={(event) => onOpen(thread, event)}
+					onClick={(event) => actions.open(thread, event)}
+					onAuxClick={(event) => actions.open(thread, event)}
 					className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none"
 				>
 					<span className="min-w-0 truncate text-body text-ink">{thread.title}</span>
 					{thread.originKind !== "main" && (
 						<span className="shrink-0 rounded-sm bg-ink/6 px-1 text-2xs text-ink-muted">{thread.originKind}</span>
 					)}
-					<span className="text-ink-muted">
-						<RunMark display={display} />
-					</span>
+					<Run thread={thread} />
 				</button>
-				<Pick
-					{...picker("group")}
-					label={`Group: ${grouping?.name ?? "No Group"}`}
-					placeholder="Change or add group…"
-					shortcut="L"
-					heading={groups.length > 0 ? "Groups" : undefined}
-					onCreate={{
-						noun: "group",
-						create: (name) =>
-							void create({ payload: { organizationId: PERSONAL_ORGANIZATION, name } })
-								.then((created) => group({ payload: { threadId: thread.id, groupingId: created.id } }))
-								.catch(failed),
-					}}
-					icon={
-						grouping === undefined ? (
-							<Tag className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
-						) : (
-							<span className="flex max-w-32 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary">
-								<Dot color={grouping.color} />
-								<span className="truncate">{grouping.name}</span>
-							</span>
-						)
-					}
-					value={thread.groupingId ?? "none"}
-					options={[
-						...groups.map((candidate) => ({
-							value: candidate.id,
-							label: candidate.name,
-							mark: <Dot color={candidate.color} />,
-						})),
-						{ value: "none", label: "No Group", mark: <Dot color={null} /> },
-					]}
-					onPick={(value) =>
-						void group({ payload: { threadId: thread.id, groupingId: value === "none" ? null : value } }).catch(
-							failed,
-						)
-					}
-				/>
+				{pick(
+					"group",
+					`Group: ${grouping?.name ?? "No Group"}`,
+					"L",
+					grouping === undefined ? (
+						<Tag className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
+					) : (
+						<span className="flex max-w-32 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary">
+							<Dot color={grouping.color} />
+							<span className="truncate">{grouping.name}</span>
+						</span>
+					),
+				)}
 				<span
 					title={thread.project.name}
 					className="hidden max-w-36 shrink-0 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary @2xl:flex"
@@ -212,12 +150,22 @@ export function Row({
 				</span>
 				{showMachine && <MachineAvatar id={thread.machine.id} name={thread.machine.name} />}
 				<span
-					title={new Date(thread.updatedAt).toLocaleString()}
+					title={fullDate(thread.updatedAt)}
 					className="w-12 shrink-0 text-right text-2xs text-ink-muted tabular-nums"
 				>
 					{shortDate(thread.updatedAt)}
 				</span>
 			</div>
 		</li>
+	);
+});
+
+/** The run's mark on its own, so the run's client state renders this alone, not the row. */
+function Run({ thread }: { readonly thread: ListedThread }) {
+	const display = useRunDisplay([{ key: threadKey(refOf(thread)), runState: thread.runState }]);
+	return (
+		<span className="text-ink-muted">
+			<RunMark display={display} />
+		</span>
 	);
 }

@@ -139,12 +139,14 @@ export function MachineAvatar({ name, id }: { readonly name: string; readonly id
 	);
 }
 
+// Built once: formatting through `toLocale*String` builds a formatter per call, per row.
+const thisYear = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const otherYear = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+const full = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 /** Linear's short date: "Nov 5", with the year once it is not this one. */
-export const shortDate = (time: number) => {
-	const date = new Date(time);
-	return date.toLocaleDateString(undefined, {
-		month: "short",
-		day: "numeric",
-		...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
-	});
-};
+export const shortDate = (time: number) =>
+	(new Date(time).getFullYear() === new Date().getFullYear() ? thisYear : otherYear).format(time);
+
+/** The date and time in full, for a title. */
+export const fullDate = (time: number) => full.format(time);
