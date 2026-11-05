@@ -352,6 +352,7 @@ const standIn = (thread: ThreadRef, prompt: Handoff): HistoryEntry => ({
 	createdAt: prompt.createdAt,
 	updatedAt: prompt.createdAt,
 	parts: [{ type: "text", text: prompt.text }],
+	size: 0,
 });
 
 function Conversation({

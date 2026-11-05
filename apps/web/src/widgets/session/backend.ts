@@ -331,6 +331,7 @@ export const session = defineBackend({
 								createdAt: delta.timestamp,
 								updatedAt: delta.timestamp,
 								parts: [],
+								size: 0,
 							};
 						const kind = envelope.type === "session.llm.text.delta" ? "text" : "thinking";
 						const parts = streamed?.parts ?? new Map<number, Part>();
