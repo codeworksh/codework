@@ -14,7 +14,9 @@
  * execution and on storage, and neither depends back.
  */
 
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Event } from "./event/event.ts";
+import { EventList } from "./event/list.ts";
 import { Inbox } from "./inbox/inbox.ts";
 import { Mcp } from "./mcp/mcp.ts";
 import type { Admitted } from "./inbox/schema.ts";
@@ -105,6 +107,12 @@ export interface Interface {
 	 * run has settled.
 	 */
 	readonly resumeUnfinished: Effect.Effect<void>;
+	/**
+	 * Ends every stored run the last process left open with a durable `execution.interrupted`:
+	 * `shutdown` where it closed the run, `crash` where it died in it. Runs as the server starts,
+	 * before it accepts connections and before {@link resumeUnfinished}.
+	 */
+	readonly sweep: Effect.Effect<void>;
 	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
 	readonly pending: (threadId: ThreadSchema.ID) => Effect.Effect<ReadonlyArray<Admitted>>;
 	/**
@@ -131,6 +139,7 @@ export const layer = Layer.effect(
 		const inputs = yield* Inbox.make;
 		const execution = yield* RunnerExecution.Service;
 		const mcp = yield* Mcp.Service;
+		const events = yield* Event.Service;
 		const isLifecycleConflict = Schema.is(Inbox.LifecycleConflict);
 
 		// Marked before the wake, so a prompt accepted here survives a crash before its run starts.
@@ -293,6 +302,18 @@ export const layer = Layer.effect(
 			);
 		}).pipe(Effect.withSpan("Control.resumeUnfinished"));
 
+		const sweep = Effect.gen(function* () {
+			for (const row of yield* threads.open) {
+				const execution = Option.getOrUndefined(row.execution);
+				yield* events.publish(EventList.ExecutionInterrupted, {
+					timestamp: yield* DateTime.now,
+					sessionId: SessionSchema.ID.make(row.sessionId),
+					threadId: ThreadSchema.ID.make(row.id),
+					reason: execution === "closed" ? "shutdown" : "crash",
+				});
+			}
+		}).pipe(Effect.withSpan("Control.sweep"));
+
 		return Service.of({
 			resolve,
 			prompt,
@@ -304,6 +325,7 @@ export const layer = Layer.effect(
 			deleteSession,
 			active: execution.active,
 			resumeUnfinished,
+			sweep,
 			pending: inputs.pending,
 			cancel: inputs.cancel,
 			update,

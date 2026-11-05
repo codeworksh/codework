@@ -1,0 +1,139 @@
+{
+	"log": [
+		"3 session.execution.started.1 T1 {\"resumed\":false}",
+		"6 session.llm.started.1 T1",
+		"9 session.execution.succeeded.1 T1",
+		"11 session.execution.started.1 T1 {\"resumed\":false}",
+		"13 session.llm.started.1 T1",
+		"15 session.execution.interrupted.1 T1 {\"reason\":\"user\"}",
+		"17 session.execution.started.1 T1 {\"resumed\":false}",
+		"18 session.execution.interrupted.1 T1 {\"reason\":\"crash\"}",
+		"19 session.execution.started.1 T1 {\"resumed\":true}",
+		"20 session.llm.started.1 T1",
+		"24 session.llm.started.1 T1",
+		"27 session.execution.succeeded.1 T1",
+		"29 session.execution.started.1 T2 {\"resumed\":false}",
+		"30 session.execution.interrupted.1 T2 {\"reason\":\"shutdown\"}"
+	],
+	"states": [
+		{
+			"step": "created",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": null,
+			"startedAt": null,
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": null
+		},
+		{
+			"step": "succeeded",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": "9 session.execution.succeeded.1",
+			"startedAt": "3 session.execution.started.1",
+			"endedAt": "9 session.execution.succeeded.1",
+			"outcome": "succeeded",
+			"error": null,
+			"execution": null
+		},
+		{
+			"step": "in flight",
+			"thread": "T1",
+			"state": "running",
+			"stateAt": "13 session.llm.started.1",
+			"startedAt": "11 session.execution.started.1",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "stopped",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": "15 session.execution.interrupted.1",
+			"startedAt": "11 session.execution.started.1",
+			"endedAt": "15 session.execution.interrupted.1",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "user"
+			},
+			"execution": null
+		},
+		{
+			"step": "died",
+			"thread": "T1",
+			"state": "starting",
+			"stateAt": "17 session.execution.started.1",
+			"startedAt": "17 session.execution.started.1",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "swept",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": "18 session.execution.interrupted.1",
+			"startedAt": "17 session.execution.started.1",
+			"endedAt": "18 session.execution.interrupted.1",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "crash"
+			},
+			"execution": "running"
+		},
+		{
+			"step": "resumed",
+			"thread": "T1",
+			"state": "running",
+			"stateAt": "20 session.llm.started.1",
+			"startedAt": "19 session.execution.started.1",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "finished",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": "27 session.execution.succeeded.1",
+			"startedAt": "19 session.execution.started.1",
+			"endedAt": "27 session.execution.succeeded.1",
+			"outcome": "succeeded",
+			"error": null,
+			"execution": null
+		},
+		{
+			"step": "swept after shutdown",
+			"thread": "T1",
+			"state": "idle",
+			"stateAt": "27 session.execution.succeeded.1",
+			"startedAt": "19 session.execution.started.1",
+			"endedAt": "27 session.execution.succeeded.1",
+			"outcome": "succeeded",
+			"error": null,
+			"execution": null
+		},
+		{
+			"step": "swept after shutdown",
+			"thread": "T2",
+			"state": "idle",
+			"stateAt": "30 session.execution.interrupted.1",
+			"startedAt": "29 session.execution.started.1",
+			"endedAt": "30 session.execution.interrupted.1",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "shutdown"
+			},
+			"execution": "closed"
+		}
+	]
+}

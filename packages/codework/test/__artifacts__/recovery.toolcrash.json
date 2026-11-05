@@ -9,6 +9,10 @@
 			"text": "Run the slow command."
 		},
 		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Run the slow command."
@@ -30,28 +34,12 @@
 			]
 		},
 		{
-			"type": "session.tool.settled",
-			"part": {
-				"tool": "bash",
-				"status": "aborted",
-				"result": "Tool Execution Interrupted"
-			}
+			"type": "session.execution.interrupted",
+			"reason": "crash"
 		},
 		{
-			"type": "session.turn.ended"
-		},
-		{
-			"type": "session.llm.started"
-		},
-		{
-			"type": "session.llm.ended",
-			"reason": "toolUse",
-			"parts": [
-				{
-					"tool": "bash",
-					"status": "pending"
-				}
-			]
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.tool.settled",
@@ -78,28 +66,12 @@
 			]
 		},
 		{
-			"type": "session.tool.settled",
-			"part": {
-				"tool": "bash",
-				"status": "aborted",
-				"result": "Tool Execution Interrupted"
-			}
+			"type": "session.execution.interrupted",
+			"reason": "crash"
 		},
 		{
-			"type": "session.turn.ended"
-		},
-		{
-			"type": "session.llm.started"
-		},
-		{
-			"type": "session.llm.ended",
-			"reason": "toolUse",
-			"parts": [
-				{
-					"tool": "bash",
-					"status": "pending"
-				}
-			]
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.tool.settled",
@@ -124,6 +96,78 @@
 					"status": "pending"
 				}
 			]
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.llm.started"
+		},
+		{
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.tool.settled",
@@ -140,6 +184,9 @@
 			"type": "session.run.failed",
 			"reason": "crashloop",
 			"message": "The run was interrupted 5 times in a row; it is not resumed again"
+		},
+		{
+			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [

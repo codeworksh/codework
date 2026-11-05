@@ -1,0 +1,132 @@
+{
+	"log": [
+		{
+			"seq": 3,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 6,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 9,
+			"type": "session.execution.succeeded"
+		},
+		{
+			"seq": 11,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 13,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 14,
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"seq": 15,
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"seq": 18,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 21,
+			"type": "session.execution.succeeded"
+		}
+	],
+	"rows": [
+		{
+			"step": "succeeded",
+			"state": "idle",
+			"stateAt": "9 session.execution.succeeded",
+			"startedAt": "3 session.execution.started",
+			"endedAt": "9 session.execution.succeeded",
+			"outcome": "succeeded",
+			"error": null,
+			"execution": null
+		},
+		{
+			"step": "in flight",
+			"state": "running",
+			"stateAt": "13 session.llm.started",
+			"startedAt": "11 session.execution.started",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "killed",
+			"state": "running",
+			"stateAt": "13 session.llm.started",
+			"startedAt": "11 session.execution.started",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "resumed",
+			"state": "running",
+			"stateAt": "18 session.llm.started",
+			"startedAt": "15 session.execution.started",
+			"endedAt": null,
+			"outcome": null,
+			"error": null,
+			"execution": "running"
+		},
+		{
+			"step": "finished",
+			"state": "idle",
+			"stateAt": "21 session.execution.succeeded",
+			"startedAt": "15 session.execution.started",
+			"endedAt": "21 session.execution.succeeded",
+			"outcome": "succeeded",
+			"error": null,
+			"execution": null
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "First."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "First."
+			},
+			{
+				"role": "assistant",
+				"text": "First answer."
+			},
+			{
+				"role": "user",
+				"text": "Second."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "First."
+			},
+			{
+				"role": "assistant",
+				"text": "First answer."
+			},
+			{
+				"role": "user",
+				"text": "Second."
+			}
+		]
+	]
+}

@@ -130,6 +130,17 @@ export interface ThreadInfo {
 	readonly placement?: DocumentSchema.Placement;
 	/** Billed usage of its own entries; what it inherits through a fork point counts for its source. */
 	readonly usage: Usage;
+	/** Where its run is, as stored: live whenever the harness is up. */
+	readonly runState: ThreadSchema.RunState;
+	/** When `runState` last changed, epoch milliseconds; absent before the first run. */
+	readonly runStateAt?: number;
+	/** The last run, absent before the first: times in epoch milliseconds; `error` unless it succeeded. */
+	readonly lastRun?: {
+		readonly startedAt: number;
+		readonly endedAt?: number;
+		readonly outcome?: ThreadSchema.RunOutcome;
+		readonly error?: ThreadSchema.RunError;
+	};
 	readonly session: Info;
 }
 
@@ -279,6 +290,13 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 	const row = found.value;
 	const agent = yield* documents.agent(id);
 	const title = Option.getOrUndefined(row.title);
+	const millis = (time: Option.Option<DateTime.Utc>) =>
+		Option.getOrUndefined(Option.map(time, DateTime.toEpochMillis));
+	const runStateAt = millis(row.runStateAt);
+	const startedAt = millis(row.runStartedAt);
+	const endedAt = millis(row.runEndedAt);
+	const outcome = Option.getOrUndefined(row.runOutcome);
+	const error = Option.getOrUndefined(row.runError);
 	return {
 		id,
 		sessionId: SessionSchema.ID.make(row.sessionId),
@@ -296,6 +314,18 @@ export const threadInfo = Effect.fn("Session.threadInfo")(function* (id: ThreadS
 			cacheRead: row.tokensCacheRead,
 			cacheWrite: row.tokensCacheWrite,
 		},
+		runState: row.runState,
+		...(runStateAt === undefined ? {} : { runStateAt }),
+		...(startedAt === undefined
+			? {}
+			: {
+					lastRun: {
+						startedAt,
+						...(endedAt === undefined ? {} : { endedAt }),
+						...(outcome === undefined ? {} : { outcome }),
+						...(error === undefined ? {} : { error }),
+					},
+				}),
 		session: yield* info(SessionSchema.ID.make(row.sessionId)),
 	} satisfies ThreadInfo;
 });

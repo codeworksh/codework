@@ -5,6 +5,7 @@ import { Control } from "@codeworksh/harness/effect";
 import { Effect, Fiber, Layer, Stream } from "effect";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
@@ -149,6 +150,10 @@ const summary = (event: EventEnvelope) => {
 			return { type: event.type, part: part(data["part"]) };
 		case "session.run.failed":
 			return { type: event.type, reason: data["reason"], message: data["message"] };
+		case "session.execution.started":
+			return { type: event.type, resumed: data["resumed"] };
+		case "session.execution.interrupted":
+			return { type: event.type, reason: data["reason"] };
 		case "session.retry.scheduled":
 		case "session.retry.finished": {
 			const { sessionId: _s, threadId: _t, timestamp: _ts, ...rest } = data;
@@ -198,7 +203,111 @@ const hang = (response: Reply) => response.send({ role: "assistant" });
 
 const retry = { retry: { maxRetries: 3, baseDelayMs: 10, maxDelayMs: 1_000 } };
 
+/** The thread's stored run, read from the database file; times named by the log event they came from. */
+const runRow = (home: string, threadId: string, events: ReadonlyArray<EventEnvelope>) => {
+	const db = new DatabaseSync(join(home, "data", "codework.db"));
+	const row = db
+		.prepare(
+			"SELECT run_state, run_state_at, run_started_at, run_ended_at, run_outcome, run_error, execution FROM thread WHERE id = ?",
+		)
+		.get(threadId)!;
+	db.close();
+	const at = (column: string, types: ReadonlyArray<string>) => {
+		const time = row[column];
+		if (time === null) return null;
+		const from = events.findLast((event) => types.includes(event.type) && (event.data as Json)["timestamp"] === time);
+		return from === undefined ? `unmatched ${String(time)}` : `${from.durable?.seq} ${from.type}`;
+	};
+	const ends = [
+		"session.execution.succeeded",
+		"session.execution.failed",
+		"session.execution.interrupted",
+		"session.run.failed",
+	];
+	const state = String(row["run_state"]);
+	return {
+		state,
+		stateAt: at(
+			"run_state_at",
+			state === "starting" ? ["session.execution.started"] : state === "running" ? ["session.llm.started"] : ends,
+		),
+		startedAt: at("run_started_at", ["session.execution.started"]),
+		endedAt: at("run_ended_at", ends),
+		outcome: row["run_outcome"],
+		error: row["run_error"] === null ? null : JSON.parse(String(row["run_error"])),
+		execution: row["execution"],
+	};
+};
+
 describe("recovery after the host is killed", () => {
+	it("the stored run of a killed host is swept as a crash before clients connect, then resumed", async () => {
+		const resend = gate();
+		const fake = await streaming((_body, response, index) => {
+			if (index === 0) return answer(response, "First answer.");
+			hang(response);
+			if (index === 2) void resend.opened.then(() => answer(response, "Resumed answer."));
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const rows: Array<{ step: string } & ReturnType<typeof runRow>> = [];
+		const record = (step: string, events: ReadonlyArray<EventEnvelope>) =>
+			rows.push({ step, ...runRow(home, ids.threadId, events) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
+		await logged(first.url, ids, "session.execution.succeeded");
+		record("succeeded", await log(first.url, ids));
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Second." }));
+		const inFlight = await logged(first.url, ids, "session.llm.started", 2);
+		record("in flight", inFlight);
+		await first.kill();
+		// What the dead host left: the run still open.
+		record("killed", inFlight);
+
+		const second = await start();
+		// The sweep committed before the listener opened, so the first read already holds it.
+		const reopened = await log(second.url, ids);
+		const swept = reopened.findIndex(
+			(event) => event.type === "session.execution.interrupted" && (event.data as Json)["reason"] === "crash",
+		);
+		expect(swept).toBeGreaterThan(0);
+		record("resumed", await logged(second.url, ids, "session.llm.started", 3));
+		resend.open();
+		await logged(second.url, ids, "session.turn.ended", 2);
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await log(second.url, ids);
+		record("finished", events);
+
+		const resumed = events.findIndex(
+			(event) => event.type === "session.execution.started" && (event.data as Json)["resumed"] === true,
+		);
+		// Swept first, resumed after, with nothing of the run in between.
+		expect(resumed).toBe(swept + 1);
+		expect(rows.find((row) => row.step === "resumed")).toMatchObject({ state: "running", execution: "running" });
+
+		const lifecycle = new Set([
+			"session.execution.started",
+			"session.execution.succeeded",
+			"session.execution.failed",
+			"session.execution.interrupted",
+			"session.run.failed",
+			"session.llm.started",
+		]);
+		await expect(
+			artifact({
+				log: events
+					.filter((event) => lifecycle.has(event.type))
+					.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				// Read from the database file: after the first run, mid-run, with the resumed request in
+				// flight, and once it answered.
+				rows,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.lifecycle.json");
+	}, 90_000);
+
 	it("a reply killed mid-stream keeps its partial text, and the request is resent without it", async () => {
 		const resend = gate();
 		const fake = await streaming((_body, response, index) => {

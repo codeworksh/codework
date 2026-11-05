@@ -199,7 +199,8 @@ describe("runner loop — aikit input/output", () => {
 			yield* execution.resume(threadId);
 			yield* execution.resume(threadId);
 
-			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 3 }]);
+			// After session.created, prompt.admitted and execution.started.
+			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 4 }]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
 				"user",
 				"system",
@@ -267,8 +268,13 @@ describe("runner loop — aikit input/output", () => {
 				const failure = Cause.findErrorOption(exit.cause);
 				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.SandboxDirectoryNotFoundError");
 			}
-			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id}`;
-			expect(durable).toEqual([{ type: "session.created.1" }]);
+			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id} ORDER BY seq`;
+			// Only the run's own lifecycle: nothing of the loop.
+			expect(durable).toEqual([
+				{ type: "session.created.1" },
+				{ type: "session.execution.started.1" },
+				{ type: "session.execution.failed.1" },
+			]);
 		}),
 	);
 });

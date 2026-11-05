@@ -9,23 +9,29 @@
 	"events": [
 		"1 session.created.1 T1",
 		"2 session.prompt.admitted.1 T1",
-		"3 session.prompt.promoted.1 T1",
-		"4 session.thread.system.changed.1 T1",
-		"5 session.llm.started.1 T1",
-		"6 session.llm.ended.1 T1",
-		"7 session.turn.ended.1 T1",
-		"8 session.prompt.admitted.1 T1",
-		"9 session.prompt.promoted.1 T1",
-		"10 session.llm.started.1 T1",
-		"11 session.llm.ended.1 T1",
-		"12 session.turn.ended.1 T1",
-		"13 session.thread.forked.1 T2",
-		"14 session.thread.forked.1 T3",
-		"15 session.thread.forked.1 T4",
-		"16 session.prompt.admitted.1 T1",
-		"17 session.prompt.promoted.1 T1",
-		"18 session.llm.started.1 T1",
-		"19 session.llm.failed.1 T1"
+		"3 session.execution.started.1 T1",
+		"4 session.prompt.promoted.1 T1",
+		"5 session.thread.system.changed.1 T1",
+		"6 session.llm.started.1 T1",
+		"7 session.llm.ended.1 T1",
+		"8 session.turn.ended.1 T1",
+		"9 session.execution.succeeded.1 T1",
+		"10 session.prompt.admitted.1 T1",
+		"11 session.execution.started.1 T1",
+		"12 session.prompt.promoted.1 T1",
+		"13 session.llm.started.1 T1",
+		"14 session.llm.ended.1 T1",
+		"15 session.turn.ended.1 T1",
+		"16 session.execution.succeeded.1 T1",
+		"17 session.thread.forked.1 T2",
+		"18 session.thread.forked.1 T3",
+		"19 session.thread.forked.1 T4",
+		"20 session.prompt.admitted.1 T1",
+		"21 session.execution.started.1 T1",
+		"22 session.prompt.promoted.1 T1",
+		"23 session.llm.started.1 T1",
+		"24 session.llm.failed.1 T1",
+		"25 session.execution.interrupted.1 T1"
 	],
 	"threads": [
 		{
@@ -37,30 +43,30 @@
 		{
 			"thread": "T2",
 			"origin": "fork T1 at E5",
-			"createdSeq": 13,
+			"createdSeq": 17,
 			"title": null
 		},
 		{
 			"thread": "T3",
 			"origin": "fork T1 at E1",
-			"createdSeq": 14,
+			"createdSeq": 18,
 			"title": null
 		},
 		{
 			"thread": "T4",
 			"origin": "fork T1 at E3",
-			"createdSeq": 15,
+			"createdSeq": 19,
 			"title": null
 		}
 	],
 	"entries": [
-		"E1 T1 user seq=3 committed=3 committed",
-		"E2 T1 system seq=4 committed=4 committed",
-		"E3 T1 assistant seq=5 committed=7 committed",
-		"E4 T1 user seq=9 committed=9 committed",
-		"E5 T1 assistant seq=10 committed=12 committed",
-		"E6 T1 user seq=17 committed=17 committed",
-		"E7 T1 assistant seq=18 committed=19 aborted"
+		"E1 T1 user seq=4 committed=4 committed",
+		"E2 T1 system seq=5 committed=5 committed",
+		"E3 T1 assistant seq=6 committed=8 committed",
+		"E4 T1 user seq=12 committed=12 committed",
+		"E5 T1 assistant seq=13 committed=15 committed",
+		"E6 T1 user seq=22 committed=22 committed",
+		"E7 T1 assistant seq=23 committed=24 aborted"
 	],
 	"documents": [
 		{
@@ -74,21 +80,21 @@
 			"thread": "T2",
 			"kind": "agent",
 			"revisions": [
-				"13 {}"
+				"17 {}"
 			]
 		},
 		{
 			"thread": "T3",
 			"kind": "agent",
 			"revisions": [
-				"14 {}"
+				"18 {}"
 			]
 		},
 		{
 			"thread": "T4",
 			"kind": "agent",
 			"revisions": [
-				"15 {}"
+				"19 {}"
 			]
 		}
 	]
