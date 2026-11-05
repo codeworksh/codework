@@ -206,9 +206,15 @@ export const LLMTextStart = EventSchema.define({
 });
 export type LLMTextStart = typeof LLMTextStart.Type;
 
+/**
+ * `offset` is the part's text length before this delta, in JS string length (UTF-16 code units),
+ * so a client compares it with its draft's `text.length`. A delta at 0 starts its part.
+ */
+const LLMDeltaFields = { ...LLMPartFields, offset: NonNegativeInt, delta: Schema.String };
+
 export const LLMTextDelta = EventSchema.define({
 	type: "session.llm.text.delta",
-	schema: { ...LLMPartFields, delta: Schema.String },
+	schema: LLMDeltaFields,
 });
 export type LLMTextDelta = typeof LLMTextDelta.Type;
 
@@ -226,7 +232,7 @@ export type LLMThinkingStart = typeof LLMThinkingStart.Type;
 
 export const LLMThinkingDelta = EventSchema.define({
 	type: "session.llm.thinking.delta",
-	schema: { ...LLMPartFields, delta: Schema.String },
+	schema: LLMDeltaFields,
 });
 export type LLMThinkingDelta = typeof LLMThinkingDelta.Type;
 
