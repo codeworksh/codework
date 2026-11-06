@@ -1,5 +1,6 @@
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import type { RunState } from "@codeworksh/widget/codework";
+import { RunState } from "@codeworksh/widget/codework";
+import { Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -108,12 +109,24 @@ export function useDrawn(display: Display): Display {
  */
 const idleBy = new Map<string, Map<symbol, boolean>>();
 
+const isRunState = Schema.is(RunState);
+
+const runStatesOf = (reads: string) => {
+	const runStates = new Map<string, RunState>();
+	for (const line of reads.split("\n")) {
+		const [key = "", runState] = line.split("\t");
+		if (key !== "" && isRunState(runState)) runStates.set(key, runState);
+	}
+	return runStates;
+};
+
 /** What to draw for these threads' runs, by key and stored run state: the one that says most. */
 export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; readonly runState: RunState }>) {
 	const { unstop } = useSent();
 	const [self] = useState(() => Symbol("display"));
 	const reads = threads.map(({ key, runState }) => `${key}\t${runState}`).join("\n");
-	const runStates = useMemo(() => new Map(threads.map(({ key, runState }) => [key, runState])), [reads]); // oxlint-disable-line react-hooks/exhaustive-deps -- `reads` is `threads` as text.
+	// Built from `reads`, so callers passing a new array every render keep the same map.
+	const runStates = useMemo(() => runStatesOf(reads), [reads]);
 	// Only these threads' part of what was sent: a send to any other thread renders nothing here.
 	const display = useAtomValue(
 		sentAtom,
@@ -138,11 +151,8 @@ export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; rea
 		),
 	);
 	useEffect(() => {
-		const keys = new Set<string>();
-		for (const line of reads.split("\n")) {
-			if (line === "") continue;
-			const [key = "", runState] = line.split("\t");
-			keys.add(key);
+		const keys = new Set(runStates.keys());
+		for (const [key, runState] of runStates) {
 			const readers = idleBy.get(key) ?? new Map<symbol, boolean>();
 			readers.set(self, runState === "idle");
 			idleBy.set(key, readers);
@@ -156,7 +166,7 @@ export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; rea
 				if (readers?.size === 0) idleBy.delete(key);
 			}
 		};
-	}, [reads, stopping, self, unstop]);
+	}, [runStates, stopping, self, unstop]);
 	return useDrawn(display);
 }
 

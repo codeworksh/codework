@@ -684,7 +684,7 @@ function Transcript({
 	const lastUser = turns.at(-1)?.user;
 	// oxlint-disable-next-line react/purity -- useFollow reads what this decides on mount only.
 	const sentAgo = lastUser === undefined ? Infinity : Date.now() - lastUser.createdAt;
-	const { ref, onLoad, onScroll, anchoredEndSpace, maintainScrollAtEnd, pending } = useFollow({
+	const { ref, onLoad, onScroll, anchoredEndSpace, maintainScrollAtEnd, pending, settled } = useFollow({
 		lastUserId: lastUser?.id,
 		anchored: running || sentAgo < PROMPT_RECENT_MS,
 		// The start page's first prompt, handed over with the new session.
@@ -733,8 +733,8 @@ function Transcript({
 			}}
 			tabIndex={0}
 			aria-label="Conversation"
-			data-settled={follow.settled}
-			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""} ${follow.settled ? "" : "invisible"}`}
+			data-settled={settled}
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""} ${settled ? "" : "invisible"}`}
 			ListHeaderComponent={TRANSCRIPT_HEADER}
 			ListFooterComponent={<div aria-hidden style={{ height: (anchoredEndSpace === undefined ? inset : 0) + 24 }} />}
 		/>
