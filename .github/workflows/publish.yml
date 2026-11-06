@@ -47,7 +47,8 @@ jobs:
 
    publish:
       needs: guard
-      runs-on: blacksmith-4vcpu-ubuntu-2404
+      # npm accepts provenance and trusted publishing only from GitHub-hosted runners.
+      runs-on: ubuntu-24.04
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
       steps:
