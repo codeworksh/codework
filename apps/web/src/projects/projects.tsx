@@ -27,7 +27,8 @@ type Entry =
 /** The tree's colors and type from the app's theme tokens, so it follows light and dark. */
 const TREE_STYLE = {
 	height: "100%",
-	"--trees-bg-override": "transparent",
+	// The page's own surface: sticky project bands are drawn over the rows on it and need it opaque.
+	"--trees-bg-override": "var(--color-frame)",
 	"--trees-fg-override": "var(--color-ink-secondary)",
 	"--trees-fg-muted-override": "var(--color-ink-muted)",
 	"--trees-bg-muted-override": "var(--color-selection-subtle)",
@@ -118,6 +119,16 @@ function layout(projects: ReadonlyArray<SidebarProject>, threads: ReadonlyArray<
 
 const EMPTY: ReadonlyArray<ListedThread> = [];
 
+/**
+ * A folder as a band shows it: the user's home folder as `~`, and past three folders only the last
+ * two, so the project's name keeps the room. The full path is the band's title.
+ */
+const homeShort = (path: string) => {
+	const short = path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+	const [root = "", ...rest] = short.split("/");
+	return rest.length > 3 ? `${root}/…/${rest.slice(-2).join("/")}` : short;
+};
+
 /** Projects, their sessions and the sessions' forks as a tree; a main thread or a fork opens its session. */
 export function Projects() {
 	const shell = useShell();
@@ -151,7 +162,18 @@ export function Projects() {
 		renderRowDecoration: ({ row }) => {
 			const entry = entries.current.get(row.path);
 			if (entry === undefined) return null;
-			if (entry.kind === "project") return { text: String(entry.sessions), title: entry.path };
+			if (entry.kind === "project") {
+				const path = homeShort(entry.path);
+				const count = String(entry.sessions);
+				return {
+					text: `${path} · ${count}`,
+					title: entry.path,
+					parts: [
+						{ text: path, color: "color-mix(in oklab, var(--color-ink-muted) 75%, transparent)" },
+						{ text: `\u00a0· ${count}` },
+					],
+				};
+			}
 			return entry.running ? { text: "Working" } : { text: ago(entry.updated) };
 		},
 	});
