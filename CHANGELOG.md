@@ -8,8 +8,17 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/desktop@0.4.0] - 2026-11-06
+
 ### Added
 
+- The app keeps its own copy of every CodeWork machine it knows, in `app.db`. Projects, sessions, threads and transcripts are mirrored by revision as they change, resumed from where they left off after a disconnect, and copied in full when a machine's store is new or restored. The sidebar and open threads read that copy, so they show at launch before any machine answers, and a session's commands go to the machine that owns it.
+- All Threads replaces Dashboard: a Linear-like list of every thread across machines, in sections by status, priority or group, ordered by hand, last update or priority, with filters for status, priority and machine. Rows have searchable status, priority, group and color pickers (1–9 picks one; S, P, L and C open them), arrow or j/k navigation, Enter to open, and drag to reorder or move between sections. Groups are created, renamed, recolored, reordered and deleted from their headers. Display options are saved per view. It opens as a page from the sidebar or the palette's Navigation group.
+- Projects is a page: a tree of projects, their sessions and their forks, nested under the thread they were cut from, with each session's last activity or "Working". A thread opens beside the tree; Cmd-click opens it in a new frame.
+- A session shows as working in the sidebar, its tab and its frame header from the first frame, with no view open. A prompt sent from the start page shows as sent until the server echoes it, and a run shows as pending or stopping while the server catches up.
+- Fork a thread from one of its messages.
+- The transcript renders only the visible turns, follows the end while streaming, holds its place when older turns load, and pins the latest prompt.
+- The sidebar lists New, Search and All Threads as one list, with session titles in regular weight.
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
 - With no project picked, the desktop start page's project button reads "New Project" and opens Add Project in the command palette (⌘K), with five sources: Open Finder, New Project (a folder in `~/codework/projects` with a git repository, a README and a first commit), Local Folder (browse, Tab-complete or paste a path), Git URL and GitHub Repository (by `owner/name`, URL or a bare name of the signed-in `gh` user). Each asks where the project goes before adding it.
@@ -19,26 +28,64 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Fixed
 
+- A theme chosen in the palette stays after the palette closes, and a highlighted theme previews at once.
+- Switching sessions opens at the end without an up-down jump, and the composer's height carries over.
+- Rendering during a run: with 80 frames open over 80 concurrent runs, main-thread blocking fell from 27% to 7% and the worst freeze from 2.5 s to 0.5 s. The web app is compiled with the React Compiler; relative times share one clock, and spinners pause off screen.
+- Renaming a group from its menu works.
 - Switching between threads in the desktop app no longer flashes blank: a thread opened in the last 5 minutes (up to 16) shows at once, and an unopened one keeps the previous thread on screen until it loads. A streaming reply re-renders only its own row.
 
-### @codeworksh/cli
+### Breaking Changes
 
-#### Added
+- An `app.db` from an earlier build is not upgraded; delete it.
 
+## [@codeworksh/cli@0.8.0] - 2026-11-06
+
+### Added
+
+- `server.info` returns the server's `storeId` and current `rev`.
+- `index.sync({ after })` streams every project, space, session and thread row written after revision `after`, then `Synced`, then the same rows live as they change; a deleted session arrives as `Removed`.
+- `thread.sync({ sessionId, threadId, after?, budget })` streams a thread's entries and queued prompts the same way, then live, with text and thinking deltas carrying their `offset`. `thread.page` reads older pages of a thread's line.
+- `ThreadInfo` reports `runState`, `runStateAt` and `lastRun`; a fork's origin reports `cut`, the committed seq where the inherited line ends. `HistoryEntry.size` and `QueuedPrompt.admittedSeq`.
 - `host.info`, `host.browse`, `host.add` and `host.create` RPCs list host folders and add or create projects; `host.create` makes them in `~/codework/projects`.
 - `host.clone` starts a background clone and answers at once; `host.clones` streams every tracked clone with its stage, percent, git's transfer note and a stalled flag. `host.cancel`, `host.retry` and `host.discard` stop, restart and forget one. A clone the host refuses over SSH is tried again over HTTPS, and git never prompts.
 - `github.status` reports whether `gh` is installed and signed in; `github.lookup` resolves a repository by `owner/name`, `host/owner/name`, its URL or a bare name.
 - `session.create` fails with `HostError` when `hostDir` is a clone still running, failed or cancelled.
 
-#### Removed
+### Changed
+
+- Runs cut off by a crash are settled before the server listens, each with one `session.run.failed`.
+
+### Removed
 
 - `codework tui` and the bundled terminal UI binary; the CLI no longer depends on `@codeworksh/tui`. `codework service` still starts and stops the background server.
 
-### @codeworksh/harness
+## [@codeworksh/harness@0.8.0] - 2026-11-06
 
-#### Added
+### Added
 
+- A store identity and a store-wide revision on every project, space, session, thread, entry and inbox row. Triggers reject a write with a stale revision, and a deleted session leaves a tombstone. `Store`, from `@codeworksh/harness/effect`, exposes `write`, `rev`, `head` and `wake`, which fires after each commit; `Sync.index`, `Sync.thread` and `Sync.page` read rows by revision.
+- Durable `session.execution.started`, `session.execution.succeeded`, `session.execution.failed` and `session.execution.interrupted` events, and `session.retry.scheduled`, projected onto the thread's run columns. A run ends with exactly one terminal event.
+- `session.llm.text.delta` and `session.llm.thinking.delta` carry `offset`, the length of the part's text before the delta.
+- `QueuedPrompt.admittedSeq`.
 - `@codeworksh/harness/effect` exports `Git` and `expandTilde`. `Git.Service` gains `init`; `init`, `clone`, `fetch`, `checkout`, `reset` and `push` fail with `Git.OperationError` carrying git's own message, and `clone` is a full clone unless `depth` is given.
+
+### Changed
+
+- A session's `updated_at` moves only when the session's own attributes change, never on thread activity.
+
+### Internal
+
+- Four modules with no importers and the unused `run` dependency are gone.
+
+## [@codeworksh/aikit@0.14.0] - 2026-11-06
+
+### Removed
+
+- Claude Sonnet 4.5 (`claude-sonnet-4-5`) from the Anthropic catalog; Anthropic retires it from the Claude API on 2026-11-30.
+
+### Fixed
+
+- `max_tokens` clamping leaves room for OpenRouter's input overcount: 15% of the estimated input and at least 4096 tokens, unless that would leave under 32,768 tokens of output. A request near a 1M window could be rejected as over the context length.
 
 ## [@codeworksh/cli@0.6.0] - 2026-11-02
 
