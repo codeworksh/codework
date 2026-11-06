@@ -5,7 +5,7 @@ import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
-import { createContext, memo, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
@@ -19,6 +19,7 @@ import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
 import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
+import { useNowSecond } from "../../hooks/now";
 import { useStableCallback } from "../../hooks/stable";
 import { useListedSession } from "./projects";
 import { RunMark } from "./run";
@@ -41,7 +42,7 @@ const PAGE = 60;
 const contentWidth = "mx-auto w-full max-w-conversation";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
-	const thread = useMemo(() => threadRef(address), [address]);
+	const thread = threadRef(address);
 	const key = thread === undefined ? (address ?? "") : threadKey(thread);
 	// The thread this frame showed before, so a switch can keep it in view while the next one loads.
 	const [shown, setShown] = useState<{ readonly key: string; readonly previous?: string }>({ key });
@@ -286,10 +287,7 @@ function textOf(reply: HistoryEntry, at?: number) {
  */
 function useStreamed(reply: HistoryEntry, at?: number) {
 	const message = use(StreamedContext);
-	const select = useCallback(
-		(entry: HistoryEntry | undefined) => (entry === undefined ? undefined : textOf(entry, at)),
-		[at],
-	);
+	const select = (entry: HistoryEntry | undefined) => (entry === undefined ? undefined : textOf(entry, at));
 	return useAtomValue(reply.state === "draft" ? message(reply.id) : noMessage, select) ?? textOf(reply, at);
 }
 
@@ -315,20 +313,17 @@ function useConversation(thread: ThreadRef) {
 		[registry, store, thread],
 	);
 
-	const page = useCallback(
-		async (before: number | undefined) => {
-			const reply = decodeWindow(
-				(
-					await bus.request({
-						topic: topics.page,
-						payload: { ...thread, limit: PAGE, ...(before === undefined ? {} : { before }) },
-					})
-				).payload,
-			);
-			return Option.getOrUndefined(reply);
-		},
-		[bus, thread],
-	);
+	const page = async (before: number | undefined) => {
+		const reply = decodeWindow(
+			(
+				await bus.request({
+					topic: topics.page,
+					payload: { ...thread, limit: PAGE, ...(before === undefined ? {} : { before }) },
+				})
+			).payload,
+		);
+		return Option.getOrUndefined(reply);
+	};
 
 	useEffect(() => {
 		let active = true;
@@ -377,7 +372,7 @@ function useConversation(thread: ThreadRef) {
 	});
 
 	const oldest = state.status === "ready" && state.more ? state.messages[0]?.seq : undefined;
-	const loadOlder = useCallback(() => {
+	const loadOlder = () => {
 		if (oldest === undefined || paging.current) return;
 		paging.current = true;
 		void page(oldest)
@@ -393,7 +388,7 @@ function useConversation(thread: ThreadRef) {
 			.finally(() => {
 				paging.current = false;
 			});
-	}, [oldest, page, setState]);
+	};
 
 	return { state, loadOlder, message: store.message };
 }
@@ -446,21 +441,18 @@ function Conversation({
 		setSeenOutcome(outcome);
 		if (sent.length > 0 && (run?.info.runState === "idle" || failure !== undefined)) setSent([]);
 	}
-	const state = useMemo<State>(() => {
-		if (loaded.status !== "ready" || sent.length === 0) return loaded;
+	let state: State = loaded;
+	if (loaded.status === "ready" && sent.length > 0) {
 		const ids = new Set(sent.map((message) => message.id));
-		return {
+		state = {
 			...loaded,
 			messages: [...loaded.messages, ...sent],
 			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
 				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
 				: loaded.queued,
 		};
-	}, [loaded, sent]);
-	const sending = useCallback(
-		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
-		[thread],
-	);
+	}
+	const sending = (prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]);
 	// A prompt this window sent is pending until it lands in app.db, as a message or a queued prompt.
 	const key = threadKey(thread);
 	const inFlight = usePendingPrompts(key);
@@ -476,7 +468,7 @@ function Conversation({
 	// Only this view hears the thread's rows land, so what it sent goes with it.
 	useEffect(() => () => forget(key), [key, forget]);
 	const phase = useRunDisplay([{ key, runState: loaded.status === "ready" ? loaded.info.runState : "idle" }]);
-	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
+	const unsent = (id: string) => setSent((current) => current.filter((message) => message.id !== id));
 	// A fork opens in a frame of its own once the backend answers, by then in app.db.
 	const bus = useBus();
 	const shell = useShell();
@@ -521,10 +513,7 @@ function Conversation({
 	const [sendError, setSendError] = useState<string>();
 	// A queued prompt taken back to edit; the composer puts its text above the draft.
 	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
-	const restore = useCallback(
-		(text: string) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 })),
-		[],
-	);
+	const restore = (text: string) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 }));
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
@@ -694,7 +683,7 @@ function Transcript({
 		inset,
 		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
 	});
-	const extraData = useMemo(() => ({ phase, modelName, pending }), [phase, modelName, pending]);
+	const extraData = { phase, modelName, pending };
 
 	if (turns.length === 0)
 		return (
@@ -945,18 +934,6 @@ function formatWorkingDuration(elapsedMs: number | undefined, modelName: string 
 	return who ? `${who} ${verb} for ${elapsed}` : `${verb} for ${elapsed}`;
 }
 
-function useElapsedFrom(startedAt: number | undefined, active: boolean): number | undefined {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (!active || startedAt === undefined) return;
-		setNow(Date.now());
-		const id = window.setInterval(() => setNow(Date.now()), 1000);
-		return () => window.clearInterval(id);
-	}, [startedAt, active]);
-	return active && startedAt !== undefined ? Math.max(0, now - startedAt) : undefined;
-}
-
-// A leaf of its own, so the live tick re-renders only the label's text.
 function WorkLabel({
 	started,
 	ended,
@@ -968,12 +945,26 @@ function WorkLabel({
 	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
-	const live = ended === undefined;
-	const liveElapsed = useElapsedFrom(started, live);
-	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
 	// Before the run takes the prompt in, and while a stop reaches it, the state says more than the time.
 	if (phase === "pending" || phase === "starting" || phase === "stopping") return `${displayLabel[phase]}…`;
-	return formatWorkingDuration(elapsedMs, modelName, !live);
+	if (ended === undefined) return <LiveWorkLabel started={started} modelName={modelName} />;
+	return formatWorkingDuration(
+		started !== undefined && ended >= started ? ended - started : undefined,
+		modelName,
+		true,
+	);
+}
+
+// A leaf of its own, so the second tick re-renders only the label's text.
+function LiveWorkLabel({
+	started,
+	modelName,
+}: {
+	readonly started: number | undefined;
+	readonly modelName: string | undefined;
+}) {
+	const now = useNowSecond();
+	return formatWorkingDuration(started === undefined ? undefined : Math.max(0, now - started), modelName, false);
 }
 
 /** Flags the edges with more to scroll to, so only those fade. */
@@ -1002,7 +993,7 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: 
 	const lastScrollTop = useRef(0);
 	const wasEnabled = useRef(false);
 
-	const pin = useCallback(() => {
+	const pin = () => {
 		if (el === null) return;
 		const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop <= 16;
 		if (el.scrollTop < lastScrollTop.current - 1 && !nearBottom) {
@@ -1013,7 +1004,7 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: 
 		if (stickToBottom.current) el.scrollTo({ top: el.scrollHeight });
 		lastScrollTop.current = el.scrollTop;
 		markScrollEdges(el);
-	}, [el]);
+	};
 
 	useLayoutEffect(() => {
 		if (!enabled) {
@@ -1211,7 +1202,7 @@ function ThinkingWorkRow({
 }) {
 	const text = useStreamed(reply, at);
 	const [open, setOpen] = useState(false);
-	const summary = useMemo(() => proseSummary(text) || "Thinking", [text]);
+	const summary = proseSummary(text) || "Thinking";
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button
@@ -1239,7 +1230,7 @@ function ThinkingWorkRow({
 
 function NoteWorkRow({ text }: { readonly text: string }) {
 	const [open, setOpen] = useState(false);
-	const summary = useMemo(() => proseSummary(text), [text]);
+	const summary = proseSummary(text);
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button

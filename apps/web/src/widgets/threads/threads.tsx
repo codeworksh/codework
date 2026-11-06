@@ -47,15 +47,12 @@ export function AllThreads({ instanceId }: WidgetProps<unknown>) {
 	const [optimistic, setOptimistic] = useState<{ readonly base: Board; readonly value: Board }>();
 	const board = AsyncResult.isSuccess(result) ? result.value : undefined;
 	const shown = board !== undefined && optimistic?.base === board ? optimistic.value : board;
-	const drawn = useMemo(() => (shown === undefined ? [] : sections(shown, options, listKey)), [shown, options]);
-	const machines = useMemo(
-		() => [
-			...new Map(
-				shown?.lists.flatMap((list) => list.threads.map((thread) => [thread.machine.id, thread.machine])),
-			).values(),
-		],
-		[shown],
-	);
+	const drawn = shown === undefined ? [] : sections(shown, options, listKey);
+	const machines = [
+		...new Map(
+			shown?.lists.flatMap((list) => list.threads.map((thread) => [thread.machine.id, thread.machine])),
+		).values(),
+	];
 	const newGroup = () =>
 		create({ payload: { organizationId: PERSONAL_ORGANIZATION, name: "New Group" } }).then(
 			(group) => setRenaming(group.id),
@@ -125,11 +122,8 @@ function List({
 	const [menu, setMenu] = useState<{ readonly id: string; readonly kind: Kind; readonly anchor: HTMLElement }>();
 	const body = useRef<HTMLDivElement>(null);
 	const manual = options.order === "manual";
-	const groups = useMemo(() => new Map(board.groups.map((candidate) => [candidate.id, candidate])), [board.groups]);
-	const visible = useMemo(
-		() => sections.flatMap((section) => (collapsed.has(section.key) ? [] : section.threads)),
-		[sections, collapsed],
-	);
+	const groups = new Map(board.groups.map((candidate) => [candidate.id, candidate]));
+	const visible = sections.flatMap((section) => (collapsed.has(section.key) ? [] : section.threads));
 	/** Every thread in the one manual order, sorted only when a drop needs it. */
 	const ordered = () => board.lists.flatMap((list) => list.threads).toSorted((a, b) => a.ordering - b.ordering);
 

@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
 import type { SidebarSession } from "@codeworksh/contract";
-import { type MouseEvent, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import {
 	Sidebar,
@@ -20,7 +20,7 @@ import { projectsAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
-import { ago } from "../widgets/time";
+import { Ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
 import { OpenProviderSettings } from "@/components/offline";
 import { ProviderIcon } from "@/components/provider";
@@ -75,16 +75,12 @@ export function SessionsSidebar() {
 	}, []);
 
 	const needle = query.trim().toLowerCase();
-	const sessions = useMemo(
-		() =>
-			AsyncResult.isSuccess(result)
-				? result.value
-						.flatMap((project) => project.sessions.map((session) => ({ session, project })))
-						.filter(({ session, project }) => `${session.title} ${project.name}`.toLowerCase().includes(needle))
-						.sort((a, b) => b.session.updated - a.session.updated)
-				: [],
-		[result, needle],
-	);
+	const sessions = AsyncResult.isSuccess(result)
+		? result.value
+				.flatMap((project) => project.sessions.map((session) => ({ session, project })))
+				.filter(({ session, project }) => `${session.title} ${project.name}`.toLowerCase().includes(needle))
+				.sort((a, b) => b.session.updated - a.session.updated)
+		: [];
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
@@ -215,7 +211,7 @@ const SessionRow = memo(function SessionRow({
 					</span>
 					<span className="min-w-0 flex-1 truncate text-body leading-snug">{session.title}</span>
 					<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
-						{ago(session.updated)}
+						<Ago time={session.updated} />
 					</span>
 				</span>
 				<span className="mt-1 flex min-w-0 items-center gap-2 text-2xs text-ink-muted">

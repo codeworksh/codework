@@ -1,3 +1,5 @@
+import { observeVisibleAnimation } from "@/lib/visible";
+
 const pixels = [
 	[0, 0],
 	[6, 0],
@@ -11,7 +13,14 @@ const pixels = [
 
 export function PixelLoader() {
 	return (
-		<svg viewBox="0 0 16 16" className="size-3" fill="currentColor" shapeRendering="crispEdges" aria-hidden>
+		<svg
+			ref={observeVisibleAnimation}
+			viewBox="0 0 16 16"
+			className="size-3"
+			fill="currentColor"
+			shapeRendering="crispEdges"
+			aria-hidden
+		>
 			{pixels.map(([x, y], index) => (
 				<rect
 					key={`${x},${y}`}

@@ -3,16 +3,9 @@ import type { ListedThread, SidebarProject } from "@codeworksh/contract";
 import { openMode, useShell } from "@codeworksh/widget/view";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { AsyncResult } from "effect/reactivity";
-import {
-	type CSSProperties,
-	type KeyboardEvent,
-	type MouseEvent,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-} from "react";
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef } from "react";
 
+import { useNowMinute } from "../hooks/now";
 import { threadAddress } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
 import type { ThreadRef } from "../widgets/session/schema";
@@ -160,17 +153,13 @@ export function Projects() {
 	const shell = useShell();
 	const projects = useAtomValue(projectsAtom);
 	const listed = useAtomValue(threadsAtom("status"));
-	const threads = useMemo(
-		() => (AsyncResult.isSuccess(listed) ? listed.value.lists.flatMap((list) => list.threads) : EMPTY),
-		[listed],
-	);
-	const tree = useMemo(
-		() => (AsyncResult.isSuccess(projects) ? layout(projects.value, threads) : undefined),
-		[projects, threads],
-	);
+	const threads = AsyncResult.isSuccess(listed) ? listed.value.lists.flatMap((list) => list.threads) : EMPTY;
+	const tree = AsyncResult.isSuccess(projects) ? layout(projects.value, threads) : undefined;
 	// The tree's model is made once; its row decorations read the latest entries from here.
 	const entries = useRef(new Map<string, Entry>());
 	const rank = useRef(new Map<string, number>());
+	const minute = useNowMinute();
+	const now = useRef(minute);
 	useLayoutEffect(() => {
 		if (tree === undefined) return;
 		entries.current = tree.entries;
@@ -200,7 +189,7 @@ export function Projects() {
 					],
 				};
 			}
-			const when = entry.running ? "Working" : ago(entry.updated);
+			const when = entry.running ? "Working" : ago(entry.updated, now.current);
 			// A fork often carries its source's title; the mark tells it apart.
 			if (!entry.fork) return { text: when };
 			return {
@@ -212,6 +201,12 @@ export function Projects() {
 			};
 		},
 	});
+
+	// The tree draws decorations itself, outside React; a root render redraws them for each minute tick.
+	useEffect(() => {
+		now.current = minute;
+		model.setComposition(model.getComposition());
+	}, [model, minute]);
 
 	// Each read replaces the paths, keeping open what was open; projects start open, sessions closed.
 	const seen = useRef(new Set<string>());

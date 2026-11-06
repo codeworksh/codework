@@ -1,6 +1,6 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
-import { memo, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -99,25 +99,19 @@ interface HostProps {
 function Host({ instanceId, kind, shellFor, decorate, children }: HostProps) {
 	const atoms = useContext(RegistryContext);
 	// Built once per instance and calling the desktop's latest shell, so `useShell` never renders a widget.
-	const shell = useMemo<Shell>(
-		() => ({
-			open: (address, options) => shellFor(instanceId).open(address, options),
-			focus: (id) => shellFor(instanceId).focus(id),
-			close: (id) => shellFor(instanceId).close(id),
-		}),
-		[shellFor, instanceId],
-	);
+	const shell: Shell = {
+		open: (address, options) => shellFor(instanceId).open(address, options),
+		focus: (id) => shellFor(instanceId).focus(id),
+		close: (id) => shellFor(instanceId).close(id),
+	};
 	const pkg = kind.split(":")[0] ?? kind;
-	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
-	const frame = useMemo<FrameApi>(
-		() => ({
-			instanceId,
-			setTitle: (title, lead) => decorate(instanceId, { title, lead }),
-			setIcon: (icon) => decorate(instanceId, { icon }),
-			setTab: (tab) => decorate(instanceId, { tab }),
-		}),
-		[instanceId, decorate],
-	);
+	const host = makeHost({ registry: atoms, package: pkg, instanceId });
+	const frame: FrameApi = {
+		instanceId,
+		setTitle: (title, lead) => decorate(instanceId, { title, lead }),
+		setIcon: (icon) => decorate(instanceId, { icon }),
+		setTab: (tab) => decorate(instanceId, { tab }),
+	};
 	return (
 		<ShellContext value={shell}>
 			<FrameContext value={frame}>
@@ -167,14 +161,10 @@ export function Desktop({ workspace }: DesktopProps) {
 	const { instances, order } = desk;
 	// webwm only needs identity, tags, and minimum sizes; those come from the
 	// widget's definition so the layout respects what each widget can shrink to.
-	const widgets: Widget[] = useMemo(
-		() =>
-			instances.map(({ id, kind, tags }) => {
-				const definition = registry.get(kind);
-				return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
-			}),
-		[instances],
-	);
+	const widgets: Widget[] = instances.map(({ id, kind, tags }) => {
+		const definition = registry.get(kind);
+		return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
+	});
 	const byId = new Map(instances.map((instance) => [instance.id, instance]));
 	const saved: View = { layout: workspace.layout, mfact: workspace.mfact };
 	const view = views.get(workspace.id) ?? saved;
@@ -251,22 +241,19 @@ export function Desktop({ workspace }: DesktopProps) {
 		if (home !== undefined) void navigate(workspaceRoute(home));
 	};
 
-	const decorate = useCallback(
-		(instanceId: string, patch: Chrome) =>
-			setChrome((current) => {
-				const previous = current.get(instanceId) ?? {};
-				const next = { ...previous, ...patch };
-				if (
-					next.title === previous.title &&
-					next.lead === previous.lead &&
-					next.icon === previous.icon &&
-					next.tab === previous.tab
-				)
-					return current;
-				return new Map(current).set(instanceId, next);
-			}),
-		[setChrome],
-	);
+	const decorate = (instanceId: string, patch: Chrome) =>
+		setChrome((current) => {
+			const previous = current.get(instanceId) ?? {};
+			const next = { ...previous, ...patch };
+			if (
+				next.title === previous.title &&
+				next.lead === previous.lead &&
+				next.icon === previous.icon &&
+				next.tab === previous.tab
+			)
+				return current;
+			return new Map(current).set(instanceId, next);
+		});
 
 	// A frame showing something else, or gone, starts from the widget's defaults again.
 	const undecorate = (instanceId: string) =>

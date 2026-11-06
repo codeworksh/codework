@@ -1,5 +1,5 @@
 import type { AnchoredEndSpaceConfig, LegendListRef, MaintainScrollAtEndOptions } from "@legendapp/list/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /** The anchored prompt's distance from the top of the viewport. */
 const ANCHOR_OFFSET = 20;
@@ -284,33 +284,27 @@ export function useFollow({
 				},
 			};
 
-	const navigate = useCallback(
-		(navigation: Navigation) => {
-			const el = viewport.current?.el;
-			if (el === undefined || !releases(navigation, el)) return;
-			if (store.dispatch("navigated").before.mode !== "following") return;
-			// A new imperative scroll cancels the list's queued ones; a missing item cancels without moving.
-			void list.current?.scrollToItem({ item: CANCEL, animated: false });
-			// A smooth scroll already under way keeps running in the browser; writing its position halts it.
-			const top = el.scrollTop;
-			el.scrollTop = top;
-		},
-		[store],
-	);
-	const ref = useCallback(
-		(instance: LegendListRef | null) => {
-			list.current = instance;
-			if (instance === null) return;
-			const attached = attachViewport(instance.getScrollableNode(), navigate);
-			viewport.current = attached;
-			return () => {
-				attached.dispose();
-				if (viewport.current === attached) viewport.current = undefined;
-				list.current = null;
-			};
-		},
-		[navigate],
-	);
+	const navigate = (navigation: Navigation) => {
+		const el = viewport.current?.el;
+		if (el === undefined || !releases(navigation, el)) return;
+		if (store.dispatch("navigated").before.mode !== "following") return;
+		// A new imperative scroll cancels the list's queued ones; a missing item cancels without moving.
+		void list.current?.scrollToItem({ item: CANCEL, animated: false });
+		// A smooth scroll already under way keeps running in the browser; writing its position halts it.
+		const top = el.scrollTop;
+		el.scrollTop = top;
+	};
+	const ref = (instance: LegendListRef | null) => {
+		list.current = instance;
+		if (instance === null) return;
+		const attached = attachViewport(instance.getScrollableNode(), navigate);
+		viewport.current = attached;
+		return () => {
+			attached.dispose();
+			if (viewport.current === attached) viewport.current = undefined;
+			list.current = null;
+		};
+	};
 
 	const onScroll = () => {
 		const el = viewport.current?.el;

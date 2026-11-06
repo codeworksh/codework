@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
 import { Folder } from "lucide-react";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useState } from "react";
 
 import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
@@ -27,7 +27,7 @@ const decodeCreated = Schema.decodeUnknownOption(Json.Created);
 export function Landing() {
 	const registry = useContext(RegistryContext);
 	// The start page asks the Session backend as the "landing" source, outside any widget frame.
-	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "landing" }).bus, [registry]);
+	const bus = makeHost({ registry, package: "codework", instanceId: "landing" }).bus;
 	const openElsewhere = useOpenElsewhere();
 	const inFlight = useSent();
 	const [query, setQuery] = useState("");

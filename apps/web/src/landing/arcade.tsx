@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
 	ARCADE_MODES,
@@ -457,7 +457,7 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		};
 	}, []);
 
-	const takeControl = useCallback(() => {
+	const takeControl = () => {
 		const board = boardsRef.current?.[indexRef.current];
 		board?.arcade.setMode(mode);
 		board?.arcade.takeControl();
@@ -472,14 +472,14 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		setPlaying(true);
 		onPlayingChange(true);
-	}, [mode, onPlayingChange]);
+	};
 
-	const pickMode = useCallback((next: ArcadeMode) => {
+	const pickMode = (next: ArcadeMode) => {
 		boardsRef.current?.[indexRef.current]?.arcade.setMode(next);
 		setMode(next);
-	}, []);
+	};
 
-	const releaseControl = useCallback(() => {
+	const releaseControl = () => {
 		boardsRef.current?.[indexRef.current]?.arcade.releaseControl();
 		scoreRef.current = 0;
 		gameOverRef.current = false;
@@ -487,7 +487,7 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		setGameOver(false);
 		setPlaying(false);
 		onPlayingChange(false);
-	}, [onPlayingChange]);
+	};
 
 	useEffect(() => {
 		slideAtRef.current = performance.now();
@@ -498,13 +498,13 @@ export function Arcade({ onPlayingChange }: { onPlayingChange: (playing: boolean
 		wakeRef.current();
 	}, [playing]);
 
-	const showGame = useCallback((next: number) => {
+	const showGame = (next: number) => {
 		if (next === indexRef.current) return;
 		setSlide({
 			index: next,
 			dir: next > indexRef.current ? 1 : -1,
 		});
-	}, []);
+	};
 
 	useEffect(() => {
 		if (playing || hovered || focused || GRID_GAMES.length < 2) return;

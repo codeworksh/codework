@@ -508,6 +508,7 @@
 @media (prefers-reduced-motion: no-preference) {
 	.pixel-loader-cell {
 		animation: pixel-loader 960ms steps(1, end) infinite;
+		animation-play-state: var(--visible-animation-state, paused);
 	}
 }
 

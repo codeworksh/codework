@@ -2,7 +2,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { RunState } from "@codeworksh/widget/codework";
 import { Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 /*
  * What the UI shows for a thread's run: the harness's `run_state`, joined by two states only this
@@ -36,23 +36,21 @@ const sentAll = Atom.family((keys: string) =>
 /** The commands that move a thread's client state: a prompt sent or landed, a stop sent or settled. */
 export function useSent() {
 	const registry = useContext(RegistryContext);
-	return useMemo(() => {
-		const change = (key: string, fn: (sent: Sent) => Sent) => registry.update(sentOf(key), fn);
-		return {
-			prompt: (key: string, id: string) =>
-				change(key, (sent) => ({ ...sent, prompts: new Set([...sent.prompts, id]) })),
-			/** Prompts that are in app.db now, or were refused. */
-			landed: (key: string, ids: Iterable<string>) =>
-				change(key, (sent) => {
-					const prompts = new Set(sent.prompts);
-					for (const id of ids) prompts.delete(id);
-					return prompts.size === sent.prompts.size ? sent : { ...sent, prompts };
-				}),
-			stop: (key: string) => change(key, (sent) => (sent.stopping ? sent : { ...sent, stopping: true })),
-			unstop: (key: string) => change(key, (sent) => (sent.stopping ? { ...sent, stopping: false } : sent)),
-			forget: (key: string) => change(key, () => NONE),
-		};
-	}, [registry]);
+	const change = (key: string, fn: (sent: Sent) => Sent) => registry.update(sentOf(key), fn);
+	return {
+		prompt: (key: string, id: string) =>
+			change(key, (sent) => ({ ...sent, prompts: new Set([...sent.prompts, id]) })),
+		/** Prompts that are in app.db now, or were refused. */
+		landed: (key: string, ids: Iterable<string>) =>
+			change(key, (sent) => {
+				const prompts = new Set(sent.prompts);
+				for (const id of ids) prompts.delete(id);
+				return prompts.size === sent.prompts.size ? sent : { ...sent, prompts };
+			}),
+		stop: (key: string) => change(key, (sent) => (sent.stopping ? sent : { ...sent, stopping: true })),
+		unstop: (key: string) => change(key, (sent) => (sent.stopping ? { ...sent, stopping: false } : sent)),
+		forget: (key: string) => change(key, () => NONE),
+	};
 }
 
 /** Prompt ids this window sent the thread that have not landed yet. */
@@ -120,7 +118,7 @@ export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; rea
 	const [self] = useState(() => Symbol("display"));
 	const reads = threads.map(({ key, runState }) => `${key}\t${runState}`).join("\n");
 	// Built from `reads`, so callers passing a new array every render keep the same map.
-	const runStates = useMemo(() => runStatesOf(reads), [reads]);
+	const runStates = runStatesOf(reads);
 	// Only these threads' sent state: a send to any other thread renders nothing here.
 	const sent = useAtomValue(sentAll([...runStates.keys()].join("\n")));
 	let display: Display = "idle";

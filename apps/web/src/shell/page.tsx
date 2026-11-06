@@ -23,7 +23,7 @@ export function Page({
 	readonly children: ReactNode;
 }) {
 	const registry = useContext(RegistryContext);
-	const host = useMemo(() => makeHost({ registry, package: "codework", instanceId }), [registry, instanceId]);
+	const host = makeHost({ registry, package: "codework", instanceId });
 	const openElsewhere = useOpenElsewhere();
 	// Read through a ref, so the shell stays stable while the desk changes.
 	const opener = useRef(openElsewhere);
