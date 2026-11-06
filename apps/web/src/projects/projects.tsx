@@ -22,7 +22,13 @@ import { ago } from "../widgets/time";
 /** What a tree path stands for: a project (it only folds) or a thread that opens. */
 type Entry =
 	| { readonly kind: "project"; readonly path: string; readonly sessions: number }
-	| { readonly kind: "thread"; readonly ref: ThreadRef; readonly updated: number; readonly running: boolean };
+	| {
+			readonly kind: "thread";
+			readonly ref: ThreadRef;
+			readonly fork: boolean;
+			readonly updated: number;
+			readonly running: boolean;
+	  };
 
 /** The tree's colors and type from the app's theme tokens, so it follows light and dark. */
 const TREE_STYLE = {
@@ -71,9 +77,22 @@ const ICONS = { set: "none", spriteSheet: SPRITE, remap: { "file-tree-icon-file"
  * a look-alike and a name its siblings already use gets an invisible suffix.
  */
 function layout(projects: ReadonlyArray<SidebarProject>, threads: ReadonlyArray<ListedThread>) {
+	// Forks by the thread they were cut from; one whose source is not listed (a subagent) hangs off
+	// its session's main thread.
+	const listed = new Set(threads.map((thread) => thread.id));
+	const mainOf = new Map(
+		threads.flatMap((thread) => (thread.originKind === "main" ? [[thread.sessionId, thread.id]] : [])),
+	);
 	const forks = new Map<string, Array<ListedThread>>();
-	for (const thread of threads)
-		if (thread.originKind === "fork") forks.set(thread.sessionId, [...(forks.get(thread.sessionId) ?? []), thread]);
+	for (const thread of threads) {
+		if (thread.originKind !== "fork") continue;
+		const source =
+			thread.originThreadId !== null && listed.has(thread.originThreadId)
+				? thread.originThreadId
+				: (mainOf.get(thread.sessionId) ?? thread.sessionId);
+		forks.set(source, [...(forks.get(source) ?? []), thread]);
+	}
+	const forksOf = (threadId: string) => (forks.get(threadId) ?? []).toSorted((a, b) => b.updatedAt - a.updatedAt);
 	const entries = new Map<string, Entry>();
 	const paths: Array<string> = [];
 	const taken = new Map<string, Set<string>>();
@@ -90,27 +109,35 @@ function layout(projects: ReadonlyArray<SidebarProject>, threads: ReadonlyArray<
 		const projectPath = `${segment("", machines > 1 ? `${project.name} · ${project.machine.name}` : project.name)}/`;
 		paths.push(projectPath);
 		entries.set(projectPath, { kind: "project", path: project.path, sessions: project.sessions.length });
+		/** A fork and, under it, the forks cut from it, at any depth. */
+		const addFork = (parentPath: string, fork: ListedThread, seen: ReadonlySet<string>) => {
+			const below = seen.has(fork.id) ? [] : forksOf(fork.id);
+			const name = segment(parentPath, fork.title);
+			const forkPath = below.length === 0 ? `${parentPath}${name}` : `${parentPath}${name}/`;
+			paths.push(forkPath);
+			entries.set(forkPath, {
+				kind: "thread",
+				ref: { sessionId: fork.sessionId, threadId: fork.id },
+				fork: true,
+				updated: fork.updatedAt,
+				running: fork.runState !== "idle",
+			});
+			const next = new Set([...seen, fork.id]);
+			for (const child of below) addFork(forkPath, child, next);
+		};
 		for (const session of project.sessions) {
-			const own = (forks.get(session.id) ?? []).toSorted((a, b) => b.updatedAt - a.updatedAt);
+			const own = forksOf(session.threadId);
 			const name = segment(projectPath, session.title);
 			const sessionPath = own.length === 0 ? `${projectPath}${name}` : `${projectPath}${name}/`;
 			paths.push(sessionPath);
 			entries.set(sessionPath, {
 				kind: "thread",
 				ref: { sessionId: session.id },
+				fork: false,
 				updated: session.updated,
 				running: session.runState !== "idle",
 			});
-			for (const fork of own) {
-				const forkPath = `${sessionPath}${segment(sessionPath, fork.title)}`;
-				paths.push(forkPath);
-				entries.set(forkPath, {
-					kind: "thread",
-					ref: { sessionId: fork.sessionId, threadId: fork.id },
-					updated: fork.updatedAt,
-					running: fork.runState !== "idle",
-				});
-			}
+			for (const fork of own) addFork(sessionPath, fork, new Set([session.threadId]));
 		}
 	}
 	return { paths, entries };
@@ -173,7 +200,16 @@ export function Projects() {
 					],
 				};
 			}
-			return entry.running ? { text: "Working" } : { text: ago(entry.updated) };
+			const when = entry.running ? "Working" : ago(entry.updated);
+			// A fork often carries its source's title; the mark tells it apart.
+			if (!entry.fork) return { text: when };
+			return {
+				text: `fork · ${when}`,
+				parts: [
+					{ text: "fork", color: "color-mix(in oklab, var(--color-ink-muted) 75%, transparent)" },
+					{ text: `\u00a0· ${when}` },
+				],
+			};
 		},
 	});
 

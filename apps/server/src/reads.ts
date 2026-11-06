@@ -188,6 +188,7 @@ export const threads = Effect.fn("Reads.threads")(function* ({
 		id: row.id,
 		sessionId: row.sessionId,
 		originKind: row.originKind,
+		originThreadId: row.originThreadId,
 		title: titleOf(row),
 		machine: { id: row.machineId, name: row.machineName },
 		project: { id: row.projectId, name: row.projectName },

@@ -355,6 +355,8 @@ export const ListedThread = Schema.Struct({
 	id: Schema.String,
 	sessionId: Schema.String,
 	originKind: Schema.Literals(["main", "fork"]),
+	/** The thread a fork was cut from (a fork's, for a fork of a fork); null for a main thread. */
+	originThreadId: Schema.NullOr(Schema.String),
 	/** Its own title, else its nearest titled ancestor's, else what an untitled one is called. */
 	title: Schema.String,
 	machine: Schema.Struct({ id: Schema.String, name: Schema.String }),
