@@ -14,8 +14,8 @@ export const nav = [
 export const hero = {
 	title: "Make Code Work for You",
 	lines: [
-		"CodeWork is an open source AI coding agent for your terminal, editor or server.",
-		"Add tools, prompts, skills and more as plugins, shared over npm or git.",
+		"CodeWork is an open source AI coding agent built for humans.",
+		"Extend it with tools, skills and more as composable plugins, shared over npm or git.",
 	],
 	install: [
 		{ label: "curl", command: "curl -fsSL https://codework.sh/install | sh" },
