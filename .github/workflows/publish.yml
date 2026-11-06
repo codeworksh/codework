@@ -75,7 +75,7 @@ jobs:
             # Each on its own platform: --build-sea runs that platform's Node, and macOS signs.
             include:
                - binary: cli-darwin-arm64
-                 runner: macos-14
+                 runner: macos-15
                - binary: cli-linux-arm64
                  runner: ubuntu-24.04-arm
                - binary: cli-linux-x64
@@ -150,7 +150,7 @@ jobs:
             # Each on its own platform: electron-builder packages for the host, and macOS signs.
             include:
                - target: mac-arm64
-                 runner: macos-14
+                 runner: macos-15
                  args: --mac --arm64
                - target: linux-arm64
                  runner: ubuntu-24.04-arm
