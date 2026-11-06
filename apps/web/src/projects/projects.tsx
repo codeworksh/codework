@@ -51,7 +51,6 @@ const SECTION_CSS = `
 	background: color-mix(in oklab, var(--color-frame), var(--color-ink) 4%);
 	box-shadow: inset 0 -1px color-mix(in oklab, var(--color-edge) 50%, transparent);
 	color: var(--color-ink);
-	font-weight: 500;
 }
 [data-type="item"][aria-level="1"]:hover {
 	background: color-mix(in oklab, var(--color-frame), var(--color-ink) 7%);
