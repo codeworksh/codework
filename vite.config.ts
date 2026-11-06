@@ -129,12 +129,18 @@ export default defineConfig({
 			release: { command: "node scripts/release.mjs", cache: false },
 			// CI's check gate. Type-aware lint, like each package's typecheck, resolves aikit through
 			// its generated declarations, so they are built first.
+			// Dead files and dependencies everywhere, dead exports in the workspaces kept clean so far.
+			// Both read the same files and write nothing, so they run side by side.
+			"knip:check:all": {
+				command: 'node -e ""',
+				dependsOn: ["knip:check:files", "knip:check:exports"],
+				cache: false,
+			},
 			"lint:tailwind": { command: "CODEWORK_LINT_TAILWIND=1 vp lint apps/web/src", cache: false },
 			verify: {
 				command: [
 					"vp check packages scripts .github infra",
 					"vp run --filter './packages/*' --concurrency-limit 2 typecheck",
-					// Dead files, dependencies and exports, in the workspaces kept clean so far.
 					"vp run knip:check",
 				],
 				dependsOn: ["@codeworksh/aikit#build"],

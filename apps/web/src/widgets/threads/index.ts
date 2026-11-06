@@ -5,7 +5,7 @@ import { defineWidget } from "@codeworksh/widget/view";
 import { AllThreads } from "./threads";
 
 /** What opens All Threads, from the command palette. */
-export const threadsAddress = "codework://threads";
+const threadsAddress = "codework://threads";
 
 /** Every thread of the organization as a Linear-like list; picking one opens it beside the list. */
 export const threads = defineWidget({

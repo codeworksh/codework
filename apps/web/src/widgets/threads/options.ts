@@ -75,7 +75,7 @@ export interface Section {
 }
 
 /** Urgent first, none last, as Linear. */
-export const priorityRank = (priority: Priority) => (priority === 0 ? 5 : priority);
+const priorityRank = (priority: Priority) => (priority === 0 ? 5 : priority);
 
 const compare: Record<Options["order"], (a: ListedThread, b: ListedThread) => number> = {
 	manual: (a, b) => a.ordering - b.ordering,
