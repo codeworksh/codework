@@ -331,7 +331,7 @@ describe("threads", () => {
 
 			script.set(t2, [{ _tag: "reply", text: "oauth it is" }]);
 			yield* run(sessionId, t2, "Use OAuth instead");
-			yield* configure(sessionId, t2, { model: { provider: "anthropic", id: "claude-sonnet-4-5" } });
+			yield* configure(sessionId, t2, { model: { provider: "anthropic", id: "claude-sonnet-5-5" } });
 			expect((yield* documents.agent(t2)).model?.provider).toBe("anthropic");
 			expect((yield* documents.agent(main)).model?.provider).toBe("openai");
 

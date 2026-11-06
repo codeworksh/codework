@@ -393,7 +393,7 @@ describe("codework CLI", () => {
 
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain("openai/gpt-4o\n");
-		expect(result.stdout).toContain("anthropic/claude-sonnet-4-5\n");
+		expect(result.stdout).toContain("anthropic/claude-sonnet-5-5\n");
 	});
 
 	it("filters models by provider with models --provider", () => {

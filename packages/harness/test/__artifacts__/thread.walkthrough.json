@@ -78,7 +78,7 @@
 			"kind": "agent",
 			"revisions": [
 				"23 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}",
-				"31 {\"model\":{\"provider\":\"anthropic\",\"id\":\"claude-sonnet-4-5\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
+				"31 {\"model\":{\"provider\":\"anthropic\",\"id\":\"claude-sonnet-5-5\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
 			]
 		},
 		{
