@@ -85,7 +85,7 @@ const HOLD_MS = 300;
  * `display` as drawn: the state changes at once, only drawing a client state waits. Moving onto
  * one waits `SHOW_AFTER_MS`; moving off one waits out its `HOLD_MS`.
  */
-export function useDrawn(display: Display): Display {
+function useDrawn(display: Display): Display {
 	const [drawn, setDrawn] = useState({ display, at: 0 });
 	const immediate = !isClient(display) && !isClient(drawn.display);
 	useEffect(() => {
