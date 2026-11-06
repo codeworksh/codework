@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
 import { afterEach, expect, it } from "vite-plus/test";
-import { Contract, type Dashboard, type DashboardBy } from "@codeworksh/contract";
+import { type AllThreads, Contract, type ThreadsBy } from "@codeworksh/contract";
 import {
 	addMachine,
 	app,
@@ -20,22 +20,22 @@ import {
 
 afterEach(cleanup);
 
-const snapshot = (name: string, artifact: unknown) => match(`dashboard.${name}`, artifact);
+const snapshot = (name: string, artifact: unknown) => match(`threads.${name}`, artifact);
 
-const read = (rpc: AppRpc, by: DashboardBy) =>
-	rpc["dashboard.list"]({ organizationId: Contract.PERSONAL_ORGANIZATION, by });
+const read = (rpc: AppRpc, by: ThreadsBy) =>
+	rpc["threads.list"]({ organizationId: Contract.PERSONAL_ORGANIZATION, by });
 
-/** Each list as its key and its threads' names, in the order read: what the dashboard draws. */
-const names = (dashboard: Dashboard, label: (id: string) => string) =>
-	dashboard.lists.map((list) => ({
+/** Each list as its key and its threads' names, in the order read: what All Threads draws. */
+const names = (all: AllThreads, label: (id: string) => string) =>
+	all.lists.map((list) => ({
 		list: list._tag === "Status" ? list.status : list._tag === "Priority" ? list.priority : list.groupingId,
 		names: list.threads.map((thread) => label(thread.id)),
 	}));
 
 /** Times as `<time>`: the shared normalizer only knows snake_case ones. */
-const elide = (dashboard: Dashboard) => ({
-	...dashboard,
-	lists: dashboard.lists.map((list) => ({
+const elide = (all: AllThreads) => ({
+	...all,
+	lists: all.lists.map((list) => ({
 		...list,
 		threads: list.threads.map((thread) => ({ ...thread, updatedAt: "<time>" })),
 	})),
@@ -79,6 +79,7 @@ const setup = async (name: string) => {
 	const label = (id: string) => labels.get(id) ?? id;
 	const fixed: Array<readonly [string, string]> = [
 		[storeId, "<store>"],
+		[machineId, "<machine>"],
 		...[...threads].map(([name, id]) => [id, `<thread ${name}>`] as const),
 		...[...sessions].map(([name, id]) => [id, `<session ${name}>`] as const),
 	];
@@ -99,17 +100,17 @@ it("by status: every status list in its order, each list's threads in ordering",
 			yield* rpc["threads.move"]({ threadId: id("D"), to: "last" });
 		}),
 	);
-	const dashboard = await desk.run((rpc) => read(rpc, "status"));
-	expect(names(dashboard, label)).toEqual([
+	const all = await desk.run((rpc) => read(rpc, "status"));
+	expect(names(all, label)).toEqual([
 		{ list: "working", names: ["A fork"] },
 		{ list: "attention", names: ["A", "D"] },
 		{ list: "settled", names: ["B"] },
 		{ list: "cancelled", names: ["C"] },
 	]);
 	// The fork has no title of its own yet: its source's.
-	const fork = dashboard.lists[0]!.threads[0]!;
+	const fork = all.lists[0]!.threads[0]!;
 	expect([fork.title, fork.originKind]).toEqual(["Thread A", "fork"]);
-	await snapshot("status", normalizer([cwHome, appHome], fixed)(elide(dashboard)));
+	await snapshot("status", normalizer([cwHome, appHome], fixed)(elide(all)));
 }, 90_000);
 
 it("by priority: urgent first and none last, each list in ordering", async () => {
@@ -123,15 +124,15 @@ it("by priority: urgent first and none last, each list in ordering", async () =>
 			yield* rpc["threads.setPriority"]({ threadId: id("D"), priority: 3 });
 		}),
 	);
-	const dashboard = await desk.run((rpc) => read(rpc, "priority"));
-	expect(names(dashboard, label)).toEqual([
+	const all = await desk.run((rpc) => read(rpc, "priority"));
+	expect(names(all, label)).toEqual([
 		{ list: 1, names: ["C", "B"] },
 		{ list: 2, names: [] },
 		{ list: 3, names: ["D"] },
 		{ list: 4, names: ["A"] },
 		{ list: 0, names: ["A fork"] },
 	]);
-	await snapshot("priority", normalizer([cwHome, appHome], fixed)(elide(dashboard)));
+	await snapshot("priority", normalizer([cwHome, appHome], fixed)(elide(all)));
 }, 90_000);
 
 it("by grouping: groups in their ordering, ungrouped last, and a thread's color falls back to its session's", async () => {
@@ -152,33 +153,30 @@ it("by grouping: groups in their ordering, ungrouped last, and a thread's color 
 			return { first, second };
 		}),
 	);
-	const dashboard = await desk.run((rpc) => read(rpc, "grouping"));
+	const all = await desk.run((rpc) => read(rpc, "grouping"));
 	const groupLabels = new Map([
 		[first.id, "First"],
 		[second.id, "Second"],
 	]);
 	expect(
-		names(dashboard, label).map(({ list, names }) => ({ list: groupLabels.get(list as string) ?? list, names })),
+		names(all, label).map(({ list, names }) => ({ list: groupLabels.get(list as string) ?? list, names })),
 	).toEqual([
 		{ list: "Second", names: ["B"] },
 		{ list: "First", names: ["C", "A"] },
 		{ list: null, names: ["A fork", "D"] },
 	]);
 	const colors = Object.fromEntries(
-		dashboard.lists.flatMap((list) => list.threads.map((thread) => [label(thread.id), thread.color])),
+		all.lists.flatMap((list) => list.threads.map((thread) => [label(thread.id), thread.color])),
 	);
 	// A takes its session's, B its own over its session's, A's fork its session's (A's), the rest none.
 	expect(colors).toEqual({ A: "#aa0000", B: "#0000cc", C: null, D: null, "A fork": "#aa0000" });
 	await snapshot(
 		"grouping",
-		normalizer(
-			[cwHome, appHome],
-			[...fixed, [first.id, "<group First>"], [second.id, "<group Second>"]],
-		)(elide(dashboard)),
+		normalizer([cwHome, appHome], [...fixed, [first.id, "<group First>"], [second.id, "<group Second>"]])(elide(all)),
 	);
 }, 90_000);
 
-it("subagent threads stay off the dashboard", async () => {
+it("subagent threads stay off All Threads", async () => {
 	const { cwHome, appHome, desk, threads, label, fixed } = await setup("subagent");
 	// CodeWork does not start subagents yet, so the row is written as the sync would copy one: A's
 	// fork turned into a subagent of A's main thread, first in the whole order.
@@ -198,23 +196,23 @@ it("subagent threads stay off the dashboard", async () => {
 	expect(query(appHome, "SELECT origin_kind FROM thread WHERE id = 'thr_subagent'")).toEqual([
 		{ origin_kind: "subagent" },
 	]);
-	const dashboard = await desk.run((rpc) => read(rpc, "status"));
-	expect(names(dashboard, label)).toEqual([
+	const all = await desk.run((rpc) => read(rpc, "status"));
+	expect(names(all, label)).toEqual([
 		{ list: "working", names: [] },
 		{ list: "attention", names: [] },
 		{ list: "settled", names: ["A fork", "D", "C", "B", "A"] },
 		{ list: "cancelled", names: [] },
 	]);
-	await snapshot("subagent", normalizer([cwHome, appHome], fixed)(elide(dashboard)));
+	await snapshot("subagent", normalizer([cwHome, appHome], fixed)(elide(all)));
 }, 90_000);
 
-it("the dashboard's topics fire after a move, a status set and a group change, and the read after shows each", async () => {
+it("All Threads' topics fire after a move, a status set and a group change, and the read after shows each", async () => {
 	const { cwHome, appHome, desk, threads, label, fixed } = await setup("topics");
 	const id = (name: string) => threads.get(name)!;
 	const events: Array<{ topic: string; payload: Row }> = [];
 	let subscribed = false;
 	const window = desk.background((rpc) =>
-		rpc["event.subscribe"]({ topics: Contract.readTopics.dashboard }).pipe(
+		rpc["event.subscribe"]({ topics: Contract.readTopics.threads }).pipe(
 			Stream.runForEach((item) =>
 				Effect.sync(() => {
 					if ("_tag" in item) subscribed = true;
@@ -223,11 +221,11 @@ it("the dashboard's topics fire after a move, a status set and a group change, a
 			),
 		),
 	);
-	await waitFor(() => (subscribed ? true : undefined), "the dashboard's subscription");
+	await waitFor(() => (subscribed ? true : undefined), "All Threads' subscription");
 
 	const steps: Array<Row> = [];
-	/** Runs one change, waits for the event it fires, then reads the dashboard as a client would. */
-	const change = async (step: string, by: DashboardBy, call: Parameters<typeof desk.run>[0]) => {
+	/** Runs one change, waits for the event it fires, then reads All Threads as a client would. */
+	const change = async (step: string, by: ThreadsBy, call: Parameters<typeof desk.run>[0]) => {
 		const seen = events.length;
 		await desk.run(call);
 		const fired = await waitFor(() => events[seen], `the event of ${step}`);

@@ -6,6 +6,8 @@
 	"ignoreBinaries": ["plutil", "bumpp"],
 	// The Effect language service is loaded by tsconfig plugins and patched in by @effect/tsgo.
 	"ignoreDependencies": ["@effect/language-service"],
+	// CI installs every workspace but the site, so knip cannot trace its Astro entries there.
+	"ignoreWorkspaces": ["sites/www"],
 	"workspaces": {
 		".": {
 			// Keep vendored and archived repositories outside the root project.
@@ -28,8 +30,10 @@
 				// Topic payloads named for their topic, though several share one shape.
 				"src/widgets/session/schema.ts": ["duplicates"],
 			},
-			// Installed ahead of the file explorer that will use it.
-			"ignoreDependencies": ["@pierre/trees"],
+		},
+		"apps/server": {
+			// The machine simulation runs it on each OrbStack machine by path.
+			"entry": ["test/machines/drive.ts"],
 		},
 		"packages/codework": {
 			// bundle.mjs builds the SEA binary from it by path.
@@ -46,6 +50,5 @@
 			"entry": ["*.ts"],
 		},
 		"infra/*": { "entry": ["alchemy.run.ts!"] },
-		"sites/www": { "entry": ["alchemy.run.ts!"] },
 	},
 }

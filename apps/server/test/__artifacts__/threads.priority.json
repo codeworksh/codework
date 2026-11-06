@@ -8,7 +8,12 @@
 					"id": "<thread C>",
 					"sessionId": "<session C>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread C",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
@@ -25,7 +30,12 @@
 					"id": "<thread B>",
 					"sessionId": "<session B>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread B",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
@@ -53,7 +63,12 @@
 					"id": "<thread D>",
 					"sessionId": "<session D>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread D",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
@@ -76,7 +91,12 @@
 					"id": "<thread A>",
 					"sessionId": "<session A>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread A",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
@@ -99,7 +119,12 @@
 					"id": "<thread A fork>",
 					"sessionId": "<session A>",
 					"originKind": "fork",
+					"originThreadId": "<thread A>",
 					"title": "Thread A",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"

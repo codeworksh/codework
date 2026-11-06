@@ -5,7 +5,7 @@ import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
 import { ChevronRight, CircleDashed, X } from "lucide-react";
-import { createContext, memo, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
@@ -19,7 +19,10 @@ import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
 import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
+import { useNowSecond } from "../../hooks/now";
+import { useStableCallback } from "../../hooks/stable";
 import { useListedSession } from "./projects";
+import { RunMark } from "./run";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -29,6 +32,9 @@ const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 const samePart = Schema.toEquivalence(Part);
 
+/** The composer overlay's height as last measured, by any conversation. */
+let lastInset = 0;
+
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
 
@@ -36,7 +42,7 @@ const PAGE = 60;
 const contentWidth = "mx-auto w-full max-w-conversation";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
-	const thread = useMemo(() => threadRef(address), [address]);
+	const thread = threadRef(address);
 	const key = thread === undefined ? (address ?? "") : threadKey(thread);
 	// The thread this frame showed before, so a switch can keep it in view while the next one loads.
 	const [shown, setShown] = useState<{ readonly key: string; readonly previous?: string }>({ key });
@@ -259,8 +265,11 @@ function conversationStore(initial: State) {
 	return { live, quiet, message };
 }
 
-/** Forks the conversation at an entry, for an entry it can be forked at: committed, and not a stand-in. */
-const ForkContext = createContext<(entry: HistoryEntry | undefined) => (() => void) | undefined>(() => undefined);
+/** Forks the conversation at an entry; one identity for the conversation's life, so no turn renders for it. */
+const ForkContext = createContext<(entry: HistoryEntry) => void>(() => {});
+
+/** An entry a fork can start at: committed, so its place in the line is final. */
+const forkable = (entry: HistoryEntry | undefined): entry is HistoryEntry => entry?.state === "committed";
 
 const noMessage = Atom.make<HistoryEntry | undefined>(undefined);
 const StreamedContext = createContext<(id: string) => Atom.Atom<HistoryEntry | undefined>>(() => noMessage);
@@ -278,10 +287,7 @@ function textOf(reply: HistoryEntry, at?: number) {
  */
 function useStreamed(reply: HistoryEntry, at?: number) {
 	const message = use(StreamedContext);
-	const select = useCallback(
-		(entry: HistoryEntry | undefined) => (entry === undefined ? undefined : textOf(entry, at)),
-		[at],
-	);
+	const select = (entry: HistoryEntry | undefined) => (entry === undefined ? undefined : textOf(entry, at));
 	return useAtomValue(reply.state === "draft" ? message(reply.id) : noMessage, select) ?? textOf(reply, at);
 }
 
@@ -307,20 +313,17 @@ function useConversation(thread: ThreadRef) {
 		[registry, store, thread],
 	);
 
-	const page = useCallback(
-		async (before: number | undefined) => {
-			const reply = decodeWindow(
-				(
-					await bus.request({
-						topic: topics.page,
-						payload: { ...thread, limit: PAGE, ...(before === undefined ? {} : { before }) },
-					})
-				).payload,
-			);
-			return Option.getOrUndefined(reply);
-		},
-		[bus, thread],
-	);
+	const page = async (before: number | undefined) => {
+		const reply = decodeWindow(
+			(
+				await bus.request({
+					topic: topics.page,
+					payload: { ...thread, limit: PAGE, ...(before === undefined ? {} : { before }) },
+				})
+			).payload,
+		);
+		return Option.getOrUndefined(reply);
+	};
 
 	useEffect(() => {
 		let active = true;
@@ -369,7 +372,7 @@ function useConversation(thread: ThreadRef) {
 	});
 
 	const oldest = state.status === "ready" && state.more ? state.messages[0]?.seq : undefined;
-	const loadOlder = useCallback(() => {
+	const loadOlder = () => {
 		if (oldest === undefined || paging.current) return;
 		paging.current = true;
 		void page(oldest)
@@ -385,7 +388,7 @@ function useConversation(thread: ThreadRef) {
 			.finally(() => {
 				paging.current = false;
 			});
-	}, [oldest, page]);
+	};
 
 	return { state, loadOlder, message: store.message };
 }
@@ -438,21 +441,18 @@ function Conversation({
 		setSeenOutcome(outcome);
 		if (sent.length > 0 && (run?.info.runState === "idle" || failure !== undefined)) setSent([]);
 	}
-	const state = useMemo<State>(() => {
-		if (loaded.status !== "ready" || sent.length === 0) return loaded;
+	let state: State = loaded;
+	if (loaded.status === "ready" && sent.length > 0) {
 		const ids = new Set(sent.map((message) => message.id));
-		return {
+		state = {
 			...loaded,
 			messages: [...loaded.messages, ...sent],
 			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
 				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
 				: loaded.queued,
 		};
-	}, [loaded, sent]);
-	const sending = useCallback(
-		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
-		[thread],
-	);
+	}
+	const sending = (prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]);
 	// A prompt this window sent is pending until it lands in app.db, as a message or a queued prompt.
 	const key = threadKey(thread);
 	const inFlight = usePendingPrompts(key);
@@ -468,32 +468,25 @@ function Conversation({
 	// Only this view hears the thread's rows land, so what it sent goes with it.
 	useEffect(() => () => forget(key), [key, forget]);
 	const phase = useRunDisplay([{ key, runState: loaded.status === "ready" ? loaded.info.runState : "idle" }]);
-	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
+	const unsent = (id: string) => setSent((current) => current.filter((message) => message.id !== id));
 	// A fork opens in a frame of its own once the backend answers, by then in app.db.
 	const bus = useBus();
 	const shell = useShell();
 	const [forkError, setForkError] = useState<string>();
-	const forkAt = useCallback(
-		(entry: HistoryEntry | undefined) => {
-			if (entry === undefined || entry.state !== "committed" || sent.some((message) => message.id === entry.id))
-				return undefined;
-			return () => {
-				setForkError(undefined);
-				void bus
-					.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
-					.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
-					.catch(() => undefined)
-					.then((forked) => {
-						if (forked?._tag === "Forked")
-							shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), {
-								mode: "new",
-							});
-						else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
-					});
-			};
-		},
-		[bus, shell, thread, sent],
-	);
+	const forkAt = useStableCallback((entry: HistoryEntry) => {
+		// A prompt this window sent and app.db holds only as a stand-in has no place to fork at yet.
+		if (sent.some((message) => message.id === entry.id)) return;
+		setForkError(undefined);
+		void bus
+			.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
+			.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
+			.catch(() => undefined)
+			.then((forked) => {
+				if (forked?._tag === "Forked")
+					shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), { mode: "new" });
+				else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
+			});
+	});
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
@@ -505,11 +498,14 @@ function Conversation({
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
 		setTitle(title, projectName);
-		// The project's badge, as in the sessions sidebar.
-		if (projectId !== undefined && projectName !== undefined) setIcon(<Monogram id={projectId} name={projectName} />);
+		// While its run goes, the run's mark as the sidebar draws it, so a working frame tells apart at a
+		// glance; else the project's badge, as in the sessions sidebar.
+		if (phase !== "idle") setIcon(<RunMark display={phase} />);
+		else if (projectId !== undefined && projectName !== undefined)
+			setIcon(<Monogram id={projectId} name={projectName} />);
 		// While focused, the workspace's tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
-	}, [title, projectId, projectName, setTitle, setIcon, setTab]);
+	}, [title, projectId, projectName, phase, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.
@@ -517,10 +513,7 @@ function Conversation({
 	const [sendError, setSendError] = useState<string>();
 	// A queued prompt taken back to edit; the composer puts its text above the draft.
 	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
-	const restore = useCallback(
-		(text: string) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 })),
-		[],
-	);
+	const restore = (text: string) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 }));
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
@@ -535,7 +528,9 @@ function Conversation({
 
 	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
-	const [inset, setInset] = useState(0);
+	// The last composer's height, so a conversation opens at its end with the composer already
+	// counted and the list does not scroll again once it is measured.
+	const [inset, setInset] = useState(lastInset);
 	// Before paint, so the first frame is laid out with the composer's height.
 	useLayoutEffect(() => {
 		const root = surface.current;
@@ -544,7 +539,8 @@ function Conversation({
 		const sync = () => {
 			const height = element.getBoundingClientRect().height;
 			root.style.setProperty("--composer-height", `${height}px`);
-			setInset(Math.ceil(height));
+			lastInset = Math.ceil(height);
+			setInset(lastInset);
 		};
 		sync();
 		const observer = new ResizeObserver(sync);
@@ -676,8 +672,9 @@ function Transcript({
 	const modelName = useModelName(state.info.hostDir, state.info.model);
 	const turns = useTurns(state.messages);
 	const lastUser = turns.at(-1)?.user;
+	// oxlint-disable-next-line react/purity -- useFollow reads what this decides on mount only.
 	const sentAgo = lastUser === undefined ? Infinity : Date.now() - lastUser.createdAt;
-	const follow = useFollow({
+	const { ref, onLoad, onScroll, anchoredEndSpace, maintainScrollAtEnd, pending, settled } = useFollow({
 		lastUserId: lastUser?.id,
 		anchored: running || sentAgo < PROMPT_RECENT_MS,
 		// The start page's first prompt, handed over with the new session.
@@ -686,8 +683,7 @@ function Transcript({
 		inset,
 		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
 	});
-	const { pending } = follow;
-	const extraData = useMemo(() => ({ phase, modelName, pending }), [phase, modelName, pending]);
+	const extraData = { phase, modelName, pending };
 
 	if (turns.length === 0)
 		return (
@@ -705,7 +701,7 @@ function Transcript({
 	);
 	return (
 		<LegendList<Turn>
-			ref={follow.ref}
+			ref={ref}
 			data={turns}
 			extraData={extraData}
 			keyExtractor={turnKey}
@@ -714,24 +710,23 @@ function Transcript({
 			estimatedItemSize={90}
 			recycleItems={false}
 			initialScrollAtEnd
-			onLoad={follow.onLoad}
-			{...(follow.anchoredEndSpace === undefined ? {} : { anchoredEndSpace: follow.anchoredEndSpace })}
-			contentInsetEndAdjustment={follow.anchoredEndSpace === undefined ? 0 : inset}
-			maintainScrollAtEnd={follow.maintainScrollAtEnd}
+			onLoad={onLoad}
+			{...(anchoredEndSpace === undefined ? {} : { anchoredEndSpace })}
+			contentInsetEndAdjustment={anchoredEndSpace === undefined ? 0 : inset}
+			maintainScrollAtEnd={maintainScrollAtEnd}
 			maintainScrollAtEndThreshold={1}
 			maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
 			onStartReached={state.more ? loadOlder : undefined}
 			onScroll={(event) => {
-				follow.onScroll();
+				onScroll();
 				setScrolled(event.nativeEvent.contentOffset.y > 1);
 			}}
 			tabIndex={0}
 			aria-label="Conversation"
-			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
+			data-settled={settled}
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""} ${settled ? "" : "invisible"}`}
 			ListHeaderComponent={TRANSCRIPT_HEADER}
-			ListFooterComponent={
-				<div aria-hidden style={{ height: (follow.anchoredEndSpace === undefined ? inset : 0) + 24 }} />
-			}
+			ListFooterComponent={<div aria-hidden style={{ height: (anchoredEndSpace === undefined ? inset : 0) + 24 }} />}
 		/>
 	);
 }
@@ -816,6 +811,7 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 	const working = active && (last?.state !== "draft" || !answer || toolRunning);
 	const started = turn.user?.createdAt ?? turn.replies[0]?.createdAt;
 	const forkAt = use(ForkContext);
+	const user = turn.user;
 	const ended = active ? undefined : endOf(turn.replies);
 
 	return (
@@ -823,14 +819,14 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 			data-prompt-pending={pending || undefined}
 			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-2 text-body`}
 		>
-			{turn.user !== undefined && <UserMessage entry={turn.user} onFork={forkAt(turn.user)} />}
+			{user !== undefined && <UserMessage entry={user} onFork={forkable(user) ? () => forkAt(user) : undefined} />}
 			{(work.length > 0 || working || answer || interrupted || failed) && (
 				<Message
 					role="assistant"
 					at={turn.replies[0]?.createdAt}
 					ended={ended}
 					copyText={last === undefined ? "" : textOf(last)}
-					onFork={forkAt(last)}
+					onFork={forkable(last) ? () => forkAt(last) : undefined}
 				>
 					<WorkLog
 						steps={work}
@@ -938,18 +934,6 @@ function formatWorkingDuration(elapsedMs: number | undefined, modelName: string 
 	return who ? `${who} ${verb} for ${elapsed}` : `${verb} for ${elapsed}`;
 }
 
-function useElapsedFrom(startedAt: number | undefined, active: boolean): number | undefined {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (!active || startedAt === undefined) return;
-		setNow(Date.now());
-		const id = window.setInterval(() => setNow(Date.now()), 1000);
-		return () => window.clearInterval(id);
-	}, [startedAt, active]);
-	return active && startedAt !== undefined ? Math.max(0, now - startedAt) : undefined;
-}
-
-// A leaf of its own, so the live tick re-renders only the label's text.
 function WorkLabel({
 	started,
 	ended,
@@ -961,12 +945,26 @@ function WorkLabel({
 	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
-	const live = ended === undefined;
-	const liveElapsed = useElapsedFrom(started, live);
-	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
 	// Before the run takes the prompt in, and while a stop reaches it, the state says more than the time.
 	if (phase === "pending" || phase === "starting" || phase === "stopping") return `${displayLabel[phase]}…`;
-	return formatWorkingDuration(elapsedMs, modelName, !live);
+	if (ended === undefined) return <LiveWorkLabel started={started} modelName={modelName} />;
+	return formatWorkingDuration(
+		started !== undefined && ended >= started ? ended - started : undefined,
+		modelName,
+		true,
+	);
+}
+
+// A leaf of its own, so the second tick re-renders only the label's text.
+function LiveWorkLabel({
+	started,
+	modelName,
+}: {
+	readonly started: number | undefined;
+	readonly modelName: string | undefined;
+}) {
+	const now = useNowSecond();
+	return formatWorkingDuration(started === undefined ? undefined : Math.max(0, now - started), modelName, false);
 }
 
 /** Flags the edges with more to scroll to, so only those fade. */
@@ -995,7 +993,7 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: 
 	const lastScrollTop = useRef(0);
 	const wasEnabled = useRef(false);
 
-	const pin = useCallback(() => {
+	const pin = () => {
 		if (el === null) return;
 		const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop <= 16;
 		if (el.scrollTop < lastScrollTop.current - 1 && !nearBottom) {
@@ -1003,10 +1001,10 @@ function useLivePhaseScroll(el: HTMLDivElement | null, enabled: boolean, steps: 
 		} else if (nearBottom) {
 			stickToBottom.current = true;
 		}
-		if (stickToBottom.current) el.scrollTop = el.scrollHeight;
+		if (stickToBottom.current) el.scrollTo({ top: el.scrollHeight });
 		lastScrollTop.current = el.scrollTop;
 		markScrollEdges(el);
-	}, [el]);
+	};
 
 	useLayoutEffect(() => {
 		if (!enabled) {
@@ -1204,7 +1202,7 @@ function ThinkingWorkRow({
 }) {
 	const text = useStreamed(reply, at);
 	const [open, setOpen] = useState(false);
-	const summary = useMemo(() => proseSummary(text) || "Thinking", [text]);
+	const summary = proseSummary(text) || "Thinking";
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button
@@ -1232,7 +1230,7 @@ function ThinkingWorkRow({
 
 function NoteWorkRow({ text }: { readonly text: string }) {
 	const [open, setOpen] = useState(false);
-	const summary = useMemo(() => proseSummary(text), [text]);
+	const summary = proseSummary(text);
 	return (
 		<div className="flex min-w-0 flex-col">
 			<button

@@ -1,6 +1,6 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
-import { type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -22,6 +22,7 @@ import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { useStableCallback } from "../hooks/stable";
 import { Overflow } from "./overflow";
 import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
@@ -40,51 +41,77 @@ import {
 
 const nmaster = 1;
 
+const unchanged = (desk: Desk) => desk;
+
+/**
+ * Whether `value` differs from the last render's. It compares against a ref in render, which the
+ * compiler cannot memoize, so this hook stays out of it rather than the whole desktop.
+ */
+function useChanged<T>(value: T) {
+	"use no memo";
+	const last = useRef(value);
+	// oxlint-disable-next-line react/refs -- the comparison is the point; the hook opts out of the compiler.
+	const changed = last.current !== value;
+	useEffect(() => {
+		last.current = value;
+	}, [value]);
+	return changed;
+}
+
 /** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
 const SHELL = "shell";
 
-/** Frame title, icon, and body for one instance, resolved through the widget registry. */
-function describe(instance: Instance, chrome: Chrome | undefined) {
-	const definition = registry.get(instance.kind);
-	return {
-		...chromeOf(instance, chrome),
-		body:
-			definition === undefined ? (
-				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
-			) : (
-				definition.render({
-					instanceId: instance.id,
-					props: instance.props,
-					address: instance.address,
-					params: instance.params ?? {},
-				})
-			),
-	};
-}
+const NO_PARAMS: NonNullable<Instance["params"]> = {};
+
+/**
+ * One instance's widget, resolved through the registry. Memoized on the instance's own values, so a
+ * drag, a focus change or another frame's title renders the desktop's frames but not their widgets.
+ */
+const WidgetBody = memo(function WidgetBody({
+	instanceId,
+	kind,
+	props,
+	address,
+	params,
+}: {
+	readonly instanceId: string;
+	readonly kind: string;
+	readonly props: Instance["props"];
+	readonly address: Instance["address"];
+	readonly params: NonNullable<Instance["params"]>;
+}) {
+	const definition = registry.get(kind);
+	if (definition === undefined) return <p className="p-3 text-ink-muted">Missing widget: {kind}</p>;
+	return definition.render({ instanceId, props, address, params });
+});
 
 interface HostProps {
 	readonly instanceId: string;
 	/** The widget kind, "<package>:<name>"; its package scopes the widget's topics and kv. */
 	readonly kind: string;
-	readonly shell: Shell;
+	/** The desktop's shell as `caller` sees it; one identity for the desktop's life. */
+	readonly shellFor: (caller: string) => Shell;
 	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
 /** Gives a widget its shell, frame and host; these stay stable so widgets can use them in effects. */
-function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
+function Host({ instanceId, kind, shellFor, decorate, children }: HostProps) {
 	const atoms = useContext(RegistryContext);
+	// Built once per instance and calling the desktop's latest shell, so `useShell` never renders a widget.
+	const shell: Shell = {
+		open: (address, options) => shellFor(instanceId).open(address, options),
+		focus: (id) => shellFor(instanceId).focus(id),
+		close: (id) => shellFor(instanceId).close(id),
+	};
 	const pkg = kind.split(":")[0] ?? kind;
-	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
-	const frame = useMemo<FrameApi>(
-		() => ({
-			instanceId,
-			setTitle: (title, lead) => decorate(instanceId, { title, lead }),
-			setIcon: (icon) => decorate(instanceId, { icon }),
-			setTab: (tab) => decorate(instanceId, { tab }),
-		}),
-		[instanceId, decorate],
-	);
+	const host = makeHost({ registry: atoms, package: pkg, instanceId });
+	const frame: FrameApi = {
+		instanceId,
+		setTitle: (title, lead) => decorate(instanceId, { title, lead }),
+		setIcon: (icon) => decorate(instanceId, { icon }),
+		setTab: (tab) => decorate(instanceId, { tab }),
+	};
 	return (
 		<ShellContext value={shell}>
 			<FrameContext value={frame}>
@@ -128,24 +155,16 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	// A window resize must not tween: frames would trail the window edge by the transition's length.
-	const lastSize = useRef(size);
-	const resized = lastSize.current !== size;
-	useEffect(() => {
-		lastSize.current = size;
-	}, [size]);
+	const resized = useChanged(size);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
 	const { instances, order } = desk;
 	// webwm only needs identity, tags, and minimum sizes; those come from the
 	// widget's definition so the layout respects what each widget can shrink to.
-	const widgets: Widget[] = useMemo(
-		() =>
-			instances.map(({ id, kind, tags }) => {
-				const definition = registry.get(kind);
-				return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
-			}),
-		[instances],
-	);
+	const widgets: Widget[] = instances.map(({ id, kind, tags }) => {
+		const definition = registry.get(kind);
+		return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
+	});
 	const byId = new Map(instances.map((instance) => [instance.id, instance]));
 	const saved: View = { layout: workspace.layout, mfact: workspace.mfact };
 	const view = views.get(workspace.id) ?? saved;
@@ -222,22 +241,19 @@ export function Desktop({ workspace }: DesktopProps) {
 		if (home !== undefined) void navigate(workspaceRoute(home));
 	};
 
-	const decorate = useCallback(
-		(instanceId: string, patch: Chrome) =>
-			setChrome((current) => {
-				const previous = current.get(instanceId) ?? {};
-				const next = { ...previous, ...patch };
-				if (
-					next.title === previous.title &&
-					next.lead === previous.lead &&
-					next.icon === previous.icon &&
-					next.tab === previous.tab
-				)
-					return current;
-				return new Map(current).set(instanceId, next);
-			}),
-		[],
-	);
+	const decorate = (instanceId: string, patch: Chrome) =>
+		setChrome((current) => {
+			const previous = current.get(instanceId) ?? {};
+			const next = { ...previous, ...patch };
+			if (
+				next.title === previous.title &&
+				next.lead === previous.lead &&
+				next.icon === previous.icon &&
+				next.tab === previous.tab
+			)
+				return current;
+			return new Map(current).set(instanceId, next);
+		});
 
 	// A frame showing something else, or gone, starts from the widget's defaults again.
 	const undecorate = (instanceId: string) =>
@@ -256,7 +272,7 @@ export function Desktop({ workspace }: DesktopProps) {
 		instanceId: string,
 		change: (desk: Desk) => Desk,
 		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
-		bridge: (desk: Desk) => Desk = (current) => current,
+		bridge: (desk: Desk) => Desk = unchanged,
 	) => {
 		const leaver = byId.get(instanceId);
 		const emptied =
@@ -362,6 +378,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		},
 	});
 
+	const stableShellFor = useStableCallback(shellFor);
+
 	// Carries out an `open` request from the URL once, then drops it so Back and reloads don't repeat it.
 	// The ref outlives StrictMode's second run; it resets once the URL no longer asks.
 	const handled = useRef<string | undefined>(undefined);
@@ -414,7 +432,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, lead, icon, body } = describe(instance, chrome.get(widget.id));
+					const { title, lead, icon } = chromeOf(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
@@ -457,8 +475,14 @@ export function Desktop({ workspace }: DesktopProps) {
 							onDragCancel={() => setDrag(null)}
 						>
 							{/* Kept across a retarget: a widget whose state belongs to its address keys that state itself. */}
-							<Host instanceId={widget.id} kind={instance.kind} shell={shellFor(widget.id)} decorate={decorate}>
-								{body}
+							<Host instanceId={widget.id} kind={instance.kind} shellFor={stableShellFor} decorate={decorate}>
+								<WidgetBody
+									instanceId={instance.id}
+									kind={instance.kind}
+									props={instance.props}
+									address={instance.address}
+									params={instance.params ?? NO_PARAMS}
+								/>
 							</Host>
 						</Frame>
 					);

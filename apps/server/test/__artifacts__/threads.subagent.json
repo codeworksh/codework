@@ -3,44 +3,36 @@
 		{
 			"_tag": "Status",
 			"status": "working",
+			"threads": []
+		},
+		{
+			"_tag": "Status",
+			"status": "attention",
+			"threads": []
+		},
+		{
+			"_tag": "Status",
+			"status": "settled",
 			"threads": [
 				{
 					"id": "<thread A fork>",
 					"sessionId": "<session A>",
 					"originKind": "fork",
+					"originThreadId": "<thread A>",
 					"title": "Thread A",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "working",
+					"status": "settled",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -4,
-					"color": null,
-					"updatedAt": "<time>"
-				}
-			]
-		},
-		{
-			"_tag": "Status",
-			"status": "attention",
-			"threads": [
-				{
-					"id": "<thread A>",
-					"sessionId": "<session A>",
-					"originKind": "main",
-					"title": "Thread A",
-					"project": {
-						"id": "<id 1>",
-						"name": "Board"
-					},
-					"runState": "idle",
-					"status": "attention",
-					"priority": 0,
-					"groupingId": null,
-					"ordering": 0,
 					"color": null,
 					"updatedAt": "<time>"
 				},
@@ -48,30 +40,56 @@
 					"id": "<thread D>",
 					"sessionId": "<session D>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread D",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "attention",
+					"status": "settled",
 					"priority": 0,
 					"groupingId": null,
-					"ordering": 1,
+					"ordering": -3,
 					"color": null,
 					"updatedAt": "<time>"
-				}
-			]
-		},
-		{
-			"_tag": "Status",
-			"status": "settled",
-			"threads": [
+				},
+				{
+					"id": "<thread C>",
+					"sessionId": "<session C>",
+					"originKind": "main",
+					"originThreadId": null,
+					"title": "Thread C",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": null,
+					"ordering": -2,
+					"color": null,
+					"updatedAt": "<time>"
+				},
 				{
 					"id": "<thread B>",
 					"sessionId": "<session B>",
 					"originKind": "main",
+					"originThreadId": null,
 					"title": "Thread B",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
 					"project": {
 						"id": "<id 1>",
 						"name": "Board"
@@ -83,31 +101,35 @@
 					"ordering": -1,
 					"color": null,
 					"updatedAt": "<time>"
+				},
+				{
+					"id": "<thread A>",
+					"sessionId": "<session A>",
+					"originKind": "main",
+					"originThreadId": null,
+					"title": "Thread A",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "settled",
+					"priority": 0,
+					"groupingId": null,
+					"ordering": 0,
+					"color": null,
+					"updatedAt": "<time>"
 				}
 			]
 		},
 		{
 			"_tag": "Status",
 			"status": "cancelled",
-			"threads": [
-				{
-					"id": "<thread C>",
-					"sessionId": "<session C>",
-					"originKind": "main",
-					"title": "Thread C",
-					"project": {
-						"id": "<id 1>",
-						"name": "Board"
-					},
-					"runState": "idle",
-					"status": "cancelled",
-					"priority": 0,
-					"groupingId": null,
-					"ordering": -2,
-					"color": null,
-					"updatedAt": "<time>"
-				}
-			]
+			"threads": []
 		}
 	],
 	"groups": []

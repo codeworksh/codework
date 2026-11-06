@@ -18,6 +18,7 @@ import {
 import { type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLast } from "@/hooks/last";
 import { CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { messageOf } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
@@ -227,10 +228,9 @@ function useFolders(query: string, pinned?: string) {
 	const result = useAtomValue(listing(browsing ? directory : BROWSE_START));
 	const listed = AsyncResult.isSuccess(result) ? result.value : undefined;
 	// The last folder's rows stay until the next folder's arrive, so the list never blinks empty.
-	const last = useRef(listed);
-	if (listed !== undefined) last.current = listed;
+	const last = useLast(listed);
 	const loading = browsing && result._tag === "Initial";
-	const entries = listed?.entries ?? (loading ? (last.current?.entries ?? []) : []);
+	const entries = listed?.entries ?? (loading ? (last?.entries ?? []) : []);
 	// A pinned clone name stays as the leaf while every sibling folder shows.
 	const { visible } = filterFolders(entries, pinned !== undefined && leaf === pinned ? "" : leaf);
 	const exact = leaf === "" ? undefined : listed?.entries.find((entry) => entry.name === leaf);

@@ -1,10 +1,10 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
-import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
+import { ListViewIcon, PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import type { SidebarProject } from "@codeworksh/contract";
-import { type MouseEvent, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { SidebarSession } from "@codeworksh/contract";
+import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import {
 	Sidebar,
@@ -20,7 +20,7 @@ import { projectsAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
-import { ago } from "../widgets/time";
+import { Ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
 import { OpenProviderSettings } from "@/components/offline";
 import { ProviderIcon } from "@/components/provider";
@@ -35,6 +35,10 @@ import { RunMark } from "../widgets/session/run";
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
+/** A sidebar action: New, All Threads, Settings. */
+const NAV_ROW =
+	"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press";
+
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
@@ -64,27 +68,27 @@ export function SessionsSidebar() {
 	useLayoutEffect(() => {
 		opener.current = openElsewhere;
 	});
-	const open = useCallback((session: Listed, event: MouseEvent) => {
+	const open = useCallback((sessionId: string, projectName: string, event: MouseEvent) => {
 		if (event.button > 1) return;
 		const placement = event.shiftKey ? "workspace" : openMode(event);
-		void opener.current(sessionAddress(session.id), session.project.name, placement);
+		void opener.current(sessionAddress(sessionId), projectName, placement);
 	}, []);
 
 	const needle = query.trim().toLowerCase();
-	const sessions = useMemo(
-		() =>
-			AsyncResult.isSuccess(result)
-				? result.value
-						.flatMap((project) => project.sessions.map((session) => ({ ...session, project })))
-						.filter(({ title, project }) => `${title} ${project.name}`.toLowerCase().includes(needle))
-						.sort((a, b) => b.updated - a.updated)
-				: [],
-		[result, needle],
-	);
+	const sessions = AsyncResult.isSuccess(result)
+		? result.value
+				.flatMap((project) => project.sessions.map((session) => ({ session, project })))
+				.filter(({ session, project }) => `${session.title} ${project.name}`.toLowerCase().includes(needle))
+				.sort((a, b) => b.session.updated - a.session.updated)
+		: [];
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
-			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
+			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-3">
+				<button type="button" onClick={startNew} className={NAV_ROW}>
+					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					New
+				</button>
 				<div className="relative">
 					<HugeiconsIcon
 						icon={Search01Icon}
@@ -98,17 +102,16 @@ export function SessionsSidebar() {
 						aria-label="Search threads"
 						value={query}
 						onChange={(event) => setQuery(event.target.value)}
-						className="h-8 rounded-md border-edge bg-transparent pr-2 pl-8 text-ui shadow-sm placeholder:text-ink-muted focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
+						className="h-8 rounded-md border-transparent bg-transparent pr-2 pl-8 text-ui font-medium shadow-none dark:bg-transparent placeholder:text-ink-muted hover:bg-selection-subtle focus-visible:border-edge-focus focus-visible:bg-selection-subtle focus-visible:ring-0"
 					/>
 				</div>
-				<button
-					type="button"
-					onClick={startNew}
-					className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
+				<Link
+					to="/threads"
+					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:text-ink`}
 				>
-					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
-					New
-				</button>
+					<HugeiconsIcon icon={ListViewIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					All Threads
+				</Link>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
 				{problem !== undefined ? (
@@ -148,10 +151,13 @@ export function SessionsSidebar() {
 					)
 				) : (
 					<ul aria-label="Threads" className="flex flex-col gap-0.5">
-						{sessions.map((session) => (
+						{sessions.map(({ session, project }) => (
 							<SessionRow
 								key={session.id}
 								session={session}
+								projectId={project.id}
+								projectName={project.name}
+								machineName={project.machine.name}
 								current={sessionAddress(session.id) === current}
 								onOpen={open}
 							/>
@@ -160,10 +166,7 @@ export function SessionsSidebar() {
 				)}
 			</SidebarContent>
 			<SidebarFooter className="p-2">
-				<Link
-					to="/settings/workspaces"
-					className="flex h-8 items-center gap-2 rounded-md px-2 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
-				>
+				<Link to="/settings/workspaces" className={NAV_ROW}>
 					<HugeiconsIcon icon={Settings02Icon} size={16} className="shrink-0 opacity-70" aria-hidden />
 					Settings
 				</Link>
@@ -173,17 +176,22 @@ export function SessionsSidebar() {
 	);
 }
 
-type Listed = SidebarProject["sessions"][number] & { readonly project: SidebarProject };
-
 /** Off-screen rows skip layout and paint until scrolled near; memoized so a loader or focus change repaints one row. */
 const SessionRow = memo(function SessionRow({
 	session,
+	projectId,
+	projectName,
+	machineName,
 	current,
 	onOpen,
 }: {
-	readonly session: Listed;
+	/** Kept across reads while it does not change, with the project's parts as plain values, so the row renders only for its own changes. */
+	readonly session: SidebarSession;
+	readonly projectId: string;
+	readonly projectName: string;
+	readonly machineName: string;
 	readonly current: boolean;
-	readonly onOpen: (session: Listed, event: MouseEvent) => void;
+	readonly onOpen: (sessionId: string, projectName: string, event: MouseEvent) => void;
 }) {
 	// The main thread's key is its session's id.
 	const display = useRunDisplay([{ key: session.id, runState: session.runState }]);
@@ -191,27 +199,25 @@ const SessionRow = memo(function SessionRow({
 		<li className="[contain-intrinsic-size:auto_50px] [content-visibility:auto]">
 			<button
 				type="button"
-				title={`${session.path} on ${session.project.machine.name}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
+				title={`${session.path} on ${machineName}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 				aria-current={current ? "true" : undefined}
 				className="group/row relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:text-ink"
-				onClick={(event) => onOpen(session, event)}
-				onAuxClick={(event) => onOpen(session, event)}
+				onClick={(event) => onOpen(session.id, projectName, event)}
+				onAuxClick={(event) => onOpen(session.id, projectName, event)}
 			>
 				<span className="flex min-w-0 items-center gap-1.5">
 					<span className="flex shrink-0 text-ink-muted empty:hidden">
 						<RunMark display={display} />
 					</span>
-					<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
-						{session.title}
-					</span>
+					<span className="min-w-0 flex-1 truncate text-body leading-snug">{session.title}</span>
 					<span className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-ink-muted">
-						{ago(session.updated)}
+						<Ago time={session.updated} />
 					</span>
 				</span>
 				<span className="mt-1 flex min-w-0 items-center gap-2 text-2xs text-ink-muted">
 					<span className="flex min-w-0 flex-1 items-center gap-1.5">
-						<Monogram id={session.project.id} name={session.project.name} />
-						<span className="min-w-0 truncate">{session.project.name}</span>
+						<Monogram id={projectId} name={projectName} />
+						<span className="min-w-0 truncate">{projectName}</span>
 					</span>
 					{session.model !== undefined && (
 						<span className="flex shrink-0 items-center text-2xs text-ink-muted">

@@ -110,10 +110,10 @@ function CloneToasts() {
 			}
 		}
 		// A clone gone from the list takes its toast, except a done one, which times out on its own.
-		for (const [path, { phase }] of shown) {
+		for (const [path, entry] of shown) {
 			if (clones.some((clone) => clone.path === path)) continue;
 			shown.delete(path);
-			if (phase !== "done") toast.dismiss(`project-clone:${path}`);
+			if (entry.phase !== "done") toast.dismiss(`project-clone:${path}`);
 		}
 	}, [clones, onStart, place]);
 

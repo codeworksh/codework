@@ -1,5 +1,5 @@
 import type { AnchoredEndSpaceConfig, LegendListRef, MaintainScrollAtEndOptions } from "@legendapp/list/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /** The anchored prompt's distance from the top of the viewport. */
 const ANCHOR_OFFSET = 20;
@@ -253,64 +253,58 @@ export function useFollow({
 	};
 
 	const index = anchor === null ? -1 : anchorIndex(anchor);
-	const anchoredEndSpace: AnchoredEndSpaceConfig | undefined =
-		anchor === null || index === -1
-			? undefined
-			: {
-					anchorIndex: index,
-					anchorOffset: ANCHOR_OFFSET,
-					onReady: ({ anchorIndex: ready, size }) => {
-						anchorSize.current = size;
-						if (ready === undefined || positioned.current === anchor) return;
-						positioned.current = anchor;
-						// Its reply already reaches the composer: the end follows it instead.
-						if (following && size <= inset) {
-							releaseAnchor();
-							requestAnimationFrame(() => landed(anchor));
-							return;
-						}
-						const release = viewport.current?.hold() ?? (() => {});
-						void list.current
-							?.scrollToIndex({ index: ready, viewPosition: 0, viewOffset: ANCHOR_OFFSET, animated: false })
-							.then(() => {
-								release();
-								landed(anchor);
-							});
-					},
-					onSizeChanged: (size) => {
-						anchorSize.current = size;
-						if (positioned.current === anchor && store.read().mode === "following" && size <= inset)
-							releaseAnchor();
-					},
-				};
-
-	const navigate = useCallback(
-		(navigation: Navigation) => {
-			const el = viewport.current?.el;
-			if (el === undefined || !releases(navigation, el)) return;
-			if (store.dispatch("navigated").before.mode !== "following") return;
-			// A new imperative scroll cancels the list's queued ones; a missing item cancels without moving.
-			void list.current?.scrollToItem({ item: CANCEL, animated: false });
-			// A smooth scroll already under way keeps running in the browser; writing its position halts it.
-			const top = el.scrollTop;
-			el.scrollTop = top;
-		},
-		[store],
-	);
-	const ref = useCallback(
-		(instance: LegendListRef | null) => {
-			list.current = instance;
-			if (instance === null) return;
-			const attached = attachViewport(instance.getScrollableNode(), navigate);
-			viewport.current = attached;
-			return () => {
-				attached.dispose();
-				if (viewport.current === attached) viewport.current = undefined;
-				list.current = null;
+	// Read in render instead of the config, whose callbacks write refs, so the compiler keeps the hook.
+	const anchoring = anchor !== null && index !== -1;
+	const anchoredEndSpace: AnchoredEndSpaceConfig | undefined = !anchoring
+		? undefined
+		: {
+				anchorIndex: index,
+				anchorOffset: ANCHOR_OFFSET,
+				onReady: ({ anchorIndex: ready, size }) => {
+					anchorSize.current = size;
+					if (ready === undefined || positioned.current === anchor) return;
+					positioned.current = anchor;
+					// Its reply already reaches the composer: the end follows it instead.
+					if (following && size <= inset) {
+						releaseAnchor();
+						requestAnimationFrame(() => landed(anchor));
+						return;
+					}
+					const release = viewport.current?.hold() ?? (() => {});
+					void list.current
+						?.scrollToIndex({ index: ready, viewPosition: 0, viewOffset: ANCHOR_OFFSET, animated: false })
+						.then(() => {
+							release();
+							landed(anchor);
+						});
+				},
+				onSizeChanged: (size) => {
+					anchorSize.current = size;
+					if (positioned.current === anchor && store.read().mode === "following" && size <= inset) releaseAnchor();
+				},
 			};
-		},
-		[navigate],
-	);
+
+	const navigate = (navigation: Navigation) => {
+		const el = viewport.current?.el;
+		if (el === undefined || !releases(navigation, el)) return;
+		if (store.dispatch("navigated").before.mode !== "following") return;
+		// A new imperative scroll cancels the list's queued ones; a missing item cancels without moving.
+		void list.current?.scrollToItem({ item: CANCEL, animated: false });
+		// A smooth scroll already under way keeps running in the browser; writing its position halts it.
+		const top = el.scrollTop;
+		el.scrollTop = top;
+	};
+	const ref = (instance: LegendListRef | null) => {
+		list.current = instance;
+		if (instance === null) return;
+		const attached = attachViewport(instance.getScrollableNode(), navigate);
+		viewport.current = attached;
+		return () => {
+			attached.dispose();
+			if (viewport.current === attached) viewport.current = undefined;
+			list.current = null;
+		};
+	};
 
 	const onScroll = () => {
 		const el = viewport.current?.el;
@@ -339,8 +333,10 @@ export function useFollow({
 		ref,
 		onScroll,
 		onLoad: () => setSettled(true),
+		/** Laid out and scrolled into place: before this the list is measuring and may still move. */
+		settled,
 		anchoredEndSpace,
-		maintainScrollAtEnd: anchoredEndSpace !== undefined || !following ? false : smooth ? END_SMOOTH : END,
+		maintainScrollAtEnd: anchoring || !following ? false : smooth ? END_SMOOTH : END,
 		/** The prompt hidden until it rises into its anchor. */
 		pending: anchor !== null && rising === anchor ? rising : undefined,
 	};

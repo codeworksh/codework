@@ -1,10 +1,19 @@
 import { useAtomValue } from "@effect/atom-react";
-import { PERSONAL_ORGANIZATION, readTopics, SyncChanged, SyncTracking, syncTopics } from "@codeworksh/contract";
+import {
+	PERSONAL_ORGANIZATION,
+	readTopics,
+	type SidebarProject,
+	type SidebarSession,
+	SyncChanged,
+	SyncTracking,
+	syncTopics,
+} from "@codeworksh/contract";
 import type { RunState } from "@codeworksh/widget/codework";
 import type { Event } from "@codeworksh/widget/event";
 import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+import { keeper } from "../../kernel/keep";
 import { Server } from "../../kernel/rpc";
 
 const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
@@ -25,6 +34,28 @@ const touches = (event: Event) =>
 			)
 		: Option.exists(decodeTracking(event.payload), (edit) => edit._tag === "Session");
 
+const sameSession = (a: SidebarSession, b: SidebarSession) =>
+	a.title === b.title &&
+	a.runState === b.runState &&
+	a.updated === b.updated &&
+	a.color === b.color &&
+	a.path === b.path &&
+	a.threadId === b.threadId &&
+	a.spaceKind === b.spaceKind &&
+	a.model?.provider === b.model?.provider &&
+	a.model?.id === b.model?.id;
+
+/** `next` with every session that did not change kept as the object `previous` had, so its sidebar row skips rendering. */
+const reuse = (previous: ReadonlyArray<SidebarProject> | undefined, next: ReadonlyArray<SidebarProject>) => {
+	if (previous === undefined) return next;
+	const session = keeper(
+		previous.flatMap((project) => project.sessions),
+		(item) => item.id,
+		sameSession,
+	);
+	return next.map((project) => ({ ...project, sessions: project.sessions.map(session) }));
+};
+
 /**
  * Every active project with its sessions, on every machine, as the sidebar lists them: read from the
  * app's synced copy when subscribed, and again after each change to it.
@@ -40,6 +71,13 @@ export const projectsAtom = Server.runtime
 						Stream.debounce("50 millis"),
 						Stream.mapEffect(() =>
 							client("sidebar.list", { organizationId: PERSONAL_ORGANIZATION, machines: "all" }),
+						),
+						Stream.mapAccum(
+							(): ReadonlyArray<SidebarProject> | undefined => undefined,
+							(previous, next) => {
+								const kept = reuse(previous, next);
+								return [kept, [kept]] as const;
+							},
 						),
 					),
 				),
@@ -107,13 +145,26 @@ export const runStatesAtom = Atom.family((keys: string) =>
 	}),
 );
 
+interface Listed {
+	readonly title: string;
+	readonly project: { readonly id: string; readonly name: string };
+}
+
+const sameListed = (a: Listed, b: Listed) =>
+	a.title === b.title && a.project.id === b.project.id && a.project.name === b.project.name;
+
 const listedAtom = Atom.family((id: string) =>
-	Atom.make((get) => {
+	Atom.make((get): Listed | undefined => {
 		const result = get(projectsAtom);
 		if (!AsyncResult.isSuccess(result)) return undefined;
 		for (const project of result.value) {
 			const session = project.sessions.find((candidate) => candidate.id === id);
-			if (session !== undefined) return { title: session.title, project: { id: project.id, name: project.name } };
+			if (session === undefined) continue;
+			const next = { title: session.title, project: { id: project.id, name: project.name } };
+			// The sidebar reads again on any session's change; an unchanged answer keeps its object, so the
+			// session view reading it renders only for its own session's title or project.
+			const previous = Option.getOrUndefined(get.self<Listed | undefined>());
+			return previous !== undefined && sameListed(previous, next) ? previous : next;
 		}
 		return undefined;
 	}),

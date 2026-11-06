@@ -1,10 +1,10 @@
 import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import {
-	type Dashboard,
-	type DashboardBy,
-	type DashboardList,
-	type DashboardThread,
+	type AllThreads,
+	type ListedThread,
+	type ThreadList,
+	type ThreadsBy,
 	type Grouping,
 	type LineRequest,
 	LineThread,
@@ -120,7 +120,7 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 	return listed.toSorted((a, b) => activity(b) - activity(a));
 }, Effect.orDie);
 
-/** The status lists in the order the dashboard shows them: what needs the user first. */
+/** The status lists in the order All Threads shows them: what needs the user first. */
 const STATUSES: ReadonlyArray<ThreadStatus> = ["working", "attention", "settled", "cancelled"];
 /** Urgent first and none last, as Linear. */
 const PRIORITIES: ReadonlyArray<Priority> = [1, 2, 3, 4, 0];
@@ -130,25 +130,27 @@ const SPLIT = {
 	status: "thread.status, thread.ordering",
 	priority: "thread.priority, thread.ordering",
 	grouping: "thread.grouping_id, thread.ordering",
-} satisfies Record<DashboardBy, string>;
+} satisfies Record<ThreadsBy, string>;
 
-export const dashboard = Effect.fn("Reads.dashboard")(function* ({
+export const threads = Effect.fn("Reads.threads")(function* ({
 	organizationId,
 	by,
 }: {
 	readonly organizationId: string;
-	readonly by: DashboardBy;
+	readonly by: ThreadsBy;
 }) {
 	const sql = yield* SqlClient.SqlClient;
 	const rows = yield* sql<{
 		id: string;
 		sessionId: string;
-		originKind: DashboardThread["originKind"];
+		originKind: ListedThread["originKind"];
 		originThreadId: string | null;
 		title: string | null;
+		machineId: string;
+		machineName: string;
 		projectId: string;
 		projectName: string;
-		runState: DashboardThread["runState"];
+		runState: ListedThread["runState"];
 		status: ThreadStatus;
 		priority: Priority;
 		groupingId: string | null;
@@ -157,12 +159,13 @@ export const dashboard = Effect.fn("Reads.dashboard")(function* ({
 		updatedAt: number;
 	}>`
 		SELECT thread.id, thread.session_id, thread.origin_kind, thread.origin_thread_id, thread.title,
-			project.id AS project_id, project.name AS project_name, thread.run_state, thread.status, thread.priority,
+			machine.id AS machine_id, machine.name AS machine_name, project.id AS project_id, project.name AS project_name, thread.run_state, thread.status, thread.priority,
 			thread.grouping_id, thread.ordering, COALESCE(thread.color, session.color) AS color, thread.updated_at
 		FROM thread
 		JOIN session ON session.id = thread.session_id
 		JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id
 		JOIN project ON project.machine_id = space.machine_id AND project.id = space.project_id
+		JOIN machine ON machine.id = session.machine_id
 		WHERE thread.organization_id = ${organizationId} AND thread.deleted_at IS NULL AND thread.origin_kind <> 'subagent'
 		ORDER BY ${sql.literal(SPLIT[by])}
 	`;
@@ -181,11 +184,13 @@ export const dashboard = Effect.fn("Reads.dashboard")(function* ({
 		}
 		return UNTITLED;
 	};
-	const threads = rows.map((row): DashboardThread => ({
+	const listed = rows.map((row): ListedThread => ({
 		id: row.id,
 		sessionId: row.sessionId,
 		originKind: row.originKind,
+		originThreadId: row.originThreadId,
 		title: titleOf(row),
+		machine: { id: row.machineId, name: row.machineName },
 		project: { id: row.projectId, name: row.projectName },
 		runState: row.runState,
 		status: row.status,
@@ -195,25 +200,25 @@ export const dashboard = Effect.fn("Reads.dashboard")(function* ({
 		color: row.color,
 		updatedAt: row.updatedAt,
 	}));
-	const lists: Array<DashboardList> =
+	const lists: Array<ThreadList> =
 		by === "status"
 			? STATUSES.map((status) => ({
 					_tag: "Status",
 					status,
-					threads: threads.filter((thread) => thread.status === status),
+					threads: listed.filter((thread) => thread.status === status),
 				}))
 			: by === "priority"
 				? PRIORITIES.map((priority) => ({
 						_tag: "Priority",
 						priority,
-						threads: threads.filter((thread) => thread.priority === priority),
+						threads: listed.filter((thread) => thread.priority === priority),
 					}))
 				: [...groups.map((group) => group.id), null].map((groupingId) => ({
 						_tag: "Grouping",
 						groupingId,
-						threads: threads.filter((thread) => thread.groupingId === groupingId),
+						threads: listed.filter((thread) => thread.groupingId === groupingId),
 					}));
-	return { lists, groups } satisfies Dashboard;
+	return { lists, groups } satisfies AllThreads;
 }, Effect.orDie);
 
 /**

@@ -8,7 +8,6 @@ import {
 	memo,
 	type ReactNode,
 	useEffect,
-	useMemo,
 	useState,
 } from "react";
 import type { Components, ExtraProps, Options } from "react-markdown";
@@ -146,10 +145,10 @@ export const Markdown = memo(function Markdown({
 	readonly streaming?: boolean;
 	readonly className?: string;
 }) {
-	const incremental = useMemo(() => incrementalMarkdown(), []);
+	const [incremental] = useState(incrementalMarkdown);
 	const blocks = streaming ? splitMarkdownBlocks(text) : null;
 	const fenced = streaming && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
-	const remarkPlugins = useMemo(() => (fenced ? [remarkGfm, incremental] : plugins), [fenced, incremental]);
+	const remarkPlugins = fenced ? [remarkGfm, incremental] : plugins;
 	return (
 		<div className={`agent-markdown min-w-0 ${className ?? ""}`}>
 			{/* react-markdown renders a Fragment, so the blocks' elements sit in this div as one document's would.
