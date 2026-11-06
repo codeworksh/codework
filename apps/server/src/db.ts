@@ -17,17 +17,18 @@ const migrations = {
 				PRIMARY KEY (package, key)
 			)
 		`;
+		// `tab` is what the workspace's tab last read, so a workspace not yet opened since a restart names what it shows.
 		yield* sql`
 			CREATE TABLE workspaces (
 				id TEXT PRIMARY KEY,
 				bit INTEGER NOT NULL UNIQUE,
 				pos INTEGER NOT NULL,
 				name TEXT NOT NULL,
-				icon TEXT NOT NULL,
 				layout TEXT NOT NULL,
 				mfact REAL NOT NULL,
 				auto INTEGER NOT NULL DEFAULT 0,
-				created INTEGER NOT NULL
+				created INTEGER NOT NULL,
+				tab TEXT
 			)
 		`;
 		// AUTOINCREMENT so a seq is never reused, even after the newest rows are deleted.
@@ -60,12 +61,11 @@ const migrations = {
 				created INTEGER NOT NULL
 			)
 		`;
-	}),
-	// The built-in local server takes over its settings, kept until now as single kv entries.
-	"202610180001_servers": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
+
+		// The sync's copy of each machine's CodeWork: core columns are written only by the sync,
+		// desktop columns only by this app.
 		yield* sql`
-			CREATE TABLE servers (
+			CREATE TABLE machine (
 				id TEXT PRIMARY KEY,
 				kind TEXT NOT NULL,
 				name TEXT NOT NULL,
@@ -73,43 +73,192 @@ const migrations = {
 				home TEXT,
 				args TEXT NOT NULL DEFAULT '',
 				env TEXT NOT NULL DEFAULT '[]',
+				url TEXT,
+				namespace TEXT NOT NULL,
 				is_default INTEGER NOT NULL DEFAULT 0,
 				pos INTEGER NOT NULL,
-				created INTEGER NOT NULL
+				store_id TEXT UNIQUE,
+				cursor INTEGER NOT NULL DEFAULT 0,
+				created_at INTEGER NOT NULL
 			)
 		`;
-		const rows = yield* sql<{ key: string; value: string }>`
-			SELECT key, value FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'
+		yield* sql`
+			CREATE TABLE organization (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
 		`;
-		const saved = new Map(rows.map(({ key, value }) => [key.slice("servers.local.".length), JSON.parse(value)]));
-		const text = (key: string) => {
-			const value: unknown = saved.get(key);
-			return typeof value === "string" && value !== "" ? value : null;
-		};
-		const env: unknown = saved.get("env");
-		yield* sql`INSERT INTO servers ${sql.insert({
+		yield* sql`
+			CREATE TABLE grouping (
+				id TEXT PRIMARY KEY,
+				organization_id TEXT NOT NULL REFERENCES organization(id),
+				name TEXT NOT NULL,
+				color TEXT,
+				ordering REAL NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`;
+		yield* sql`CREATE INDEX grouping_ordering_idx ON grouping (organization_id, ordering)`;
+		// Core ids are repo hashes, so the same repo on two machines collides: keyed by machine too.
+		yield* sql`
+			CREATE TABLE project (
+				machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+				id TEXT NOT NULL,
+				organization_id TEXT NOT NULL REFERENCES organization(id),
+				namespace TEXT NOT NULL,
+				name TEXT NOT NULL,
+				status TEXT NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				PRIMARY KEY (machine_id, id)
+			)
+		`;
+		yield* sql`CREATE INDEX project_organization_idx ON project (organization_id, namespace, status)`;
+		yield* sql`
+			CREATE TABLE space (
+				machine_id TEXT NOT NULL,
+				id TEXT NOT NULL,
+				organization_id TEXT NOT NULL REFERENCES organization(id),
+				project_id TEXT NOT NULL,
+				location TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				env TEXT,
+				status TEXT NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				PRIMARY KEY (machine_id, id),
+				FOREIGN KEY (machine_id, project_id) REFERENCES project(machine_id, id) ON DELETE CASCADE
+			)
+		`;
+		yield* sql`CREATE INDEX space_project_idx ON space (machine_id, project_id)`;
+		yield* sql`
+			CREATE TABLE session (
+				id TEXT PRIMARY KEY,
+				machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+				organization_id TEXT NOT NULL REFERENCES organization(id),
+				space_id TEXT NOT NULL,
+				slug TEXT NOT NULL,
+				dir TEXT NOT NULL,
+				hostdir TEXT,
+				tag TEXT,
+				metadata TEXT,
+				color TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				deleted_at INTEGER,
+				FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id)
+			)
+		`;
+		yield* sql`CREATE INDEX session_space_idx ON session (machine_id, space_id)`;
+		yield* sql`CREATE INDEX session_list_idx ON session (organization_id, updated_at) WHERE deleted_at IS NULL`;
+		// No FK on origin_thread_id: a source can arrive after its fork.
+		yield* sql`
+			CREATE TABLE thread (
+				id TEXT PRIMARY KEY,
+				organization_id TEXT NOT NULL REFERENCES organization(id),
+				session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+				origin_kind TEXT NOT NULL,
+				origin_thread_id TEXT,
+				origin_entry_id TEXT,
+				origin_call_id TEXT,
+				origin_committed_seq INTEGER,
+				title TEXT,
+				model_provider TEXT,
+				model_id TEXT,
+				thinking_level TEXT,
+				foundation TEXT,
+				placement_space_id TEXT,
+				placement_dir TEXT,
+				restarts INTEGER NOT NULL DEFAULT 0,
+				attempt INTEGER,
+				run_state TEXT NOT NULL DEFAULT 'idle',
+				run_state_at INTEGER,
+				run_started_at INTEGER,
+				run_ended_at INTEGER,
+				run_outcome TEXT,
+				run_error TEXT,
+				cost REAL NOT NULL DEFAULT 0,
+				tokens_input INTEGER NOT NULL DEFAULT 0,
+				tokens_output INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_read INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_write INTEGER NOT NULL DEFAULT 0,
+				status TEXT NOT NULL,
+				status_at INTEGER NOT NULL,
+				priority INTEGER NOT NULL DEFAULT 0,
+				grouping_id TEXT REFERENCES grouping(id) ON DELETE SET NULL,
+				ordering REAL NOT NULL,
+				color TEXT,
+				cursor INTEGER,
+				floor INTEGER,
+				created_seq INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				deleted_at INTEGER
+			)
+		`;
+		yield* sql`CREATE UNIQUE INDEX thread_main_idx ON thread (session_id) WHERE origin_kind = 'main'`;
+		yield* sql`CREATE INDEX thread_session_idx ON thread (session_id, updated_at) WHERE deleted_at IS NULL`;
+		yield* sql`CREATE INDEX thread_origin_idx ON thread (origin_thread_id) WHERE origin_thread_id IS NOT NULL`;
+		yield* sql`CREATE INDEX thread_status_idx ON thread (organization_id, status, ordering) WHERE deleted_at IS NULL`;
+		yield* sql`CREATE INDEX thread_grouping_idx ON thread (organization_id, grouping_id, ordering) WHERE deleted_at IS NULL`;
+		yield* sql`CREATE INDEX thread_priority_idx ON thread (organization_id, priority, ordering) WHERE deleted_at IS NULL`;
+		yield* sql`
+			CREATE TABLE entry (
+				id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE,
+				seq INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				state TEXT NOT NULL,
+				error TEXT,
+				size INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`;
+		yield* sql`CREATE UNIQUE INDEX entry_thread_idx ON entry (thread_id, seq)`;
+		yield* sql`CREATE INDEX entry_draft_idx ON entry (thread_id) WHERE state = 'draft'`;
+		yield* sql`
+			CREATE TABLE part (
+				entry_id TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
+				part_index INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				status TEXT,
+				call_id TEXT,
+				tool_name TEXT,
+				data TEXT NOT NULL,
+				PRIMARY KEY (entry_id, part_index)
+			)
+		`;
+		yield* sql`CREATE UNIQUE INDEX part_call_idx ON part (entry_id, call_id) WHERE call_id IS NOT NULL`;
+		yield* sql`CREATE INDEX part_unsettled_idx ON part (entry_id) WHERE status IN ('pending', 'running')`;
+		yield* sql`
+			CREATE TABLE inbox (
+				id TEXT PRIMARY KEY,
+				thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE,
+				delivery TEXT NOT NULL,
+				text TEXT NOT NULL,
+				admitted_seq INTEGER NOT NULL,
+				created_at INTEGER NOT NULL
+			)
+		`;
+		yield* sql`CREATE UNIQUE INDEX inbox_thread_idx ON inbox (thread_id, admitted_seq)`;
+
+		const now = yield* Clock.currentTimeMillis;
+		// The built-in local machine runs the CLI home's CodeWork: a null executable and home are the ones found.
+		yield* sql`INSERT INTO machine ${sql.insert({
 			id: "local",
 			kind: "local",
-			name: text("name") ?? "CodeWork",
-			executable: text("executable"),
-			home: text("home"),
-			args: text("args") ?? "",
-			env: JSON.stringify(Array.isArray(env) ? env : []),
+			name: "CodeWork",
+			namespace: "codework",
 			isDefault: 1,
 			pos: 0,
-			created: yield* Clock.currentTimeMillis,
+			createdAt: now,
 		})}`;
-		yield* sql`DELETE FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'`;
-	}),
-	// Workspace tabs all show the window icon now.
-	"202610230001_drop_workspace_icon": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`ALTER TABLE workspaces DROP COLUMN icon`;
-	}),
-	// What the workspace's tab last read, so a workspace not yet opened since a restart names what it shows.
-	"202610240001_workspace_tab": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`ALTER TABLE workspaces ADD COLUMN tab TEXT`;
+		// The one organization the UI uses until auth exists.
+		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
 };
 

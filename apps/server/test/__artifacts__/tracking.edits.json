@@ -1,0 +1,388 @@
+{
+	"steps": [
+		{
+			"step": "status cancelled",
+			"thread": {
+				"status": "cancelled",
+				"priority": 0,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": null
+			},
+			"session": {
+				"color": null
+			},
+			"grouping": [],
+			"event": {
+				"topic": "sync/status",
+				"source": "tracking",
+				"payload": {
+					"threadId": "<thread>",
+					"status": "cancelled",
+					"previous": "settled",
+					"at": "<time>"
+				}
+			}
+		},
+		{
+			"step": "priority urgent",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": null
+			},
+			"session": {
+				"color": null
+			},
+			"grouping": [],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Thread",
+					"threadId": "<thread>",
+					"priority": 1
+				}
+			}
+		},
+		{
+			"step": "thread color",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": null
+			},
+			"grouping": [],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Thread",
+					"threadId": "<thread>",
+					"color": "#ff8800"
+				}
+			}
+		},
+		{
+			"step": "session color",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Session",
+					"sessionId": "<session>",
+					"color": "#00aaff"
+				}
+			}
+		},
+		{
+			"step": "group created",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Backlog",
+					"color": "#123456",
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Group",
+					"id": "<group>",
+					"organizationId": "personal",
+					"name": "Backlog",
+					"color": "#123456",
+					"ordering": 0
+				}
+			}
+		},
+		{
+			"step": "group renamed and color cleared",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Group",
+					"id": "<group>",
+					"organizationId": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			}
+		},
+		{
+			"step": "thread grouped",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": "<group>",
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Thread",
+					"threadId": "<thread>",
+					"groupingId": "<group>"
+				}
+			}
+		},
+		{
+			"step": "thread ungrouped",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800"
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Thread",
+					"threadId": "<thread>",
+					"groupingId": null
+				}
+			}
+		},
+		{
+			"step": "thread color cleared",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": null
+			},
+			"session": {
+				"color": "#00aaff"
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Thread",
+					"threadId": "<thread>",
+					"color": null
+				}
+			}
+		},
+		{
+			"step": "session color cleared",
+			"thread": {
+				"status": "cancelled",
+				"priority": 1,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": null
+			},
+			"session": {
+				"color": null
+			},
+			"grouping": [
+				{
+					"id": "<group>",
+					"organization_id": "personal",
+					"name": "Next",
+					"color": null,
+					"ordering": 0
+				}
+			],
+			"event": {
+				"topic": "sync/tracking",
+				"source": "tracking",
+				"payload": {
+					"_tag": "Session",
+					"sessionId": "<session>",
+					"color": null
+				}
+			}
+		}
+	],
+	"received": [
+		{
+			"topic": "sync/status",
+			"source": "tracking",
+			"payload": {
+				"threadId": "<thread>",
+				"status": "cancelled",
+				"previous": "settled",
+				"at": "<time>"
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread>",
+				"priority": 1
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread>",
+				"color": "#ff8800"
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Session",
+				"sessionId": "<session>",
+				"color": "#00aaff"
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Group",
+				"id": "<group>",
+				"organizationId": "personal",
+				"name": "Backlog",
+				"color": "#123456",
+				"ordering": 0
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Group",
+				"id": "<group>",
+				"organizationId": "personal",
+				"name": "Next",
+				"color": null,
+				"ordering": 0
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread>",
+				"groupingId": "<group>"
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread>",
+				"groupingId": null
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread>",
+				"color": null
+			}
+		},
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "Session",
+				"sessionId": "<session>",
+				"color": null
+			}
+		}
+	]
+}

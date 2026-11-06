@@ -3,7 +3,7 @@ import { PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@huge
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import type { Project } from "@codeworksh/contract";
+import type { SidebarProject } from "@codeworksh/contract";
 import { type MouseEvent, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
-import { projectsAtom, workingAtom } from "../widgets/session/projects";
+import { projectsAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -28,7 +28,8 @@ import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
-import { PixelLoader } from "@/components/loader";
+import { useRunDisplay } from "../widgets/session/display";
+import { RunMark } from "../widgets/session/run";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -37,7 +38,6 @@ import { PixelLoader } from "@/components/loader";
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
-	const working = useAtomValue(workingAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
@@ -153,7 +153,6 @@ export function SessionsSidebar() {
 								key={session.id}
 								session={session}
 								current={sessionAddress(session.id) === current}
-								working={working.has(session.id)}
 								onOpen={open}
 							/>
 						))}
@@ -174,36 +173,34 @@ export function SessionsSidebar() {
 	);
 }
 
-type Listed = Project["sessions"][number] & { readonly project: Project };
+type Listed = SidebarProject["sessions"][number] & { readonly project: SidebarProject };
 
 /** Off-screen rows skip layout and paint until scrolled near; memoized so a loader or focus change repaints one row. */
 const SessionRow = memo(function SessionRow({
 	session,
 	current,
-	working,
 	onOpen,
 }: {
 	readonly session: Listed;
 	readonly current: boolean;
-	readonly working: boolean;
 	readonly onOpen: (session: Listed, event: MouseEvent) => void;
 }) {
+	// The main thread's key is its session's id.
+	const display = useRunDisplay([{ key: session.id, runState: session.runState }]);
 	return (
 		<li className="[contain-intrinsic-size:auto_50px] [content-visibility:auto]">
 			<button
 				type="button"
-				title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
+				title={`${session.path} on ${session.project.machine.name}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 				aria-current={current ? "true" : undefined}
 				className="group/row relative flex w-full flex-col rounded-md px-2 py-1.5 text-left text-ink/80 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:text-ink"
 				onClick={(event) => onOpen(session, event)}
 				onAuxClick={(event) => onOpen(session, event)}
 			>
 				<span className="flex min-w-0 items-center gap-1.5">
-					{working && (
-						<span role="img" aria-label="Agent working" className="flex shrink-0 text-ink-muted">
-							<PixelLoader />
-						</span>
-					)}
+					<span className="flex shrink-0 text-ink-muted empty:hidden">
+						<RunMark display={display} />
+					</span>
 					<span className="min-w-0 flex-1 truncate text-body font-semibold leading-snug text-ink">
 						{session.title}
 					</span>

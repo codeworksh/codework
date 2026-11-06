@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { SqlClient } from "effect/sql";
+import { uuidv7 } from "uuidv7";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
 // disk, so they survive bundling and need no runtime path resolution.
@@ -15,6 +16,27 @@ import { SqlClient } from "effect/sql";
 export const migrations = {
 	"202610290001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+
+		// One row: the store's identity and its last revision taken (db/store.ts). A recreated database
+		// gets a new id; a restored backup keeps its id with a lower rev.
+		yield* sql`
+			CREATE TABLE store (
+				id  TEXT NOT NULL,
+				rev INTEGER NOT NULL
+			)
+		`;
+		yield* sql`INSERT INTO store (id, rev) VALUES (${uuidv7()}, 0)`;
+
+		// A deleted row, at the revision that deleted it. Kept, never pruned.
+		yield* sql`
+			CREATE TABLE removed (
+				kind TEXT NOT NULL,
+				id   TEXT NOT NULL,
+				rev  INTEGER NOT NULL,
+				PRIMARY KEY (kind, id)
+			)
+		`;
+		yield* sql`CREATE INDEX removed_rev_idx ON removed (rev)`;
 
 		// Head of one aggregate's log (aggregate = session), and who holds it.
 		yield* sql`
@@ -73,7 +95,8 @@ export const migrations = {
 				name       TEXT NOT NULL,
 				status     TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
+				updated_at INTEGER NOT NULL,
+				rev        INTEGER NOT NULL
 			)
 		`;
 
@@ -87,7 +110,8 @@ export const migrations = {
 				env        TEXT REFERENCES sandbox(id) ON DELETE RESTRICT CHECK (env IS NULL OR env <> 'local'),
 				status     TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
+				updated_at INTEGER NOT NULL,
+				rev        INTEGER NOT NULL
 			)
 		`;
 		yield* sql`CREATE UNIQUE INDEX space_location_idx ON space (coalesce(env, 'local'), location)`;
@@ -106,7 +130,8 @@ export const migrations = {
 				tag        TEXT,
 				metadata   TEXT,
 				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
+				updated_at INTEGER NOT NULL,
+				rev        INTEGER NOT NULL
 			)
 		`;
 		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
@@ -123,6 +148,13 @@ export const migrations = {
 				origin_call_id     TEXT,
 				title              TEXT,
 				execution          TEXT,
+				-- the run lifecycle, projected from the execution.* events; times are the events'
+				run_state          TEXT NOT NULL DEFAULT 'idle',
+				run_state_at       INTEGER,
+				run_started_at     INTEGER,
+				run_ended_at       INTEGER,
+				run_outcome        TEXT,
+				run_error          TEXT,
 				restarts           INTEGER NOT NULL DEFAULT 0,
 				attempt            INTEGER,
 				cost               REAL NOT NULL DEFAULT 0,
@@ -133,6 +165,7 @@ export const migrations = {
 				created_seq        INTEGER NOT NULL,
 				created_at         INTEGER NOT NULL,
 				updated_at         INTEGER NOT NULL,
+				rev                INTEGER NOT NULL,
 				UNIQUE (session_id, id),
 				-- the source thread lives in the same session
 				FOREIGN KEY (session_id, origin_thread_id) REFERENCES thread(session_id, id),
@@ -169,6 +202,7 @@ export const migrations = {
 				metadata      TEXT,
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL,
+				rev           INTEGER NOT NULL,
 				UNIQUE (thread_id, id),
 				FOREIGN KEY (session_id, thread_id) REFERENCES thread(session_id, id) ON DELETE CASCADE,
 				-- the fork cut reads committed_seq: set exactly when the entry stops changing
@@ -218,6 +252,7 @@ export const migrations = {
 				promoted_seq  INTEGER,
 				cancelled_seq INTEGER,
 				created_at    INTEGER NOT NULL,
+				rev           INTEGER NOT NULL,
 				FOREIGN KEY (session_id, thread_id) REFERENCES thread(session_id, id) ON DELETE CASCADE
 			)
 		`;
@@ -254,5 +289,23 @@ export const migrations = {
 				PRIMARY KEY (document_id, seq)
 			)
 		`;
+
+		yield* sql`CREATE INDEX project_rev_idx ON project (rev)`;
+		yield* sql`CREATE INDEX space_rev_idx ON space (rev)`;
+		yield* sql`CREATE INDEX session_rev_idx ON session (rev)`;
+		yield* sql`CREATE INDEX thread_rev_idx ON thread (rev)`;
+		yield* sql`CREATE INDEX entry_thread_rev_idx ON entry (thread_id, rev)`;
+		yield* sql`CREATE INDEX inbox_thread_rev_idx ON inbox (thread_id, rev)`;
+		// Every insert and update carries the current transaction's revision, so a write path that
+		// forgets fails loudly. A row written twice in one transaction keeps its rev, which this allows.
+		for (const table of ["project", "space", "session", "thread", "entry", "inbox"]) {
+			for (const event of ["insert", "update"]) {
+				yield* sql.unsafe(`
+					CREATE TRIGGER ${table}_rev_${event} BEFORE ${event.toUpperCase()} ON ${table}
+					WHEN NEW.rev <> (SELECT rev FROM store)
+					BEGIN SELECT RAISE(ABORT, 'rev is not the current revision'); END
+				`);
+			}
+		}
 	}),
 };

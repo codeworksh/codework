@@ -1,6 +1,7 @@
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlError, SqlSchema } from "effect/sql";
 import { SpaceRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
@@ -55,20 +56,22 @@ export const fromRow = (row: SpaceRow): SpaceSchema.Info =>
 
 /**
  * Archive every space of an env, then every touched project left without an
- * active space in any env (§5.5). Requires only `SqlClient` so the sandbox
- * controller can run it inside its destroy tombstone transaction (D-ENV).
+ * active space in any env (§5.5). Requires only `SqlClient` and `Store` so the
+ * sandbox controller can run it inside its destroy tombstone transaction (D-ENV).
  * Write-first so a DEFERRED transaction takes the write lock immediately.
  */
 export const archiveEnv = Effect.fn("Space.archiveEnv")(function* (env: SandboxInstance.ID) {
 	const sql = yield* SqlClient.SqlClient;
+	const store = yield* Store.Service;
 	const column = SandboxInstance.toColumn(env);
 	const now = yield* Clock.currentTimeMillis;
-	yield* sql
-		.withTransaction(
+	yield* store
+		.write(
 			Effect.gen(function* () {
-				yield* sql`UPDATE space SET status = 'archived', updated_at = ${now} WHERE env IS ${column}`;
+				const rev = yield* store.rev;
+				yield* sql`UPDATE space SET status = 'archived', updated_at = ${now}, rev = ${rev} WHERE env IS ${column}`;
 				yield* sql`
-					UPDATE project SET status = 'archived', updated_at = ${now}
+					UPDATE project SET status = 'archived', updated_at = ${now}, rev = ${rev}
 					WHERE id IN (SELECT project_id FROM space WHERE env IS ${column})
 						AND NOT EXISTS (SELECT 1 FROM space WHERE space.project_id = project.id AND status = 'active')
 				`;
@@ -81,6 +84,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		const fs = yield* SandboxIO.FileSystem;
 		const { id: env } = yield* SandboxIO.Current;
 		// NULL for the host; compared with `IS`, never `=`.
@@ -106,16 +110,17 @@ export const layer = Layer.effect(
 					project_id = excluded.project_id,
 					kind = excluded.kind,
 					status = 'active',
-					updated_at = excluded.updated_at
+					updated_at = excluded.updated_at,
+					rev = excluded.rev
 			`,
 		});
 
 		// Projects with no active space in any env are archived, never deleted.
-		const archiveOrphanProjects = (projectIds: ReadonlyArray<string>, now: number) =>
+		const archiveOrphanProjects = (projectIds: ReadonlyArray<string>, now: number, rev: number) =>
 			Effect.forEach(
 				projectIds,
 				(projectId) => sql`
-					UPDATE project SET status = 'archived', updated_at = ${now}
+					UPDATE project SET status = 'archived', updated_at = ${now}, rev = ${rev}
 					WHERE id = ${projectId}
 						AND NOT EXISTS (SELECT 1 FROM space WHERE project_id = ${projectId} AND status = 'active')
 				`,
@@ -154,14 +159,15 @@ export const layer = Layer.effect(
 				.map((entry) => entry.row.id);
 
 			const now = yield* Clock.currentTimeMillis;
-			yield* sql
-				.withTransaction(
+			yield* store
+				.write(
 					Effect.gen(function* () {
+						const rev = yield* store.rev;
 						if (gone.length > 0) {
-							yield* sql`UPDATE space SET status = 'archived', updated_at = ${now} WHERE ${sql.in("id", gone)}`;
+							yield* sql`UPDATE space SET status = 'archived', updated_at = ${now}, rev = ${rev} WHERE ${sql.in("id", gone)}`;
 						}
 						if (returned.length > 0) {
-							yield* sql`UPDATE space SET status = 'active', updated_at = ${now} WHERE ${sql.in("id", returned)}`;
+							yield* sql`UPDATE space SET status = 'active', updated_at = ${now}, rev = ${rev} WHERE ${sql.in("id", returned)}`;
 						}
 
 						const primary = yield* sql`
@@ -173,11 +179,11 @@ export const layer = Layer.effect(
 							// before promoting. Only a copy qualifies — a linked worktree's
 							// store died with the primary, and plain never needs one.
 							yield* sql`
-								UPDATE space SET kind = 'copy', updated_at = ${now}
+								UPDATE space SET kind = 'copy', updated_at = ${now}, rev = ${rev}
 								WHERE project_id = ${projectId} AND env IS ${envColumn} AND kind = 'primary'
 							`;
 							yield* sql`
-								UPDATE space SET kind = 'primary', updated_at = ${now}
+								UPDATE space SET kind = 'primary', updated_at = ${now}, rev = ${rev}
 								WHERE id = (
 									SELECT id FROM space
 									WHERE project_id = ${projectId} AND env IS ${envColumn} AND status = 'active' AND kind = 'copy'
@@ -186,7 +192,7 @@ export const layer = Layer.effect(
 							`;
 						}
 
-						yield* archiveOrphanProjects([projectId], now);
+						yield* archiveOrphanProjects([projectId], now, rev);
 					}),
 				)
 				.pipe(Effect.orDie);
@@ -194,44 +200,59 @@ export const layer = Layer.effect(
 			return yield* list(projectId);
 		});
 
-		const rehome = Effect.fn("Space.rehome")(function* (input: RehomeInput) {
-			const write = (kind: SpaceSchema.Kind) =>
-				SpaceRow.insert
-					.makeEffect({
-						id: input.id,
-						projectId: input.projectId,
-						location: input.location,
-						kind,
-						env: SandboxInstance.toField(input.env),
-						status: "active",
-					})
-					.pipe(Effect.flatMap(insertSpace));
+		const rehome = Effect.fn("Space.rehome")(
+			function* (input: RehomeInput) {
+				const rev = yield* store.rev;
+				const write = (kind: SpaceSchema.Kind) =>
+					SpaceRow.insert
+						.makeEffect({
+							id: input.id,
+							projectId: input.projectId,
+							location: input.location,
+							kind,
+							env: SandboxInstance.toField(input.env),
+							status: "active",
+							rev,
+						})
+						.pipe(Effect.flatMap(insertSpace));
 
-			// A concurrent primary claim cannot happen under the resolve lock, but
-			// the guard is cheap: the loser becomes a copy.
-			yield* write(input.kind).pipe(
-				Effect.catchIf(
-					(error) =>
-						input.kind === "primary" &&
-						SqlError.isSqlError(error) &&
-						error.reason._tag === "UniqueViolation" &&
-						error.reason.constraint.includes("space_primary_idx"),
-					() => write("copy"),
-				),
-				Effect.orDie,
-			);
-		});
+				// A concurrent primary claim cannot happen under the resolve lock, but
+				// the guard is cheap: the loser becomes a copy.
+				yield* write(input.kind).pipe(
+					Effect.catchIf(
+						(error) =>
+							input.kind === "primary" &&
+							SqlError.isSqlError(error) &&
+							error.reason._tag === "UniqueViolation" &&
+							error.reason.constraint.includes("space_primary_idx"),
+						() => write("copy"),
+					),
+					Effect.orDie,
+				);
+			},
+			store.write,
+			Effect.orDie,
+		);
 
-		const absorb = Effect.fn("Space.absorb")(function* (input: AbsorbInput) {
-			yield* sql`UPDATE session SET space_id = ${input.into} WHERE space_id = ${input.strayId}`;
-			yield* sql`DELETE FROM space WHERE id = ${input.strayId}`;
-		}, Effect.orDie);
+		const absorb = Effect.fn("Space.absorb")(
+			function* (input: AbsorbInput) {
+				const rev = yield* store.rev;
+				yield* sql`UPDATE session SET space_id = ${input.into}, rev = ${rev} WHERE space_id = ${input.strayId}`;
+				yield* sql`DELETE FROM space WHERE id = ${input.strayId}`;
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		return Service.of({
 			get,
 			list,
 			refresh,
-			archiveEnv: (target) => archiveEnv(target).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			archiveEnv: (target) =>
+				archiveEnv(target).pipe(
+					Effect.provideService(SqlClient.SqlClient, sql),
+					Effect.provideService(Store.Service, store),
+				),
 			rehome,
 			absorb,
 		});

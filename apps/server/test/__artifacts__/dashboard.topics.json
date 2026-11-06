@@ -1,0 +1,150 @@
+{
+	"steps": [
+		{
+			"step": "move A between D and C",
+			"topic": "sync/tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread A>",
+				"ordering": -2.5
+			},
+			"after": [
+				{
+					"list": "working",
+					"names": []
+				},
+				{
+					"list": "attention",
+					"names": []
+				},
+				{
+					"list": "settled",
+					"names": [
+						"A fork",
+						"D",
+						"A",
+						"C",
+						"B"
+					]
+				},
+				{
+					"list": "cancelled",
+					"names": []
+				}
+			]
+		},
+		{
+			"step": "set B attention",
+			"topic": "sync/status",
+			"payload": {
+				"threadId": "<thread B>",
+				"status": "attention",
+				"previous": "settled",
+				"at": "<time>"
+			},
+			"after": [
+				{
+					"list": "working",
+					"names": []
+				},
+				{
+					"list": "attention",
+					"names": [
+						"B"
+					]
+				},
+				{
+					"list": "settled",
+					"names": [
+						"A fork",
+						"D",
+						"A",
+						"C"
+					]
+				},
+				{
+					"list": "cancelled",
+					"names": []
+				}
+			]
+		},
+		{
+			"step": "put C in a group",
+			"topic": "sync/tracking",
+			"payload": {
+				"_tag": "Thread",
+				"threadId": "<thread C>",
+				"groupingId": "<group>"
+			},
+			"after": [
+				{
+					"list": "<group>",
+					"names": [
+						"C"
+					]
+				},
+				{
+					"list": null,
+					"names": [
+						"A fork",
+						"D",
+						"A",
+						"B"
+					]
+				}
+			]
+		},
+		{
+			"step": "rename the group",
+			"topic": "sync/tracking",
+			"payload": {
+				"_tag": "Group",
+				"id": "<group>",
+				"organizationId": "personal",
+				"name": "Later",
+				"color": null,
+				"ordering": 0
+			},
+			"after": [
+				{
+					"list": "<group>",
+					"names": [
+						"C"
+					]
+				},
+				{
+					"list": null,
+					"names": [
+						"A fork",
+						"D",
+						"A",
+						"B"
+					]
+				}
+			]
+		},
+		{
+			"step": "delete the group",
+			"topic": "sync/tracking",
+			"payload": {
+				"_tag": "GroupDeleted",
+				"groupingId": "<group>",
+				"threads": [
+					"<thread C>"
+				]
+			},
+			"after": [
+				{
+					"list": null,
+					"names": [
+						"A fork",
+						"D",
+						"A",
+						"C",
+						"B"
+					]
+				}
+			]
+		}
+	]
+}

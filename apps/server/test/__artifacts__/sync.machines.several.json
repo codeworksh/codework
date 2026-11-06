@@ -1,0 +1,38 @@
+{
+	"projects": [
+		{
+			"machine_id": "<machine fedora>",
+			"id": "<id 1>",
+			"name": "codework"
+		},
+		{
+			"machine_id": "<machine cw-a>",
+			"id": "<id 1>",
+			"name": "codework"
+		}
+	],
+	"routed": {
+		"fedora": {
+			"machine": "<machine fedora>",
+			"sameAsItsMachine": true
+		},
+		"cw-a": {
+			"machine": "<machine cw-a>",
+			"sameAsItsMachine": true
+		}
+	},
+	"beforeRemove": {
+		"project": 2,
+		"space": 2,
+		"session": 4,
+		"thread": 1,
+		"entry": 2
+	},
+	"afterRemove": {
+		"project": 0,
+		"space": 0,
+		"session": 0,
+		"thread": 0,
+		"entry": 0
+	}
+}

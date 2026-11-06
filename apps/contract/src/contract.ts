@@ -1,31 +1,59 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
-import { Clone, ClonePhase, CloneStage, Folder, ModelList, Repository } from "@codeworksh/widget/codework";
+import {
+	CodeworkUnavailable,
+	LineRequest,
+	LineThread,
+	SyncError,
+	SyncThread,
+	ThreadLine,
+} from "@codeworksh/widget/backend";
+import {
+	Clone,
+	ClonePhase,
+	CloneStage,
+	Folder,
+	ModelList,
+	Repository,
+	RunState,
+	SpaceInfo,
+} from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
-/** A conversation with the agent, as listed under its project. */
-export const SessionSummary = Schema.Struct({
-	id: Schema.String,
-	title: Schema.String,
-	/** Last activity, epoch milliseconds. */
-	updated: Schema.Number,
-	/** The model chosen for the session; absent when settings decide. */
-	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-});
-export type SessionSummary = typeof SessionSummary.Type;
+export { CodeworkUnavailable, LineRequest, LineThread, SyncError, SyncThread, ThreadLine };
 
-export const Project = Schema.Struct({
+/** The organization the UI shows until auth exists; every synced project starts in it. */
+export const PERSONAL_ORGANIZATION = "personal";
+
+/** A session as the sidebar lists it: its space's kind, its color and its main thread. */
+export const SidebarSession = Schema.Struct({
+	id: Schema.String,
+	/** Its main thread. */
+	threadId: Schema.String,
+	spaceKind: SpaceInfo.fields.kind,
+	/** Hex; null is the default. */
+	color: Schema.NullOr(Schema.String),
+	/** The main thread's title, or what an untitled one is called. */
+	title: Schema.String,
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	runState: RunState,
+	/** The session's last activity: the newest change to any of its threads, forks included; epoch milliseconds. */
+	updated: Schema.Finite,
+	/** The host folder it is anchored to, else its directory. */
+	path: Schema.String,
+});
+export type SidebarSession = typeof SidebarSession.Type;
+
+/** An active project with its sessions, newest first, and the machine it is on. */
+export const SidebarProject = Schema.Struct({
+	machine: Schema.Struct({ id: Schema.String, name: Schema.String }),
 	id: Schema.String,
 	name: Schema.String,
+	/** Its newest session's folder, else its primary space's location: where it was last worked on. */
 	path: Schema.String,
-	sessions: Schema.Array(SessionSummary),
+	sessions: Schema.Array(SidebarSession),
 });
-export type Project = typeof Project.Type;
-
-/** The CodeWork server that owns projects and sessions is not running, or did not answer. */
-export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
-	message: Schema.String,
-}) {}
+export type SidebarProject = typeof SidebarProject.Type;
 
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
@@ -143,16 +171,16 @@ export const CliEnvVar = Schema.Struct({
 });
 export type CliEnvVar = typeof CliEnvVar.Type;
 
-/** Only servers on this machine for now; remote ones come later. */
-export const ServerKind = Schema.Literals(["local"]);
+/** A server on this computer (local), or one hosted elsewhere that the app reaches at its URL (remote). */
+export const ServerKind = Schema.Literals(["local", "remote"]);
 
 /** The server the app always has, which cannot be removed. */
 export const LOCAL_SERVER = "local";
 
-/** A server and how it is set up, with its executable and process as found when listed. */
-export const ServerStatus = Schema.Struct({
+/** A local server and how it is set up, with its executable and process as found when listed. */
+export const LocalServerStatus = Schema.Struct({
 	id: Schema.String,
-	kind: ServerKind,
+	kind: Schema.Literal("local"),
 	name: Schema.String,
 	/** The one the app connects to. */
 	isDefault: Schema.Boolean,
@@ -168,6 +196,19 @@ export const ServerStatus = Schema.Struct({
 	args: Schema.String,
 	env: Schema.Array(CliEnvVar),
 });
+export type LocalServerStatus = typeof LocalServerStatus.Type;
+
+/** A remote server: only where to reach it; it has no executable or home here. */
+export const RemoteServerStatus = Schema.Struct({
+	id: Schema.String,
+	kind: Schema.Literal("remote"),
+	name: Schema.String,
+	isDefault: Schema.Boolean,
+	url: Schema.String,
+});
+export type RemoteServerStatus = typeof RemoteServerStatus.Type;
+
+export const ServerStatus = Schema.Union([LocalServerStatus, RemoteServerStatus]);
 export type ServerStatus = typeof ServerStatus.Type;
 
 /** How often every server is checked again in the background. */
@@ -182,18 +223,25 @@ export const DEFAULT_SERVER_HEALTH: ServerHealth = { interval: 300 };
 export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
-/** A new local server: it needs a home of its own, since a home names one server. */
-export const ServerAdd = Schema.Struct({
-	name: Schema.String,
-	executable: Schema.NullOr(Schema.String),
-	home: Schema.String,
-	args: Schema.String,
-});
+/**
+ * A new server. A local one needs a home of its own, since a home names one server; a remote one
+ * needs its WebSocket URL.
+ */
+export const ServerAdd = Schema.Union([
+	Schema.Struct({
+		kind: Schema.Literal("local"),
+		name: Schema.String,
+		executable: Schema.NullOr(Schema.String),
+		home: Schema.String,
+		args: Schema.String,
+	}),
+	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.String, url: Schema.String }),
+]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * `env` replaces every variable.
+ * `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -202,6 +250,7 @@ export const ServerUpdate = Schema.Struct({
 	home: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
+	url: Schema.optionalKey(Schema.String),
 });
 export type ServerUpdate = typeof ServerUpdate.Type;
 
@@ -211,13 +260,181 @@ export class ServersError extends Schema.TaggedError<ServersError>()("Server.Ser
 	message: Schema.String,
 }) {}
 
+/** The app bus topics the sync publishes on. */
+export const syncTopics = {
+	/** `SyncChanged` after each applied batch; stored. */
+	changed: "sync/changed",
+	/** `SyncStatus` whenever a thread's status moves; stored, in the transaction that moved it. */
+	status: "sync/status",
+	/** A thread's live text and thinking deltas (`LiveDelta`) that continue its draft; never stored. */
+	delta: (threadId: string) => `sync/delta/${threadId}`,
+	/** `SyncTracking` whenever the user edits a desktop column other than status; stored, in the transaction that wrote it. */
+	tracking: "sync/tracking",
+};
+
+/**
+ * The rows one applied batch wrote, by table, for one machine. Projects and spaces are keyed by
+ * `machineId` and id, the rest by id. `threadId` names the thread whose detail the batch was;
+ * `items` counts the rows it carried; `full` marks the first batch of a full sync.
+ */
+export const SyncChanged = Schema.Struct({
+	machineId: Schema.String,
+	threadId: Schema.optionalKey(Schema.String),
+	full: Schema.Boolean,
+	items: Schema.Int,
+	project: Schema.Array(Schema.String),
+	space: Schema.Array(Schema.String),
+	session: Schema.Array(Schema.String),
+	thread: Schema.Array(Schema.String),
+	entry: Schema.Array(Schema.String),
+	inbox: Schema.Array(Schema.String),
+	/** Sessions soft-deleted, with their threads. */
+	removed: Schema.Array(Schema.String),
+});
+export type SyncChanged = typeof SyncChanged.Type;
+
+export const ThreadStatus = Schema.Literals(["working", "settled", "attention", "cancelled"]);
+export type ThreadStatus = typeof ThreadStatus.Type;
+
+/** A thread's status moved; `at` is the app server's clock. */
+export const SyncStatus = Schema.Struct({
+	threadId: Schema.String,
+	status: ThreadStatus,
+	previous: ThreadStatus,
+	at: Schema.Number,
+});
+export type SyncStatus = typeof SyncStatus.Type;
+
+/** Linear's scale: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+export const Priority = Schema.Literals([0, 1, 2, 3, 4]);
+export type Priority = typeof Priority.Type;
+
+/** A custom group of an organization's threads, in its own `ordering`. */
+export const Grouping = Schema.Struct({
+	id: Schema.String,
+	organizationId: Schema.String,
+	name: Schema.String,
+	/** Hex, `#rrggbb`. */
+	color: Schema.NullOr(Schema.String),
+	ordering: Schema.Number,
+});
+export type Grouping = typeof Grouping.Type;
+
+/** Where a moved thread or group goes in its organization's list: first, last, or between two neighbours. */
+export const Position = Schema.Union([
+	Schema.Literals(["first", "last"]),
+	Schema.Struct({ after: Schema.String, before: Schema.String }),
+]);
+export type Position = typeof Position.Type;
+
+/**
+ * A user edit of a desktop column: a thread's (only the field that changed; a `null` group is
+ * ungrouped, a `null` color falls back to the session's), a session's color, a group created or
+ * changed (the whole row), or a group deleted with the threads it left ungrouped.
+ */
+export const SyncTracking = Schema.Union([
+	Schema.TaggedStruct("Thread", {
+		threadId: Schema.String,
+		priority: Schema.optionalKey(Priority),
+		groupingId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		ordering: Schema.optionalKey(Schema.Number),
+		color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	}),
+	Schema.TaggedStruct("Session", { sessionId: Schema.String, color: Schema.NullOr(Schema.String) }),
+	Schema.TaggedStruct("Group", Grouping.fields),
+	Schema.TaggedStruct("GroupDeleted", { groupingId: Schema.String, threads: Schema.Array(Schema.String) }),
+]);
+export type SyncTracking = typeof SyncTracking.Type;
+
+/** What the dashboard splits an organization's threads by. */
+export const DashboardBy = Schema.Literals(["status", "priority", "grouping"]);
+export type DashboardBy = typeof DashboardBy.Type;
+
+/** A thread as the dashboard lists it, with its desktop columns. */
+export const DashboardThread = Schema.Struct({
+	id: Schema.String,
+	sessionId: Schema.String,
+	originKind: Schema.Literals(["main", "fork"]),
+	/** Its own title, else its nearest titled ancestor's, else what an untitled one is called. */
+	title: Schema.String,
+	project: Schema.Struct({ id: Schema.String, name: Schema.String }),
+	runState: RunState,
+	status: ThreadStatus,
+	priority: Priority,
+	groupingId: Schema.NullOr(Schema.String),
+	ordering: Schema.Number,
+	/** Its own color, else its session's; null is the default. */
+	color: Schema.NullOr(Schema.String),
+	/** Last activity, epoch milliseconds. */
+	updatedAt: Schema.Number,
+});
+export type DashboardThread = typeof DashboardThread.Type;
+
+/** One list of the dashboard: the threads with one status, one priority, or in one group (`null` is ungrouped), in `ordering`. */
+export const DashboardList = Schema.Union([
+	Schema.TaggedStruct("Status", { status: ThreadStatus, threads: Schema.Array(DashboardThread) }),
+	Schema.TaggedStruct("Priority", { priority: Priority, threads: Schema.Array(DashboardThread) }),
+	Schema.TaggedStruct("Grouping", {
+		groupingId: Schema.NullOr(Schema.String),
+		threads: Schema.Array(DashboardThread),
+	}),
+]);
+export type DashboardList = typeof DashboardList.Type;
+
+/**
+ * An organization's threads split into lists, each present even when empty: by status, by priority
+ * (urgent first, none last), or by group (groups in their `ordering`, ungrouped last). The
+ * organization's groups come with it, in their `ordering`, whatever the split.
+ */
+export const Dashboard = Schema.Struct({
+	lists: Schema.Array(DashboardList),
+	groups: Schema.Array(Grouping),
+});
+export type Dashboard = typeof Dashboard.Type;
+
+/**
+ * The topics a client follows to keep each read current; it reads again when one fires.
+ * - `sidebar.list`: `sync/changed` naming a project, space, session or thread, or a removed session;
+ *   `sync/tracking` for a session's color.
+ * - `threads.line`: `sync/changed` whose `threadId` is the thread (its entries and inbox) or that
+ *   names a thread (the thread itself, or the ancestor an untitled fork takes its title from);
+ *   `sync/delta/<thread>` streams its draft between checkpoints.
+ * - `dashboard.list`: `sync/changed` naming a thread or a removed session; every `sync/status` and
+ *   `sync/tracking`.
+ */
+export const readTopics = {
+	sidebar: [syncTopics.changed, syncTopics.tracking],
+	dashboard: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
+	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
+};
+
+/** A desktop edit refused: a value out of range, or a thread, session, group or organization not found. */
+export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.TrackingError", {
+	message: Schema.String,
+}) {}
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
 export const Api = RpcGroup.make(
-	Rpc.make("projects.list", {
-		success: Schema.Array(Project),
-		error: CodeworkUnavailable,
+	/**
+	 * An organization's active projects, newest activity first, each with its sessions that are not
+	 * deleted: on the default machine only, or on every machine. Read from app.db alone.
+	 */
+	Rpc.make("sidebar.list", {
+		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },
+		success: Schema.Array(SidebarProject),
+	}),
+	/** One page of a thread's line with its pending inbox, read from app.db alone; below `floor`, `sync.page` first. */
+	Rpc.make("threads.line", {
+		payload: LineRequest,
+		success: ThreadLine,
+		error: SyncError,
+	}),
+	/** An organization's threads that are not deleted, subagents left out, split by `by` into lists in `ordering`. Read from app.db alone. */
+	Rpc.make("dashboard.list", {
+		payload: { organizationId: Schema.String, by: DashboardBy },
+		success: Dashboard,
 	}),
 	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
 	Rpc.make("models.list", {
@@ -361,17 +578,103 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: ServersError,
 	}),
-	/** The app reconnects through the new default's home at once. */
+	/** The app reconnects through the new default's home at once; only a local server can be the default. */
 	Rpc.make("servers.setDefault", {
 		payload: ServerId,
 		success: Schema.Void,
 		error: ServersError,
 	}),
-	/** Runs `codework service <action>` with the server's executable, home, arguments and variables. */
+	/** Runs `codework service <action>` with a local server's executable, home, arguments and variables. */
 	Rpc.make("servers.service", {
 		payload: { id: Schema.String, action: CliAction },
 		success: Schema.Void,
 		error: ServersError,
+	}),
+	/**
+	 * Keeps a thread's detail in sync while it is open: the first open stores its newest page, a
+	 * reopen resumes from where it stopped. Opens are counted; done once the detail is current, or
+	 * at once while its machine is unreachable.
+	 */
+	Rpc.make("sync.open", {
+		payload: SyncThread,
+		success: Schema.Void,
+	}),
+	/** Stops syncing a thread's detail once every open is closed; what is stored stays. */
+	Rpc.make("sync.close", {
+		payload: SyncThread,
+		success: Schema.Void,
+	}),
+	/** Stores up to `limit` entries of an opened thread's line below its floor; `floor` is the new one. */
+	Rpc.make("sync.page", {
+		payload: { ...SyncThread.fields, limit: Schema.Int },
+		success: Schema.Struct({ entries: Schema.Int, floor: Schema.NullOr(Schema.Int) }),
+		error: Schema.Union([CodeworkUnavailable, SyncError]),
+	}),
+	/** Sets a thread's status until its next run change; published on `sync/status`. */
+	Rpc.make("threads.setStatus", {
+		payload: { threadId: Schema.String, status: ThreadStatus },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** `priority` must be one of `Priority`. */
+	Rpc.make("threads.setPriority", {
+		payload: { threadId: Schema.String, priority: Schema.Int },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A hex `#rrggbb` color over the session's; `null` falls back to it. */
+	Rpc.make("threads.setColor", {
+		payload: { threadId: Schema.String, color: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** Puts a thread in a group of its organization; `null` ungroups it. */
+	Rpc.make("threads.setGroup", {
+		payload: { threadId: Schema.String, groupingId: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	Rpc.make("threads.move", {
+		payload: { threadId: Schema.String, to: Position },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A hex `#rrggbb` color; `null` is the default. */
+	Rpc.make("sessions.setColor", {
+		payload: { sessionId: Schema.String, color: Schema.NullOr(Schema.String) },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** A new group, last in its organization. */
+	Rpc.make("groups.create", {
+		payload: {
+			organizationId: Schema.String,
+			name: Schema.String,
+			color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		},
+		success: Grouping,
+		error: TrackingError,
+	}),
+	/** Renames or recolors a group; an absent field is left as it is. */
+	Rpc.make("groups.update", {
+		payload: {
+			groupingId: Schema.String,
+			name: Schema.optionalKey(Schema.String),
+			color: Schema.optionalKey(Schema.NullOr(Schema.String)),
+		},
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	Rpc.make("groups.move", {
+		payload: { groupingId: Schema.String, to: Position },
+		success: Schema.Void,
+		error: TrackingError,
+	}),
+	/** Its threads are left ungrouped. */
+	Rpc.make("groups.delete", {
+		payload: { groupingId: Schema.String },
+		success: Schema.Void,
+		error: TrackingError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

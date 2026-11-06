@@ -1,0 +1,22 @@
+{
+	"itemsInRevOrder": true,
+	"itemTags": [
+		"Project",
+		"Session",
+		"Space",
+		"Thread"
+	],
+	"syncedAtStoreHead": true,
+	"configureReachedIndexSync": true,
+	"app": {
+		"thinking_level": "high"
+	},
+	"refused": {
+		"update": "Runtime error near line 1: rev is not the current revision (19)",
+		"insert": "Runtime error near line 1: rev is not the current revision (19)"
+	},
+	"headWithoutIncrement": {
+		"accepted": true,
+		"storeRevMoved": false
+	}
+}

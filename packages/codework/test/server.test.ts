@@ -998,7 +998,12 @@ describe("WebSocket client", () => {
 				afterDelete,
 			};
 			expect(replies).toEqual(["response 1", "response 2"]);
-			expect(at.thread.origin).toEqual({ kind: "fork", threadId: main.id, entryId: assistant.id });
+			expect(at.thread.origin).toEqual({
+				kind: "fork",
+				threadId: main.id,
+				entryId: assistant.id,
+				cut: expect.any(Number),
+			});
 			expect(before.text).toBe("branch");
 			expect(histories.at.map(({ thread }) => thread)).toEqual(["<main>", "<main>", "<at>", "<at>"]);
 			expect(histories.main).toHaveLength(2);

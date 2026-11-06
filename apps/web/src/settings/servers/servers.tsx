@@ -1,5 +1,5 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { DEFAULT_SERVER_HEALTH } from "@codeworksh/contract";
+import { DEFAULT_SERVER_HEALTH, type LocalServerStatus } from "@codeworksh/contract";
 import { Minus, Plus, RefreshCw, Undo2 } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
@@ -23,7 +23,10 @@ export function ServersSettings() {
 	const result = useAtomValue(serversAtom);
 	const [check, runCheck] = useAtom(checkAtom);
 	const checking = check.waiting;
-	const servers = AsyncResult.isSuccess(result) ? result.value : undefined;
+	// Remote servers are not shown here yet.
+	const servers = AsyncResult.isSuccess(result)
+		? result.value.filter((server): server is LocalServerStatus => server.kind === "local")
+		: undefined;
 	// The status is held from launch (see the root route), so opening the page shows it at once and
 	// checks again behind it.
 	useEffect(() => runCheck({ payload: undefined }), []);

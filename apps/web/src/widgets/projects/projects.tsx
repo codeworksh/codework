@@ -23,7 +23,7 @@ export function Projects() {
 		onSuccess: ({ value: projects }) => (
 			<ul className="h-full overflow-auto px-1.5 pb-2">
 				{projects.map((project) => (
-					<li key={project.id} className="mb-2">
+					<li key={`${project.machine.id}/${project.id}`} className="mb-2">
 						<div className="flex items-center gap-1.5 px-1.5 py-1" title={project.path}>
 							<Folder className="size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />
 							<span className="truncate font-medium">{project.name}</span>

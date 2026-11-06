@@ -4,10 +4,12 @@ import { AppWindow, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { isMac } from "@codeworksh/widget/view";
-import { PixelLoader } from "@/components/loader";
 import { registry } from "../widgets";
 import { threadRef } from "../widgets/session/address";
-import { workingAtom } from "../widgets/session/projects";
+import { useRunDisplay } from "../widgets/session/display";
+import { threadKey } from "../widgets/session/schema";
+import { runStatesAtom } from "../widgets/session/projects";
+import { RunMark } from "../widgets/session/run";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
 import {
@@ -35,7 +37,12 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const owners = useAtomValue(tabOwnerAtom);
-	const working = useAtomValue(workingAtom);
+	// Each frame's own thread: a fork's tab spins for the fork's run, not its session's main thread.
+	const keyOf = (address: string | undefined) => {
+		const ref = threadRef(address);
+		return ref === undefined ? "" : threadKey(ref);
+	};
+	const runStates = useAtomValue(runStatesAtom(instances.map((instance) => keyOf(instance.address)).join("\n")));
 	const navigate = useNavigate();
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
@@ -107,11 +114,12 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
-				const busy = instances.some(
-					(instance) =>
-						(instance.tags & workspaceTag(workspace)) !== 0 &&
-						working.has(threadRef(instance.address)?.sessionId ?? ""),
-				);
+				const threads = instances.flatMap((instance) => {
+					const key = keyOf(instance.address);
+					return key !== "" && (instance.tags & workspaceTag(workspace)) !== 0
+						? [{ key, runState: runStates.get(key) ?? "idle" }]
+						: [];
+				});
 				return (
 					<div key={workspace.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
 						<Link
@@ -124,13 +132,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 									: "bg-ink/4 text-ink-muted hover:bg-selection hover:text-ink"
 							}`}
 						>
-							<span
-								role={busy ? "img" : undefined}
-								aria-label={busy ? "Agent working" : undefined}
-								className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}
-							>
-								{busy ? <PixelLoader /> : <AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />}
-							</span>
+							<TabIcon threads={threads} current={current} />
 							<span className="truncate text-xs font-medium">{tab}</span>
 						</Link>
 						<button
@@ -146,6 +148,22 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 				);
 			})}
 		</nav>
+	);
+}
+
+/** A tab's icon: the run of the threads on its workspace that says most, else a window. */
+function TabIcon({
+	threads,
+	current,
+}: {
+	readonly threads: Parameters<typeof useRunDisplay>[0];
+	readonly current: boolean;
+}) {
+	const display = useRunDisplay(threads);
+	return (
+		<span className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}>
+			<RunMark display={display} idle={<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />} />
+		</span>
 	);
 }
 

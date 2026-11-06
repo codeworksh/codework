@@ -9,6 +9,10 @@
 			"text": "Keep crashing."
 		},
 		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Keep crashing."
@@ -20,13 +24,36 @@
 			"type": "session.llm.started"
 		},
 		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
 			"type": "session.llm.failed",
 			"reason": "error",
 			"errorMessage": "The host stopped while the model was answering, on attempt 1",
 			"parts": []
 		},
 		{
+			"type": "session.retry.scheduled",
+			"attempt": 1,
+			"maxRetries": 10,
+			"delayMs": 10,
+			"message": "The host stopped while the model was answering, on attempt 1"
+		},
+		{
 			"type": "session.llm.started"
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.llm.failed",
@@ -35,7 +62,22 @@
 			"parts": []
 		},
 		{
+			"type": "session.retry.scheduled",
+			"attempt": 2,
+			"maxRetries": 10,
+			"delayMs": 20,
+			"message": "The host stopped while the model was answering, on attempt 2"
+		},
+		{
 			"type": "session.llm.started"
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.llm.failed",
@@ -44,7 +86,22 @@
 			"parts": []
 		},
 		{
+			"type": "session.retry.scheduled",
+			"attempt": 3,
+			"maxRetries": 10,
+			"delayMs": 40,
+			"message": "The host stopped while the model was answering, on attempt 3"
+		},
+		{
 			"type": "session.llm.started"
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.llm.failed",
@@ -53,7 +110,22 @@
 			"parts": []
 		},
 		{
+			"type": "session.retry.scheduled",
+			"attempt": 4,
+			"maxRetries": 10,
+			"delayMs": 80,
+			"message": "The host stopped while the model was answering, on attempt 4"
+		},
+		{
 			"type": "session.llm.started"
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
 		},
 		{
 			"type": "session.llm.failed",
@@ -70,6 +142,10 @@
 			"type": "session.prompt.admitted",
 			"delivery": "steer",
 			"text": "Try again."
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": false
 		},
 		{
 			"type": "session.prompt.promoted",
@@ -90,6 +166,9 @@
 		},
 		{
 			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.execution.succeeded"
 		}
 	],
 	"history": [
@@ -146,6 +225,19 @@
 			]
 		}
 	],
+	"run": {
+		"state": "idle",
+		"stateAt": "30 session.run.failed",
+		"startedAt": "28 session.execution.started",
+		"endedAt": "30 session.run.failed",
+		"outcome": "failed",
+		"error": {
+			"_tag": "runFailed",
+			"reason": "crashloop",
+			"message": "The run was interrupted 5 times in a row; it is not resumed again"
+		},
+		"execution": null
+	},
 	"requests": [
 		[
 			{

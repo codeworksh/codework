@@ -1,0 +1,33 @@
+{
+	"sessions": {
+		"before": 400,
+		"during": 30
+	},
+	"rows": {
+		"project": {
+			"app": 1,
+			"harness": 1
+		},
+		"space": {
+			"app": 1,
+			"harness": 1
+		},
+		"session": {
+			"app": 430,
+			"harness": 430
+		},
+		"thread": {
+			"app": 430,
+			"harness": 430
+		}
+	},
+	"missing": [],
+	"projects": [
+		{
+			"id": "<id 1>",
+			"machine_id": "<machine cw-a>",
+			"name": "work",
+			"status": "active"
+		}
+	]
+}

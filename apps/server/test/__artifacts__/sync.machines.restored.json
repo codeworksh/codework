@@ -1,0 +1,178 @@
+{
+	"heads": [
+		{
+			"rev": "<rev 1>"
+		},
+		{
+			"rev": "<rev 0>"
+		}
+	],
+	"full": [
+		{
+			"machineId": "<machine cw-b>",
+			"full": true,
+			"items": 4,
+			"project": [
+				"<id 1>"
+			],
+			"space": [
+				"<id 2>"
+			],
+			"session": [
+				"<ses 1>"
+			],
+			"thread": [
+				"<thr 1>"
+			],
+			"entry": [],
+			"inbox": [],
+			"removed": [
+				"<ses 2>"
+			]
+		}
+	],
+	"project": [
+		{
+			"machine_id": "<machine cw-b>",
+			"id": "<id 1>",
+			"organization_id": "personal",
+			"namespace": "codework",
+			"name": "work",
+			"status": "active",
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"space": [
+		{
+			"machine_id": "<machine cw-b>",
+			"id": "<id 2>",
+			"organization_id": "personal",
+			"project_id": "<id 1>",
+			"location": "<home>/cw-home/work",
+			"kind": "plain",
+			"env": null,
+			"status": "active",
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"session": [
+		{
+			"id": "<ses 1>",
+			"machine_id": "<machine cw-b>",
+			"organization_id": "personal",
+			"space_id": "<id 2>",
+			"slug": "<id 3>",
+			"dir": "<home>/cw-home/work",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": "#00aa88",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<ses 2>",
+			"machine_id": "<machine cw-b>",
+			"organization_id": "personal",
+			"space_id": "<id 2>",
+			"slug": "<id 4>",
+			"dir": "<home>/cw-home/work",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": null,
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	],
+	"thread": [
+		{
+			"id": "<thr 1>",
+			"organization_id": "personal",
+			"session_id": "<ses 1>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "Before backup",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 1,
+			"tokens_output": 1,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "attention",
+			"status_at": "<time>",
+			"priority": 2,
+			"grouping_id": null,
+			"ordering": -436,
+			"color": "#ff8800",
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<thr 2>",
+			"organization_id": "personal",
+			"session_id": "<ses 2>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "After backup",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 1,
+			"tokens_output": 1,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "settled",
+			"status_at": "<time>",
+			"priority": 0,
+			"grouping_id": null,
+			"ordering": -437,
+			"color": null,
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	]
+}

@@ -1,0 +1,175 @@
+{
+	"moves": [
+		{
+			"table": "thread",
+			"name": "A",
+			"to": "first",
+			"list": [
+				{
+					"name": "A",
+					"ordering": -4
+				},
+				{
+					"name": "D",
+					"ordering": -3
+				},
+				{
+					"name": "C",
+					"ordering": -2
+				},
+				{
+					"name": "B",
+					"ordering": -1
+				}
+			],
+			"event": {
+				"_tag": "Thread",
+				"threadId": "<A>",
+				"ordering": -4
+			}
+		},
+		{
+			"table": "thread",
+			"name": "B",
+			"to": {
+				"after": "<A>",
+				"before": "<D>"
+			},
+			"list": [
+				{
+					"name": "A",
+					"ordering": -4
+				},
+				{
+					"name": "B",
+					"ordering": -3.5
+				},
+				{
+					"name": "D",
+					"ordering": -3
+				},
+				{
+					"name": "C",
+					"ordering": -2
+				}
+			],
+			"event": {
+				"_tag": "Thread",
+				"threadId": "<B>",
+				"ordering": -3.5
+			}
+		},
+		{
+			"table": "thread",
+			"name": "D",
+			"to": "last",
+			"list": [
+				{
+					"name": "A",
+					"ordering": -4
+				},
+				{
+					"name": "B",
+					"ordering": -3.5
+				},
+				{
+					"name": "C",
+					"ordering": -2
+				},
+				{
+					"name": "D",
+					"ordering": -1
+				}
+			],
+			"event": {
+				"_tag": "Thread",
+				"threadId": "<D>",
+				"ordering": -1
+			}
+		},
+		{
+			"table": "grouping",
+			"name": "G3",
+			"to": "first",
+			"list": [
+				{
+					"name": "G3",
+					"ordering": -1
+				},
+				{
+					"name": "G1",
+					"ordering": 0
+				},
+				{
+					"name": "G2",
+					"ordering": 1
+				}
+			],
+			"event": {
+				"_tag": "Group",
+				"id": "<G3>",
+				"organizationId": "personal",
+				"name": "G3",
+				"color": null,
+				"ordering": -1
+			}
+		},
+		{
+			"table": "grouping",
+			"name": "G2",
+			"to": {
+				"after": "<G3>",
+				"before": "<G1>"
+			},
+			"list": [
+				{
+					"name": "G3",
+					"ordering": -1
+				},
+				{
+					"name": "G2",
+					"ordering": -0.5
+				},
+				{
+					"name": "G1",
+					"ordering": 0
+				}
+			],
+			"event": {
+				"_tag": "Group",
+				"id": "<G2>",
+				"organizationId": "personal",
+				"name": "G2",
+				"color": null,
+				"ordering": -0.5
+			}
+		},
+		{
+			"table": "grouping",
+			"name": "G3",
+			"to": "last",
+			"list": [
+				{
+					"name": "G2",
+					"ordering": -0.5
+				},
+				{
+					"name": "G1",
+					"ordering": 0
+				},
+				{
+					"name": "G3",
+					"ordering": 1
+				}
+			],
+			"event": {
+				"_tag": "Group",
+				"id": "<G3>",
+				"organizationId": "personal",
+				"name": "G3",
+				"color": null,
+				"ordering": 1
+			}
+		}
+	]
+}

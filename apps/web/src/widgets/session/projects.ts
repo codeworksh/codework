@@ -1,42 +1,111 @@
-import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Option, Schema } from "effect";
+import { useAtomValue } from "@effect/atom-react";
+import { PERSONAL_ORGANIZATION, readTopics, SyncChanged, SyncTracking, syncTopics } from "@codeworksh/contract";
+import type { RunState } from "@codeworksh/widget/codework";
+import type { Event } from "@codeworksh/widget/event";
+import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useContext, useEffect, useMemo } from "react";
 
-import { makeHost } from "../../kernel/host";
 import { Server } from "../../kernel/rpc";
-import { codeworkKey } from "../../kernel/servers";
-import { Json, topics } from "./schema";
 
-const decodeActivity = Schema.decodeUnknownOption(Json.Activity);
+const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
+const decodeTracking = Schema.decodeUnknownOption(SyncTracking);
 
-/** Every project with its sessions, as the sidebar lists them; refresh it once a new session exists. */
-export const projectsAtom = Server.query("projects.list", undefined, { reactivityKeys: codeworkKey });
+/** Whether an event changes what the sidebar shows: an index row, a removed session, or a session's color. */
+const touches = (event: Event) =>
+	event.topic === syncTopics.changed
+		? Option.exists(
+				decodeChanged(event.payload),
+				(notice) =>
+					notice.project.length +
+						notice.space.length +
+						notice.session.length +
+						notice.thread.length +
+						notice.removed.length >
+					0,
+			)
+		: Option.exists(decodeTracking(event.payload), (edit) => edit._tag === "Session");
 
-/** The sessions the agent works on, followed or not, as the Session backend sees runs start and end. */
-export const workingAtom = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
+/**
+ * Every active project with its sessions, on every machine, as the sidebar lists them: read from the
+ * app's synced copy when subscribed, and again after each change to it.
+ */
+export const projectsAtom = Server.runtime
+	.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: readTopics.sidebar }).pipe(
+						// `Synced` first, once subscribed: the first read can miss no change.
+						Stream.filter((item) => "_tag" in item || touches(item)),
+						Stream.debounce("50 millis"),
+						Stream.mapEffect(() =>
+							client("sidebar.list", { organizationId: PERSONAL_ORGANIZATION, machines: "all" }),
+						),
+					),
+				),
+			),
+		).pipe(
+			// The app server is local, so a dropped stream is only a moment's gap.
+			Stream.retry(Schedule.spaced("1 second")),
+		),
+	)
+	.pipe(Atom.keepAlive);
 
-/** Keeps {@link workingAtom} current; mounted once, at the app's root. */
-export function useWorkingFeed() {
-	const registry = useContext(RegistryContext);
-	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "activity" }).bus, [registry]);
-	const setWorking = useAtomSet(workingAtom);
-	useEffect(() => {
-		// A live change beats the answer to the first read, which may have been taken before it.
-		let live = false;
-		const apply = (payload: unknown) =>
-			Option.map(decodeActivity(payload), ({ working }) => setWorking(new Set(working)));
-		const stop = bus.subscribe({ topics: [topics.working] }, (item) => {
-			if ("_tag" in item) return;
-			live = true;
-			apply(item.payload);
-		});
-		bus.request({ topic: topics.activity, payload: {} })
-			.then((reply) => live || apply(reply.payload))
-			.catch(() => undefined);
-		return stop;
-	}, [bus, setWorking]);
-}
+/** Each session's main thread's run state, as synced. */
+const mainRunStatesAtom = Atom.make((get) => {
+	const result = get(projectsAtom);
+	if (!AsyncResult.isSuccess(result)) return new Map<string, RunState>();
+	return new Map(
+		result.value.flatMap((project) => project.sessions.map((session) => [session.id, session.runState] as const)),
+	);
+});
+
+/** The run state of a thread other than its session's main one: its own synced row, read again as it changes. */
+const threadRunStateAtom = Atom.family((key: string) => {
+	const [sessionId = "", threadId = ""] = key.split("/");
+	return Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: [syncTopics.changed] }).pipe(
+						Stream.filter(
+							(item) =>
+								"_tag" in item ||
+								Option.exists(decodeChanged(item.payload), (notice) => notice.thread.includes(threadId)),
+						),
+						Stream.mapEffect(() =>
+							client("threads.line", { sessionId, threadId, limit: 0 }).pipe(
+								Effect.map((line) => line.thread.runState),
+								Effect.orElseSucceed((): RunState => "idle"),
+							),
+						),
+						Stream.changes,
+					),
+				),
+			),
+		).pipe(Stream.retry(Schedule.spaced("1 second"))),
+	);
+});
+
+/**
+ * The run state of each thread named by these {@link threadKey}s, one per line: a main thread as
+ * the sidebar has it, any other by its own row; idle until read.
+ */
+export const runStatesAtom = Atom.family((keys: string) =>
+	Atom.make((get) => {
+		const mains = get(mainRunStatesAtom);
+		return new Map(
+			keys
+				.split("\n")
+				.filter((key) => key !== "")
+				.map((key): [string, RunState] => {
+					if (!key.includes("/")) return [key, mains.get(key) ?? "idle"];
+					const thread = get(threadRunStateAtom(key));
+					return [key, AsyncResult.isSuccess(thread) ? thread.value : "idle"];
+				}),
+		);
+	}),
+);
 
 const listedAtom = Atom.family((id: string) =>
 	Atom.make((get) => {

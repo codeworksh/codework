@@ -1,0 +1,56 @@
+{
+	"steps": [
+		{
+			"step": "first seen",
+			"status": "settled",
+			"thinking_level": null
+		},
+		{
+			"step": "run succeeded",
+			"status": "attention",
+			"thinking_level": null
+		},
+		{
+			"step": "user settled",
+			"status": "settled",
+			"thinking_level": null
+		},
+		{
+			"step": "row without a run change",
+			"status": "settled",
+			"thinking_level": "high"
+		},
+		{
+			"step": "next run succeeded",
+			"status": "attention",
+			"thinking_level": "high"
+		}
+	],
+	"moves": [
+		{
+			"source": "sync",
+			"previous": "settled",
+			"status": "working"
+		},
+		{
+			"source": "sync",
+			"previous": "working",
+			"status": "attention"
+		},
+		{
+			"source": "tracking",
+			"previous": "attention",
+			"status": "settled"
+		},
+		{
+			"source": "sync",
+			"previous": "settled",
+			"status": "working"
+		},
+		{
+			"source": "sync",
+			"previous": "working",
+			"status": "attention"
+		}
+	]
+}

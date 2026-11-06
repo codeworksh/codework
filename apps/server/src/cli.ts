@@ -101,7 +101,7 @@ const found = Effect.gen(function* () {
 });
 
 /** The `codework` a server runs: the one chosen for it, else the one found. */
-const executableOf = (row: Servers.Row, foundOnce: typeof found) => {
+const executableOf = (row: Servers.LocalRow, foundOnce: typeof found) => {
 	const { executable } = row;
 	if (executable === null) return foundOnce;
 	const command = split(executable);
@@ -151,7 +151,7 @@ export const awaitConnection = Effect.gen(function* () {
 	);
 });
 
-/** Every server and how it is set up, with its executable and process as found now. */
+/** Every server and how it is set up, with a local one's executable and process as found now. */
 export const statuses = Effect.gen(function* () {
 	const servers = yield* Servers.Service;
 	const foundOnce = yield* Effect.cached(found);
@@ -159,6 +159,7 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
+				if (row.kind === "remote") return row satisfies ServerStatus;
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(
 					[executableOf(row, foundOnce), serverAt(home.path, row.isDefault)],
@@ -186,7 +187,7 @@ export const statuses = Effect.gen(function* () {
 
 // The CLI owns a server's lifecycle; the app only asks it, with the server's variables and in its
 // home, which a variable never overrides.
-export const service = Effect.fn("Cli.service")(function* (row: Servers.Row, action: CliAction) {
+export const service = Effect.fn("Cli.service")(function* (row: Servers.LocalRow, action: CliAction) {
 	const servers = yield* Servers.Service;
 	const cli = yield* executableOf(row, found);
 	if (cli === null || !("version" in cli))

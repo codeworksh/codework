@@ -58,6 +58,8 @@ export const HistoryEntry = Schema.Struct({
 	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
 	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
+	/** Bytes of its parts as the harness stores them; `thread.sync`'s budget counts it. */
+	size: Schema.Int,
 	/** Why a reply failed, as `provider/model: reason`; absent for one that ended normally or was stopped. */
 	error: Schema.optionalKey(Schema.String),
 });
@@ -67,27 +69,62 @@ export type HistoryEntry = typeof HistoryEntry.Type;
 export const ThinkingLevel = Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 export type ThinkingLevel = typeof ThinkingLevel.Type;
 
+/** One logical codebase, whatever env it is checked out in. */
+export const ProjectInfo = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	status: Schema.Literals(["active", "archived"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	updatedAt: Schema.Finite,
+});
+export type ProjectInfo = typeof ProjectInfo.Type;
+
+/** One directory of a project in one env; sessions attach to it. */
+export const SpaceInfo = Schema.Struct({
+	id: Schema.String,
+	projectId: Schema.String,
+	location: Schema.String,
+	kind: Schema.Literals(["primary", "linked", "copy", "plain"]),
+	/** The sandbox it is in; absent for the host. */
+	env: Schema.optionalKey(Schema.String),
+	status: Schema.Literals(["active", "archived"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	updatedAt: Schema.Finite,
+});
+export type SpaceInfo = typeof SpaceInfo.Type;
+
 export const SessionInfo = Schema.Struct({
 	id: Schema.String,
+	spaceId: Schema.String,
+	slug: Schema.String,
 	directory: Schema.String,
 	hostDir: Schema.optionalKey(Schema.String),
 	/** The sandbox the session runs in; absent for the host itself. */
 	sandbox: Schema.optionalKey(Schema.Struct({ driver: Schema.String })),
 	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	tag: Schema.optionalKey(Schema.String),
+	metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
 	updatedAt: Schema.Finite,
 	/** Where unaddressed prompts go. */
 	mainThreadId: Schema.String,
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
+/** `cut` is the committed seq of `entryId`: the inherited line ends there. */
 export const ThreadOrigin = Schema.Union([
 	Schema.Struct({ kind: Schema.Literal("main") }),
-	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String }),
+	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String, cut: Schema.Int }),
 	Schema.Struct({
 		kind: Schema.Literal("subagent"),
 		threadId: Schema.String,
 		callId: Schema.String,
 		entryId: Schema.optionalKey(Schema.String),
+		/** Present once `entryId` is committed. */
+		cut: Schema.optionalKey(Schema.Int),
 	}),
 ]);
 export type ThreadOrigin = typeof ThreadOrigin.Type;
@@ -103,8 +140,37 @@ export const ThreadUsage = Schema.Struct({
 });
 export type ThreadUsage = typeof ThreadUsage.Type;
 
-/** One linear transcript of a session, with the session embedded. */
-export const ThreadInfo = Schema.Struct({
+/** Where a thread's run is, as the harness stores it. */
+export const RunState = Schema.Literals(["idle", "starting", "running"]);
+export type RunState = typeof RunState.Type;
+
+export const RunOutcome = Schema.Literals(["succeeded", "failed", "interrupted"]);
+export type RunOutcome = typeof RunOutcome.Type;
+
+/** Why the last run did not succeed. */
+export const RunError = Schema.Union([
+	Schema.TaggedStruct("failed", {
+		error: Schema.Struct({ type: Schema.String, message: Schema.String, status: Schema.optionalKey(Schema.Int) }),
+	}),
+	Schema.TaggedStruct("runFailed", {
+		reason: Schema.Literals(["crashloop", "interrupted", "truncated"]),
+		message: Schema.String,
+	}),
+	Schema.TaggedStruct("interrupted", { reason: Schema.Literals(["user", "shutdown", "crash"]) }),
+]);
+export type RunError = typeof RunError.Type;
+
+/** The last run of a thread; `error` is set unless it succeeded or is still going. */
+export const ThreadRun = Schema.Struct({
+	/** Epoch milliseconds. */
+	startedAt: Schema.Finite,
+	endedAt: Schema.optionalKey(Schema.Finite),
+	outcome: Schema.optionalKey(RunOutcome),
+	error: Schema.optionalKey(RunError),
+});
+export type ThreadRun = typeof ThreadRun.Type;
+
+const ThreadFields = {
 	id: Schema.String,
 	origin: ThreadOrigin,
 	/** Absent until its first own prompt; a fork shows its source's title until then. */
@@ -117,12 +183,41 @@ export const ThreadInfo = Schema.Struct({
 	foundation: Schema.optionalKey(Schema.String),
 	/** Where it runs instead of the session's space and directory. */
 	placement: Schema.optionalKey(Schema.Struct({ spaceId: Schema.String, directory: Schema.String })),
-	/** Its unfinished run was cut off by restarts too often to resume on its own. */
-	parked: Schema.optionalKey(Schema.Boolean),
 	usage: ThreadUsage,
-	session: SessionInfo,
-});
+	runState: RunState,
+	/** When `runState` last changed, epoch milliseconds; absent before the first run. */
+	runStateAt: Schema.optionalKey(Schema.Finite),
+	/** Absent before the first run. */
+	lastRun: Schema.optionalKey(ThreadRun),
+	/** Automatic restarts of the current run. */
+	restarts: Schema.Int,
+	/** The 1-based provider request in flight; absent when none is. */
+	attempt: Schema.optionalKey(Schema.Int),
+	/** The seq of the session event that created it. */
+	createdSeq: Schema.Int,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+};
+
+/** One linear transcript of a session, with the session embedded. */
+export const ThreadInfo = Schema.Struct({ ...ThreadFields, session: SessionInfo });
 export type ThreadInfo = typeof ThreadInfo.Type;
+
+/** A thread as `index.sync` sends it: its session is a row of its own. */
+export const ThreadSummary = Schema.Struct({ ...ThreadFields, sessionId: Schema.String });
+export type ThreadSummary = typeof ThreadSummary.Type;
+
+/** An `index.sync` item: a row with the revision that last wrote it, a deletion, or progress. */
+export const IndexItem = Schema.Union([
+	Schema.TaggedStruct("Project", { project: ProjectInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Space", { space: SpaceInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Session", { session: SessionInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Thread", { thread: ThreadSummary, rev: Schema.Int }),
+	Schema.TaggedStruct("Removed", { kind: Schema.Literal("session"), id: Schema.String, rev: Schema.Int }),
+	/** Every row with a revision up to `rev` has been sent. */
+	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int }),
+]);
+export type IndexItem = typeof IndexItem.Type;
 
 /** What a client calls a thread its first prompt has not named yet. */
 export const UNTITLED = "Session";
@@ -155,10 +250,39 @@ export const QueuedPrompt = Schema.Struct({
 	id: Schema.String,
 	delivery: Delivery,
 	text: Schema.String,
+	/** The thread's sequence number at admission; orders the queue. */
+	admittedSeq: Schema.Int,
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
 });
 export type QueuedPrompt = typeof QueuedPrompt.Type;
+
+/** Text streamed into a reply's part since its last checkpoint; never stored. */
+export const LiveDelta = Schema.Struct({
+	/** The reply's entry id. */
+	entryId: Schema.String,
+	partIndex: Schema.Int,
+	kind: Schema.Literals(["text", "thinking"]),
+	/** The part's text length before this delta: apply it only where the held text ends there. */
+	offset: Schema.Int,
+	delta: Schema.String,
+});
+export type LiveDelta = typeof LiveDelta.Type;
+
+/** A `thread.sync` item: a row with the revision that last wrote it, progress, or a live delta. */
+export const ThreadItem = Schema.Union([
+	/** Upsert by entry id. */
+	Schema.TaggedStruct("Entry", { entry: HistoryEntry, rev: Schema.Int }),
+	Schema.TaggedStruct("Inbox", {
+		prompt: QueuedPrompt,
+		state: Schema.Literals(["pending", "promoted", "cancelled"]),
+		rev: Schema.Int,
+	}),
+	/** Every row with a revision up to `rev` has been sent; `floor`, on the first, is the oldest entry's seq. */
+	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int, floor: Schema.optionalKey(Schema.Int) }),
+	Schema.TaggedStruct("Delta", { delta: LiveDelta }),
+]);
+export type ThreadItem = typeof ThreadItem.Type;
 
 /** The server's "no such session" (the harness `SessionNotFoundError`), by its wire tag. */
 export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()("SessionNotFoundError", {
@@ -313,10 +437,61 @@ export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>
 
 const ThreadError = Schema.Union([SessionNotFoundError, ThreadNotFoundError]);
 
+/** The server's "cannot fork there" (the harness `ForkError`), by its wire tag. */
+export class ForkError extends Schema.TaggedError<ForkError>()("ForkError", {
+	threadId: Schema.String,
+	entryId: Schema.String,
+	reason: Schema.String,
+}) {}
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
-		success: Schema.Struct({ pid: Schema.Int, version: Schema.String }),
+		success: Schema.Struct({
+			pid: Schema.Int,
+			version: Schema.String,
+			/** The harness store this server serves; a sync cursor is only valid against it. */
+			storeId: Schema.String,
+			/** The store's head: the last revision taken. */
+			rev: Schema.Int,
+		}),
+	}),
+	/**
+	 * Every project, space, session and thread whose revision is past `after`, in revision order,
+	 * then `Synced`; then the same live after each commit. `after: 0` reads the whole index.
+	 */
+	Rpc.make("index.sync", {
+		payload: { after: Schema.Int },
+		success: IndexItem,
+		stream: true,
+	}),
+	/**
+	 * One thread's detail. Without `after`, the newest entries of its line within `budget` bytes and
+	 * its pending inbox, then `Synced` with `floor`; with `after`, its own rows past it. Then the same
+	 * live, with its text and thinking deltas between.
+	 */
+	Rpc.make("thread.sync", {
+		payload: {
+			sessionId: Schema.String,
+			threadId: Schema.String,
+			after: Schema.optionalKey(Schema.Int),
+			budget: Schema.optionalKey(Schema.Int),
+		},
+		success: ThreadItem,
+		error: Schema.Union([ThreadError, SubscriptionOverflowError, EventEncodingError]),
+		stream: true,
+	}),
+	/** Older entries of a thread's line, oldest first: the newest `limit` below `before`, cut to `budget` bytes. */
+	Rpc.make("thread.page", {
+		payload: {
+			sessionId: Schema.String,
+			threadId: Schema.String,
+			before: Schema.Int,
+			limit: Schema.Int,
+			budget: Schema.optionalKey(Schema.Int),
+		},
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
+		error: ThreadError,
 	}),
 	/**
 	 * `hostDir` anchors the session to a host folder; `directory` is a place inside its space.
@@ -352,6 +527,12 @@ export const Api = RpcGroup.make(
 		payload: { ...ThreadRef, runtime: RuntimeConfig },
 		success: ThreadInfo,
 		error: ThreadError,
+	}),
+	/** A new thread whose history continues from this one's line through `entryId`, which must be committed. */
+	Rpc.make("thread.fork", {
+		payload: { ...ThreadRef, entryId: Schema.String },
+		success: Schema.Struct({ thread: ThreadInfo }),
+		error: Schema.Union([ThreadError, ForkError]),
 	}),
 	Rpc.make("thread.info", {
 		payload: ThreadRef,

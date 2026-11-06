@@ -158,8 +158,38 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
+		// The run lifecycle onto the thread row, at each event's own time.
+		yield* events.project(EventList.ExecutionStarted, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, { _tag: "started" }),
+		);
+		yield* events.project(EventList.ExecutionSucceeded, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, { _tag: "ended", outcome: "succeeded" }),
+		);
+		yield* events.project(EventList.ExecutionFailed, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, {
+				_tag: "ended",
+				outcome: "failed",
+				error: { _tag: "failed", error: data.error },
+			}),
+		);
+		yield* events.project(EventList.ExecutionInterrupted, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, {
+				_tag: "ended",
+				outcome: "interrupted",
+				error: { _tag: "interrupted", reason: data.reason },
+			}),
+		);
+		yield* events.project(EventList.RunFailed, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, {
+				_tag: "ended",
+				outcome: "failed",
+				error: { _tag: "runFailed", reason: data.reason, message: data.message },
+			}),
+		);
+
 		yield* events.project(EventList.LLMStarted, (event) =>
 			Effect.gen(function* () {
+				yield* threads.projectRun(event.data.threadId, event.data.timestamp, { _tag: "running" });
 				const encoded = yield* encodeAssistant(event.data);
 				yield* threads
 					.append({

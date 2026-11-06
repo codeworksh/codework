@@ -1,0 +1,121 @@
+{
+	"cut": {
+		"origin_committed_seq": "<seq 2>"
+	},
+	"forkLine": [
+		{
+			"id": "<id 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 0>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 1>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 2>",
+			"thread_id": "<thr 2>",
+			"seq": "<seq 11>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 2>",
+			"thread_id": "<thr 2>",
+			"seq": "<seq 12>",
+			"type": "assistant",
+			"state": "committed"
+		}
+	],
+	"afterSourceOpened": [
+		{
+			"id": "<id 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 0>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 1>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 3>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 3>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 3>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 4>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 4>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 5>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 4>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 6>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 5>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 7>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 5>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 8>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 6>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 9>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 6>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 10>",
+			"type": "assistant",
+			"state": "committed"
+		},
+		{
+			"id": "<id 2>",
+			"thread_id": "<thr 2>",
+			"seq": "<seq 11>",
+			"type": "user",
+			"state": "committed"
+		},
+		{
+			"id": "<assistant 2>",
+			"thread_id": "<thr 2>",
+			"seq": "<seq 12>",
+			"type": "assistant",
+			"state": "committed"
+		}
+	]
+}

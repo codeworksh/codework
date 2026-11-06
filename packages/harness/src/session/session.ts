@@ -16,6 +16,7 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 import { Document } from "../document/document.ts";
 import { DocumentSchema } from "../document/schema.ts";
 import { Event } from "../event/event.ts";
@@ -203,6 +204,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		const events = yield* Event.Service;
 		const threads = yield* Thread.Service;
 		const documents = yield* Document.Service;
@@ -268,35 +270,37 @@ export const layer = Layer.effect(
 
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
-		const projectCreated = Effect.fn("Session.projectCreated")(function* (
-			data: EventList.SessionCreated["data"],
-			seq: number,
-		) {
-			const row = yield* SessionRow.insert.makeEffect({
-				id: data.sessionId,
-				spaceId: data.spaceId,
-				slug: data.slug,
-				directory: data.directory,
-				hostDir: Option.fromUndefinedOr(data.hostDir),
-				tag: Option.fromUndefinedOr(data.tag),
-				metadata: Option.fromUndefinedOr(data.metadata),
-			});
-			yield* insertSession(row);
-			yield* threads.insert({
-				id: data.threadId,
-				sessionId: data.sessionId,
-				origin: { kind: "main" },
-				...(data.title === undefined ? {} : { title: data.title }),
-				seq,
-			});
-			yield* documents.create({
-				sessionId: data.sessionId,
-				threadId: data.threadId,
-				definition: DocumentSchema.agent,
-				value: yield* Schema.encodeEffect(DocumentSchema.Agent)(data.agent),
-				seq,
-			});
-		}, Effect.orDie);
+		const projectCreated = Effect.fn("Session.projectCreated")(
+			function* (data: EventList.SessionCreated["data"], seq: number) {
+				const row = yield* SessionRow.insert.makeEffect({
+					id: data.sessionId,
+					spaceId: data.spaceId,
+					slug: data.slug,
+					directory: data.directory,
+					hostDir: Option.fromUndefinedOr(data.hostDir),
+					tag: Option.fromUndefinedOr(data.tag),
+					metadata: Option.fromUndefinedOr(data.metadata),
+					rev: yield* store.rev,
+				});
+				yield* insertSession(row);
+				yield* threads.insert({
+					id: data.threadId,
+					sessionId: data.sessionId,
+					origin: { kind: "main" },
+					...(data.title === undefined ? {} : { title: data.title }),
+					seq,
+				});
+				yield* documents.create({
+					sessionId: data.sessionId,
+					threadId: data.threadId,
+					definition: DocumentSchema.agent,
+					value: yield* Schema.encodeEffect(DocumentSchema.Agent)(data.agent),
+					seq,
+				});
+			},
+			store.write,
+			Effect.orDie,
+		);
 
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
 			const id = input.id ?? SessionSchema.ID.create();
@@ -385,10 +389,12 @@ export const layer = Layer.effect(
 			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
 			const now = yield* epochNow;
-			yield* sql`
-				UPDATE session SET host_dir = ${input.hostDir}, updated_at = ${now}
-				WHERE id = ${input.sessionId}
-			`.pipe(Effect.orDie);
+			yield* Effect.gen(function* () {
+				yield* sql`
+					UPDATE session SET host_dir = ${input.hostDir}, updated_at = ${now}, rev = ${yield* store.rev}
+					WHERE id = ${input.sessionId}
+				`;
+			}).pipe(store.write, Effect.orDie);
 			const updated = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(updated)) return yield* Effect.die(new Error("session link did not persist"));
 			return updated.value;
@@ -426,10 +432,13 @@ export const layer = Layer.effect(
 			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory_outside_space");
 			if (input.threadId === undefined) {
 				const now = yield* epochNow;
-				yield* sql`
-					UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now}
-					WHERE id = ${input.sessionId}
-				`.pipe(Effect.orDie);
+				yield* Effect.gen(function* () {
+					yield* sql`
+						UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now},
+							rev = ${yield* store.rev}
+						WHERE id = ${input.sessionId}
+					`;
+				}).pipe(store.write, Effect.orDie);
 			} else {
 				yield* events.publish(EventList.ThreadConfigured, {
 					timestamp: yield* DateTime.now,
@@ -443,14 +452,20 @@ export const layer = Layer.effect(
 			return updated.value;
 		});
 
-		// The log has no foreign key to the session, so both go in one transaction.
+		// The log has no foreign key to the session, so both go in one transaction. The tombstone lives
+		// outside the log, which goes with the session.
 		const remove = Effect.fn("Session.delete")(function* (sessionId: SessionSchema.ID) {
-			return yield* sql
-				.withTransaction(
+			return yield* store
+				.write(
 					Effect.gen(function* () {
 						const deleted = yield* sql`DELETE FROM session WHERE id = ${sessionId} RETURNING id`;
 						yield* sql`DELETE FROM sequence WHERE aggregate_id = ${sessionId}`;
-						return deleted.length > 0;
+						if (deleted.length === 0) return false;
+						yield* sql`
+							INSERT INTO removed (kind, id, rev) VALUES ('session', ${sessionId}, ${yield* store.rev})
+							ON CONFLICT (kind, id) DO UPDATE SET rev = excluded.rev
+						`;
+						return true;
 					}),
 				)
 				.pipe(Effect.orDie);

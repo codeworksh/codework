@@ -21,6 +21,9 @@ export const Timestamps = {
 
 const Metadata = Schema.Record(Schema.String, Schema.String);
 
+// The revision of the write transaction that last wrote the row (db/store.ts).
+const Rev = NonNegativeInt;
+
 // Session entry discriminant. Frozen once shipped — values live in persisted
 // rows, so a rename is a data migration. Additions are code-only (the column is unconstrained TEXT).
 export const entryTypes = ["user", "assistant", "synthetic", "system", "compaction", "reset", "custom"] as const;
@@ -74,6 +77,7 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	name: Schema.String,
 	status: ProjectSchema.Status,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 /**
@@ -115,6 +119,7 @@ export class SpaceRow extends Model.Class<SpaceRow>("SpaceRow")({
 	env: Model.FieldOption(SandboxInstance.ID),
 	status: SpaceSchema.Status,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
@@ -129,6 +134,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // One linear transcript of a session. `origin*` is the flattened `ThreadSchema.Origin`.
@@ -142,6 +148,14 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	// Absent until the thread's first own prompt names it.
 	title: Model.FieldOption(Schema.String),
 	execution: Model.FieldOption(ThreadSchema.Execution),
+	// The run lifecycle, written only by the session projector (`Thread.projectRun`). `runStateAt` is
+	// when `runState` last changed; the rest describe the last run, absent before the first.
+	runState: Model.GeneratedByDb(ThreadSchema.RunState),
+	runStateAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runStartedAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runEndedAt: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.DateTimeUtcFromMillis)),
+	runOutcome: Model.GeneratedByDb(Schema.OptionFromNullOr(ThreadSchema.RunOutcome)),
+	runError: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.fromJsonString(ThreadSchema.RunError))),
 	restarts: Model.GeneratedByDb(Schema.Int),
 	// The 1-based number of the provider request in flight, from its start until its response ends, the
 	// turn commits or the run ends: still set on recovery, the host died with that request out.
@@ -154,6 +168,7 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	tokensCacheWrite: Model.GeneratedByDb(Schema.Int),
 	createdSeq: NonNegativeInt,
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // Work addressed to one thread, from admission to delivery. `kind` + `data` is the flattened item;
@@ -169,6 +184,7 @@ export class InboxRow extends Model.Class<InboxRow>("InboxRow")({
 	promotedSeq: Model.FieldOption(Schema.Int),
 	cancelledSeq: Model.FieldOption(Schema.Int),
 	createdAt: Model.DateTimeInsertFromNumber,
+	rev: Rev,
 }) {}
 
 // One transcript record in one thread. Immutable except a draft assistant, whose `data` and
@@ -188,6 +204,7 @@ export class EntryRow extends Model.Class<EntryRow>("EntryRow")({
 	label: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	...Timestamps,
+	rev: Rev,
 }) {}
 
 // One aikit message part. `data` is the verbatim aikit part JSON and is authoritative;

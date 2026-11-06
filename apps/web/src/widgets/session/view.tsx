@@ -1,6 +1,6 @@
-import { RegistryContext, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { type HistoryEntry, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
-import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
+import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
@@ -11,17 +11,20 @@ import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
 import { Monogram } from "@/components/monogram";
 import { useModelName, useModelsNotice } from "@/components/model";
-import { threadRef } from "./address";
+import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
-import { projectsAtom, useListedSession } from "./projects";
+import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
+import { useListedSession } from "./projects";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
+const decodeForked = Schema.decodeUnknownOption(Json.Forked);
+const encodeFork = Schema.encodeSync(Json.Fork);
 const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 const samePart = Schema.toEquivalence(Part);
@@ -56,18 +59,13 @@ type State =
 			readonly queued: readonly QueuedPrompt[];
 			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
-			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
-			readonly running: boolean | undefined;
-			/** Why the last run failed, until another one starts. */
-			readonly failure?: Notice;
+			/** Parts streamed into replies not in `messages` yet, by entry id; merged in once each lands. */
+			readonly early?: ReadonlyMap<string, readonly Part[]>;
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
 
-const isRunning = (state: Ready) => {
-	const last = state.messages.at(-1);
-	return state.running ?? (last?.role === "assistant" && last.state === "draft");
-};
+const isRunning = (state: Ready) => state.info.runState !== "idle";
 
 /*
  * The threads opened lately, as last shown: switching back to one renders it on the first frame
@@ -96,22 +94,53 @@ function remember(key: string, state: Ready) {
 const LOADING_AFTER_MS = 300;
 
 /** What a failed run reads as: in the reader's words, never CodeWork's internal ids. */
-const noticeOf = (kind: string, message: string, sandbox: string | undefined): Notice => {
+const noticeOf = (kind: string, message: string): Notice => {
 	switch (kind) {
 		// The session's sandbox is gone, so it can't run; its conversation is still saved and readable.
-		// A memory one lives only as long as the server that made it.
 		case "sandbox-mount-error":
 			return {
 				title: "Expired",
-				description:
-					sandbox === "memory"
-						? "Memory sessions can’t continue after closed. Start a new session to keep going."
-						: "This session can't be picked up again. Start a new session to keep going.",
+				description: "This session can't be picked up again. Start a new session to keep going.",
 				tone: "expired",
 			};
 		default:
 			return { title: "Something went wrong", description: message, tone: "error" };
 	}
+};
+
+/** Whether `held` already has `part`'s text and more, streamed in after that checkpoint. */
+const streamedPast = (held: Part, part: Part) =>
+	(held.type === "text" &&
+		part.type === "text" &&
+		held.text.length > part.text.length &&
+		held.text.startsWith(part.text)) ||
+	(held.type === "thinking" &&
+		part.type === "thinking" &&
+		held.thinking.length > part.thinking.length &&
+		held.thinking.startsWith(part.thinking));
+
+const streamedText = (part: Part | undefined) =>
+	part?.type === "text" ? part.text : part?.type === "thinking" ? part.thinking : undefined;
+
+/**
+ * `parts` with a delta folded in where it continues the held text exactly: at the held length, or
+ * at 0 for a part not held yet, which it starts. Undefined drops it until the next checkpoint. A
+ * part index past the held ones (a tool call between is not streamed) is padded with blank text.
+ */
+const foldDelta = (parts: readonly Part[], { partIndex, kind, offset, delta }: LiveDelta): Part[] | undefined => {
+	const part = parts[partIndex];
+	const held = streamedText(part);
+	const starts = offset === 0 && (part === undefined || held === "");
+	if (!starts && (part?.type !== kind || held?.length !== offset)) return undefined;
+	const text = (starts ? "" : held) + delta;
+	const next: Part =
+		kind === "text"
+			? { ...(part?.type === "text" ? part : { type: "text" as const }), text }
+			: { ...(part?.type === "thinking" ? part : { type: "thinking" as const }), thinking: text };
+	const padded = [...parts];
+	while (padded.length < partIndex) padded.push({ type: "text", text: "" });
+	padded[partIndex] = next;
+	return padded;
 };
 
 const apply = (state: State, update: Update): State => {
@@ -121,14 +150,19 @@ const apply = (state: State, update: Update): State => {
 			return { ...state, info: update.info };
 		case "Queue":
 			return { ...state, queued: update.queued };
-		case "Removed":
-			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
-		case "Running": {
-			const { failure: _, ...rest } = state;
-			return update.running ? { ...rest, running: true } : { ...state, running: false };
+		case "Delta": {
+			const { entryId } = update.delta;
+			const index = state.messages.findIndex((message) => message.id === entryId);
+			const draft = state.messages[index];
+			if (draft === undefined) {
+				// The reply's row has not landed yet: its first deltas wait for it here.
+				const parts = foldDelta(state.early?.get(entryId) ?? [], update.delta);
+				return parts === undefined ? state : { ...state, early: new Map(state.early).set(entryId, parts) };
+			}
+			if (draft.state !== "draft") return state;
+			const parts = foldDelta(draft.parts, update.delta);
+			return parts === undefined ? state : { ...state, messages: state.messages.with(index, { ...draft, parts }) };
 		}
-		case "Failed":
-			return { ...state, failure: noticeOf(update.kind, update.message, state.info.sandbox) };
 		case "Message": {
 			const { id } = update.message;
 			const index = state.messages.findIndex((message) => message.id === id);
@@ -139,18 +173,31 @@ const apply = (state: State, update: Update): State => {
 			const previous = state.messages[index];
 			if (previous !== undefined && update.message.state === "draft" && previous.state !== "draft") return state;
 			// Unchanged parts keep their objects, so their rows skip re-rendering as the message streams.
-			const message =
-				previous === undefined
-					? update.message
-					: {
-							...update.message,
-							parts: update.message.parts.map((part, at) => {
-								const old = previous.parts[at];
-								return old !== undefined && samePart(old, part) ? old : part;
-							}),
-						};
+			// A draft's checkpoint can trail the deltas already folded in, or that came before its row:
+			// the longer text is the newer, and parts started since it was taken stay.
+			const held = previous?.parts ?? state.early?.get(id);
+			const streaming = update.message.state === "draft" && (previous === undefined || previous.state === "draft");
+			const merged =
+				held === undefined
+					? update.message.parts
+					: update.message.parts.map((part, at) => {
+							const old = held[at];
+							if (old === undefined) return part;
+							return samePart(old, part) || (streaming && streamedPast(old, part)) ? old : part;
+						});
+			const message = {
+				...update.message,
+				parts: streaming && held !== undefined ? [...merged, ...held.slice(merged.length)] : merged,
+			};
+			let early = state.early;
+			if (early?.has(id) === true) {
+				const rest = new Map(early);
+				rest.delete(id);
+				early = rest;
+			}
 			return {
 				...state,
+				...(early === undefined ? {} : { early }),
 				messages: previous === undefined ? [...state.messages, message] : state.messages.with(index, message),
 				// Promoted: it is in the conversation now, whatever the next queue update says.
 				queued: state.queued.some((prompt) => prompt.id === id)
@@ -191,8 +238,6 @@ const sameStructure = (previous: State, next: State) =>
 		previous.more === next.more &&
 		previous.queued === next.queued &&
 		previous.after === next.after &&
-		previous.running === next.running &&
-		previous.failure === next.failure &&
 		previous.messages.length === next.messages.length &&
 		previous.messages.every(
 			(message, at) => message === next.messages[at] || streamedInto(message, next.messages[at]!),
@@ -213,6 +258,9 @@ function conversationStore(initial: State) {
 	);
 	return { live, quiet, message };
 }
+
+/** Forks the conversation at an entry, for an entry it can be forked at: committed, and not a stand-in. */
+const ForkContext = createContext<(entry: HistoryEntry | undefined) => (() => void) | undefined>(() => undefined);
 
 const noMessage = Atom.make<HistoryEntry | undefined>(undefined);
 const StreamedContext = createContext<(id: string) => Atom.Atom<HistoryEntry | undefined>>(() => noMessage);
@@ -260,7 +308,7 @@ function useConversation(thread: ThreadRef) {
 	);
 
 	const page = useCallback(
-		async (before: string | undefined) => {
+		async (before: number | undefined) => {
 			const reply = decodeWindow(
 				(
 					await bus.request({
@@ -286,7 +334,7 @@ function useConversation(thread: ThreadRef) {
 			if (window === undefined) return fail(`Could not load session ${threadKey(thread)}.`);
 			if (window._tag === "Failed") return fail(window.message);
 			const { info, messages, more, queued, seq } = window;
-			if (active) setState({ status: "ready", info, messages, more, queued, after: seq, running: undefined });
+			if (active) setState({ status: "ready", info, messages, more, queued, after: seq });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
@@ -320,7 +368,7 @@ function useConversation(thread: ThreadRef) {
 		}
 	});
 
-	const oldest = state.status === "ready" && state.more ? state.messages[0]?.id : undefined;
+	const oldest = state.status === "ready" && state.more ? state.messages[0]?.seq : undefined;
 	const loadOlder = useCallback(() => {
 		if (oldest === undefined || paging.current) return;
 		paging.current = true;
@@ -352,6 +400,7 @@ const standIn = (thread: ThreadRef, prompt: Handoff): HistoryEntry => ({
 	createdAt: prompt.createdAt,
 	updatedAt: prompt.createdAt,
 	parts: [{ type: "text", text: prompt.text }],
+	size: 0,
 });
 
 function Conversation({
@@ -382,19 +431,18 @@ function Conversation({
 	// A run that stops or fails before taking a prompt in leaves it queued for the next wake: its
 	// stand-in goes, so the queue row and its actions show again.
 	const run = loaded.status === "ready" ? loaded : undefined;
-	const outcome = `${run?.running}|${run?.failure?.title ?? ""}|${run?.failure?.description ?? ""}`;
+	const failure = run?.info.failure;
+	const outcome = `${run?.info.runState}|${failure?.kind ?? ""}|${failure?.message ?? ""}`;
 	const [seenOutcome, setSeenOutcome] = useState(outcome);
 	if (outcome !== seenOutcome) {
 		setSeenOutcome(outcome);
-		if (sent.length > 0 && (run?.running === false || run?.failure !== undefined)) setSent([]);
+		if (sent.length > 0 && (run?.info.runState === "idle" || failure !== undefined)) setSent([]);
 	}
 	const state = useMemo<State>(() => {
 		if (loaded.status !== "ready" || sent.length === 0) return loaded;
 		const ids = new Set(sent.map((message) => message.id));
 		return {
 			...loaded,
-			// A prompt not yet taken in is about to wake the agent: busy until the server says otherwise.
-			running: loaded.running ?? true,
 			messages: [...loaded.messages, ...sent],
 			queued: loaded.queued.some((prompt) => ids.has(prompt.id))
 				? loaded.queued.filter((prompt) => !ids.has(prompt.id))
@@ -405,16 +453,50 @@ function Conversation({
 		(prompt: Handoff) => setSent((current) => [...current, standIn(thread, prompt)]),
 		[thread],
 	);
+	// A prompt this window sent is pending until it lands in app.db, as a message or a queued prompt.
+	const key = threadKey(thread);
+	const inFlight = usePendingPrompts(key);
+	const { landed, forget } = useSent();
+	useEffect(() => {
+		if (loaded.status !== "ready" || inFlight.size === 0) return;
+		const known = new Set([...loaded.messages, ...loaded.queued].map((item) => item.id));
+		landed(
+			key,
+			[...inFlight].filter((id) => known.has(id)),
+		);
+	}, [loaded, inFlight, key, landed]);
+	// Only this view hears the thread's rows land, so what it sent goes with it.
+	useEffect(() => () => forget(key), [key, forget]);
+	const phase = useRunDisplay([{ key, runState: loaded.status === "ready" ? loaded.info.runState : "idle" }]);
 	const unsent = useCallback((id: string) => setSent((current) => current.filter((message) => message.id !== id)), []);
+	// A fork opens in a frame of its own once the backend answers, by then in app.db.
+	const bus = useBus();
+	const shell = useShell();
+	const [forkError, setForkError] = useState<string>();
+	const forkAt = useCallback(
+		(entry: HistoryEntry | undefined) => {
+			if (entry === undefined || entry.state !== "committed" || sent.some((message) => message.id === entry.id))
+				return undefined;
+			return () => {
+				setForkError(undefined);
+				void bus
+					.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
+					.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
+					.catch(() => undefined)
+					.then((forked) => {
+						if (forked?._tag === "Forked")
+							shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), {
+								mode: "new",
+							});
+						else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
+					});
+			};
+		},
+		[bus, shell, thread, sent],
+	);
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
-	// A first prompt names the session after the list was fetched; the main thread's title is the listed one.
-	const refreshProjects = useAtomRefresh(projectsAtom);
-	const stale = thread.threadId === undefined && state.status === "ready" && listed?.title !== title;
-	useEffect(() => {
-		if (stale) refreshProjects();
-	}, [stale, title, refreshProjects]);
 	const project = state.status === "ready" ? state.info.project : listed?.project;
 	const projectId = project?.id;
 	const projectName = project?.name;
@@ -443,9 +525,11 @@ function Conversation({
 	const notice: Notice | undefined =
 		sendError !== undefined
 			? { title: "Not sent", description: sendError, tone: "error" }
-			: state.status === "ready"
-				? state.failure
-				: undefined;
+			: forkError !== undefined
+				? { title: "Not forked", description: forkError, tone: "error" }
+				: state.status === "ready" && state.info.failure !== undefined
+					? noticeOf(state.info.failure.kind, state.info.failure.message)
+					: undefined;
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
 
@@ -478,13 +562,16 @@ function Conversation({
 	return (
 		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
 			<StreamedContext value={message}>
-				<Transcript
-					key={stand === undefined ? "own" : "stand"}
-					state={view}
-					running={running}
-					loadOlder={loadOlder}
-					inset={inset}
-				/>
+				<ForkContext value={forkAt}>
+					<Transcript
+						key={stand === undefined ? "own" : "stand"}
+						state={view}
+						running={running}
+						phase={stand === undefined ? phase : view.info.runState}
+						loadOlder={loadOlder}
+						inset={inset}
+					/>
+				</ForkContext>
 			</StreamedContext>
 			<div
 				ref={composer}
@@ -499,6 +586,7 @@ function Conversation({
 							onDismiss={() => {
 								setDismissed(notice);
 								setSendError(undefined);
+								setForkError(undefined);
 							}}
 						/>
 					)
@@ -517,6 +605,7 @@ function Conversation({
 					thread={thread}
 					instanceId={instanceId}
 					running={running}
+					stopping={phase === "stopping"}
 					info={view.info}
 					onError={setSendError}
 					onSending={sending}
@@ -571,11 +660,14 @@ const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true };
 function Transcript({
 	state,
 	running,
+	phase,
 	loadOlder,
 	inset,
 }: {
 	readonly state: Ready;
 	readonly running: boolean;
+	/** The run as drawn: the stored run state joined by a prompt or stop on its way. */
+	readonly phase: Display;
 	readonly loadOlder: () => void;
 	/** The composer overlay's height. */
 	readonly inset: number;
@@ -595,7 +687,7 @@ function Transcript({
 		anchorIndex: (promptId) => turns.findLastIndex((turn) => turn.user?.id === promptId),
 	});
 	const { pending } = follow;
-	const extraData = useMemo(() => ({ running, modelName, pending }), [running, modelName, pending]);
+	const extraData = useMemo(() => ({ phase, modelName, pending }), [phase, modelName, pending]);
 
 	if (turns.length === 0)
 		return (
@@ -606,7 +698,7 @@ function Transcript({
 	const renderItem = ({ item, index }: LegendListRenderItemProps<Turn>) => (
 		<TurnView
 			turn={item}
-			active={running && index === turns.length - 1}
+			phase={index === turns.length - 1 ? phase : "idle"}
 			pending={item.user !== undefined && item.user.id === pending}
 			modelName={modelName}
 		/>
@@ -683,14 +775,15 @@ function useTurns(messages: readonly HistoryEntry[]) {
 
 interface TurnProps {
 	readonly turn: Turn;
-	readonly active: boolean;
+	/** The run as drawn, for the last turn; idle for every other. */
+	readonly phase: Display;
 	/** Hidden until its prompt rises into its anchor. */
 	readonly pending: boolean;
 	readonly modelName: string | undefined;
 }
 
 const sameTurn = (a: TurnProps, b: TurnProps) =>
-	a.turn === b.turn && a.active === b.active && a.pending === b.pending && a.modelName === b.modelName;
+	a.turn === b.turn && a.phase === b.phase && a.pending === b.pending && a.modelName === b.modelName;
 
 /**
  * What the work log can show: a tool call, readable thinking, or a note between calls. Thinking a
@@ -705,7 +798,8 @@ const isWork = (part: Part) =>
  * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
  * calls) is the work that led there, folded under one line.
  */
-const TurnView = memo(function TurnView({ turn, active, pending, modelName }: TurnProps) {
+const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: TurnProps) {
+	const active = phase !== "idle";
 	const last = turn.replies.at(-1);
 	const answer = last?.parts.some((part) => part.type === "text") === true;
 	const work = turn.replies.flatMap((reply) =>
@@ -721,6 +815,7 @@ const TurnView = memo(function TurnView({ turn, active, pending, modelName }: Tu
 	);
 	const working = active && (last?.state !== "draft" || !answer || toolRunning);
 	const started = turn.user?.createdAt ?? turn.replies[0]?.createdAt;
+	const forkAt = use(ForkContext);
 	const ended = active ? undefined : endOf(turn.replies);
 
 	return (
@@ -728,15 +823,23 @@ const TurnView = memo(function TurnView({ turn, active, pending, modelName }: Tu
 			data-prompt-pending={pending || undefined}
 			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-2 text-body`}
 		>
-			{turn.user !== undefined && <UserMessage entry={turn.user} />}
+			{turn.user !== undefined && <UserMessage entry={turn.user} onFork={forkAt(turn.user)} />}
 			{(work.length > 0 || working || answer || interrupted || failed) && (
 				<Message
 					role="assistant"
 					at={turn.replies[0]?.createdAt}
 					ended={ended}
 					copyText={last === undefined ? "" : textOf(last)}
+					onFork={forkAt(last)}
 				>
-					<WorkLog steps={work} started={started} ended={ended} working={working} modelName={modelName} />
+					<WorkLog
+						steps={work}
+						started={started}
+						ended={ended}
+						working={working}
+						phase={phase}
+						modelName={modelName}
+					/>
 					{answer && last !== undefined && <Answer reply={last} />}
 					{last?.error !== undefined ? (
 						<p className="px-4 py-1 text-xs text-destructive">{last.error}</p>
@@ -758,7 +861,7 @@ function Answer({ reply }: { readonly reply: HistoryEntry }) {
 	);
 }
 
-function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
+function UserMessage({ entry, onFork }: { readonly entry: HistoryEntry; readonly onFork: (() => void) | undefined }) {
 	const [expanded, setExpanded] = useState(false);
 	const [overflows, setOverflows] = useState(false);
 	const textRef = useRef<HTMLParagraphElement>(null);
@@ -779,7 +882,7 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 		return () => observer.disconnect();
 	}, [text, expanded]);
 	return (
-		<Message role="user" promptId={entry.id} at={entry.createdAt} copyText={text}>
+		<Message role="user" promptId={entry.id} at={entry.createdAt} copyText={text} onFork={onFork}>
 			{text !== "" && (
 				<p
 					ref={textRef}
@@ -850,15 +953,19 @@ function useElapsedFrom(startedAt: number | undefined, active: boolean): number 
 function WorkLabel({
 	started,
 	ended,
+	phase,
 	modelName,
 }: {
 	readonly started: number | undefined;
 	readonly ended: number | undefined;
+	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
 	const live = ended === undefined;
 	const liveElapsed = useElapsedFrom(started, live);
 	const elapsedMs = live ? liveElapsed : started !== undefined && ended >= started ? ended - started : undefined;
+	// Before the run takes the prompt in, and while a stop reaches it, the state says more than the time.
+	if (phase === "pending" || phase === "starting" || phase === "stopping") return `${displayLabel[phase]}…`;
 	return formatWorkingDuration(elapsedMs, modelName, !live);
 }
 
@@ -957,6 +1064,7 @@ function WorkLog({
 	started,
 	ended,
 	working,
+	phase,
 	modelName,
 }: {
 	readonly steps: readonly Step[];
@@ -965,6 +1073,7 @@ function WorkLog({
 	readonly ended: number | undefined;
 	/** True while the agent is in its work phase (thinking or running tools before the answer). */
 	readonly working: boolean;
+	readonly phase: Display;
 	readonly modelName: string | undefined;
 }) {
 	const [override, setOverride] = useState<boolean | null>(null);
@@ -973,7 +1082,7 @@ function WorkLog({
 	const expandable = steps.length > 0;
 	const open = expandable && (override ?? working);
 	useLivePhaseScroll(liveScroller, open, steps);
-	const label = <WorkLabel started={started} ended={ended} modelName={modelName} />;
+	const label = <WorkLabel started={started} ended={ended} phase={phase} modelName={modelName} />;
 	const icon = (
 		<span className="relative flex size-3.5 shrink-0 items-center justify-center">
 			{open && expandable ? (

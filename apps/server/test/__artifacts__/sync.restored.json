@@ -1,0 +1,311 @@
+{
+	"heads": [
+		{
+			"rev": "<rev 2>"
+		},
+		{
+			"rev": "<rev 1>"
+		}
+	],
+	"changed": [
+		{
+			"machineId": "<id 1>",
+			"full": true,
+			"items": 4,
+			"project": [
+				"<id 2>"
+			],
+			"space": [
+				"<id 3>"
+			],
+			"session": [
+				"<ses 1>"
+			],
+			"thread": [
+				"<thr 1>"
+			],
+			"entry": [],
+			"inbox": [],
+			"removed": [
+				"<ses 2>"
+			]
+		}
+	],
+	"machine": [
+		{
+			"id": "<id 4>",
+			"kind": "local",
+			"store_id": null,
+			"cursor": "<rev 0>"
+		},
+		{
+			"id": "<id 1>",
+			"kind": "remote",
+			"store_id": "<store>",
+			"cursor": "<rev 1>"
+		}
+	],
+	"session": [
+		{
+			"id": "<ses 1>",
+			"machine_id": "<id 1>",
+			"organization_id": "personal",
+			"space_id": "<id 3>",
+			"slug": "<id 5>",
+			"dir": "<home>",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": null,
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<ses 2>",
+			"machine_id": "<id 1>",
+			"organization_id": "personal",
+			"space_id": "<id 3>",
+			"slug": "<id 6>",
+			"dir": "<home>",
+			"hostdir": null,
+			"tag": null,
+			"metadata": null,
+			"color": null,
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	],
+	"thread": [
+		{
+			"id": "<thr 1>",
+			"organization_id": "personal",
+			"session_id": "<ses 1>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "Before backup",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 1,
+			"tokens_output": 1,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "attention",
+			"status_at": "<time>",
+			"priority": 2,
+			"grouping_id": null,
+			"ordering": 0,
+			"color": "#ff8800",
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": null
+		},
+		{
+			"id": "<thr 2>",
+			"organization_id": "personal",
+			"session_id": "<ses 2>",
+			"origin_kind": "main",
+			"origin_thread_id": null,
+			"origin_entry_id": null,
+			"origin_call_id": null,
+			"origin_committed_seq": null,
+			"title": "After backup",
+			"model_provider": null,
+			"model_id": null,
+			"thinking_level": null,
+			"foundation": null,
+			"placement_space_id": null,
+			"placement_dir": null,
+			"restarts": 0,
+			"attempt": null,
+			"run_state": "idle",
+			"run_state_at": "<time>",
+			"run_started_at": "<time>",
+			"run_ended_at": "<time>",
+			"run_outcome": "succeeded",
+			"run_error": null,
+			"cost": 0,
+			"tokens_input": 1,
+			"tokens_output": 1,
+			"tokens_cache_read": 0,
+			"tokens_cache_write": 0,
+			"status": "attention",
+			"status_at": "<time>",
+			"priority": 0,
+			"grouping_id": null,
+			"ordering": -1,
+			"color": null,
+			"cursor": null,
+			"floor": null,
+			"created_seq": "<seq 0>",
+			"created_at": "<time>",
+			"updated_at": "<time>",
+			"deleted_at": "<time>"
+		}
+	],
+	"again": {
+		"head": {
+			"rev": "<rev 2>"
+		},
+		"changed": [
+			{
+				"machineId": "<id 1>",
+				"full": false,
+				"items": 4,
+				"project": [
+					"<id 2>"
+				],
+				"space": [
+					"<id 3>"
+				],
+				"session": [
+					"<ses 2>"
+				],
+				"thread": [
+					"<thr 2>"
+				],
+				"entry": [],
+				"inbox": [],
+				"removed": []
+			}
+		],
+		"session": [
+			{
+				"id": "<ses 1>",
+				"machine_id": "<id 1>",
+				"organization_id": "personal",
+				"space_id": "<id 3>",
+				"slug": "<id 5>",
+				"dir": "<home>",
+				"hostdir": null,
+				"tag": null,
+				"metadata": null,
+				"color": null,
+				"created_at": "<time>",
+				"updated_at": "<time>",
+				"deleted_at": null
+			},
+			{
+				"id": "<ses 2>",
+				"machine_id": "<id 1>",
+				"organization_id": "personal",
+				"space_id": "<id 3>",
+				"slug": "<id 6>",
+				"dir": "<home>",
+				"hostdir": null,
+				"tag": null,
+				"metadata": null,
+				"color": "#0088ff",
+				"created_at": "<time>",
+				"updated_at": "<time>",
+				"deleted_at": null
+			}
+		],
+		"thread": [
+			{
+				"id": "<thr 1>",
+				"organization_id": "personal",
+				"session_id": "<ses 1>",
+				"origin_kind": "main",
+				"origin_thread_id": null,
+				"origin_entry_id": null,
+				"origin_call_id": null,
+				"origin_committed_seq": null,
+				"title": "Before backup",
+				"model_provider": null,
+				"model_id": null,
+				"thinking_level": null,
+				"foundation": null,
+				"placement_space_id": null,
+				"placement_dir": null,
+				"restarts": 0,
+				"attempt": null,
+				"run_state": "idle",
+				"run_state_at": "<time>",
+				"run_started_at": "<time>",
+				"run_ended_at": "<time>",
+				"run_outcome": "succeeded",
+				"run_error": null,
+				"cost": 0,
+				"tokens_input": 1,
+				"tokens_output": 1,
+				"tokens_cache_read": 0,
+				"tokens_cache_write": 0,
+				"status": "attention",
+				"status_at": "<time>",
+				"priority": 2,
+				"grouping_id": null,
+				"ordering": 0,
+				"color": "#ff8800",
+				"cursor": null,
+				"floor": null,
+				"created_seq": "<seq 0>",
+				"created_at": "<time>",
+				"updated_at": "<time>",
+				"deleted_at": null
+			},
+			{
+				"id": "<thr 2>",
+				"organization_id": "personal",
+				"session_id": "<ses 2>",
+				"origin_kind": "main",
+				"origin_thread_id": null,
+				"origin_entry_id": null,
+				"origin_call_id": null,
+				"origin_committed_seq": null,
+				"title": "After backup",
+				"model_provider": null,
+				"model_id": null,
+				"thinking_level": null,
+				"foundation": null,
+				"placement_space_id": null,
+				"placement_dir": null,
+				"restarts": 0,
+				"attempt": null,
+				"run_state": "idle",
+				"run_state_at": "<time>",
+				"run_started_at": "<time>",
+				"run_ended_at": "<time>",
+				"run_outcome": "succeeded",
+				"run_error": null,
+				"cost": 0,
+				"tokens_input": 1,
+				"tokens_output": 1,
+				"tokens_cache_read": 0,
+				"tokens_cache_write": 0,
+				"status": "attention",
+				"status_at": "<time>",
+				"priority": 3,
+				"grouping_id": null,
+				"ordering": -1,
+				"color": "#0088ff",
+				"cursor": null,
+				"floor": null,
+				"created_seq": "<seq 0>",
+				"created_at": "<time>",
+				"updated_at": "<time>",
+				"deleted_at": null
+			}
+		]
+	}
+}

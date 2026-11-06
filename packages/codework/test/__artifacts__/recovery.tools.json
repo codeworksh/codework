@@ -9,6 +9,10 @@
 			"text": "Find the echo tool."
 		},
 		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Find the echo tool."
@@ -47,10 +51,25 @@
 			"type": "session.llm.started"
 		},
 		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
 			"type": "session.llm.failed",
 			"reason": "error",
 			"errorMessage": "The host stopped while the model was answering, on attempt 1",
 			"parts": []
+		},
+		{
+			"type": "session.retry.scheduled",
+			"attempt": 1,
+			"maxRetries": 3,
+			"delayMs": 10,
+			"message": "The host stopped while the model was answering, on attempt 1"
 		},
 		{
 			"type": "session.llm.started"
@@ -66,6 +85,9 @@
 		},
 		{
 			"type": "session.turn.ended"
+		},
+		{
+			"type": "session.execution.succeeded"
 		}
 	],
 	"tools": [

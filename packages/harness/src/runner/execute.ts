@@ -5,6 +5,7 @@
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/sql";
+import { Store } from "../db/store.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { Location } from "../location/location.ts";
@@ -31,6 +32,7 @@ export const layer = Layer.effect(
 		const threads = yield* Thread.Service;
 		const sandbox = yield* SandboxController.Controller;
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 		// Captured here, not requested inside `drain`: `RunCoordinator.make`
 		// requires the drain's `R` channel to be `never`, and a `Runner.Service.use`
 		// in the callback would leave the tag in it.
@@ -51,19 +53,10 @@ export const layer = Layer.effect(
 				Effect.ignore,
 			);
 
-		// The session a thread belongs to, for the lifecycle events its log carries. Threads never
-		// move between sessions, so one lookup per thread is enough.
-		const owners = new Map<ThreadId, SessionSchema.ID>();
+		// The session a thread belongs to, for the lifecycle events its log carries. Read every time, not
+		// cached: the events are durable, and one for a session deleted since would recreate its log.
 		const sessionOf = (threadId: ThreadId) =>
-			Effect.gen(function* () {
-				const known = owners.get(threadId);
-				if (known !== undefined) return Option.some(known);
-				const thread = yield* threads.get(threadId);
-				if (Option.isNone(thread)) return Option.none<SessionSchema.ID>();
-				const sessionId = SessionSchema.ID.make(thread.value.sessionId);
-				owners.set(threadId, sessionId);
-				return Option.some(sessionId);
-			});
+			threads.get(threadId).pipe(Effect.map(Option.map((thread) => SessionSchema.ID.make(thread.sessionId))));
 		const publishLifecycle = (
 			threadId: ThreadId,
 			publish: (base: {
@@ -84,19 +77,26 @@ export const layer = Layer.effect(
 		const abandoning = new Map<ThreadId, string>();
 		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
 		const stoppedAt = new Map<ThreadId, number>();
+		// Threads whose last drain ended its run itself, by publishing `session.run.failed`.
+		const ended = new Set<ThreadId>();
 
 		const coordinator = yield* RunCoordinator.make<ThreadId, Runner.RunError, SessionSchema.InterruptReason>({
 			// The run is recorded unfinished before it starts, so a process dying anywhere in it
 			// leaves the thread for the next server start to resume. A recovered one already is.
 			started: (threadId) =>
-				reportLifecycle(
-					threadId,
-					(recovering.has(threadId) ? Effect.void : threads.markRunning(threadId)).pipe(
-						Effect.andThen(
-							publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionStarted, base)),
+				Effect.suspend(() => {
+					const resumed = recovering.has(threadId);
+					return reportLifecycle(
+						threadId,
+						(resumed ? Effect.void : threads.markRunning(threadId)).pipe(
+							Effect.andThen(
+								publishLifecycle(threadId, (base) =>
+									events.publish(EventList.ExecutionStarted, { ...base, resumed }),
+								),
+							),
 						),
-					),
-				),
+					);
+				}),
 			// One terminal per busy period, covering every drain it coalesced.
 			settled: (threadId, exit, reason) =>
 				reportLifecycle(
@@ -112,6 +112,9 @@ export const layer = Layer.effect(
 							!interrupted ? "finished" : reason === "user" ? "stopped" : "closed",
 							stop,
 						);
+						// One terminal per run: an abandoned run already ended with its failure and reason, which a
+						// success published after it would overwrite.
+						if (ended.delete(threadId) && Exit.isSuccess(exit)) return;
 						const sessionId = yield* sessionOf(threadId);
 						if (Option.isNone(sessionId)) return;
 						const base = { sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now };
@@ -129,6 +132,11 @@ export const layer = Layer.effect(
 					}),
 				),
 			drain: Effect.fnUntraced(function* (threadId: ThreadId, force) {
+				ended.delete(threadId);
+				const record = (outcome: Runner.Outcome) =>
+					Effect.sync(() => {
+						if (outcome === "ended") ended.add(threadId);
+					});
 				const thread = yield* threads.get(threadId);
 				// Deleted with its session after something woke it: nothing is left to run.
 				if (Option.isNone(thread)) return;
@@ -137,7 +145,8 @@ export const layer = Layer.effect(
 				if (recovered && Option.isNone(thread.value.execution)) return;
 				// Only the drain the abandon itself started: one it joined is a live run, which must stand.
 				const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
-				if (abandoned !== undefined) return yield* runner.abandon({ threadId, message: abandoned });
+				if (abandoned !== undefined)
+					return yield* runner.abandon({ threadId, message: abandoned }).pipe(Effect.flatMap(record));
 				// The thread's placement, else the session's space and directory. A placement names its
 				// space in a document no FK guards, so a space gone since is typed: `relink --thread`
 				// is the repair.
@@ -163,6 +172,7 @@ export const layer = Layer.effect(
 					const location = Location.layerMounted().pipe(
 						Layer.provide(Layer.succeedContext(mountContext)),
 						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
+						Layer.provide(Layer.succeed(Store.Service, store)),
 					);
 					const locationContext = yield* Layer.build(location).pipe(
 						Effect.catchTag(
@@ -180,7 +190,7 @@ export const layer = Layer.effect(
 					yield* mcp.lease({ sessionId, threadId });
 					return yield* runner
 						.run({ threadId, force, recovered })
-						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));
+						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)), Effect.flatMap(record));
 				});
 
 				return yield* scopedRun.pipe(
