@@ -29,7 +29,7 @@ env:
 
 jobs:
    guard:
-      runs-on: ubuntu-latest
+      runs-on: blacksmith-4vcpu-ubuntu-2404
       # The run's release id, computed once so every job publishes under the same version.
       outputs:
          id: ${{ steps.release.outputs.id }}
@@ -47,7 +47,7 @@ jobs:
 
    publish:
       needs: guard
-      runs-on: ubuntu-latest
+      runs-on: blacksmith-4vcpu-ubuntu-2404
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
       steps:
@@ -75,11 +75,11 @@ jobs:
             # Each on its own platform: --build-sea runs that platform's Node, and macOS signs.
             include:
                - binary: cli-darwin-arm64
-                 runner: macos-15
+                 runner: blacksmith-6vcpu-macos-15
                - binary: cli-linux-arm64
-                 runner: ubuntu-24.04-arm
+                 runner: blacksmith-4vcpu-ubuntu-2404-arm
                - binary: cli-linux-x64
-                 runner: ubuntu-24.04
+                 runner: blacksmith-4vcpu-ubuntu-2404
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
       steps:
@@ -117,7 +117,7 @@ jobs:
    release:
       needs: [guard, publish, binary]
       if: github.ref_name != 'canary'
-      runs-on: ubuntu-latest
+      runs-on: blacksmith-4vcpu-ubuntu-2404
       permissions:
          contents: write
       env:
@@ -150,19 +150,19 @@ jobs:
             # Each on its own platform: electron-builder packages for the host, and macOS signs.
             include:
                - target: mac-arm64
-                 runner: macos-15
+                 runner: blacksmith-6vcpu-macos-15
                  args: --mac --arm64
                - target: linux-arm64
-                 runner: ubuntu-24.04-arm
+                 runner: blacksmith-4vcpu-ubuntu-2404-arm
                  args: --linux --arm64
                - target: linux-x64
-                 runner: ubuntu-24.04
+                 runner: blacksmith-4vcpu-ubuntu-2404
                  args: --linux --x64
                - target: win-arm64
-                 runner: windows-11-arm
+                 runner: blacksmith-4vcpu-windows-2025
                  args: --win --arm64
                - target: win-x64
-                 runner: windows-2025
+                 runner: blacksmith-4vcpu-windows-2025
                  args: --win --x64
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
@@ -202,7 +202,7 @@ jobs:
    nightly:
       needs: [guard, publish, desktop]
       if: github.ref_name == 'canary'
-      runs-on: ubuntu-latest
+      runs-on: blacksmith-4vcpu-ubuntu-2404
       permissions:
          contents: write
       env:
