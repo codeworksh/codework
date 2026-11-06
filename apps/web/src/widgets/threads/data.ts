@@ -14,6 +14,7 @@ import type { Event } from "@codeworksh/widget/event";
 import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
+import { keeper } from "../../kernel/keep";
 import { Server } from "../../kernel/rpc";
 
 const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
@@ -76,20 +77,15 @@ const sameGroup = (a: Grouping, b: Grouping) =>
  */
 const reuse = (previous: AllThreads | undefined, next: AllThreads): AllThreads => {
 	if (previous === undefined) return next;
-	const threads = new Map(previous.lists.flatMap((list) => list.threads.map((thread) => [thread.id, thread])));
-	const groups = new Map(previous.groups.map((group) => [group.id, group]));
+	const thread = keeper(
+		previous.lists.flatMap((list) => list.threads),
+		(item) => item.id,
+		sameThread,
+	);
+	const group = keeper(previous.groups, (item) => item.id, sameGroup);
 	return {
-		lists: next.lists.map((list) => ({
-			...list,
-			threads: list.threads.map((thread) => {
-				const before = threads.get(thread.id);
-				return before !== undefined && sameThread(before, thread) ? before : thread;
-			}),
-		})),
-		groups: next.groups.map((group) => {
-			const before = groups.get(group.id);
-			return before !== undefined && sameGroup(before, group) ? before : group;
-		}),
+		lists: next.lists.map((list) => ({ ...list, threads: list.threads.map(thread) })),
+		groups: next.groups.map(group),
 	};
 };
 

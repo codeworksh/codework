@@ -1,6 +1,6 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
-import { type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -22,6 +22,7 @@ import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { useStableCallback } from "../hooks/stable";
 import { Overflow } from "./overflow";
 import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
@@ -60,37 +61,52 @@ function useChanged<T>(value: T) {
 /** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
 const SHELL = "shell";
 
-/** Frame title, icon, and body for one instance, resolved through the widget registry. */
-function describe(instance: Instance, chrome: Chrome | undefined) {
-	const definition = registry.get(instance.kind);
-	return {
-		...chromeOf(instance, chrome),
-		body:
-			definition === undefined ? (
-				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
-			) : (
-				definition.render({
-					instanceId: instance.id,
-					props: instance.props,
-					address: instance.address,
-					params: instance.params ?? {},
-				})
-			),
-	};
-}
+const NO_PARAMS: NonNullable<Instance["params"]> = {};
+
+/**
+ * One instance's widget, resolved through the registry. Memoized on the instance's own values, so a
+ * drag, a focus change or another frame's title renders the desktop's frames but not their widgets.
+ */
+const WidgetBody = memo(function WidgetBody({
+	instanceId,
+	kind,
+	props,
+	address,
+	params,
+}: {
+	readonly instanceId: string;
+	readonly kind: string;
+	readonly props: Instance["props"];
+	readonly address: Instance["address"];
+	readonly params: NonNullable<Instance["params"]>;
+}) {
+	const definition = registry.get(kind);
+	if (definition === undefined) return <p className="p-3 text-ink-muted">Missing widget: {kind}</p>;
+	return definition.render({ instanceId, props, address, params });
+});
 
 interface HostProps {
 	readonly instanceId: string;
 	/** The widget kind, "<package>:<name>"; its package scopes the widget's topics and kv. */
 	readonly kind: string;
-	readonly shell: Shell;
+	/** The desktop's shell as `caller` sees it; one identity for the desktop's life. */
+	readonly shellFor: (caller: string) => Shell;
 	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
 /** Gives a widget its shell, frame and host; these stay stable so widgets can use them in effects. */
-function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
+function Host({ instanceId, kind, shellFor, decorate, children }: HostProps) {
 	const atoms = useContext(RegistryContext);
+	// Built once per instance and calling the desktop's latest shell, so `useShell` never renders a widget.
+	const shell = useMemo<Shell>(
+		() => ({
+			open: (address, options) => shellFor(instanceId).open(address, options),
+			focus: (id) => shellFor(instanceId).focus(id),
+			close: (id) => shellFor(instanceId).close(id),
+		}),
+		[shellFor, instanceId],
+	);
 	const pkg = kind.split(":")[0] ?? kind;
 	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
 	const frame = useMemo<FrameApi>(
@@ -375,6 +391,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		},
 	});
 
+	const stableShellFor = useStableCallback(shellFor);
+
 	// Carries out an `open` request from the URL once, then drops it so Back and reloads don't repeat it.
 	// The ref outlives StrictMode's second run; it resets once the URL no longer asks.
 	const handled = useRef<string | undefined>(undefined);
@@ -427,7 +445,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, lead, icon, body } = describe(instance, chrome.get(widget.id));
+					const { title, lead, icon } = chromeOf(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
@@ -470,8 +488,14 @@ export function Desktop({ workspace }: DesktopProps) {
 							onDragCancel={() => setDrag(null)}
 						>
 							{/* Kept across a retarget: a widget whose state belongs to its address keys that state itself. */}
-							<Host instanceId={widget.id} kind={instance.kind} shell={shellFor(widget.id)} decorate={decorate}>
-								{body}
+							<Host instanceId={widget.id} kind={instance.kind} shellFor={stableShellFor} decorate={decorate}>
+								<WidgetBody
+									instanceId={instance.id}
+									kind={instance.kind}
+									props={instance.props}
+									address={instance.address}
+									params={instance.params ?? NO_PARAMS}
+								/>
 							</Host>
 						</Frame>
 					);

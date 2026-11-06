@@ -1,8 +1,8 @@
-import { useAtomValue, useAtomSet } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { RunState } from "@codeworksh/widget/codework";
 import { Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 
 /*
  * What the UI shows for a thread's run: the harness's `run_state`, joined by two states only this
@@ -22,24 +22,22 @@ interface Sent {
 
 const NONE: Sent = { prompts: new Set(), stopping: false };
 
-/** By thread key (`threadKey`); a thread with nothing in flight has no entry. */
-const sentAtom = Atom.make<ReadonlyMap<string, Sent>>(new Map()).pipe(Atom.keepAlive);
+/**
+ * By thread key (`threadKey`), one atom each, so a send, a landing or a stop touches only its own
+ * thread's readers. Kept alive: what was sent outlives the views showing it.
+ */
+const sentOf = Atom.family((_key: string) => Atom.make<Sent>(NONE).pipe(Atom.keepAlive));
 
-const update = (map: ReadonlyMap<string, Sent>, key: string, change: (sent: Sent) => Sent) => {
-	const before = map.get(key) ?? NONE;
-	const after = change(before);
-	if (after === before) return map;
-	const next = new Map(map);
-	if (after.prompts.size === 0 && !after.stopping) next.delete(key);
-	else next.set(key, after);
-	return next;
-};
+/** These keys' sent state, joined by newlines in `keys`: recomputed only when one of them changes. */
+const sentAll = Atom.family((keys: string) =>
+	Atom.make((get) => (keys === "" ? [] : keys.split("\n").map((key) => [key, get(sentOf(key))] as const))),
+);
 
 /** The commands that move a thread's client state: a prompt sent or landed, a stop sent or settled. */
 export function useSent() {
-	const set = useAtomSet(sentAtom);
+	const registry = useContext(RegistryContext);
 	return useMemo(() => {
-		const change = (key: string, fn: (sent: Sent) => Sent) => set((map) => update(map, key, fn));
+		const change = (key: string, fn: (sent: Sent) => Sent) => registry.update(sentOf(key), fn);
 		return {
 			prompt: (key: string, id: string) =>
 				change(key, (sent) => ({ ...sent, prompts: new Set([...sent.prompts, id]) })),
@@ -54,15 +52,11 @@ export function useSent() {
 			unstop: (key: string) => change(key, (sent) => (sent.stopping ? { ...sent, stopping: false } : sent)),
 			forget: (key: string) => change(key, () => NONE),
 		};
-	}, [set]);
+	}, [registry]);
 }
 
 /** Prompt ids this window sent the thread that have not landed yet. */
-export const usePendingPrompts = (key: string) =>
-	useAtomValue(
-		sentAtom,
-		useCallback((map: ReadonlyMap<string, Sent>) => map.get(key)?.prompts ?? NONE.prompts, [key]),
-	);
+export const usePendingPrompts = (key: string) => useAtomValue(sentOf(key)).prompts;
 
 /** A stop shows until the run is idle, then a prompt still in flight, then the run as stored. */
 const displayOf = (sent: Sent | undefined, runState: RunState): Display =>
@@ -127,29 +121,14 @@ export function useRunDisplay(threads: ReadonlyArray<{ readonly key: string; rea
 	const reads = threads.map(({ key, runState }) => `${key}\t${runState}`).join("\n");
 	// Built from `reads`, so callers passing a new array every render keep the same map.
 	const runStates = useMemo(() => runStatesOf(reads), [reads]);
-	// Only these threads' part of what was sent: a send to any other thread renders nothing here.
-	const display = useAtomValue(
-		sentAtom,
-		useCallback(
-			(map: ReadonlyMap<string, Sent>) => {
-				let most: Display = "idle";
-				for (const [key, runState] of runStates) {
-					const next = displayOf(map.get(key), runState);
-					if (WEIGHT[next] > WEIGHT[most]) most = next;
-				}
-				return most;
-			},
-			[runStates],
-		),
-	);
-	const stopping = useAtomValue(
-		sentAtom,
-		useCallback(
-			(map: ReadonlyMap<string, Sent>) =>
-				[...runStates.keys()].filter((key) => map.get(key)?.stopping === true).join("\n"),
-			[runStates],
-		),
-	);
+	// Only these threads' sent state: a send to any other thread renders nothing here.
+	const sent = useAtomValue(sentAll([...runStates.keys()].join("\n")));
+	let display: Display = "idle";
+	for (const [key, entry] of sent) {
+		const next = displayOf(entry, runStates.get(key) ?? "idle");
+		if (WEIGHT[next] > WEIGHT[display]) display = next;
+	}
+	const stopping = sent.flatMap(([key, entry]) => (entry.stopping ? [key] : [])).join("\n");
 	useEffect(() => {
 		const keys = new Set(runStates.keys());
 		for (const [key, runState] of runStates) {

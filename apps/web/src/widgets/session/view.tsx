@@ -19,6 +19,7 @@ import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
 import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
+import { useStableCallback } from "../../hooks/stable";
 import { useListedSession } from "./projects";
 import { RunMark } from "./run";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
@@ -263,8 +264,11 @@ function conversationStore(initial: State) {
 	return { live, quiet, message };
 }
 
-/** Forks the conversation at an entry, for an entry it can be forked at: committed, and not a stand-in. */
-const ForkContext = createContext<(entry: HistoryEntry | undefined) => (() => void) | undefined>(() => undefined);
+/** Forks the conversation at an entry; one identity for the conversation's life, so no turn renders for it. */
+const ForkContext = createContext<(entry: HistoryEntry) => void>(() => {});
+
+/** An entry a fork can start at: committed, so its place in the line is final. */
+const forkable = (entry: HistoryEntry | undefined): entry is HistoryEntry => entry?.state === "committed";
 
 const noMessage = Atom.make<HistoryEntry | undefined>(undefined);
 const StreamedContext = createContext<(id: string) => Atom.Atom<HistoryEntry | undefined>>(() => noMessage);
@@ -477,27 +481,20 @@ function Conversation({
 	const bus = useBus();
 	const shell = useShell();
 	const [forkError, setForkError] = useState<string>();
-	const forkAt = useCallback(
-		(entry: HistoryEntry | undefined) => {
-			if (entry === undefined || entry.state !== "committed" || sent.some((message) => message.id === entry.id))
-				return undefined;
-			return () => {
-				setForkError(undefined);
-				void bus
-					.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
-					.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
-					.catch(() => undefined)
-					.then((forked) => {
-						if (forked?._tag === "Forked")
-							shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), {
-								mode: "new",
-							});
-						else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
-					});
-			};
-		},
-		[bus, shell, thread, sent],
-	);
+	const forkAt = useStableCallback((entry: HistoryEntry) => {
+		// A prompt this window sent and app.db holds only as a stand-in has no place to fork at yet.
+		if (sent.some((message) => message.id === entry.id)) return;
+		setForkError(undefined);
+		void bus
+			.request({ topic: topics.fork, payload: encodeFork({ ...thread, entryId: entry.id }) })
+			.then((reply) => Option.getOrUndefined(decodeForked(reply.payload)))
+			.catch(() => undefined)
+			.then((forked) => {
+				if (forked?._tag === "Forked")
+					shell.open(threadAddress({ sessionId: thread.sessionId, threadId: forked.threadId }), { mode: "new" });
+				else setForkError(forked?.message ?? "The CodeWork server is not reachable.");
+			});
+	});
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
@@ -825,6 +822,7 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 	const working = active && (last?.state !== "draft" || !answer || toolRunning);
 	const started = turn.user?.createdAt ?? turn.replies[0]?.createdAt;
 	const forkAt = use(ForkContext);
+	const user = turn.user;
 	const ended = active ? undefined : endOf(turn.replies);
 
 	return (
@@ -832,14 +830,14 @@ const TurnView = memo(function TurnView({ turn, phase, pending, modelName }: Tur
 			data-prompt-pending={pending || undefined}
 			className={`transcript-turn ${contentWidth} flex flex-col pt-2 pb-2 text-body`}
 		>
-			{turn.user !== undefined && <UserMessage entry={turn.user} onFork={forkAt(turn.user)} />}
+			{user !== undefined && <UserMessage entry={user} onFork={forkable(user) ? () => forkAt(user) : undefined} />}
 			{(work.length > 0 || working || answer || interrupted || failed) && (
 				<Message
 					role="assistant"
 					at={turn.replies[0]?.createdAt}
 					ended={ended}
 					copyText={last === undefined ? "" : textOf(last)}
-					onFork={forkAt(last)}
+					onFork={forkable(last) ? () => forkAt(last) : undefined}
 				>
 					<WorkLog
 						steps={work}
