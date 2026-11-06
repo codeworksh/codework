@@ -86,11 +86,17 @@ export function SectionHeader({
 			{mark}
 			{group !== undefined && renaming === group.id ? (
 				<input
-					// oxlint-disable-next-line jsx-a11y/no-autofocus -- a new or renamed group is named at once.
-					autoFocus
+					// A new or renamed group is named at once. Focused a frame after mount: picked from its menu,
+					// the field appears while the closing menu still holds focus.
+					ref={(input) => {
+						if (input !== null)
+							requestAnimationFrame(() => {
+								input.focus();
+								input.select();
+							});
+					}}
 					defaultValue={group.name}
 					aria-label="Group name"
-					onFocus={(event) => event.currentTarget.select()}
 					onBlur={(event) => rename(event.currentTarget.value)}
 					onKeyDown={(event) => {
 						event.stopPropagation();
@@ -118,7 +124,11 @@ export function SectionHeader({
 						>
 							<MoreHorizontal className="size-3.5" aria-hidden />
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
+						<DropdownMenuContent
+							align="end"
+							// Rename opens a field that takes focus; the menu must not take it back as it closes.
+							onCloseAutoFocus={(event) => event.preventDefault()}
+						>
 							<DropdownMenuItem className="text-xs" onSelect={() => onRename(group.id)}>
 								Rename
 							</DropdownMenuItem>
