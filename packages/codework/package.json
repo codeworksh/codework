@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/cli",
-	"version": "0.7.0",
+	"version": "0.8.0",
 	"description": "CLI for running CodeWork coding agent harness.",
 	"keywords": [
 		"agent",
