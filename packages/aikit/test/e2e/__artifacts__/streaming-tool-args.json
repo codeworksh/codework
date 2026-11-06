@@ -1,0 +1,33 @@
+{
+  "argumentBytes": 618778,
+  "contentLength": 512064,
+  "deltas": 9220,
+  "snapshots": 9220,
+  "argumentsSha256": "26c7e051c674cbd4f8b49011779e969ccc238c61b075e7099bfc684549a9bfb3",
+  "events": [
+    {
+      "type": "start",
+      "count": 1
+    },
+    {
+      "type": "toolcall.start",
+      "count": 1
+    },
+    {
+      "type": "toolcall.delta",
+      "count": 9220
+    },
+    {
+      "type": "toolcall.end",
+      "count": 1
+    },
+    {
+      "type": "toolcall.final",
+      "count": 1
+    },
+    {
+      "type": "done",
+      "count": 1
+    }
+  ]
+}
