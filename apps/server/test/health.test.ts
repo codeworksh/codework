@@ -64,9 +64,11 @@ const protocol = () =>
 		Layer.provide(RpcSerialization.layerNdjson),
 	);
 
-const defaultTag = (statuses: ReadonlyArray<ServerStatus>) => statuses.find((status) => status.isDefault)?.server._tag;
-const tagOf = (statuses: ReadonlyArray<ServerStatus>, id: string) =>
-	statuses.find((status) => status.id === id)?.server._tag;
+const tagOf = (statuses: ReadonlyArray<ServerStatus>, found: (status: ServerStatus) => boolean) => {
+	const status = statuses.find(found);
+	return status?.kind === "local" ? status.server._tag : undefined;
+};
+const defaultTag = (statuses: ReadonlyArray<ServerStatus>) => tagOf(statuses, (status) => status.isDefault);
 
 it("tells a server runs from its URL, whatever its registered pid", async () => {
 	const steps = await Effect.gen(function* () {
@@ -98,16 +100,22 @@ it("tells a server runs from its URL, whatever its registered pid", async () => 
 		const running = yield* until("Running");
 
 		// The same server registered with a pid no process here has: its URL alone says it runs.
-		const otherId = yield* rpc["servers.add"]({ name: "Other OS", executable: null, home: otherHome, args: "" });
+		const otherId = yield* rpc["servers.add"]({
+			kind: "local",
+			name: "Other OS",
+			executable: null,
+			home: otherHome,
+			args: "",
+		});
 		const registered = JSON.parse(readFileSync(registration, "utf8")) as { pid: number };
 		writeFileSync(join(otherHome, "service.json"), JSON.stringify({ ...registered, pid: 2_147_483_646 }));
-		const otherOs = tagOf(yield* checked, otherId);
+		const otherOs = tagOf(yield* checked, (status) => status.id === otherId);
 
 		// Killed outright, the server leaves its registration behind; nothing answers at its URL.
 		yield* Effect.promise(() => kill(codework!));
 		const killed = yield* until("Stopped");
 		const leftBehind = existsSync(registration);
-		const otherOsKilled = tagOf(yield* checked, otherId);
+		const otherOsKilled = tagOf(yield* checked, (status) => status.id === otherId);
 
 		// A registration whose pid lives (this test) but whose URL nobody answers: stopped, not unreachable.
 		writeFileSync(

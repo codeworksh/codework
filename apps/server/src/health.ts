@@ -52,8 +52,8 @@ export const layer = Layer.effect(
 		const checkDefault = (asked: boolean) =>
 			Effect.gen(function* () {
 				const before = (yield* SubscriptionRef.get(current))?.find((status) => status.isDefault);
-				if (before === undefined) return;
-				const home = servers.homeOf(yield* servers.get(before.id)).path;
+				if (before === undefined || before.kind === "remote") return;
+				const home = servers.homeOf(yield* servers.getLocal(before.id)).path;
 				if (!asked && before.server._tag === "Running") {
 					const live = yield* Cli.liveAt(home).pipe(Effect.provideContext(context));
 					if (Option.isNone(live)) yield* check;

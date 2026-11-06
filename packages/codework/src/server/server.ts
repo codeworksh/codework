@@ -53,6 +53,9 @@ const managedShutdown = Layer.unwrap(
 	}),
 );
 
+/** Ends the stored runs the last server left open, before the listener opens: a client never sees them live. */
+const sweep = Layer.effectDiscard(Effect.flatMap(Control.Service, (control) => control.sweep));
+
 /**
  * Resumes the runs the last server left unfinished, whether it crashed or shut down: the session
  * table records them as they start, so this needs nothing from the previous process.
@@ -101,6 +104,8 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provideMerge(NodeHttpServer.layer(createServer, { host: options.host, port: options.port })),
 		Layer.provide(RpcSerialization.layerNdjson),
 		Layer.provide(Identity.layer),
+		// Built after the harness and before everything above it, the listener included.
+		Layer.provide(sweep),
 		Layer.provide(Harness.layer(options.harness)),
 	);
 };

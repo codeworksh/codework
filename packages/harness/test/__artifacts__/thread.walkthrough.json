@@ -3,29 +3,35 @@
 		"1 session.created.1 T1",
 		"2 session.thread.configured.1 T1",
 		"3 session.prompt.admitted.1 T1",
-		"4 session.prompt.promoted.1 T1",
-		"5 session.thread.system.changed.1 T1",
-		"6 session.llm.started.1 T1",
-		"7 session.llm.ended.1 T1",
-		"8 session.thread.configured.1 T1",
-		"9 session.tool.settled.1 T1",
-		"10 session.turn.ended.1 T1",
-		"11 session.llm.started.1 T1",
-		"12 session.llm.ended.1 T1",
-		"13 session.turn.ended.1 T1",
-		"14 session.prompt.admitted.1 T1",
-		"15 session.prompt.promoted.1 T1",
-		"16 session.llm.started.1 T1",
-		"17 session.llm.ended.1 T1",
-		"18 session.turn.ended.1 T1",
-		"19 session.thread.forked.1 T2",
-		"20 session.prompt.admitted.1 T2",
-		"21 session.prompt.promoted.1 T2",
-		"22 session.llm.started.1 T2",
-		"23 session.llm.ended.1 T2",
-		"24 session.turn.ended.1 T2",
-		"25 session.thread.configured.1 T2",
-		"26 session.thread.forked.1 T3"
+		"4 session.execution.started.1 T1",
+		"5 session.prompt.promoted.1 T1",
+		"6 session.thread.system.changed.1 T1",
+		"7 session.llm.started.1 T1",
+		"8 session.llm.ended.1 T1",
+		"9 session.thread.configured.1 T1",
+		"10 session.tool.settled.1 T1",
+		"11 session.turn.ended.1 T1",
+		"12 session.llm.started.1 T1",
+		"13 session.llm.ended.1 T1",
+		"14 session.turn.ended.1 T1",
+		"15 session.execution.succeeded.1 T1",
+		"16 session.prompt.admitted.1 T1",
+		"17 session.execution.started.1 T1",
+		"18 session.prompt.promoted.1 T1",
+		"19 session.llm.started.1 T1",
+		"20 session.llm.ended.1 T1",
+		"21 session.turn.ended.1 T1",
+		"22 session.execution.succeeded.1 T1",
+		"23 session.thread.forked.1 T2",
+		"24 session.prompt.admitted.1 T2",
+		"25 session.execution.started.1 T2",
+		"26 session.prompt.promoted.1 T2",
+		"27 session.llm.started.1 T2",
+		"28 session.llm.ended.1 T2",
+		"29 session.turn.ended.1 T2",
+		"30 session.execution.succeeded.1 T2",
+		"31 session.thread.configured.1 T2",
+		"32 session.thread.forked.1 T3"
 	],
 	"threads": [
 		{
@@ -37,25 +43,25 @@
 		{
 			"thread": "T2",
 			"origin": "fork T1 at E4",
-			"createdSeq": 19,
+			"createdSeq": 23,
 			"title": "Use OAuth instead"
 		},
 		{
 			"thread": "T3",
 			"origin": "fork T1 at E3",
-			"createdSeq": 26,
+			"createdSeq": 32,
 			"title": null
 		}
 	],
 	"entries": [
-		"E1 T1 user seq=4 committed=4 committed",
-		"E2 T1 system seq=5 committed=5 committed",
-		"E3 T1 assistant seq=6 committed=10 committed",
-		"E4 T1 assistant seq=11 committed=13 committed",
-		"E5 T1 user seq=15 committed=15 committed",
-		"E6 T1 assistant seq=16 committed=18 committed",
-		"E7 T2 user seq=21 committed=21 committed",
-		"E8 T2 assistant seq=22 committed=24 committed"
+		"E1 T1 user seq=5 committed=5 committed",
+		"E2 T1 system seq=6 committed=6 committed",
+		"E3 T1 assistant seq=7 committed=11 committed",
+		"E4 T1 assistant seq=12 committed=14 committed",
+		"E5 T1 user seq=18 committed=18 committed",
+		"E6 T1 assistant seq=19 committed=21 committed",
+		"E7 T2 user seq=26 committed=26 committed",
+		"E8 T2 assistant seq=27 committed=29 committed"
 	],
 	"documents": [
 		{
@@ -64,22 +70,22 @@
 			"revisions": [
 				"1 {}",
 				"2 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"}}",
-				"8 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
+				"9 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
 			]
 		},
 		{
 			"thread": "T2",
 			"kind": "agent",
 			"revisions": [
-				"19 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}",
-				"25 {\"model\":{\"provider\":\"anthropic\",\"id\":\"claude-sonnet-5-5\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
+				"23 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}",
+				"31 {\"model\":{\"provider\":\"anthropic\",\"id\":\"claude-sonnet-5-5\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
 			]
 		},
 		{
 			"thread": "T3",
 			"kind": "agent",
 			"revisions": [
-				"26 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
+				"32 {\"model\":{\"provider\":\"openai\",\"id\":\"gpt-5.4\"},\"modelTools\":{\"add\":[\"web_fetch\"]}}"
 			]
 		}
 	],

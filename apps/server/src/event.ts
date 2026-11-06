@@ -11,7 +11,7 @@ import {
 	Stream,
 	SubscriptionRef,
 } from "effect";
-import { SqlClient } from "effect/sql";
+import { SqlClient, type SqlError } from "effect/sql";
 import { WidgetEvent, type Event, type Publish, type Request, type Synced } from "@codeworksh/widget/event";
 import { Db } from "./db.ts";
 
@@ -29,6 +29,13 @@ export interface Interface {
 	}) => Stream.Stream<Event | Synced>;
 	/** How many subscriptions follow `topic`: the current count, then each change. */
 	readonly watchers: (topic: string) => Stream.Stream<number>;
+	/**
+	 * Runs `body` in one database transaction; what it appends is stored in that transaction and
+	 * handed to live subscribers once it commits, so a row and the event announcing it land together.
+	 */
+	readonly transact: <A, E, R>(
+		body: (append: (input: Publish) => Effect.Effect<void>) => Effect.Effect<A, E, R>,
+	) => Effect.Effect<A, E | SqlError.SqlError, R>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/server/event/Service") {}
@@ -98,38 +105,68 @@ export const layer = Layer.effect(
 				ORDER BY seq
 			`);
 
-		const publish = Effect.fn("Event.publish")(function* ({ ephemeral, ...input }: Publish) {
+		const prepare = Effect.fnUntraced(function* ({ ephemeral, ...input }: Publish) {
 			const id = input.id ?? (yield* Effect.sync(() => crypto.randomUUID()));
-			const created = yield* Clock.currentTimeMillis;
-			const event: Event = { ...input, id, created };
-			if (ephemeral === true) {
+			const event: Event = { ...input, id, created: yield* Clock.currentTimeMillis };
+			return { event, ephemeral: ephemeral === true };
+		});
+
+		// Run under `lock`: the seq it takes is broadcast before any later one.
+		const insert = (event: Event) =>
+			Effect.gen(function* () {
+				const text = yield* encodePayload(event.payload).pipe(Effect.orDie);
+				const rows = yield* sql<{ seq: number }>`
+					INSERT INTO event ${sql.insert({
+						id: event.id,
+						topic: event.topic,
+						source: event.source,
+						cause: event.cause ?? null,
+						payload: text,
+						created: event.created,
+					})} RETURNING seq
+				`.pipe(Effect.orDie);
+				return { ...event, seq: rows[0]!.seq } satisfies Event;
+			});
+
+		const publish = Effect.fn("Event.publish")(function* (input: Publish) {
+			const { event, ephemeral } = yield* prepare(input);
+			if (ephemeral) {
 				yield* PubSub.publish(live, event);
 				return event;
 			}
-			const text = yield* encodePayload(input.payload).pipe(Effect.orDie);
 			return yield* lock.withPermit(
 				Effect.gen(function* () {
-					const stored = yield* byId(id);
+					const stored = yield* byId(event.id);
 					if (stored !== undefined) return stored;
-					const rows = yield* sql<{ seq: number }>`
-						INSERT INTO event ${sql.insert({
-							id,
-							topic: input.topic,
-							source: input.source,
-							cause: input.cause ?? null,
-							payload: text,
-							created,
-						})} RETURNING seq
-					`.pipe(Effect.orDie);
-					const committed: Event = { ...event, seq: rows[0]!.seq };
+					const committed = yield* insert(event);
 					yield* PubSub.publish(live, committed);
 					return committed;
 				}),
 			);
 		});
 
+		// The lock is taken before the transaction, as `publish` takes it before the connection: the
+		// other order would deadlock against a publish waiting for the connection.
+		const transact: Interface["transact"] = (body) =>
+			lock.withPermit(
+				Effect.gen(function* () {
+					const pending: Array<Event> = [];
+					const result = yield* sql.withTransaction(
+						body((input) =>
+							Effect.gen(function* () {
+								const { event, ephemeral } = yield* prepare(input);
+								pending.push(ephemeral ? event : yield* insert(event));
+							}),
+						),
+					);
+					yield* PubSub.publishAll(live, pending);
+					return result;
+				}),
+			);
+
 		return Service.of({
 			publish,
+			transact,
 			watchers: (topic) =>
 				SubscriptionRef.changes(watching).pipe(
 					Stream.map((counts) => counts.get(topic) ?? 0),

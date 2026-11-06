@@ -1,0 +1,185 @@
+{
+	"info": {
+		"storeId": "<store>",
+		"rev": "<head>"
+	},
+	"configured": {
+		"_tag": "Thread",
+		"thread": {
+			"id": "<main>",
+			"origin": {
+				"kind": "main"
+			},
+			"updatedAt": "<time>",
+			"thinkingLevel": "high",
+			"usage": {
+				"cost": 0,
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"runState": "idle",
+			"restarts": 0,
+			"createdSeq": 1,
+			"createdAt": "<time>",
+			"sessionId": "<session>"
+		},
+		"rev": "<rev>"
+	},
+	"removed": {
+		"_tag": "Removed",
+		"kind": "session",
+		"id": "<doomed>",
+		"rev": "<rev>"
+	},
+	"snapshot": [
+		{
+			"_tag": "Session",
+			"session": {
+				"id": "<session>",
+				"spaceId": "<space>",
+				"slug": "<slug>",
+				"directory": "<home>",
+				"project": {
+					"id": "<project>",
+					"name": "Beta"
+				},
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"mainThreadId": "<main>"
+			},
+			"rev": "<rev 0>"
+		},
+		{
+			"_tag": "Thread",
+			"thread": {
+				"id": "<main>",
+				"origin": {
+					"kind": "main"
+				},
+				"title": "Main prompt",
+				"updatedAt": "<time>",
+				"thinkingLevel": "high",
+				"usage": {
+					"cost": 0,
+					"input": 1,
+					"output": 1,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"runState": "idle",
+				"runStateAt": "<time>",
+				"lastRun": {
+					"startedAt": "<time>",
+					"endedAt": "<time>",
+					"outcome": "succeeded"
+				},
+				"restarts": 0,
+				"createdSeq": 1,
+				"createdAt": "<time>",
+				"sessionId": "<session>"
+			},
+			"rev": "<rev 1>"
+		},
+		{
+			"_tag": "Thread",
+			"thread": {
+				"id": "<fork>",
+				"origin": {
+					"kind": "fork",
+					"threadId": "<main>",
+					"entryId": "<reply>",
+					"cut": 9
+				},
+				"updatedAt": "<time>",
+				"thinkingLevel": "high",
+				"usage": {
+					"cost": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"runState": "idle",
+				"restarts": 0,
+				"createdSeq": 11,
+				"createdAt": "<time>",
+				"sessionId": "<session>"
+			},
+			"rev": "<rev 2>"
+		},
+		{
+			"_tag": "Project",
+			"project": {
+				"id": "<project>",
+				"name": "Beta",
+				"status": "active",
+				"createdAt": "<time>",
+				"updatedAt": "<time>"
+			},
+			"rev": "<rev 3>"
+		},
+		{
+			"_tag": "Space",
+			"space": {
+				"id": "<space>",
+				"projectId": "<project>",
+				"location": "<home>",
+				"kind": "plain",
+				"status": "active",
+				"createdAt": "<time>",
+				"updatedAt": "<time>"
+			},
+			"rev": "<rev 3>"
+		},
+		{
+			"_tag": "Removed",
+			"kind": "session",
+			"id": "<doomed>",
+			"rev": "<rev 4>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 4>"
+		}
+	],
+	"resumed": [
+		{
+			"_tag": "Project",
+			"project": {
+				"id": "<project>",
+				"name": "Beta",
+				"status": "active",
+				"createdAt": "<time>",
+				"updatedAt": "<time>"
+			},
+			"rev": "<rev 3>"
+		},
+		{
+			"_tag": "Space",
+			"space": {
+				"id": "<space>",
+				"projectId": "<project>",
+				"location": "<home>",
+				"kind": "plain",
+				"status": "active",
+				"createdAt": "<time>",
+				"updatedAt": "<time>"
+			},
+			"rev": "<rev 3>"
+		},
+		{
+			"_tag": "Removed",
+			"kind": "session",
+			"id": "<doomed>",
+			"rev": "<rev 4>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 4>"
+		}
+	]
+}

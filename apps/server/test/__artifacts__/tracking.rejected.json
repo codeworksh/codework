@@ -1,0 +1,39 @@
+{
+	"rejected": {
+		"priority 5": {
+			"_tag": "Server.TrackingError",
+			"message": "5 is not a priority: 0 none, 1 urgent to 4 low."
+		},
+		"priority -1": {
+			"_tag": "Server.TrackingError",
+			"message": "-1 is not a priority: 0 none, 1 urgent to 4 low."
+		},
+		"thread color orange": {
+			"_tag": "Server.TrackingError",
+			"message": "orange is not a #rrggbb color."
+		},
+		"session color #12345": {
+			"_tag": "Server.TrackingError",
+			"message": "#12345 is not a #rrggbb color."
+		},
+		"group color #ggg000": {
+			"_tag": "Server.TrackingError",
+			"message": "#ggg000 is not a #rrggbb color."
+		},
+		"missing thread": {
+			"_tag": "Server.TrackingError",
+			"message": "No thread thr_missing."
+		},
+		"missing group": {
+			"_tag": "Server.TrackingError",
+			"message": "No thread <thread> with a group missing in its organization."
+		}
+	},
+	"thread": {
+		"status": "cancelled",
+		"priority": 1,
+		"grouping_id": null,
+		"ordering": 0,
+		"color": null
+	}
+}

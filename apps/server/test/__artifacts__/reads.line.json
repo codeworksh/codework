@@ -1,0 +1,271 @@
+{
+	"newest": {
+		"thread": {
+			"id": "<thr 1>",
+			"sessionId": "<ses 1>",
+			"machineId": "<id 1>",
+			"title": "Fork prompt",
+			"runState": "idle",
+			"updatedAt": "<time>",
+			"directory": "<home>",
+			"project": {
+				"id": "<id 2>",
+				"name": "Line"
+			}
+		},
+		"entries": [
+			{
+				"id": "<id 3>",
+				"threadId": "<thr 2>",
+				"seq": "<seq 4>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 36,
+				"parts": [
+					{
+						"type": "text",
+						"text": "Fork prompt"
+					}
+				]
+			},
+			{
+				"id": "<assistant 1>",
+				"threadId": "<thr 2>",
+				"seq": "<seq 5>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 45,
+				"parts": [
+					{
+						"type": "text",
+						"text": "reply to Fork prompt"
+					}
+				]
+			}
+		],
+		"inbox": [],
+		"more": true,
+		"floor": "<seq 1>"
+	},
+	"middle": {
+		"thread": {
+			"id": "<thr 1>",
+			"sessionId": "<ses 1>",
+			"machineId": "<id 1>",
+			"title": "Fork prompt",
+			"runState": "idle",
+			"updatedAt": "<time>",
+			"directory": "<home>",
+			"project": {
+				"id": "<id 2>",
+				"name": "Line"
+			}
+		},
+		"entries": [
+			{
+				"id": "<id 4>",
+				"threadId": "<thr 3>",
+				"seq": "<seq 2>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 300033,
+				"parts": [
+					{
+						"type": "text",
+						"text": "Second\nxxxxxxxxxxxxxxxxx"
+					}
+				]
+			},
+			{
+				"id": "<assistant 2>",
+				"threadId": "<thr 3>",
+				"seq": "<seq 3>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 300042,
+				"parts": [
+					{
+						"type": "text",
+						"text": "reply to Second\nxxxxxxxx"
+					}
+				]
+			}
+		],
+		"inbox": [],
+		"more": true,
+		"floor": "<seq 1>"
+	},
+	"atFloor": {
+		"thread": {
+			"id": "<thr 1>",
+			"sessionId": "<ses 1>",
+			"machineId": "<id 1>",
+			"title": "Fork prompt",
+			"runState": "idle",
+			"updatedAt": "<time>",
+			"directory": "<home>",
+			"project": {
+				"id": "<id 2>",
+				"name": "Line"
+			}
+		},
+		"entries": [
+			{
+				"id": "<assistant 3>",
+				"threadId": "<thr 3>",
+				"seq": "<seq 1>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 300041,
+				"parts": [
+					{
+						"type": "text",
+						"text": "reply to First\nxxxxxxxxx"
+					}
+				]
+			}
+		],
+		"inbox": [],
+		"more": false,
+		"floor": "<seq 1>"
+	},
+	"budgeted": {
+		"entries": [
+			"<assistant 3>",
+			"<id 4>",
+			"<assistant 2>",
+			"<id 3>",
+			"<assistant 1>"
+		],
+		"more": true
+	},
+	"paged": {
+		"entries": 1,
+		"floor": "<seq 0>",
+		"below": {
+			"thread": {
+				"id": "<thr 1>",
+				"sessionId": "<ses 1>",
+				"machineId": "<id 1>",
+				"title": "Fork prompt",
+				"runState": "idle",
+				"updatedAt": "<time>",
+				"directory": "<home>",
+				"project": {
+					"id": "<id 2>",
+					"name": "Line"
+				}
+			},
+			"entries": [
+				{
+					"id": "<id 5>",
+					"threadId": "<thr 3>",
+					"seq": "<seq 0>",
+					"role": "user",
+					"state": "committed",
+					"createdAt": "<time>",
+					"updatedAt": "<time>",
+					"size": 300032,
+					"parts": [
+						{
+							"type": "text",
+							"text": "First\nxxxxxxxxxxxxxxxxxx"
+						}
+					]
+				},
+				{
+					"id": "<assistant 3>",
+					"threadId": "<thr 3>",
+					"seq": "<seq 1>",
+					"role": "assistant",
+					"state": "committed",
+					"createdAt": "<time>",
+					"updatedAt": "<time>",
+					"size": 300041,
+					"parts": [
+						{
+							"type": "text",
+							"text": "reply to First\nxxxxxxxxx"
+						}
+					]
+				}
+			],
+			"inbox": [],
+			"more": false,
+			"floor": "<seq 0>"
+		}
+	},
+	"queued": {
+		"thread": {
+			"id": "<thr 1>",
+			"sessionId": "<ses 1>",
+			"machineId": "<id 1>",
+			"title": "gate",
+			"runState": "running",
+			"lastRun": {
+				"startedAt": "<time>"
+			},
+			"updatedAt": "<time>",
+			"directory": "<home>",
+			"project": {
+				"id": "<id 2>",
+				"name": "Line"
+			}
+		},
+		"entries": [
+			{
+				"id": "<id 3>",
+				"threadId": "<thr 2>",
+				"seq": "<seq 4>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 36,
+				"parts": [
+					{
+						"type": "text",
+						"text": "Fork prompt"
+					}
+				]
+			},
+			{
+				"id": "<assistant 1>",
+				"threadId": "<thr 2>",
+				"seq": "<seq 5>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"size": 45,
+				"parts": [
+					{
+						"type": "text",
+						"text": "reply to Fork prompt"
+					}
+				]
+			}
+		],
+		"inbox": [
+			{
+				"id": "<id 6>",
+				"delivery": "followUp",
+				"text": "Queued",
+				"admittedSeq": 30,
+				"createdAt": "<time>"
+			}
+		],
+		"more": true,
+		"floor": "<seq 0>"
+	}
+}

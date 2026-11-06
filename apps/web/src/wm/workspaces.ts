@@ -16,7 +16,7 @@ export const workspacesKey = ["workspaces"];
 
 export const workspacesAtom = Server.query("workspaces.list", undefined, { reactivityKeys: workspacesKey });
 
-export const createWorkspace = Server.mutation("workspaces.create");
+const createWorkspace = Server.mutation("workspaces.create");
 export const updateWorkspace = Server.mutation("workspaces.update");
 export const reorderWorkspaces = Server.mutation("workspaces.reorder");
 // Kept alive so a delete started as the desktop unmounts (its last frame closed) still lands.

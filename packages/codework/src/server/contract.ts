@@ -39,15 +39,47 @@ export const SandboxInfo = Schema.Struct({
 });
 export type SandboxInfo = typeof SandboxInfo.Type;
 
+/** One logical codebase, whatever env it is checked out in. */
+export const ProjectInfo = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	status: Schema.Literals(["active", "archived"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	updatedAt: Schema.Finite,
+});
+export type ProjectInfo = typeof ProjectInfo.Type;
+
+/** One directory of a project in one env; sessions attach to it. */
+export const SpaceInfo = Schema.Struct({
+	id: Schema.String,
+	projectId: Schema.String,
+	location: Session.AbsolutePath,
+	kind: Schema.Literals(["primary", "linked", "copy", "plain"]),
+	/** The sandbox it is in; absent for the host. */
+	env: optional(Schema.String),
+	status: Schema.Literals(["active", "archived"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	updatedAt: Schema.Finite,
+});
+export type SpaceInfo = typeof SpaceInfo.Type;
+
 /** The container: where its threads run by default, and which host project it reads. */
 export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
+	spaceId: Schema.String,
+	slug: Schema.String,
 	directory: Session.AbsolutePath,
 	/** The host directory this session is anchored to. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 	/** The project the session's space belongs to. */
 	project: optional(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	tag: optional(Schema.String),
+	metadata: optional(Schema.Record(Schema.String, Schema.String)),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
 	/** Last activity in any of its threads, epoch milliseconds. */
 	updatedAt: Schema.Finite,
 	/** Where unaddressed prompts go. */
@@ -55,14 +87,17 @@ export const SessionInfo = Schema.Struct({
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
+/** `cut` is the committed seq of `entryId`: the inherited line ends there. */
 export const ThreadOrigin = Schema.Union([
 	Schema.Struct({ kind: Schema.Literal("main") }),
-	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String }),
+	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String, cut: Schema.Int }),
 	Schema.Struct({
 		kind: Schema.Literal("subagent"),
 		threadId: Schema.String,
 		callId: Schema.String,
 		entryId: optional(Schema.String),
+		/** Present once `entryId` is committed. */
+		cut: optional(Schema.Int),
 	}),
 ]);
 
@@ -77,8 +112,16 @@ export const ThreadUsage = Schema.Struct({
 });
 export type ThreadUsage = typeof ThreadUsage.Type;
 
-/** One linear transcript of a session, with the session embedded. */
-export const ThreadInfo = Schema.Struct({
+/** The last run of a thread; `error` is set unless it succeeded or is still going. */
+export const ThreadRun = Schema.Struct({
+	/** Epoch milliseconds. */
+	startedAt: Schema.Finite,
+	endedAt: optional(Schema.Finite),
+	outcome: optional(ThreadSchema.RunOutcome),
+	error: optional(ThreadSchema.RunError),
+});
+
+const ThreadFields = {
 	id: ThreadSchema.ID,
 	origin: ThreadOrigin,
 	/** Absent until its first own prompt; clients show a fork's source title until then. */
@@ -94,9 +137,41 @@ export const ThreadInfo = Schema.Struct({
 	/** Where it runs instead of the session's space and directory. */
 	placement: optional(Schema.Struct({ spaceId: Schema.String, directory: Session.AbsolutePath })),
 	usage: ThreadUsage,
-	session: SessionInfo,
-});
+	/** Where its run is, as the harness stores it: live whenever the server is up. */
+	runState: ThreadSchema.RunState,
+	/** When `runState` last changed, epoch milliseconds; absent before the first run. */
+	runStateAt: optional(Schema.Finite),
+	/** Absent before the first run. */
+	lastRun: optional(ThreadRun),
+	/** Automatic restarts of the current run. */
+	restarts: Schema.Int,
+	/** The 1-based provider request in flight; absent when none is. */
+	attempt: optional(Schema.Int),
+	/** The seq of the session event that created it. */
+	createdSeq: Schema.Int,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+};
+
+/** One linear transcript of a session, with the session embedded. */
+export const ThreadInfo = Schema.Struct({ ...ThreadFields, session: SessionInfo });
 export type ThreadInfo = typeof ThreadInfo.Type;
+
+/** A thread as `index.sync` sends it: its session is a row of its own. */
+export const ThreadSummary = Schema.Struct({ ...ThreadFields, sessionId: Session.SessionSchema.ID });
+export type ThreadSummary = typeof ThreadSummary.Type;
+
+/** An `index.sync` item: a row with the revision that last wrote it, a deletion, or progress. */
+export const IndexItem = Schema.Union([
+	Schema.TaggedStruct("Project", { project: ProjectInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Space", { space: SpaceInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Session", { session: SessionInfo, rev: Schema.Int }),
+	Schema.TaggedStruct("Thread", { thread: ThreadSummary, rev: Schema.Int }),
+	Schema.TaggedStruct("Removed", { kind: Schema.Literal("session"), id: Schema.String, rev: Schema.Int }),
+	/** Every row with a revision up to `rev` has been sent. */
+	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int }),
+]);
+export type IndexItem = typeof IndexItem.Type;
 
 /** A thread of a session: `threadId`, or the session's `main` thread when absent. */
 const ThreadRef = {
@@ -123,6 +198,8 @@ export const HistoryEntry = Schema.Struct({
 	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
 	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
+	/** Bytes of its parts as the harness stores them; `thread.sync`'s budget counts it. */
+	size: Schema.Int,
 	/** Why a reply failed, as `provider/model: reason`; absent for one that ended normally or was stopped. */
 	error: optional(Schema.String),
 });
@@ -134,10 +211,39 @@ export const QueuedPrompt = Schema.Struct({
 	id: Schema.String,
 	delivery: PromptSchema.Delivery,
 	text: Schema.String,
+	/** The thread's sequence number at admission; orders the queue. */
+	admittedSeq: Schema.Int,
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
 });
 export type QueuedPrompt = typeof QueuedPrompt.Type;
+
+/** Text streamed into a reply's part since its last checkpoint; never stored. */
+export const LiveDelta = Schema.Struct({
+	/** The reply's entry id. */
+	entryId: Schema.String,
+	partIndex: Schema.Int,
+	kind: Schema.Literals(["text", "thinking"]),
+	/** The part's text length before this delta: apply it only where the held text ends there. */
+	offset: Schema.Int,
+	delta: Schema.String,
+});
+export type LiveDelta = typeof LiveDelta.Type;
+
+/** A `thread.sync` item: a row with the revision that last wrote it, progress, or a live delta. */
+export const ThreadItem = Schema.Union([
+	/** Upsert by entry id. */
+	Schema.TaggedStruct("Entry", { entry: HistoryEntry, rev: Schema.Int }),
+	Schema.TaggedStruct("Inbox", {
+		prompt: QueuedPrompt,
+		state: Schema.Literals(["pending", "promoted", "cancelled"]),
+		rev: Schema.Int,
+	}),
+	/** Every row with a revision up to `rev` has been sent; `floor`, on the first, is the oldest entry's seq. */
+	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int, floor: optional(Schema.Int) }),
+	Schema.TaggedStruct("Delta", { delta: LiveDelta }),
+]);
+export type ThreadItem = typeof ThreadItem.Type;
 
 /** Ends `session.log`'s replay; `seq` is absent when the session has no durable events yet. */
 export const LogSynced = Schema.Struct({
@@ -316,7 +422,25 @@ export const Api = RpcGroup.make(
 	 */
 	Rpc.make("server.info", {
 		payload: {},
-		success: Schema.Struct({ pid: Schema.Int, version: Schema.String }),
+		success: Schema.Struct({
+			pid: Schema.Int,
+			version: Schema.String,
+			/** The harness store this server serves; a sync cursor is only valid against it. */
+			storeId: Schema.String,
+			/** The store's head: the last revision taken. */
+			rev: Schema.Int,
+		}),
+	}),
+	/**
+	 * The index of this machine: every project, space, session and thread whose revision is past
+	 * `after`, in revision order, then `Synced` at the head read when the call began; then the same
+	 * live after each commit. `after: 0` reads the whole index. A row written again moves to a later
+	 * revision and is sent again; the latest wins. A deleted session arrives as `Removed`.
+	 */
+	Rpc.make("index.sync", {
+		payload: { after: Schema.Int },
+		success: IndexItem,
+		stream: true,
 	}),
 	Rpc.make("auth.save", {
 		payload: { credentials: OAuthCredentials },
@@ -485,6 +609,39 @@ export const Api = RpcGroup.make(
 	Rpc.make("thread.queue", {
 		payload: ThreadRef,
 		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
+		error: ThreadErrors,
+	}),
+	/**
+	 * One thread's detail. Without `after`, the newest entries of its line (inherited ones
+	 * included) within `budget` bytes (default 1 MiB) and its pending inbox, then `Synced` with
+	 * `floor`. With `after`, its own entries and inbox rows whose revision is past it, then
+	 * `Synced`. Then the same live after each commit, with the thread's text and thinking deltas
+	 * as `Delta` between.
+	 */
+	Rpc.make("thread.sync", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: ThreadSchema.ID,
+			after: optional(Schema.Int),
+			budget: optional(Schema.Int),
+		},
+		success: ThreadItem,
+		error: Schema.Union([ThreadErrors, Event.SubscriptionOverflowError, EncodingError]),
+		stream: true,
+	}),
+	/**
+	 * Older entries of a thread's line (inherited ones included), oldest first: the newest `limit`
+	 * whose `seq` is below `before`, cut to `budget` bytes (default 1 MiB). The newest is always sent.
+	 */
+	Rpc.make("thread.page", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			threadId: ThreadSchema.ID,
+			before: Schema.Int,
+			limit: Schema.Int,
+			budget: optional(Schema.Int),
+		},
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
 		error: ThreadErrors,
 	}),
 	Rpc.make("thread.configure", {

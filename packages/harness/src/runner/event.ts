@@ -111,6 +111,14 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 	let stopped = false;
 	let ticker: Fiber.Fiber<void> | undefined;
 
+	// Each part's text length so far, counted from the deltas: `partial` may have moved on when read.
+	const lengths = new Map<number, number>();
+	const advance = (partIndex: number, delta: string) => {
+		const offset = lengths.get(partIndex) ?? 0;
+		lengths.set(partIndex, offset + delta.length);
+		return offset;
+	};
+
 	const checkpoint = Effect.gen(function* () {
 		dirty = false;
 		if (latest === undefined || startedMessageId === undefined) return;
@@ -250,6 +258,7 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 						...base,
 						messageId: yield* identify(event.partial.messageId),
 						partIndex: event.partIndex,
+						offset: advance(event.partIndex, event.delta),
 						delta: event.delta,
 					});
 					return;
@@ -276,6 +285,7 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 						...base,
 						messageId: yield* identify(event.partial.messageId),
 						partIndex: event.partIndex,
+						offset: advance(event.partIndex, event.delta),
 						delta: event.delta,
 					});
 					return;

@@ -1,0 +1,54 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	// Exported types are part of our contracts even before they have consumers.
+	"rules": { "types": "off", "nsTypes": "off" },
+	// Supplied by the OS, or run from the package that lists it.
+	"ignoreBinaries": ["plutil", "bumpp"],
+	// The Effect language service is loaded by tsconfig plugins and patched in by @effect/tsgo.
+	"ignoreDependencies": ["@effect/language-service"],
+	// CI installs every workspace but the site, so knip cannot trace its Astro entries there.
+	"ignoreWorkspaces": ["sites/www"],
+	"workspaces": {
+		".": {
+			// Keep vendored and archived repositories outside the root project.
+			"project": ["*.{js,mjs,ts}", "scripts/**/*.mjs"],
+			// release.mjs runs publish.mjs by path.
+			"entry": ["scripts/publish.mjs"],
+			// Example plugins installed at the root so a local run loads them by name.
+			"ignoreDependencies": ["@acme/*"],
+		},
+		"apps/desktop": {
+			// Vite+ pack bundles each by path; package.mjs hands electron-builder its config.
+			"entry": ["src/main.ts!", "src/preload.ts!", "electron.config.ts"],
+		},
+		"apps/web": {
+			// index.html links the themes stylesheet.
+			"entry": ["src/themes.css"],
+			// shadcn modules are copied as cohesive sets: keep their subcomponents before they have callers.
+			"ignoreIssues": {
+				"src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
+				// Topic payloads named for their topic, though several share one shape.
+				"src/widgets/session/schema.ts": ["duplicates"],
+			},
+		},
+		"apps/server": {
+			// The machine simulation runs it on each OrbStack machine by path.
+			"entry": ["test/machines/drive.ts"],
+		},
+		"packages/codework": {
+			// bundle.mjs builds the SEA binary from it by path.
+			"entry": ["src/sea.ts!"],
+			"ignoreDependencies": ["@effect/platform-node-shared", "node-gyp"],
+		},
+		"packages/harness": {
+			// Plugins and MCP servers the E2E tests load or spawn by path.
+			"entry": ["test/plugins/**/*.ts", "test/fixtures/**/*.mjs"],
+			"ignoreDependencies": ["@effect/platform-node-shared"],
+		},
+		"extras/plugins": {
+			// Single-file plugins, loaded by path rather than imported.
+			"entry": ["*.ts"],
+		},
+		"infra/*": { "entry": ["alchemy.run.ts!"] },
+	},
+}

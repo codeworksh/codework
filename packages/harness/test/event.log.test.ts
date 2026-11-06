@@ -160,6 +160,7 @@ describe("Event.log", () => {
 				threadId,
 				messageId: messageId("live"),
 				partIndex: 0,
+				offset: 0,
 				delta: "token",
 			});
 			// Another aggregate's commit must not wake this one into emitting.

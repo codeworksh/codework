@@ -1,12 +1,14 @@
-import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
 import { Folder } from "lucide-react";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useState } from "react";
 
 import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
+import { useSent } from "../widgets/session/display";
+import { handoffs } from "../widgets/session/handoff";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
@@ -14,7 +16,6 @@ import { Arcade } from "./arcade";
 import { cloneBlock, useClone, useCloneNotice } from "../shell/clones";
 import { useAddProject } from "../shell/palette";
 import { placeAtom, placeLabel } from "./place";
-import { projectsAtom } from "../widgets/session/projects";
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
@@ -26,9 +27,9 @@ const decodeCreated = Schema.decodeUnknownOption(Json.Created);
 export function Landing() {
 	const registry = useContext(RegistryContext);
 	// The start page asks the Session backend as the "landing" source, outside any widget frame.
-	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "landing" }).bus, [registry]);
+	const bus = makeHost({ registry, package: "codework", instanceId: "landing" }).bus;
 	const openElsewhere = useOpenElsewhere();
-	const refreshProjects = useAtomRefresh(projectsAtom);
+	const inFlight = useSent();
 	const [query, setQuery] = useState("");
 	const [playing, setPlaying] = useState(false);
 	const place = useAtomValue(placeAtom);
@@ -50,13 +51,14 @@ export function Landing() {
 		const where: Where = { _tag: "Folder", path: place.path };
 		setPending(true);
 		setError(undefined);
+		const prompt = { id: crypto.randomUUID(), text: query.trim(), createdAt: Date.now() };
 		const created = await bus
 			.request({
 				topic: topics.create,
 				payload: encodeCreate({
 					place: where,
-					messageId: crypto.randomUUID(),
-					text: query.trim(),
+					messageId: prompt.id,
+					text: prompt.text,
 					...(model === undefined ? {} : { model }),
 					...(thinking === undefined ? {} : { thinkingLevel: thinking }),
 				}),
@@ -68,7 +70,9 @@ export function Landing() {
 			setError(created?.message ?? "The CodeWork server is not reachable.");
 			return;
 		}
-		refreshProjects();
+		// Pending under the main thread's key (its session's id) until its row lands in app.db.
+		inFlight.prompt(created.sessionId, prompt.id);
+		handoffs.set(created.sessionId, prompt);
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};
 

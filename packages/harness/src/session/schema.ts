@@ -10,9 +10,10 @@ export const IDFromDb = Schema.String.pipe(Schema.brand("Session.ID"));
 /**
  * Why an execution stopped. Supplied by whoever asked for the interruption --
  * a stop the user asked for and a stop the process imposed on shutdown are
- * different facts, and inspecting the cause cannot tell them apart.
+ * different facts, and inspecting the cause cannot tell them apart. `crash` is
+ * the startup sweep's: the process that ran the execution died without ending it.
  */
-export const InterruptReason = Schema.Literals(["user", "shutdown"]);
+export const InterruptReason = Schema.Literals(["user", "shutdown", "crash"]);
 export type InterruptReason = typeof InterruptReason.Type;
 
 // Shared persistence-boundary codecs. Append validates before writing; fork

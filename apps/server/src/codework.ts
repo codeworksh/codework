@@ -1,18 +1,13 @@
 import { Codework as Mirror } from "@codeworksh/widget/codework";
 import { Codework as Client } from "@codeworksh/widget/backend";
 import { NodeSocket } from "@effect/platform-node";
-import { Deferred, Duration, Effect, FileSystem, Layer, Schedule, Schema, Stream } from "effect";
+import { Deferred, Duration, Effect, FileSystem, Layer, Option, Schedule, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 /* @effect-diagnostics nodeBuiltinImport:off -- a home's registration is a file path. */
 import path from "node:path";
 import { CodeworkUnavailable, HostError } from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
-
-export type ThreadInfo = Mirror.ThreadInfo;
-
-/** What an untitled thread is called until its first prompt names it. */
-export const UNTITLED = Mirror.UNTITLED;
 
 /** How a running server advertises itself: `<home>/service.json`, written by `codework serve`. */
 const Registration = Schema.fromJsonString(
@@ -62,37 +57,69 @@ const endOnHomeChange = (socket: Socket.Socket, changes: Stream.Stream<string>):
 	}),
 });
 
+/** A client over `socket`, which reconnects on its own. */
+const connect = <R>(socket: Layer.Layer<Socket.Socket, never, R>) =>
+	Layer.effect(Client, RpcClient.make(Mirror.Api, { flatten: true })).pipe(
+		Layer.provide(RpcClient.layerProtocolSocket({ retryTransientErrors: true })),
+		Layer.provide(socket.pipe(Layer.provide(NodeSocket.layerWebSocketConstructor))),
+		Layer.provide(RpcSerialization.layerNdjson),
+		Layer.orDie,
+	);
+
 /**
- * The app's one connection to a CodeWork server: the default server's. The registration is read on
- * every connect, so a server restarted on a new port, a new home or a new default is picked up
- * without restarting this app; until one is registered, connecting waits.
+ * The URL `registered` reads, waited for until there is one. The socket reads its URL while opening,
+ * which Effect runs uninterruptibly; waiting there for a server to register would otherwise keep the
+ * app server from ever shutting down.
  */
-export const layer = Layer.effect(Client, RpcClient.make(Mirror.Api, { flatten: true })).pipe(
-	Layer.provide(RpcClient.layerProtocolSocket({ retryTransientErrors: true })),
-	Layer.provide(
+const waitFor = (registered: Effect.Effect<Option.Option<{ readonly url: string }>>) =>
+	registered.pipe(
+		Effect.flatMap(Effect.fromOption),
+		Effect.map((found) => found.url),
+		Effect.retry(Schedule.spaced("1 second")),
+		Effect.orDie,
+		Effect.interruptible,
+	);
+
+/**
+ * The app's connection to the default server. The registration is read on every connect, so a server
+ * restarted on a new port, a new home or a new default is picked up without restarting this app;
+ * until one is registered, connecting waits.
+ */
+export const layer = connect(
+	Layer.effect(
+		Socket.Socket,
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const servers = yield* Servers.Service;
+			const url = waitFor(
+				registration.pipe(
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.provideService(Servers.Service, servers),
+				),
+			);
+			return endOnHomeChange(yield* Socket.makeWebSocket(url), servers.homeChanges);
+		}),
+	),
+);
+
+/**
+ * A connection to one machine's server: a remote one at its URL, a local one at what its home
+ * registers, read on every connect as {@link layer} does.
+ */
+export const machine = (row: Servers.Row) =>
+	connect(
 		Layer.effect(
 			Socket.Socket,
 			Effect.gen(function* () {
+				if (row.kind === "remote") return yield* Socket.makeWebSocket(row.url);
 				const fs = yield* FileSystem.FileSystem;
-				const servers = yield* Servers.Service;
-				const url = registration.pipe(
-					Effect.flatMap(Effect.fromOption),
-					Effect.map((registered) => registered.url),
-					Effect.retry(Schedule.spaced("1 second")),
-					Effect.orDie,
-					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.provideService(Servers.Service, servers),
-					// The socket reads its URL while opening, which Effect runs uninterruptibly; waiting there
-					// for a server to register would otherwise keep the app server from ever shutting down.
-					Effect.interruptible,
+				const home = (yield* Servers.Service).homeOf(row).path;
+				return yield* Socket.makeWebSocket(
+					waitFor(registrationAt(home).pipe(Effect.provideService(FileSystem.FileSystem, fs))),
 				);
-				return endOnHomeChange(yield* Socket.makeWebSocket(url), servers.homeChanges);
 			}),
-		).pipe(Layer.provide(NodeSocket.layerWebSocketConstructor)),
-	),
-	Layer.provide(RpcSerialization.layerNdjson),
-	Layer.orDie,
-);
+		),
+	);
 
 export interface CallOptions {
 	/** How long the server has to answer; 5 seconds unless given. */

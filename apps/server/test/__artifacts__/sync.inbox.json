@@ -1,0 +1,61 @@
+{
+	"pending": [
+		{
+			"id": "<id 1>",
+			"thread_id": "<thr 1>",
+			"delivery": "followUp",
+			"text": "Queued",
+			"admitted_seq": "<seq 2>",
+			"created_at": "<time>"
+		}
+	],
+	"promoted": {
+		"inbox": [],
+		"entry": [
+			{
+				"id": "<id 2>",
+				"thread_id": "<thr 1>",
+				"seq": "<seq 0>",
+				"type": "user",
+				"state": "committed",
+				"error": null,
+				"size": 29,
+				"created_at": "<time>",
+				"updated_at": "<time>"
+			},
+			{
+				"id": "<assistant 1>",
+				"thread_id": "<thr 1>",
+				"seq": "<seq 1>",
+				"type": "assistant",
+				"state": "committed",
+				"error": null,
+				"size": 37,
+				"created_at": "<time>",
+				"updated_at": "<time>"
+			},
+			{
+				"id": "<id 1>",
+				"thread_id": "<thr 1>",
+				"seq": "<seq 3>",
+				"type": "user",
+				"state": "committed",
+				"error": null,
+				"size": 31,
+				"created_at": "<time>",
+				"updated_at": "<time>"
+			},
+			{
+				"id": "<assistant 2>",
+				"thread_id": "<thr 1>",
+				"seq": "<seq 4>",
+				"type": "assistant",
+				"state": "committed",
+				"error": null,
+				"size": 40,
+				"created_at": "<time>",
+				"updated_at": "<time>"
+			}
+		]
+	}
+}

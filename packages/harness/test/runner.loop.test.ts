@@ -12,6 +12,7 @@ import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { InboxRow } from "../src/db/schema.sql.ts";
+import { Store } from "../src/db/store.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { EventRegistry } from "../src/event/registry.ts";
@@ -198,7 +199,8 @@ describe("runner loop — aikit input/output", () => {
 			yield* execution.resume(threadId);
 			yield* execution.resume(threadId);
 
-			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 3 }]);
+			// After session.created, prompt.admitted and execution.started.
+			expect(yield* delivered(threadId)).toEqual([{ id: "msg_once", promotedSeq: 4 }]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
 				"user",
 				"system",
@@ -266,8 +268,13 @@ describe("runner loop — aikit input/output", () => {
 				const failure = Cause.findErrorOption(exit.cause);
 				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.SandboxDirectoryNotFoundError");
 			}
-			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id}`;
-			expect(durable).toEqual([{ type: "session.created.1" }]);
+			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id} ORDER BY seq`;
+			// Only the run's own lifecycle: nothing of the loop.
+			expect(durable).toEqual([
+				{ type: "session.created.1" },
+				{ type: "session.execution.started.1" },
+				{ type: "session.execution.failed.1" },
+			]);
 		}),
 	);
 });
@@ -981,7 +988,7 @@ describe("runner loop — queued input", () => {
 
 	/** Cancels `id` the first time a turn loads settings: inside the window between the pending check and promotion. */
 	const cancelBeforePromotion = Effect.fnUntraced(function* (threadId: ThreadSchema.ID, id: string) {
-		const services = yield* Effect.context<SqlClient.SqlClient | Event.Service>();
+		const services = yield* Effect.context<SqlClient.SqlClient | Store.Service | Event.Service>();
 		beforeSettings.run = Effect.gen(function* () {
 			beforeSettings.run = Effect.void;
 			const inputs = yield* Inbox.make;
@@ -1321,7 +1328,7 @@ describe("runner loop — resume after restart", () => {
 					: Effect.void,
 			);
 			yield* crashedMidReply(threadId, "A");
-			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${threadId}`;
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1}, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
 
 			yield* control.resumeUnfinished;
 
@@ -1350,7 +1357,7 @@ describe("runner loop — resume after restart", () => {
 			const sql = yield* SqlClient.SqlClient;
 			const execution = yield* RunnerExecution.Service;
 			const { threadId } = yield* seedSession();
-			yield* sql`UPDATE thread SET restarts = 3 WHERE id = ${threadId}`;
+			yield* sql`UPDATE thread SET restarts = 3, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
 			const streaming = yield* hanging;
 			const services = yield* Effect.context<Control.Service | Thread.Service>();
 			script.push("answer", "hang");

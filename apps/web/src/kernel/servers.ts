@@ -1,4 +1,4 @@
-import type { ServerStatus } from "@codeworksh/contract";
+import type { LocalServerStatus, ServerStatus } from "@codeworksh/contract";
 import { Effect, Schedule, Stream } from "effect";
 import { AsyncResult, Atom, Reactivity } from "effect/reactivity";
 
@@ -15,7 +15,7 @@ export interface Problem {
 }
 
 /** The default server's problem from its status; undefined while the app can work with it. */
-export function problemOf(status: ServerStatus): Problem | undefined {
+function problemOf(status: LocalServerStatus): Problem | undefined {
 	const { cli, server } = status;
 	// An already running, compatible server is usable even without a local CLI.
 	if (server._tag === "Running") return undefined;
@@ -48,6 +48,10 @@ export function problemOf(status: ServerStatus): Problem | undefined {
 	}
 }
 
+// Only a local server can be the default.
+const defaultOf = (statuses: ReadonlyArray<ServerStatus>) =>
+	statuses.find((status): status is LocalServerStatus => status.kind === "local" && status.isDefault);
+
 /**
  * Every server's status, as the app server last checked it, kept current as it checks again. When
  * the default server becomes usable or its home changes, its queries load again.
@@ -58,7 +62,7 @@ export const serversAtom = Server.runtime
 			let previous: { readonly home: string | undefined; readonly usable: boolean } | undefined;
 			return Stream.unwrap(Server.use((client) => Effect.succeed(client("servers.watch", undefined)))).pipe(
 				Stream.tap((statuses) => {
-					const current = statuses.find((status) => status.isDefault);
+					const current = defaultOf(statuses);
 					const home = current?.home.path;
 					const usable = current !== undefined && problemOf(current) === undefined;
 					const refresh = usable && previous !== undefined && (!previous.usable || previous.home !== home);
@@ -75,6 +79,6 @@ export const serversAtom = Server.runtime
 /** The default server's problem once its status is known; undefined until then, and while there is none. */
 export const problemAtom = Atom.make((get) => {
 	const result = get(serversAtom);
-	const status = AsyncResult.isSuccess(result) ? result.value.find((candidate) => candidate.isDefault) : undefined;
+	const status = AsyncResult.isSuccess(result) ? defaultOf(result.value) : undefined;
 	return status === undefined ? undefined : problemOf(status);
 });

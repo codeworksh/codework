@@ -1,5 +1,5 @@
 import { useAtomSet } from "@effect/atom-react";
-import { type CliAction, LOCAL_SERVER, type ServerStatus, type ServerUpdate } from "@codeworksh/contract";
+import { type CliAction, LOCAL_SERVER, type LocalServerStatus, type ServerUpdate } from "@codeworksh/contract";
 import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -26,7 +26,7 @@ const updateAtom = Server.mutation("servers.update");
 const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
 
-export const INSTALL = "curl -fsSL https://codework.sh/install | sh";
+const INSTALL = "curl -fsSL https://codework.sh/install | sh";
 
 type Tone = "success" | "warning" | "danger" | "info" | "muted";
 
@@ -74,7 +74,7 @@ function useServerAction() {
 }
 
 /** A server's row in the list: its name and binary, and whether it is the default. */
-export function LocalItem({ status }: { status: ServerStatus }) {
+export function LocalItem({ status }: { status: LocalServerStatus }) {
 	const { cli } = status;
 	// Only the binary is judged here; the server's own state belongs to the detail.
 	const problem = cli === null ? "No codework found" : "failure" in cli ? cli.failure : undefined;
@@ -112,7 +112,7 @@ const DOTS: Record<Tone, string> = {
 };
 
 /** A server's state in a few words, as its row in the list reads it. */
-function stateOf({ cli, server }: ServerStatus): { tone: Tone; text: string } {
+function stateOf({ cli, server }: LocalServerStatus): { tone: Tone; text: string } {
 	if (cli === null) return { tone: "warning", text: "Not installed" };
 	if ("failure" in cli) return { tone: "danger", text: "Won't start" };
 	switch (server._tag) {
@@ -127,7 +127,7 @@ function stateOf({ cli, server }: ServerStatus): { tone: Tone; text: string } {
 	}
 }
 
-const StatusLine = ({ status }: { status: ServerStatus }) => {
+const StatusLine = ({ status }: { status: LocalServerStatus }) => {
 	const { tone, text } = stateOf(status);
 	return (
 		<span className="flex items-center gap-1.5 text-xs text-ink-muted">
@@ -138,7 +138,7 @@ const StatusLine = ({ status }: { status: ServerStatus }) => {
 };
 
 /** A local server: its name, its state and controls, then how it runs and what it starts with. */
-export function LocalDetail({ status }: { status: ServerStatus }) {
+export function LocalDetail({ status }: { status: LocalServerStatus }) {
 	const update = useAtomSet(updateAtom, { mode: "promise" });
 	const { running, error: actionError, act: run } = useServerAction();
 	const [error, setError] = useState<string | null>(null);
@@ -279,7 +279,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 }
 
 /** Moves the default, the server the app connects through, here; the default itself shows none. */
-function MakeDefault({ status, onError }: { status: ServerStatus; onError: (message: string) => void }) {
+function MakeDefault({ status, onError }: { status: LocalServerStatus; onError: (message: string) => void }) {
 	const setDefault = useAtomSet(setDefaultAtom, { mode: "promise" });
 	const [switching, setSwitching] = useState(false);
 	if (status.isDefault) return null;
@@ -302,7 +302,7 @@ function MakeDefault({ status, onError }: { status: ServerStatus; onError: (mess
 }
 
 /** Remove, for the servers it applies to: the built-in one and the default stay. */
-function ServerActions({ status, onError }: { status: ServerStatus; onError: (message: string) => void }) {
+function ServerActions({ status, onError }: { status: LocalServerStatus; onError: (message: string) => void }) {
 	const remove = useAtomSet(removeAtom, { mode: "promise" });
 	const [busy, setBusy] = useState(false);
 	const run = (action: () => Promise<unknown>) => {
@@ -347,7 +347,7 @@ function ServerActions({ status, onError }: { status: ServerStatus; onError: (me
 	);
 }
 
-export const Card = ({ children }: { children: ReactNode }) => (
+const Card = ({ children }: { children: ReactNode }) => (
 	<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">{children}</div>
 );
 
@@ -426,7 +426,7 @@ function SettingField({
 	);
 }
 
-function ServerLine({ status }: { status: ServerStatus }) {
+function ServerLine({ status }: { status: LocalServerStatus }) {
 	const { server } = status;
 	if (server._tag === "Running")
 		return (
@@ -450,7 +450,7 @@ function ServerLine({ status }: { status: ServerStatus }) {
 	return "Not running. Once started, it keeps running in the background after the app quits.";
 }
 
-export function CopyCommand({ command }: { command: string }) {
+function CopyCommand({ command }: { command: string }) {
 	const [copied, setCopied] = useState(false);
 	return (
 		<span className="flex items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">

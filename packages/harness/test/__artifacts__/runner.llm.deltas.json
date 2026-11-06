@@ -1,0 +1,74 @@
+[
+	{
+		"type": "session.llm.thinking.delta",
+		"partIndex": 0,
+		"offset": 0,
+		"delta": "Let",
+		"accumulated": 0,
+		"continues": true
+	},
+	{
+		"type": "session.llm.thinking.delta",
+		"partIndex": 0,
+		"offset": 3,
+		"delta": " me ",
+		"accumulated": 3,
+		"continues": true
+	},
+	{
+		"type": "session.llm.thinking.delta",
+		"partIndex": 0,
+		"offset": 7,
+		"delta": "think ✨",
+		"accumulated": 7,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 1,
+		"offset": 0,
+		"delta": "Hel",
+		"accumulated": 0,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 1,
+		"offset": 3,
+		"delta": "lo 🌍",
+		"accumulated": 3,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 1,
+		"offset": 8,
+		"delta": " world",
+		"accumulated": 8,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 2,
+		"offset": 0,
+		"delta": "",
+		"accumulated": 0,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 2,
+		"offset": 0,
+		"delta": "Bye",
+		"accumulated": 0,
+		"continues": true
+	},
+	{
+		"type": "session.llm.text.delta",
+		"partIndex": 2,
+		"offset": 3,
+		"delta": ".",
+		"accumulated": 3,
+		"continues": true
+	}
+]

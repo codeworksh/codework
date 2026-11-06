@@ -4,7 +4,7 @@ import { Command as CommandPrimitive } from "cmdk";
 import { Cause, Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { Check, ChevronDown, FileSearch, Gauge, Search } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -142,22 +142,20 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	const list = AsyncResult.isSuccess(result) ? result.value : undefined;
 	// The providers this server can call, plus the settings default's when it cannot: that one stays
 	// in view, unavailable, so the model a session gets by default never silently drops out of sight.
-	const providers = useMemo((): ReadonlyArray<ModelProvider & { readonly available: boolean }> => {
-		// With nothing to call, there is no model to keep in view either.
-		if (list === undefined || list.providers.length === 0) return [];
-		const usable = list.providers.map((provider) => ({ ...provider, available: true }));
-		const fallback = list.default;
-		if (lookup(usable, fallback) !== undefined) return usable;
-		return [
-			...usable.filter((provider) => provider.id !== fallback.provider),
-			{
-				id: fallback.provider,
-				name: fallback.providerName ?? fallback.provider,
-				models: [{ id: fallback.id, name: fallback.name ?? fallback.id, thinkingLevels: [] }],
-				available: false,
-			},
-		];
-	}, [list]);
+	const usable = list?.providers.map((provider) => ({ ...provider, available: true })) ?? [];
+	// With nothing to call, there is no model to keep in view either.
+	const providers: ReadonlyArray<ModelProvider & { readonly available: boolean }> =
+		list === undefined || usable.length === 0 || lookup(usable, list.default) !== undefined
+			? usable
+			: [
+					...usable.filter((provider) => provider.id !== list.default.provider),
+					{
+						id: list.default.provider,
+						name: list.default.providerName ?? list.default.provider,
+						models: [{ id: list.default.id, name: list.default.name ?? list.default.id, thinkingLevels: [] }],
+						available: false,
+					},
+				];
 	const current = value ?? list?.default;
 	const found = current === undefined ? undefined : lookup(providers, current);
 	// The rail opens on the current model's provider, or the first one when that has no credentials.
@@ -166,18 +164,14 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 
 	// Searching looks across every provider; otherwise the list is the rail's provider.
 	const needle = query.trim().toLowerCase();
-	const rows = useMemo(
-		() =>
-			providers
-				.filter((provider) => needle !== "" || provider.id === shown)
-				.flatMap((provider) => provider.models.map((model) => ({ provider, model })))
-				// Every word must appear somewhere in the model's name, its id or its provider's name.
-				.filter(({ provider, model }) => {
-					const text = `${model.name} ${model.id} ${provider.name}`.toLowerCase();
-					return needle.split(/\s+/).every((word) => text.includes(word));
-				}),
-		[providers, needle, shown],
-	);
+	const rows = providers
+		.filter((provider) => needle !== "" || provider.id === shown)
+		.flatMap((provider) => provider.models.map((model) => ({ provider, model })))
+		// Every word must appear somewhere in the model's name, its id or its provider's name.
+		.filter(({ provider, model }) => {
+			const text = `${model.name} ${model.id} ${provider.name}`.toLowerCase();
+			return needle.split(/\s+/).every((word) => text.includes(word));
+		});
 
 	// The settings default can name a provider this server cannot call; it reads muted, not chosen.
 	const none = list !== undefined && providers.length === 0;

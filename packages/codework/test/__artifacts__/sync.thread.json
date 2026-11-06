@@ -1,0 +1,385 @@
+{
+	"budget": 144,
+	"line": [
+		{
+			"id": "<user 1>",
+			"threadId": "<main>",
+			"seq": "<seq 0>",
+			"role": "user",
+			"size": 37
+		},
+		{
+			"id": "assistant_1",
+			"threadId": "<main>",
+			"seq": "<seq 1>",
+			"role": "assistant",
+			"size": 35
+		},
+		{
+			"id": "<user 2>",
+			"threadId": "<main>",
+			"seq": "<seq 2>",
+			"role": "user",
+			"size": 38
+		},
+		{
+			"id": "assistant_2",
+			"threadId": "<main>",
+			"seq": "<seq 3>",
+			"role": "assistant",
+			"size": 35
+		},
+		{
+			"id": "<user 4>",
+			"threadId": "<fork>",
+			"seq": "<seq 4>",
+			"role": "user",
+			"size": 36
+		},
+		{
+			"id": "assistant_3",
+			"threadId": "<fork>",
+			"seq": "<seq 5>",
+			"role": "assistant",
+			"size": 35
+		}
+	],
+	"opened": [
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "<user 2>",
+				"threadId": "<main>",
+				"seq": "<seq 2>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "Second prompt"
+					}
+				],
+				"size": 38
+			},
+			"rev": "<rev 0>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_2",
+				"threadId": "<main>",
+				"seq": "<seq 3>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "response 2"
+					}
+				],
+				"size": 35
+			},
+			"rev": "<rev 1>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "<user 4>",
+				"threadId": "<fork>",
+				"seq": "<seq 4>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "Fork prompt"
+					}
+				],
+				"size": 36
+			},
+			"rev": "<rev 2>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_3",
+				"threadId": "<fork>",
+				"seq": "<seq 5>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "response 3"
+					}
+				],
+				"size": 35
+			},
+			"rev": "<rev 3>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 4>",
+			"floor": "<seq 2>"
+		}
+	],
+	"busy": [
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "<user 5>",
+				"threadId": "<fork>",
+				"seq": "<seq 6>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "Busy prompt"
+					}
+				],
+				"size": 36
+			},
+			"rev": "<rev 5>"
+		},
+		{
+			"_tag": "Inbox",
+			"prompt": {
+				"id": "<user 5>",
+				"delivery": "steer",
+				"text": "Busy prompt",
+				"admittedSeq": 25,
+				"createdAt": "<time>"
+			},
+			"state": "promoted",
+			"rev": "<rev 5>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_4",
+				"threadId": "<fork>",
+				"seq": "<seq 7>",
+				"role": "assistant",
+				"state": "draft",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [],
+				"size": 0
+			},
+			"rev": "<rev 6>"
+		},
+		{
+			"_tag": "Inbox",
+			"prompt": {
+				"id": "<user 6>",
+				"delivery": "followUp",
+				"text": "Queued prompt",
+				"admittedSeq": 29,
+				"createdAt": "<time>"
+			},
+			"state": "pending",
+			"rev": "<rev 7>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 8>"
+		}
+	],
+	"settled": [
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_4",
+				"threadId": "<fork>",
+				"seq": "<seq 7>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "thinking",
+						"thinking": "Weighing the ask"
+					},
+					{
+						"type": "text",
+						"text": "Busy reply done"
+					}
+				],
+				"size": 89
+			},
+			"rev": "<rev 9>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "<user 6>",
+				"threadId": "<fork>",
+				"seq": "<seq 8>",
+				"role": "user",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "Queued prompt"
+					}
+				],
+				"size": 38
+			},
+			"rev": "<rev 10>"
+		},
+		{
+			"_tag": "Inbox",
+			"prompt": {
+				"id": "<user 6>",
+				"delivery": "followUp",
+				"text": "Queued prompt",
+				"admittedSeq": 29,
+				"createdAt": "<time>"
+			},
+			"state": "promoted",
+			"rev": "<rev 10>"
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_5",
+				"threadId": "<fork>",
+				"seq": "<seq 9>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "text",
+						"text": "response 5"
+					}
+				],
+				"size": 35
+			},
+			"rev": "<rev 11>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 12>"
+		}
+	],
+	"streamed": [
+		{
+			"_tag": "Delta",
+			"delta": {
+				"entryId": "assistant_4",
+				"partIndex": 0,
+				"kind": "thinking",
+				"offset": 0,
+				"delta": "Weighing"
+			}
+		},
+		{
+			"_tag": "Delta",
+			"delta": {
+				"entryId": "assistant_4",
+				"partIndex": 0,
+				"kind": "thinking",
+				"offset": 8,
+				"delta": " the ask"
+			}
+		},
+		{
+			"_tag": "Delta",
+			"delta": {
+				"entryId": "assistant_4",
+				"partIndex": 1,
+				"kind": "text",
+				"offset": 0,
+				"delta": "Busy "
+			}
+		},
+		{
+			"_tag": "Delta",
+			"delta": {
+				"entryId": "assistant_4",
+				"partIndex": 1,
+				"kind": "text",
+				"offset": 5,
+				"delta": "reply "
+			}
+		},
+		{
+			"_tag": "Delta",
+			"delta": {
+				"entryId": "assistant_4",
+				"partIndex": 1,
+				"kind": "text",
+				"offset": 11,
+				"delta": "done"
+			}
+		},
+		{
+			"_tag": "Entry",
+			"entry": {
+				"id": "assistant_4",
+				"threadId": "<fork>",
+				"seq": "<seq 7>",
+				"role": "assistant",
+				"state": "committed",
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"parts": [
+					{
+						"type": "thinking",
+						"thinking": "Weighing the ask"
+					},
+					{
+						"type": "text",
+						"text": "Busy reply done"
+					}
+				],
+				"size": 89
+			},
+			"rev": "<rev 9>"
+		}
+	],
+	"otherThread": {
+		"main": [
+			{
+				"_tag": "Delta",
+				"delta": {
+					"entryId": "assistant_6",
+					"partIndex": 0,
+					"kind": "text",
+					"offset": 0,
+					"delta": "Main "
+				}
+			},
+			{
+				"_tag": "Delta",
+				"delta": {
+					"entryId": "assistant_6",
+					"partIndex": 0,
+					"kind": "text",
+					"offset": 5,
+					"delta": "only"
+				}
+			}
+		],
+		"seenOnFork": 0
+	}
+}

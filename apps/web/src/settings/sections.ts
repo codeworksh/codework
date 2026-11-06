@@ -10,7 +10,7 @@ export interface SettingsSection {
 	readonly keywords: readonly string[];
 }
 
-export const sections: readonly SettingsSection[] = [
+const sections: readonly SettingsSection[] = [
 	{
 		to: "/settings/workspaces",
 		label: "Workspaces",

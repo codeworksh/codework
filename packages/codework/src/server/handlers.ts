@@ -14,18 +14,25 @@ import {
 	SessionStore,
 	Settings,
 	State,
+	Store,
+	Sync,
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option, Schema, Stream } from "effect";
+import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
 import {
 	Contract,
 	type HistoryEntry,
+	type IndexItem,
 	type LogSynced,
 	type RuntimeConfig,
 	type SandboxInfo,
 	type SessionInfo,
+	type LiveDelta,
+	type QueuedPrompt,
 	type ThreadInfo,
+	type ThreadItem,
+	type ThreadSummary,
 } from "./contract.ts";
 import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
 import { Clones } from "./clones.ts";
@@ -34,6 +41,7 @@ import { Host } from "./host.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
 import { MessagePart } from "./part.ts";
+import { Rows } from "./rows.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -50,16 +58,22 @@ const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 
 const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	id: info.id,
+	spaceId: info.spaceId,
+	slug: info.slug,
 	directory: info.directory,
 	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
 	...(info.project === undefined ? {} : { project: info.project }),
+	...(info.tag === undefined ? {} : { tag: info.tag }),
+	...(info.metadata === undefined ? {} : { metadata: info.metadata }),
+	createdAt: info.createdAt,
 	updatedAt: info.updatedAt,
 	mainThreadId: info.mainThreadId,
 });
 
-const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
+const toThreadSummary = (info: Session.ThreadSummary): ThreadSummary => ({
 	id: info.id,
+	sessionId: info.sessionId,
 	origin: info.origin,
 	...(info.title === undefined ? {} : { title: info.title }),
 	updatedAt: info.updatedAt,
@@ -68,8 +82,30 @@ const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => ({
 	...(info.foundation === undefined ? {} : { foundation: info.foundation }),
 	...(info.placement === undefined ? {} : { placement: info.placement }),
 	usage: info.usage,
-	session: toSessionInfo(info.session),
+	runState: info.runState,
+	...(info.runStateAt === undefined ? {} : { runStateAt: info.runStateAt }),
+	...(info.lastRun === undefined ? {} : { lastRun: info.lastRun }),
+	restarts: info.restarts,
+	...(info.attempt === undefined ? {} : { attempt: info.attempt }),
+	createdSeq: info.createdSeq,
+	createdAt: info.createdAt,
 });
+
+const toThreadInfo = (info: Session.ThreadInfo): ThreadInfo => {
+	const { sessionId: _, ...summary } = toThreadSummary(info);
+	return { ...summary, session: toSessionInfo(info.session) };
+};
+
+const toIndexItem = (change: Sync.IndexChange): IndexItem => {
+	switch (change._tag) {
+		case "Session":
+			return { _tag: "Session", session: toSessionInfo(change.session), rev: change.rev };
+		case "Thread":
+			return { _tag: "Thread", thread: toThreadSummary(change.thread), rev: change.rev };
+		default:
+			return change;
+	}
+};
 
 // Wire configs name only the keys they set, so `undefined` never reaches the harness under
 // exactOptionalPropertyTypes. Creating takes choices only; `null` clears nothing there.
@@ -92,6 +128,66 @@ const decodeFailedReply = Schema.decodeUnknownOption(
 );
 const replyError = (data: string) =>
 	Option.map(decodeFailedReply(data), (reply) => `${reply.provider.id}/${reply.model}: ${reply.errorMessage}`);
+
+/** A line entry for the wire; the harness's own entries (compactions, resets, notices) are left out. */
+const toHistoryEntries = ({ entry, parts, size }: ThreadStore.HydratedEntry): ReadonlyArray<HistoryEntry> =>
+	entry.type === "user" || entry.type === "assistant"
+		? [
+				{
+					id: entry.id,
+					threadId: entry.threadId,
+					seq: entry.seq,
+					role: entry.type,
+					state: entry.state,
+					createdAt: DateTime.toEpochMillis(entry.createdAt),
+					updatedAt: DateTime.toEpochMillis(entry.updatedAt),
+					// A part this schema does not render (a future aikit type) is skipped, not fatal.
+					parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+					size,
+					...Option.match(entry.type === "assistant" ? replyError(entry.data) : Option.none(), {
+						onNone: () => ({}),
+						onSome: (error) => ({ error }),
+					}),
+				},
+			]
+		: [];
+
+const toQueuedPrompt = (input: Extract<Sync.ThreadChange, { _tag: "Inbox" }>["prompt"]): QueuedPrompt => ({
+	id: input.id,
+	delivery: input.delivery,
+	text: PromptSchema.Prompt.text(input.prompt),
+	admittedSeq: input.admittedSeq,
+	createdAt: DateTime.toEpochMillis(input.timeCreated),
+});
+
+const toThreadItems = (change: Sync.ThreadChange): ReadonlyArray<ThreadItem> =>
+	change._tag === "Entry"
+		? toHistoryEntries(change.entry).map((entry) => ({ _tag: "Entry", entry, rev: change.rev }))
+		: [{ _tag: "Inbox", prompt: toQueuedPrompt(change.prompt), state: change.state, rev: change.rev }];
+
+const deltaKinds: Partial<Record<string, LiveDelta["kind"]>> = {
+	[EventList.LLMTextDelta.type]: "text",
+	[EventList.LLMThinkingDelta.type]: "thinking",
+};
+const decodeDelta = Schema.decodeUnknownOption(
+	Schema.Struct({ messageId: Schema.String, partIndex: Schema.Int, offset: Schema.Int, delta: Schema.String }),
+);
+
+/** A live text or thinking delta of the feed as a `thread.sync` item. */
+const toDeltaItem = (envelope: EventEnvelope): ThreadItem | undefined => {
+	const kind = deltaKinds[envelope.type];
+	if (kind === undefined) return undefined;
+	return Option.match(decodeDelta(envelope.data), {
+		onNone: () => undefined,
+		onSome: ({ messageId, partIndex, offset, delta }) => ({
+			_tag: "Delta",
+			delta: { entryId: messageId, partIndex, kind, offset, delta },
+		}),
+	});
+};
+
+/** Bytes of entries a first `thread.sync` or a `thread.page` sends when the client names no budget. */
+const defaultBudget = 1024 * 1024;
 
 const threadInfo = (threadId: ThreadSchema.ID) => Session.threadInfo(threadId).pipe(Effect.map(toThreadInfo));
 
@@ -132,13 +228,29 @@ export const layer = Contract.Api.toLayer(
 		const mcp = yield* Mcp.Service;
 		const host = yield* Host.Service;
 		const clones = yield* Clones.Service;
+		const store = yield* Store.Service;
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
 			});
 
 		return Contract.Api.of({
-			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
+			"server.info": Effect.fnUntraced(function* () {
+				const head = yield* store.head;
+				return { pid: identity.pid, version: identity.version, storeId: head.id, rev: head.rev };
+			}),
+			"index.sync": ({ after }) =>
+				Rows.follow(
+					after,
+					(from, upto) =>
+						Sync.index(from, upto, Rows.batch).pipe(
+							Effect.map(({ items, next }) => ({
+								items: items.map(toIndexItem),
+								...(next === undefined ? {} : { next }),
+							})),
+						),
+					(head): IndexItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
+				),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
@@ -284,40 +396,62 @@ export const layer = Contract.Api.toLayer(
 				};
 			}),
 			"thread.history": Effect.fnUntraced(function* (ref) {
-				const line = yield* threads.line(yield* resolve(ref));
-				const entries = line.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
-					entry.type === "user" || entry.type === "assistant"
-						? [
-								{
-									id: entry.id,
-									threadId: entry.threadId,
-									seq: entry.seq,
-									role: entry.type,
-									state: entry.state,
-									createdAt: DateTime.toEpochMillis(entry.createdAt),
-									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
-									// A part this schema does not render (a future aikit type) is skipped, not fatal.
-									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
-									...Option.match(entry.type === "assistant" ? replyError(entry.data) : Option.none(), {
-										onNone: () => ({}),
-										onSome: (error) => ({ error }),
-									}),
-								},
-							]
-						: [],
-				);
-				return { entries };
+				return { entries: (yield* threads.line(yield* resolve(ref))).flatMap(toHistoryEntries) };
 			}),
 			"thread.queue": Effect.fnUntraced(function* (ref) {
-				const pending = yield* control.pending(yield* resolve(ref));
-				return {
-					entries: pending.map((input) => ({
-						id: input.id,
-						delivery: input.delivery,
-						text: PromptSchema.Prompt.text(input.prompt),
-						createdAt: DateTime.toEpochMillis(input.timeCreated),
-					})),
-				};
+				return { entries: (yield* control.pending(yield* resolve(ref))).map(toQueuedPrompt) };
+			}),
+			// The feed subscription is taken before the first read, so no delta after it is missed.
+			"thread.sync": ({ after, budget, ...ref }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						const threadId = yield* resolve(ref);
+						const deltas = yield* feed.subscribe;
+						const synced = (head: Store.Head, floor?: number): ThreadItem => ({
+							_tag: "Synced",
+							storeId: head.id,
+							rev: head.rev,
+							...(floor === undefined ? {} : { floor }),
+						});
+						const page = (from: Sync.Cursor, upto: number) =>
+							Sync.thread(threadId, from, upto, Rows.batch).pipe(
+								Effect.map(({ items, next }) => ({
+									items: items.flatMap(toThreadItems),
+									...(next === undefined ? {} : { next }),
+								})),
+							);
+						const rows =
+							after === undefined
+								? Rows.watch(
+										(head) =>
+											Stream.fromEffect(Sync.open(threadId, budget ?? defaultBudget, Rows.batch)).pipe(
+												Stream.flatMap(({ items, floor }) =>
+													Stream.fromIterable([...items.flatMap(toThreadItems), synced(head, floor)]),
+												),
+											),
+										page,
+										synced,
+									)
+								: Rows.follow(after, page, synced);
+						return rows.pipe(
+							Stream.merge(
+								deltas.pipe(
+									Stream.filter(Envelope.ofThread(threadId)),
+									Stream.map(toDeltaItem),
+									Stream.filter(Predicate.isNotUndefined),
+								),
+							),
+						);
+					}),
+				),
+			"thread.page": Effect.fnUntraced(function* ({ before, limit, budget, ...ref }) {
+				const entries = yield* threads.linePage({
+					threadId: yield* resolve(ref),
+					before,
+					limit,
+					budget: budget ?? defaultBudget,
+				});
+				return { entries: entries.toReversed().flatMap(toHistoryEntries) };
 			}),
 			"thread.prompt": Effect.fnUntraced(function* ({ text, delivery, id, ...ref }) {
 				const admitted = yield* control.prompt({

@@ -1,0 +1,50 @@
+{
+	"harness": {
+		"open": {
+			"run_state": "running",
+			"run_outcome": null,
+			"run_error": null,
+			"execution": "running"
+		},
+		"swept": {
+			"run_state": "idle",
+			"run_outcome": "interrupted",
+			"run_error": "{\"_tag\":\"interrupted\",\"reason\":\"crash\"}",
+			"execution": "running"
+		},
+		"events": [
+			{
+				"type": "session.execution.started.1",
+				"resumed": 0,
+				"reason": null
+			},
+			{
+				"type": "session.execution.interrupted.1",
+				"resumed": null,
+				"reason": "crash"
+			},
+			{
+				"type": "session.execution.started.1",
+				"resumed": 1,
+				"reason": null
+			}
+		]
+	},
+	"app": {
+		"running": {
+			"status": "working",
+			"run_state": "running",
+			"run_started_at": "<time>",
+			"run_outcome": null,
+			"run_error": null
+		},
+		"resumed": {
+			"status": "working",
+			"run_state": "running",
+			"run_started_at": "<time>",
+			"run_outcome": null,
+			"run_error": null
+		}
+	},
+	"statusMoves": []
+}

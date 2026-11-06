@@ -53,17 +53,12 @@ export const Queue = memo(function Queue({
 	const act = async (id: string, request: () => Promise<void>) => {
 		onError(undefined);
 		setBusy((current) => new Set(current).add(id));
-		try {
-			await request();
-		} catch {
-			onError(unreachable);
-		} finally {
-			setBusy((current) => {
-				const next = new Set(current);
-				next.delete(id);
-				return next;
-			});
-		}
+		await request().catch(() => onError(unreachable));
+		setBusy((current) => {
+			const next = new Set(current);
+			next.delete(id);
+			return next;
+		});
 	};
 
 	const change = (prompt: QueuedPrompt, patch: { readonly delivery?: Delivery; readonly text?: string }) =>

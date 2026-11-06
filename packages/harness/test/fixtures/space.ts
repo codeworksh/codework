@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { SqlClient } from "effect/sql";
+import { Store } from "../../src/db/store.ts";
 import { ProjectSchema } from "../../src/project/schema.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { AbsolutePath } from "../../src/schema.ts";
@@ -28,18 +29,24 @@ export interface SeededSpace {
  */
 export const seedSpace = Effect.fn("seedSpace")(function* (options: SeedSpaceOptions = {}) {
 	const sql = yield* SqlClient.SqlClient;
+	const store = yield* Store.Service;
 	const location = AbsolutePath.make(options.location ?? "/repo");
 	const env = options.env ?? SandboxInstance.ID.local;
 	const projectId = ProjectSchema.ID.make(options.projectId ?? "local");
 	const spaceId = Space.id(env, location);
-	yield* sql`
-		INSERT OR IGNORE INTO project (id, name, status, created_at, updated_at)
-		VALUES (${projectId}, ${projectId}, 'active', 0, 0)
-	`;
-	yield* sql`
-		INSERT OR IGNORE INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-		VALUES (${spaceId}, ${projectId}, ${location}, ${options.kind ?? "plain"}, ${SandboxInstance.toColumn(env)}, ${options.status ?? "active"}, 0, 0)
-	`;
+	yield* store.write(
+		Effect.gen(function* () {
+			const rev = yield* store.rev;
+			yield* sql`
+				INSERT OR IGNORE INTO project (id, name, status, created_at, updated_at, rev)
+				VALUES (${projectId}, ${projectId}, 'active', 0, 0, ${rev})
+			`;
+			yield* sql`
+				INSERT OR IGNORE INTO space (id, project_id, location, kind, env, status, created_at, updated_at, rev)
+				VALUES (${spaceId}, ${projectId}, ${location}, ${options.kind ?? "plain"}, ${SandboxInstance.toColumn(env)}, ${options.status ?? "active"}, 0, 0, ${rev})
+			`;
+		}),
+	);
 	const seeded: SeededSpace = { spaceId, projectId, location, env };
 	return seeded;
 });

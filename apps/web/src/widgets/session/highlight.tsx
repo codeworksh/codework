@@ -1,5 +1,5 @@
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import type { BundledLanguage, BundledTheme, Highlighter } from "shiki";
 
@@ -77,10 +77,7 @@ export function useHighlight(code: string, lang: BundledLanguage | undefined, th
 	}, []);
 	const shikiTheme = SHIKI_THEMES[theme];
 	const available = lang !== undefined && ready(lang, shikiTheme);
-	return useMemo(
-		() => (available && lang !== undefined ? highlighter?.codeToHast(code, { lang, theme: shikiTheme }) : undefined),
-		[available, code, lang, shikiTheme],
-	);
+	return available && lang !== undefined ? highlighter?.codeToHast(code, { lang, theme: shikiTheme }) : undefined;
 }
 
 const runtime = { Fragment, jsx, jsxs };

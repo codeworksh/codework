@@ -1,0 +1,26 @@
+{
+	"link": "netem delay 300ms rate 256kbit",
+	"emitted": 400,
+	"forwardedAreInOrder": true,
+	"forwardedContinueTheFinalText": true,
+	"someDropped": true,
+	"gapAfterReopen": true,
+	"cursorsInOrder": true,
+	"finalEqualsHarness": true,
+	"entry": [
+		{
+			"id": "<id 1>",
+			"thread_id": "<thr 1>",
+			"type": "user",
+			"state": "committed",
+			"size": 33
+		},
+		{
+			"id": "<assistant 1>",
+			"thread_id": "<thr 1>",
+			"type": "assistant",
+			"state": "committed",
+			"size": 12825
+		}
+	]
+}

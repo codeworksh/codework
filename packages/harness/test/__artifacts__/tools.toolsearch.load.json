@@ -114,71 +114,79 @@
 		},
 		{
 			"seq": 3,
-			"type": "session.prompt.promoted.1"
+			"type": "session.execution.started.1"
 		},
 		{
 			"seq": 4,
-			"type": "session.thread.system.changed.1"
+			"type": "session.prompt.promoted.1"
 		},
 		{
 			"seq": 5,
-			"type": "session.llm.started.1"
-		},
-		{
-			"seq": 6,
-			"type": "session.llm.ended.1"
-		},
-		{
-			"seq": 7,
-			"type": "session.tool.settled.1"
-		},
-		{
-			"seq": 8,
-			"type": "session.turn.ended.1"
-		},
-		{
-			"seq": 9,
 			"type": "session.thread.system.changed.1"
 		},
 		{
-			"seq": 10,
+			"seq": 6,
 			"type": "session.llm.started.1"
 		},
 		{
-			"seq": 11,
+			"seq": 7,
 			"type": "session.llm.ended.1"
 		},
 		{
-			"seq": 12,
+			"seq": 8,
 			"type": "session.tool.settled.1"
 		},
 		{
-			"seq": 13,
+			"seq": 9,
 			"type": "session.turn.ended.1"
 		},
 		{
-			"seq": 14,
+			"seq": 10,
+			"type": "session.thread.system.changed.1"
+		},
+		{
+			"seq": 11,
 			"type": "session.llm.started.1"
 		},
 		{
-			"seq": 15,
+			"seq": 12,
 			"type": "session.llm.ended.1"
 		},
 		{
-			"seq": 16,
+			"seq": 13,
+			"type": "session.tool.settled.1"
+		},
+		{
+			"seq": 14,
 			"type": "session.turn.ended.1"
+		},
+		{
+			"seq": 15,
+			"type": "session.llm.started.1"
+		},
+		{
+			"seq": 16,
+			"type": "session.llm.ended.1"
+		},
+		{
+			"seq": 17,
+			"type": "session.turn.ended.1"
+		},
+		{
+			"seq": 18,
+			"type": "session.execution.succeeded.1"
 		}
 	],
 	"entries": [
 		{
 			"id": "E1",
-			"seq": 3,
+			"seq": 4,
 			"type": "user",
 			"state": "committed"
 		},
 		{
 			"id": "E2",
-			"seq": 4,
+			"seq": 5,
 			"type": "system",
 			"state": "committed",
 			"data": {
@@ -194,13 +202,13 @@
 		},
 		{
 			"id": "E3",
-			"seq": 5,
+			"seq": 6,
 			"type": "assistant",
 			"state": "committed"
 		},
 		{
 			"id": "E4",
-			"seq": 9,
+			"seq": 10,
 			"type": "system",
 			"state": "committed",
 			"data": {
@@ -240,13 +248,13 @@
 		},
 		{
 			"id": "E5",
-			"seq": 10,
+			"seq": 11,
 			"type": "assistant",
 			"state": "committed"
 		},
 		{
 			"id": "E6",
-			"seq": 14,
+			"seq": 15,
 			"type": "assistant",
 			"state": "committed"
 		}
@@ -257,7 +265,7 @@
 			"value": {}
 		},
 		{
-			"seq": 7,
+			"seq": 8,
 			"value": {
 				"modelTools": {
 					"add": [

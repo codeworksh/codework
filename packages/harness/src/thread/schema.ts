@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import { SessionFailure } from "../session/failure.ts";
+import { SessionSchema } from "../session/schema.ts";
 
 // Thread identity lives in `@codeworksh/plugin`, next to the session's: it is on every plugin
 // context and every tool call.
@@ -29,6 +31,28 @@ export type Origin =
  */
 export const Execution = Schema.Literals(["running", "closed"]);
 export type Execution = typeof Execution.Type;
+
+/**
+ * Where the thread's run is, projected from its lifecycle events: `starting` from
+ * `execution.started` until the first `llm.started`, `running` after it, `idle` once it ended.
+ */
+export const RunState = Schema.Literals(["idle", "starting", "running"]);
+export type RunState = typeof RunState.Type;
+
+export const RunOutcome = Schema.Literals(["succeeded", "failed", "interrupted"]);
+export type RunOutcome = typeof RunOutcome.Type;
+
+/** Why a run ended without its answer and is not resumed; see `session.run.failed`. */
+export const RunFailedReason = Schema.Literals(["crashloop", "interrupted", "truncated"]);
+export type RunFailedReason = typeof RunFailedReason.Type;
+
+/** Why the last run did not succeed; stored as `thread.run_error` JSON. */
+export const RunError = Schema.Union([
+	Schema.TaggedStruct("failed", { error: SessionFailure.Error }),
+	Schema.TaggedStruct("runFailed", { reason: RunFailedReason, message: Schema.String }),
+	Schema.TaggedStruct("interrupted", { reason: SessionSchema.InterruptReason }),
+]);
+export type RunError = typeof RunError.Type;
 
 /** `main` names a session's main thread wherever a thread id is accepted from a person. */
 export const MAIN = "main";

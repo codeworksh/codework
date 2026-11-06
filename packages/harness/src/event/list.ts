@@ -170,6 +170,7 @@ export type TurnAborted = typeof TurnAborted.Type;
  */
 export const RetryScheduled = EventSchema.define({
 	type: "session.retry.scheduled",
+	...durableOptions,
 	schema: {
 		...baseOptions,
 		attempt: NonNegativeInt,
@@ -206,9 +207,15 @@ export const LLMTextStart = EventSchema.define({
 });
 export type LLMTextStart = typeof LLMTextStart.Type;
 
+/**
+ * `offset` is the part's text length before this delta, in JS string length (UTF-16 code units),
+ * so a client compares it with its draft's `text.length`. A delta at 0 starts its part.
+ */
+const LLMDeltaFields = { ...LLMPartFields, offset: NonNegativeInt, delta: Schema.String };
+
 export const LLMTextDelta = EventSchema.define({
 	type: "session.llm.text.delta",
-	schema: { ...LLMPartFields, delta: Schema.String },
+	schema: LLMDeltaFields,
 });
 export type LLMTextDelta = typeof LLMTextDelta.Type;
 
@@ -226,7 +233,7 @@ export type LLMThinkingStart = typeof LLMThinkingStart.Type;
 
 export const LLMThinkingDelta = EventSchema.define({
 	type: "session.llm.thinking.delta",
-	schema: { ...LLMPartFields, delta: Schema.String },
+	schema: LLMDeltaFields,
 });
 export type LLMThinkingDelta = typeof LLMThinkingDelta.Type;
 
@@ -323,24 +330,29 @@ export type ToolSettled = typeof ToolSettled.Type;
  */
 export const ExecutionStarted = EventSchema.define({
 	type: "session.execution.started",
-	schema: baseOptions,
+	...durableOptions,
+	/** `resumed`: recovery started it after a restart, for a run the last process left unfinished. */
+	schema: { ...baseOptions, resumed: Schema.Boolean },
 });
 export type ExecutionStarted = typeof ExecutionStarted.Type;
 
 export const ExecutionSucceeded = EventSchema.define({
 	type: "session.execution.succeeded",
+	...durableOptions,
 	schema: baseOptions,
 });
 export type ExecutionSucceeded = typeof ExecutionSucceeded.Type;
 
 export const ExecutionFailed = EventSchema.define({
 	type: "session.execution.failed",
+	...durableOptions,
 	schema: { ...baseOptions, error: SessionFailure.Error },
 });
 export type ExecutionFailed = typeof ExecutionFailed.Type;
 
 export const ExecutionInterrupted = EventSchema.define({
 	type: "session.execution.interrupted",
+	...durableOptions,
 	schema: { ...baseOptions, reason: SessionSchema.InterruptReason },
 });
 export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
@@ -355,7 +367,7 @@ export const RunFailed = EventSchema.define({
 	...durableOptions,
 	schema: {
 		...baseOptions,
-		reason: Schema.Literals(["crashloop", "interrupted", "truncated"]),
+		reason: ThreadSchema.RunFailedReason,
 		message: Schema.String,
 	},
 });
@@ -474,6 +486,10 @@ export const Definitions = EventSchema.inventory(
 export const PublicDefinitions = Definitions;
 
 export const DurableDefinitions = EventSchema.inventory(
+	ExecutionStarted,
+	ExecutionSucceeded,
+	ExecutionFailed,
+	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
 	PromptCancelled,
@@ -483,6 +499,7 @@ export const DurableDefinitions = EventSchema.inventory(
 	ThreadConfigured,
 	SystemChanged,
 	TurnEnded,
+	RetryScheduled,
 	LLMStarted,
 	LLMProgress,
 	LLMEnded,

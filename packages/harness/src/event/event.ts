@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { EventRow } from "../db/schema.sql.ts";
+import { Store } from "../db/store.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
 // stored types up in.
 // import { Durable } from "./manifest.ts";
@@ -209,6 +210,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const store = yield* Store.Service;
 
 		const pubsub = {
 			// Per-aggregate doorbells for `log`. A wake carries no payload -- the
@@ -479,7 +481,8 @@ export const layer = Layer.effect(
 						}),
 					);
 				const encoded = (yield* Schema.encodeUnknownEffect(definition.data)(event.data)) as Record<string, unknown>;
-				const committed = yield* sql.withTransaction(
+				// The projectors write the views, so the commit is a store write: one revision for all of them.
+				const committed = yield* store.write(
 					Effect.gen(function* () {
 						const { seq } = yield* bumpSequence(aggregateId);
 						const existing = yield* findEventById(event.id);

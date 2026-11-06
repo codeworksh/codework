@@ -1,0 +1,320 @@
+{
+	"schema": [
+		{
+			"type": "table",
+			"name": "entry",
+			"tbl_name": "entry",
+			"sql": "CREATE TABLE entry ( id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE, seq INTEGER NOT NULL, type TEXT NOT NULL, state TEXT NOT NULL, error TEXT, size INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
+		},
+		{
+			"type": "index",
+			"name": "entry_draft_idx",
+			"tbl_name": "entry",
+			"sql": "CREATE INDEX entry_draft_idx ON entry (thread_id) WHERE state = 'draft'"
+		},
+		{
+			"type": "index",
+			"name": "entry_thread_idx",
+			"tbl_name": "entry",
+			"sql": "CREATE UNIQUE INDEX entry_thread_idx ON entry (thread_id, seq)"
+		},
+		{
+			"type": "table",
+			"name": "event",
+			"tbl_name": "event",
+			"sql": "CREATE TABLE event ( seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, topic TEXT NOT NULL, source TEXT NOT NULL, cause TEXT, payload TEXT NOT NULL, created INTEGER NOT NULL )"
+		},
+		{
+			"type": "index",
+			"name": "event_cause",
+			"tbl_name": "event",
+			"sql": "CREATE INDEX event_cause ON event (cause)"
+		},
+		{
+			"type": "index",
+			"name": "event_topic_seq",
+			"tbl_name": "event",
+			"sql": "CREATE INDEX event_topic_seq ON event (topic, seq)"
+		},
+		{
+			"type": "table",
+			"name": "grouping",
+			"tbl_name": "grouping",
+			"sql": "CREATE TABLE grouping ( id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organization(id), name TEXT NOT NULL, color TEXT, ordering REAL NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
+		},
+		{
+			"type": "index",
+			"name": "grouping_ordering_idx",
+			"tbl_name": "grouping",
+			"sql": "CREATE INDEX grouping_ordering_idx ON grouping (organization_id, ordering)"
+		},
+		{
+			"type": "table",
+			"name": "inbox",
+			"tbl_name": "inbox",
+			"sql": "CREATE TABLE inbox ( id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE, delivery TEXT NOT NULL, text TEXT NOT NULL, admitted_seq INTEGER NOT NULL, created_at INTEGER NOT NULL )"
+		},
+		{
+			"type": "index",
+			"name": "inbox_thread_idx",
+			"tbl_name": "inbox",
+			"sql": "CREATE UNIQUE INDEX inbox_thread_idx ON inbox (thread_id, admitted_seq)"
+		},
+		{
+			"type": "table",
+			"name": "kv",
+			"tbl_name": "kv",
+			"sql": "CREATE TABLE kv ( package TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (package, key) )"
+		},
+		{
+			"type": "table",
+			"name": "machine",
+			"tbl_name": "machine",
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL )"
+		},
+		{
+			"type": "table",
+			"name": "organization",
+			"tbl_name": "organization",
+			"sql": "CREATE TABLE organization ( id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
+		},
+		{
+			"type": "table",
+			"name": "part",
+			"tbl_name": "part",
+			"sql": "CREATE TABLE part ( entry_id TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE, part_index INTEGER NOT NULL, type TEXT NOT NULL, status TEXT, call_id TEXT, tool_name TEXT, data TEXT NOT NULL, PRIMARY KEY (entry_id, part_index) )"
+		},
+		{
+			"type": "index",
+			"name": "part_call_idx",
+			"tbl_name": "part",
+			"sql": "CREATE UNIQUE INDEX part_call_idx ON part (entry_id, call_id) WHERE call_id IS NOT NULL"
+		},
+		{
+			"type": "index",
+			"name": "part_unsettled_idx",
+			"tbl_name": "part",
+			"sql": "CREATE INDEX part_unsettled_idx ON part (entry_id) WHERE status IN ('pending', 'running')"
+		},
+		{
+			"type": "table",
+			"name": "project",
+			"tbl_name": "project",
+			"sql": "CREATE TABLE project ( machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE, id TEXT NOT NULL, organization_id TEXT NOT NULL REFERENCES organization(id), namespace TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (machine_id, id) )"
+		},
+		{
+			"type": "index",
+			"name": "project_organization_idx",
+			"tbl_name": "project",
+			"sql": "CREATE INDEX project_organization_idx ON project (organization_id, namespace, status)"
+		},
+		{
+			"type": "table",
+			"name": "session",
+			"tbl_name": "session",
+			"sql": "CREATE TABLE session ( id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE, organization_id TEXT NOT NULL REFERENCES organization(id), space_id TEXT NOT NULL, slug TEXT NOT NULL, dir TEXT NOT NULL, hostdir TEXT, tag TEXT, metadata TEXT, color TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) )"
+		},
+		{
+			"type": "index",
+			"name": "session_list_idx",
+			"tbl_name": "session",
+			"sql": "CREATE INDEX session_list_idx ON session (organization_id, updated_at) WHERE deleted_at IS NULL"
+		},
+		{
+			"type": "index",
+			"name": "session_space_idx",
+			"tbl_name": "session",
+			"sql": "CREATE INDEX session_space_idx ON session (machine_id, space_id)"
+		},
+		{
+			"type": "table",
+			"name": "space",
+			"tbl_name": "space",
+			"sql": "CREATE TABLE space ( machine_id TEXT NOT NULL, id TEXT NOT NULL, organization_id TEXT NOT NULL REFERENCES organization(id), project_id TEXT NOT NULL, location TEXT NOT NULL, kind TEXT NOT NULL, env TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (machine_id, id), FOREIGN KEY (machine_id, project_id) REFERENCES project(machine_id, id) ON DELETE CASCADE )"
+		},
+		{
+			"type": "index",
+			"name": "space_project_idx",
+			"tbl_name": "space",
+			"sql": "CREATE INDEX space_project_idx ON space (machine_id, project_id)"
+		},
+		{
+			"type": "table",
+			"name": "sqlite_sequence",
+			"tbl_name": "sqlite_sequence",
+			"sql": "CREATE TABLE sqlite_sequence(name,seq)"
+		},
+		{
+			"type": "table",
+			"name": "thread",
+			"tbl_name": "thread",
+			"sql": "CREATE TABLE thread ( id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organization(id), session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE, origin_kind TEXT NOT NULL, origin_thread_id TEXT, origin_entry_id TEXT, origin_call_id TEXT, origin_committed_seq INTEGER, title TEXT, model_provider TEXT, model_id TEXT, thinking_level TEXT, foundation TEXT, placement_space_id TEXT, placement_dir TEXT, restarts INTEGER NOT NULL DEFAULT 0, attempt INTEGER, run_state TEXT NOT NULL DEFAULT 'idle', run_state_at INTEGER, run_started_at INTEGER, run_ended_at INTEGER, run_outcome TEXT, run_error TEXT, cost REAL NOT NULL DEFAULT 0, tokens_input INTEGER NOT NULL DEFAULT 0, tokens_output INTEGER NOT NULL DEFAULT 0, tokens_cache_read INTEGER NOT NULL DEFAULT 0, tokens_cache_write INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, status_at INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 0, grouping_id TEXT REFERENCES grouping(id) ON DELETE SET NULL, ordering REAL NOT NULL, color TEXT, cursor INTEGER, floor INTEGER, created_seq INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER )"
+		},
+		{
+			"type": "index",
+			"name": "thread_grouping_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE INDEX thread_grouping_idx ON thread (organization_id, grouping_id, ordering) WHERE deleted_at IS NULL"
+		},
+		{
+			"type": "index",
+			"name": "thread_main_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE UNIQUE INDEX thread_main_idx ON thread (session_id) WHERE origin_kind = 'main'"
+		},
+		{
+			"type": "index",
+			"name": "thread_origin_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE INDEX thread_origin_idx ON thread (origin_thread_id) WHERE origin_thread_id IS NOT NULL"
+		},
+		{
+			"type": "index",
+			"name": "thread_priority_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE INDEX thread_priority_idx ON thread (organization_id, priority, ordering) WHERE deleted_at IS NULL"
+		},
+		{
+			"type": "index",
+			"name": "thread_session_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE INDEX thread_session_idx ON thread (session_id, updated_at) WHERE deleted_at IS NULL"
+		},
+		{
+			"type": "index",
+			"name": "thread_status_idx",
+			"tbl_name": "thread",
+			"sql": "CREATE INDEX thread_status_idx ON thread (organization_id, status, ordering) WHERE deleted_at IS NULL"
+		},
+		{
+			"type": "table",
+			"name": "widget",
+			"tbl_name": "widget",
+			"sql": "CREATE TABLE widget ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, tags INTEGER NOT NULL, tile_pos INTEGER NOT NULL, focus_pos INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, props TEXT NOT NULL, title TEXT, address TEXT, params TEXT, opened_by TEXT, created INTEGER NOT NULL )"
+		},
+		{
+			"type": "table",
+			"name": "workspaces",
+			"tbl_name": "workspaces",
+			"sql": "CREATE TABLE workspaces ( id TEXT PRIMARY KEY, bit INTEGER NOT NULL UNIQUE, pos INTEGER NOT NULL, name TEXT NOT NULL, layout TEXT NOT NULL, mfact REAL NOT NULL, auto INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, tab TEXT )"
+		}
+	],
+	"seeded": {
+		"machine": [
+			{
+				"id": "local",
+				"kind": "local",
+				"name": "CodeWork",
+				"executable": null,
+				"home": null,
+				"args": "",
+				"env": "[]",
+				"url": null,
+				"namespace": "codework",
+				"is_default": 1,
+				"pos": 0,
+				"store_id": null,
+				"cursor": 0,
+				"created_at": "<time>"
+			}
+		],
+		"organization": [
+			{
+				"id": "personal",
+				"name": "Personal",
+				"created_at": "<time>",
+				"updated_at": "<time>"
+			}
+		]
+	},
+	"servers": {
+		"badUrl": "Use a WebSocket URL, such as wss://codework.example.com/rpc.",
+		"added": [
+			{
+				"id": "local",
+				"kind": "local",
+				"name": "CodeWork",
+				"isDefault": true
+			},
+			{
+				"id": "<remote>",
+				"kind": "remote",
+				"name": "Cloud",
+				"isDefault": false,
+				"url": "wss://cloud.example.test/rpc"
+			}
+		],
+		"updated": [
+			{
+				"id": "local",
+				"kind": "local",
+				"name": "CodeWork",
+				"isDefault": true
+			},
+			{
+				"id": "<remote>",
+				"kind": "remote",
+				"name": "Cloud tunnel",
+				"isDefault": false,
+				"url": "wss://tunnel.example.test/rpc"
+			}
+		],
+		"refused": {
+			"localPatch": "A remote server has no executable, home, arguments or variables.",
+			"urlOnLocal": "Only a remote server has a URL.",
+			"defaultRemote": "Cloud tunnel is a remote server.",
+			"serviceRemote": "Cloud tunnel is a remote server."
+		},
+		"row": {
+			"id": "<remote>",
+			"kind": "remote",
+			"name": "Cloud tunnel",
+			"executable": null,
+			"home": null,
+			"args": "",
+			"env": "[]",
+			"url": "wss://tunnel.example.test/rpc",
+			"namespace": "codework",
+			"is_default": 0,
+			"pos": 1,
+			"store_id": null,
+			"cursor": 0,
+			"created_at": "<time>"
+		},
+		"cascade": {
+			"before": {
+				"project": 2,
+				"space": 2,
+				"session": 2,
+				"thread": 2,
+				"entry": 2,
+				"part": 2,
+				"inbox": 2
+			},
+			"after": {
+				"project": 1,
+				"space": 1,
+				"session": 1,
+				"thread": 1,
+				"entry": 1,
+				"part": 1,
+				"inbox": 1
+			},
+			"remoteLeft": 0
+		},
+		"removed": [
+			{
+				"id": "local",
+				"kind": "local",
+				"name": "CodeWork",
+				"isDefault": true
+			}
+		],
+		"ungrouped": [
+			{
+				"id": "thr_local",
+				"grouping_id": null
+			}
+		]
+	}
+}

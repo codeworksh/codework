@@ -1,0 +1,320 @@
+[
+	{
+		"step": "start: the Mac and fedora",
+		"machines": [
+			"<machine local>",
+			"fedora"
+		],
+		"before": {
+			"local": 0
+		},
+		"after": {
+			"local": 4,
+			"fedora": 0
+		},
+		"paths": {
+			"local": "full sync",
+			"fedora": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "add cw-a with writes during its first sync",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 0
+		},
+		"after": {
+			"local": 4,
+			"fedora": 0,
+			"cw-a": 862
+		},
+		"paths": {
+			"cw-a": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "partition cw-a and restore",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 0,
+			"cw-a": 864
+		},
+		"after": {
+			"local": 4,
+			"fedora": 0,
+			"cw-a": 865
+		},
+		"paths": {
+			"cw-a": "resume"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "partition fedora, delete a session, restore",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 865
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 865
+		},
+		"paths": {
+			"fedora": "resume"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "add cw-b live",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 865
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 865,
+			"cw-b": 0
+		},
+		"paths": {
+			"cw-b": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "crash cw-a mid-run and restart it",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 0
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 0
+		},
+		"paths": {
+			"cw-a": "resume"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "add cw-c live",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 0
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 0,
+			"cw-c": 0
+		},
+		"paths": {
+			"cw-c": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "restore cw-b's store from a backup",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 6,
+			"cw-c": 0
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 6,
+			"cw-c": 0
+		},
+		"paths": {
+			"cw-b": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "replace cw-c's store with a new one",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 6,
+			"cw-c": 4
+		},
+		"after": {
+			"local": 4,
+			"fedora": 6,
+			"cw-a": 867,
+			"cw-b": 6,
+			"cw-c": 4
+		},
+		"paths": {
+			"cw-c": "full sync"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "remove fedora",
+		"machines": [
+			"<machine local>",
+			"fedora",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"fedora": 12,
+			"cw-a": 874,
+			"cw-b": 6,
+			"cw-c": 6
+		},
+		"after": {
+			"local": 4,
+			"fedora": 0,
+			"cw-a": 874,
+			"cw-b": 6,
+			"cw-c": 6
+		},
+		"paths": {
+			"fedora": "cascade"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "stop cw-c (orb stop) and start it again",
+		"machines": [
+			"<machine local>",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-b": 6,
+			"cw-c": 6
+		},
+		"after": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-b": 6,
+			"cw-c": 8
+		},
+		"paths": {
+			"cw-c": "resume"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "remove cw-b",
+		"machines": [
+			"<machine local>",
+			"cw-a",
+			"cw-b",
+			"cw-c"
+		],
+		"before": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-b": 6,
+			"cw-c": 8
+		},
+		"after": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-b": 0,
+			"cw-c": 8
+		},
+		"paths": {
+			"cw-b": "cascade"
+		},
+		"time": "<10s"
+	},
+	{
+		"step": "add fedora again",
+		"machines": [
+			"<machine local>",
+			"cw-a",
+			"cw-c",
+			"fedora"
+		],
+		"before": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-c": 8
+		},
+		"after": {
+			"local": 4,
+			"cw-a": 874,
+			"cw-c": 8,
+			"fedora": 10
+		},
+		"paths": {
+			"fedora": "full sync"
+		},
+		"time": "<10s"
+	}
+]

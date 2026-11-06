@@ -1,5 +1,8 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+// The theme's own type sizes (style.css), so `text-ui` replaces a component's `text-sm`.
+const twMerge = extendTailwindMerge({ extend: { theme: { text: ["4xs", "3xs", "2xs", "ui", "body", "code"] } } });
 
 /** Joins class names; later Tailwind utilities win over conflicting earlier ones. */
 export function cn(...inputs: ClassValue[]) {

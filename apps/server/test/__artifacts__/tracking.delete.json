@@ -1,0 +1,36 @@
+{
+	"events": [
+		{
+			"topic": "sync/tracking",
+			"source": "tracking",
+			"payload": {
+				"_tag": "GroupDeleted",
+				"groupingId": "<group Doomed>",
+				"threads": [
+					"<thread A>",
+					"<thread B>"
+				]
+			}
+		}
+	],
+	"threads": [
+		{
+			"id": "<thread A>",
+			"grouping_id": null
+		},
+		{
+			"id": "<thread B>",
+			"grouping_id": null
+		},
+		{
+			"id": "<thread C>",
+			"grouping_id": "<group Kept>"
+		}
+	],
+	"groups": [
+		{
+			"id": "<group Kept>",
+			"name": "Kept"
+		}
+	]
+}

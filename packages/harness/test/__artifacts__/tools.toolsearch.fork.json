@@ -87,13 +87,13 @@
 		"entries": [
 			{
 				"id": "E1",
-				"seq": 26,
+				"seq": 31,
 				"type": "user",
 				"state": "committed"
 			},
 			{
 				"id": "E2",
-				"seq": 27,
+				"seq": 32,
 				"type": "system",
 				"state": "committed",
 				"data": {
@@ -133,13 +133,13 @@
 			},
 			{
 				"id": "E3",
-				"seq": 28,
+				"seq": 33,
 				"type": "assistant",
 				"state": "committed"
 			},
 			{
 				"id": "E4",
-				"seq": 32,
+				"seq": 37,
 				"type": "assistant",
 				"state": "committed"
 			}

@@ -1,0 +1,58 @@
+{
+	"forwarded": [
+		{
+			"entryId": "<assistant 1>",
+			"partIndex": 0,
+			"kind": "text",
+			"offset": 0,
+			"delta": "Hello "
+		},
+		{
+			"entryId": "<assistant 1>",
+			"partIndex": 0,
+			"kind": "text",
+			"offset": 11,
+			"delta": "!"
+		}
+	],
+	"entry": [
+		{
+			"id": "<id 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 0>",
+			"type": "user",
+			"state": "committed",
+			"error": null,
+			"size": 29,
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		},
+		{
+			"id": "<assistant 1>",
+			"thread_id": "<thr 1>",
+			"seq": "<seq 1>",
+			"type": "assistant",
+			"state": "committed",
+			"error": null,
+			"size": 37,
+			"created_at": "<time>",
+			"updated_at": "<time>"
+		}
+	],
+	"part": [
+		{
+			"entry_id": "<id 1>",
+			"part_index": 0,
+			"type": "text",
+			"status": null,
+			"text": "gate"
+		},
+		{
+			"entry_id": "<assistant 1>",
+			"part_index": 0,
+			"type": "text",
+			"status": null,
+			"text": "Hello world!"
+		}
+	]
+}

@@ -1,6 +1,7 @@
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useScrollFade } from "@/hooks/use-scroll-fade";
 
 import {
 	Sidebar,
@@ -90,31 +91,10 @@ export function SettingsSidebar() {
 
 export function SettingsLayout() {
 	const viewport = useRef<HTMLElement>(null);
-	const content = useRef<HTMLDivElement>(null);
-	useEffect(() => {
-		const element = viewport.current;
-		const body = content.current;
-		if (element === null || body === null) return;
-		const update = () => {
-			element.style.setProperty("--scroll-top", element.scrollTop > 1 ? "transparent" : "black");
-			element.style.setProperty(
-				"--scroll-bottom",
-				element.scrollTop + element.clientHeight < element.scrollHeight - 1 ? "transparent" : "black",
-			);
-		};
-		const observer = new ResizeObserver(update);
-		observer.observe(element);
-		observer.observe(body);
-		element.addEventListener("scroll", update, { passive: true });
-		update();
-		return () => {
-			observer.disconnect();
-			element.removeEventListener("scroll", update);
-		};
-	}, []);
+	useScrollFade(viewport);
 	return (
-		<main ref={viewport} className="settings-scroll h-full min-h-0 min-w-0 overflow-auto">
-			<div ref={content}>
+		<main ref={viewport} className="scroll-fade h-full min-h-0 min-w-0 overflow-auto">
+			<div>
 				<Outlet />
 			</div>
 		</main>
