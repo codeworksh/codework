@@ -15,7 +15,16 @@ import { Route as ShellProjectsRouteImport } from './routes/_shell.projects'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellThreadsRouteImport } from './routes/_shell.threads'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
+import { Route as ShellSettingsArchiveRouteImport } from './routes/_shell.settings.archive'
+import { Route as ShellSettingsChatRouteImport } from './routes/_shell.settings.chat'
+import { Route as ShellSettingsGeneralRouteImport } from './routes/_shell.settings.general'
+import { Route as ShellSettingsKeybindingsRouteImport } from './routes/_shell.settings.keybindings'
+import { Route as ShellSettingsMcpRouteImport } from './routes/_shell.settings.mcp'
+import { Route as ShellSettingsModelsRouteImport } from './routes/_shell.settings.models'
+import { Route as ShellSettingsPluginsRouteImport } from './routes/_shell.settings.plugins'
+import { Route as ShellSettingsSandboxesRouteImport } from './routes/_shell.settings.sandboxes'
 import { Route as ShellSettingsServersRouteImport } from './routes/_shell.settings.servers'
+import { Route as ShellSettingsSkillsRouteImport } from './routes/_shell.settings.skills'
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellSettingsWorkspacesRouteImport } from './routes/_shell.settings.workspaces'
 import { Route as ShellWorkspacesWorkspaceIdRouteImport } from './routes/_shell.workspaces.$workspaceId'
@@ -49,9 +58,55 @@ const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ShellSettingsRoute,
 } as any)
+const ShellSettingsArchiveRoute = ShellSettingsArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsChatRoute = ShellSettingsChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsGeneralRoute = ShellSettingsGeneralRouteImport.update({
+  id: '/general',
+  path: '/general',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsKeybindingsRoute =
+  ShellSettingsKeybindingsRouteImport.update({
+    id: '/keybindings',
+    path: '/keybindings',
+    getParentRoute: () => ShellSettingsRoute,
+  } as any)
+const ShellSettingsMcpRoute = ShellSettingsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsModelsRoute = ShellSettingsModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsPluginsRoute = ShellSettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsSandboxesRoute = ShellSettingsSandboxesRouteImport.update({
+  id: '/sandboxes',
+  path: '/sandboxes',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
 const ShellSettingsServersRoute = ShellSettingsServersRouteImport.update({
   id: '/servers',
   path: '/servers',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsSkillsRoute = ShellSettingsSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
   getParentRoute: () => ShellSettingsRoute,
 } as any)
 const ShellSettingsThemesRoute = ShellSettingsThemesRouteImport.update({
@@ -76,7 +131,16 @@ export interface FileRoutesByFullPath {
   '/projects': typeof ShellProjectsRoute
   '/settings': typeof ShellSettingsRouteWithChildren
   '/threads': typeof ShellThreadsRoute
+  '/settings/archive': typeof ShellSettingsArchiveRoute
+  '/settings/chat': typeof ShellSettingsChatRoute
+  '/settings/general': typeof ShellSettingsGeneralRoute
+  '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/settings/mcp': typeof ShellSettingsMcpRoute
+  '/settings/models': typeof ShellSettingsModelsRoute
+  '/settings/plugins': typeof ShellSettingsPluginsRoute
+  '/settings/sandboxes': typeof ShellSettingsSandboxesRoute
   '/settings/servers': typeof ShellSettingsServersRoute
+  '/settings/skills': typeof ShellSettingsSkillsRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -86,7 +150,16 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/projects': typeof ShellProjectsRoute
   '/threads': typeof ShellThreadsRoute
+  '/settings/archive': typeof ShellSettingsArchiveRoute
+  '/settings/chat': typeof ShellSettingsChatRoute
+  '/settings/general': typeof ShellSettingsGeneralRoute
+  '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/settings/mcp': typeof ShellSettingsMcpRoute
+  '/settings/models': typeof ShellSettingsModelsRoute
+  '/settings/plugins': typeof ShellSettingsPluginsRoute
+  '/settings/sandboxes': typeof ShellSettingsSandboxesRoute
   '/settings/servers': typeof ShellSettingsServersRoute
+  '/settings/skills': typeof ShellSettingsSkillsRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -99,7 +172,16 @@ export interface FileRoutesById {
   '/_shell/projects': typeof ShellProjectsRoute
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
   '/_shell/threads': typeof ShellThreadsRoute
+  '/_shell/settings/archive': typeof ShellSettingsArchiveRoute
+  '/_shell/settings/chat': typeof ShellSettingsChatRoute
+  '/_shell/settings/general': typeof ShellSettingsGeneralRoute
+  '/_shell/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/_shell/settings/mcp': typeof ShellSettingsMcpRoute
+  '/_shell/settings/models': typeof ShellSettingsModelsRoute
+  '/_shell/settings/plugins': typeof ShellSettingsPluginsRoute
+  '/_shell/settings/sandboxes': typeof ShellSettingsSandboxesRoute
   '/_shell/settings/servers': typeof ShellSettingsServersRoute
+  '/_shell/settings/skills': typeof ShellSettingsSkillsRoute
   '/_shell/settings/themes': typeof ShellSettingsThemesRoute
   '/_shell/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/_shell/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -112,7 +194,16 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/threads'
+    | '/settings/archive'
+    | '/settings/chat'
+    | '/settings/general'
+    | '/settings/keybindings'
+    | '/settings/mcp'
+    | '/settings/models'
+    | '/settings/plugins'
+    | '/settings/sandboxes'
     | '/settings/servers'
+    | '/settings/skills'
     | '/settings/themes'
     | '/settings/workspaces'
     | '/workspaces/$workspaceId'
@@ -122,7 +213,16 @@ export interface FileRouteTypes {
     | '/'
     | '/projects'
     | '/threads'
+    | '/settings/archive'
+    | '/settings/chat'
+    | '/settings/general'
+    | '/settings/keybindings'
+    | '/settings/mcp'
+    | '/settings/models'
+    | '/settings/plugins'
+    | '/settings/sandboxes'
     | '/settings/servers'
+    | '/settings/skills'
     | '/settings/themes'
     | '/settings/workspaces'
     | '/workspaces/$workspaceId'
@@ -134,7 +234,16 @@ export interface FileRouteTypes {
     | '/_shell/projects'
     | '/_shell/settings'
     | '/_shell/threads'
+    | '/_shell/settings/archive'
+    | '/_shell/settings/chat'
+    | '/_shell/settings/general'
+    | '/_shell/settings/keybindings'
+    | '/_shell/settings/mcp'
+    | '/_shell/settings/models'
+    | '/_shell/settings/plugins'
+    | '/_shell/settings/sandboxes'
     | '/_shell/settings/servers'
+    | '/_shell/settings/skills'
     | '/_shell/settings/themes'
     | '/_shell/settings/workspaces'
     | '/_shell/workspaces/$workspaceId'
@@ -190,11 +299,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsIndexRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
+    '/_shell/settings/archive': {
+      id: '/_shell/settings/archive'
+      path: '/archive'
+      fullPath: '/settings/archive'
+      preLoaderRoute: typeof ShellSettingsArchiveRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/chat': {
+      id: '/_shell/settings/chat'
+      path: '/chat'
+      fullPath: '/settings/chat'
+      preLoaderRoute: typeof ShellSettingsChatRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/general': {
+      id: '/_shell/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof ShellSettingsGeneralRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/keybindings': {
+      id: '/_shell/settings/keybindings'
+      path: '/keybindings'
+      fullPath: '/settings/keybindings'
+      preLoaderRoute: typeof ShellSettingsKeybindingsRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/mcp': {
+      id: '/_shell/settings/mcp'
+      path: '/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof ShellSettingsMcpRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/models': {
+      id: '/_shell/settings/models'
+      path: '/models'
+      fullPath: '/settings/models'
+      preLoaderRoute: typeof ShellSettingsModelsRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/plugins': {
+      id: '/_shell/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof ShellSettingsPluginsRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/sandboxes': {
+      id: '/_shell/settings/sandboxes'
+      path: '/sandboxes'
+      fullPath: '/settings/sandboxes'
+      preLoaderRoute: typeof ShellSettingsSandboxesRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
     '/_shell/settings/servers': {
       id: '/_shell/settings/servers'
       path: '/servers'
       fullPath: '/settings/servers'
       preLoaderRoute: typeof ShellSettingsServersRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/skills': {
+      id: '/_shell/settings/skills'
+      path: '/skills'
+      fullPath: '/settings/skills'
+      preLoaderRoute: typeof ShellSettingsSkillsRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
     '/_shell/settings/themes': {
@@ -222,14 +394,32 @@ declare module '@tanstack/react-router' {
 }
 
 interface ShellSettingsRouteChildren {
+  ShellSettingsArchiveRoute: typeof ShellSettingsArchiveRoute
+  ShellSettingsChatRoute: typeof ShellSettingsChatRoute
+  ShellSettingsGeneralRoute: typeof ShellSettingsGeneralRoute
+  ShellSettingsKeybindingsRoute: typeof ShellSettingsKeybindingsRoute
+  ShellSettingsMcpRoute: typeof ShellSettingsMcpRoute
+  ShellSettingsModelsRoute: typeof ShellSettingsModelsRoute
+  ShellSettingsPluginsRoute: typeof ShellSettingsPluginsRoute
+  ShellSettingsSandboxesRoute: typeof ShellSettingsSandboxesRoute
   ShellSettingsServersRoute: typeof ShellSettingsServersRoute
+  ShellSettingsSkillsRoute: typeof ShellSettingsSkillsRoute
   ShellSettingsThemesRoute: typeof ShellSettingsThemesRoute
   ShellSettingsWorkspacesRoute: typeof ShellSettingsWorkspacesRoute
   ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
 }
 
 const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
+  ShellSettingsArchiveRoute: ShellSettingsArchiveRoute,
+  ShellSettingsChatRoute: ShellSettingsChatRoute,
+  ShellSettingsGeneralRoute: ShellSettingsGeneralRoute,
+  ShellSettingsKeybindingsRoute: ShellSettingsKeybindingsRoute,
+  ShellSettingsMcpRoute: ShellSettingsMcpRoute,
+  ShellSettingsModelsRoute: ShellSettingsModelsRoute,
+  ShellSettingsPluginsRoute: ShellSettingsPluginsRoute,
+  ShellSettingsSandboxesRoute: ShellSettingsSandboxesRoute,
   ShellSettingsServersRoute: ShellSettingsServersRoute,
+  ShellSettingsSkillsRoute: ShellSettingsSkillsRoute,
   ShellSettingsThemesRoute: ShellSettingsThemesRoute,
   ShellSettingsWorkspacesRoute: ShellSettingsWorkspacesRoute,
   ShellSettingsIndexRoute: ShellSettingsIndexRoute,
