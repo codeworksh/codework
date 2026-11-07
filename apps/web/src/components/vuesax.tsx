@@ -14,7 +14,7 @@ export type IconComponent = ComponentType<IconProps>;
 type IconProps = Omit<ComponentProps<"svg">, "name"> & { readonly size?: number | string };
 
 /** A CSS mask preserves the source SVG while drawing it in the UI's text color. */
-export function Vuesax({ name, size = 24, style, ...props }: IconProps & { readonly name: VuesaxName }) {
+function Vuesax({ name, size = 24, style, ...props }: IconProps & { readonly name: VuesaxName }) {
 	const url = files[`../assets/vuesax/${name}.svg`];
 	return (
 		<svg
@@ -90,11 +90,11 @@ export const Lock = icon("community/linear/grid-lock");
 export const LockOpen = icon("community/linear/grid-1");
 export const Box = icon("community/linear/box");
 export const ListEnd = icon("community/linear/task");
-export const Folder = FolderTree;
-export const FolderOpen = Folder;
-export const FolderGit2 = Folder;
-export const FolderPlus = Plus;
-export const FolderUp = ArrowUp;
-export const CornerDownLeft = ArrowLeft;
-export const CornerDownRight = ArrowRight;
-export const CircleDashed = RefreshCw;
+export const Folder = icon("community/linear/folder-connection");
+export const FolderOpen = icon("community/linear/folder-connection");
+export const FolderGit2 = icon("community/linear/folder-connection");
+export const FolderPlus = icon("community/linear/add");
+export const FolderUp = icon("community/linear/arrow-up-1");
+export const CornerDownLeft = icon("community/linear/arrow-left");
+export const CornerDownRight = icon("community/linear/arrow-right");
+export const CircleDashed = icon("community/linear/refresh");
