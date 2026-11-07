@@ -1,4 +1,4 @@
-import { ListTodo } from "lucide-react";
+import { ThreadsIcon } from "@/components/vuesax";
 import { Schema } from "effect";
 
 import { defineWidget } from "@codeworksh/widget/view";
@@ -11,7 +11,7 @@ const threadsAddress = "codework://threads";
 export const threads = defineWidget({
 	kind: "codework:threads",
 	title: "All Threads",
-	icon: ListTodo,
+	icon: ThreadsIcon,
 	minWidth: 360,
 	minHeight: 200,
 	cardinality: "one",

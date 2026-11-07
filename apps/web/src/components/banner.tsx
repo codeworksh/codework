@@ -1,4 +1,4 @@
-import { CircleAlert, Clock, Download, type LucideIcon, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, Clock, Download, TriangleAlert, type IconComponent, X } from "@/components/vuesax";
 import { useLast } from "@/hooks/last";
 
 /**
@@ -14,34 +14,35 @@ export interface Notice {
 
 export interface NoticeAction {
 	readonly label: string;
-	readonly icon?: LucideIcon;
+	readonly icon?: IconComponent;
 	readonly disabled?: boolean;
 	readonly onClick: () => void;
 }
 
-const tones: Record<Notice["tone"], { readonly icon: LucideIcon; readonly text: string; readonly surface: string }> = {
-	// A faint tint and border of the tone's color over the composer's tray surface.
-	error: {
-		icon: CircleAlert,
-		text: "text-destructive",
-		surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
-	},
-	warning: {
-		icon: TriangleAlert,
-		text: "text-warning",
-		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
-	},
-	info: {
-		icon: Download,
-		text: "text-ink-muted",
-		surface: "border-edge bg-frame",
-	},
-	expired: {
-		icon: Clock,
-		text: "text-warning",
-		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
-	},
-};
+const tones: Record<Notice["tone"], { readonly icon: IconComponent; readonly text: string; readonly surface: string }> =
+	{
+		// A faint tint and border of the tone's color over the composer's tray surface.
+		error: {
+			icon: CircleAlert,
+			text: "text-destructive",
+			surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
+		},
+		warning: {
+			icon: TriangleAlert,
+			text: "text-warning",
+			surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
+		},
+		info: {
+			icon: Download,
+			text: "text-ink-muted",
+			surface: "border-edge bg-frame",
+		},
+		expired: {
+			icon: Clock,
+			text: "text-warning",
+			surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
+		},
+	};
 
 /**
  * A notice tucked behind the composer's top edge, as its tray is tucked under the bottom one: subtle

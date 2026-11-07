@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { useScrollbars } from "@/hooks/use-scrollbars";
 import { SessionsSidebar } from "../landing/sidebar";
 import { SettingsSidebar } from "../settings/layout";
 import { NavigationControls } from "../shell/titlebar";
@@ -11,6 +12,7 @@ import { Splash } from "../splash";
 
 // The sessions sidebar wraps every page but settings, which has its own; its open state carries over.
 function Root() {
+	useScrollbars();
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
 	return (
 		<SidebarProvider

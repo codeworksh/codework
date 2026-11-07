@@ -1,7 +1,7 @@
+import { Check, ChevronRight, FolderTree, Settings, ThreadsIcon, FolderPlus } from "@/components/vuesax";
 import { useAtom, useAtomSet } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { Check, ChevronRight, FolderPlus, FolderTree, ListTodo, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -120,7 +120,7 @@ export function Palette() {
 								keywords={["all threads", "go", "issues", "list", "status", "priority", "groups"]}
 								onSelect={() => run(() => void navigate({ to: "/threads" }))}
 							>
-								<ListTodo strokeWidth={1.75} />
+								<ThreadsIcon strokeWidth={1.75} />
 								All Threads
 							</CommandItem>
 							<CommandItem

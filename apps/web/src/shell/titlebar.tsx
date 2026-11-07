@@ -1,10 +1,15 @@
-import { useAtomValue } from "@effect/atom-react";
+import { ArrowLeft, ArrowRight, Plus, X } from "@/components/vuesax";
 import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { isMac } from "@codeworksh/widget/view";
-import { lastWorkspaceAtom, MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import {
+	MAX_WORKSPACES,
+	useCreateWorkspace,
+	useWorkspaces,
+	useWorkspaceReturn,
+	workspaceRoute,
+} from "../wm/workspaces";
 import { Switcher } from "./switcher";
 
 // The window has no native title bar on macOS; a title bar is its drag region and leaves room for the
@@ -13,7 +18,7 @@ const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
 const chromeButton =
-	"grid size-7 shrink-0 place-items-center rounded-md text-ink-muted press [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+	"grid size-7 shrink-0 place-items-center rounded-md text-ink-muted [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 /** Window-level navigation remains available on Home, workspaces, and settings. */
 export function NavigationControls() {
@@ -30,8 +35,9 @@ export function NavigationControls() {
 	return (
 		<header className="flex h-titlebar w-full shrink-0 items-center bg-desktop pr-2 select-none [-webkit-app-region:drag]">
 			<div
+				data-slot="sidebar-navigation"
 				className={`flex shrink-0 items-center gap-1 pr-2 ${insetTitleBar ? "min-w-44 pl-22" : "min-w-28 pl-3"}`}
-				style={{ width: withSidebar ? "var(--sidebar-width)" : undefined }}
+				style={{ width: withSidebar ? "var(--sidebar-width)" : insetTitleBar ? "11rem" : "7rem" }}
 			>
 				<SidebarTrigger
 					title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
@@ -74,15 +80,14 @@ export function NavigationControls() {
 
 function CloseSettings() {
 	const navigate = useNavigate();
-	const lastId = useAtomValue(lastWorkspaceAtom);
-	const back = useWorkspaces().find((workspace) => workspace.id === lastId);
+	const back = useWorkspaceReturn();
 	return (
 		<button
 			type="button"
 			aria-label="Close settings"
 			title="Close settings (Esc)"
 			className={`${chromeButton} ml-auto`}
-			onClick={() => void navigate(back === undefined ? { to: "/" } : workspaceRoute(back))}
+			onClick={() => void navigate(back)}
 		>
 			<X className="size-4" strokeWidth={1.5} aria-hidden />
 		</button>

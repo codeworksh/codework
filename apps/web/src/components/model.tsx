@@ -1,9 +1,10 @@
+import { Check, ChevronDown, FileSearch, Gauge, Search } from "@/components/vuesax";
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
 import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
 import { Cause, Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { Check, ChevronDown, FileSearch, Gauge, Search } from "lucide-react";
+
 import { useRef, useState } from "react";
 
 import {
@@ -82,7 +83,7 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 
 // The composer toolbar pills share `bg-selection` and its hover.
 const trigger =
-	"group flex h-6.5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-selection px-1.5 text-2xs text-ink outline-none press hover:bg-selection-hover focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-selection";
+	"group flex h-6.5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-selection px-1.5 text-2xs text-ink outline-none hover:bg-selection-hover focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-selection";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {

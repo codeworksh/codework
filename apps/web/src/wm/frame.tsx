@@ -1,4 +1,15 @@
-import { AppWindow, GripVertical, Maximize2, Minimize2, Pin, PinOff, Plus, X, type LucideIcon } from "lucide-react";
+import {
+	ChevronRight,
+	Plus,
+	WorkspaceIcon,
+	GripVertical,
+	Maximize2,
+	Minimize2,
+	Pin,
+	PinOff,
+	X,
+	type IconComponent,
+} from "@/components/vuesax";
 import { isValidElement, type ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
@@ -60,8 +71,8 @@ interface FrameProps {
 	readonly onDragCancel: () => void;
 }
 
-/** A frame's full height when collapsed to its header: the header row plus the frame's inset and border. */
-export const FRAME_HEADER_HEIGHT = 46;
+/** The 36px header plus its bottom border, with no outer inset. */
+export const FRAME_HEADER_HEIGHT = 37;
 
 export function Frame(props: FrameProps) {
 	const { title, lead, icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
@@ -79,7 +90,7 @@ export function Frame(props: FrameProps) {
 		<article
 			// Settling into a new slot animates; the dragged frame follows the pointer directly.
 			// Named so a widget's own `group-hover` rows never react to the pointer anywhere in the frame.
-			className={`group/frame absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
+			className={`group/frame absolute top-0 left-0 box-border ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
 			data-focused={focused}
 			data-collapsed={collapsed}
 			hidden={props.hidden}
@@ -87,38 +98,49 @@ export function Frame(props: FrameProps) {
 			onPointerDown={props.onFocus}
 		>
 			<div
-				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]/frame:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
+				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "border-r border-b border-edge bg-frame group-data-[focused=true]/frame:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
 			>
-				<header className="flex h-pane shrink-0 items-center gap-1 border-b border-edge pr-2 pl-1.5 select-none">
+				<header className="flex h-pane shrink-0 items-center gap-2 border-b border-edge px-3 select-none">
 					<div
 						ref={handleRef}
-						className={`flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+						className={`flex min-w-0 flex-1 items-center gap-2 py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
 					>
-						<GripVertical
-							className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`}
-							aria-hidden
-						/>
-						{icon !== undefined && <IconOf icon={icon} className="mr-0.5 size-4 shrink-0 text-ink-muted" />}
-						{lead !== undefined && <Lead text={lead} />}
+						{canDrag && <GripVertical className="size-3 shrink-0 text-ink-muted/40" aria-hidden />}
+						{lead !== undefined ? (
+							<>
+								<span
+									className="flex min-w-0 max-w-1/3 shrink-0 items-center gap-1.5 rounded-md border border-edge/60 bg-ink/3 px-2 py-1 text-xs text-ink-muted"
+									title={lead}
+								>
+									{icon !== undefined && <IconOf icon={icon} className="size-3.5 shrink-0" />}
+									<span className="truncate">{lead}</span>
+								</span>
+								<ChevronRight className="size-3 shrink-0 text-ink-muted/50" aria-hidden />
+							</>
+						) : (
+							icon !== undefined && <IconOf icon={icon} className="size-4 shrink-0 text-ink-muted" />
+						)}
 						<Title
 							text={title}
-							className="font-semibold text-ink-muted group-data-[focused=true]/frame:text-ink"
+							className="flex-1 font-medium text-ink-muted group-data-[focused=true]/frame:text-ink"
 						/>
 					</div>
-					<Action
-						icon={pinned ? PinOff : Pin}
-						label={pinned ? "Unpin" : "Pin"}
-						active={pinned}
-						onClick={props.onPin}
-					/>
-					<Action
-						icon={maximized ? Minimize2 : Maximize2}
-						label={maximized ? "Restore" : "Maximize"}
-						active={false}
-						onClick={props.onMaximize}
-					/>
-					<Move destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew} />
-					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
+					<div className="flex shrink-0 items-center gap-0.5 border-l border-edge pl-2">
+						<Action
+							icon={pinned ? PinOff : Pin}
+							label={pinned ? "Unpin" : "Pin"}
+							active={pinned}
+							onClick={props.onPin}
+						/>
+						<Action
+							icon={maximized ? Minimize2 : Maximize2}
+							label={maximized ? "Restore" : "Maximize"}
+							active={false}
+							onClick={props.onMaximize}
+						/>
+						<Move destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew} />
+						<Action icon={X} label="Close" active={false} onClick={props.onClose} />
+					</div>
 				</header>
 				{/* A collapsed frame keeps its widget mounted, so it keeps working and keeps its state. */}
 				<div className="min-h-0 flex-1 overflow-hidden" hidden={collapsed}>
@@ -126,18 +148,6 @@ export function Frame(props: FrameProps) {
 				</div>
 			</div>
 		</article>
-	);
-}
-
-/** Up to a third of the header, so the title it leads keeps the room. */
-function Lead({ text }: { readonly text: string }) {
-	return (
-		<span className="flex max-w-1/3 shrink-0 items-center gap-1 text-ink-muted/70" title={text}>
-			<span className="truncate">{text}</span>
-			<span className="text-ink-muted/40" aria-hidden>
-				/
-			</span>
-		</span>
 	);
 }
 
@@ -157,13 +167,13 @@ function Move({
 				title="Move"
 				className={`${actionClass} data-[state=open]:bg-ink/8 data-[state=open]:text-ink`}
 			>
-				<AppWindow className="size-3.5" strokeWidth={1.75} />
+				<WorkspaceIcon className="size-3.5" strokeWidth={1.75} />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-64">
 				<DropdownMenuLabel>Move</DropdownMenuLabel>
 				{destinations.map(({ id, name, position }) => (
 					<DropdownMenuItem key={id} title={name} onSelect={() => onMove(id)}>
-						<AppWindow strokeWidth={1.75} />
+						<WorkspaceIcon strokeWidth={1.75} />
 						<span className="truncate">{name}</span>
 						<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
 					</DropdownMenuItem>
@@ -179,10 +189,10 @@ function Move({
 }
 
 const actionClass =
-	"grid size-6 place-items-center rounded-md text-ink-muted/80 outline-none press hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-pressed:text-ink";
+	"grid size-6 place-items-center rounded-md text-ink-muted/80 outline-none hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-pressed:text-ink";
 
 interface ActionProps {
-	readonly icon: LucideIcon;
+	readonly icon: IconComponent;
 	readonly label: string;
 	readonly active: boolean;
 	readonly onClick: () => void;
@@ -203,7 +213,7 @@ function Action({ icon: Icon, label, active, onClick }: ActionProps) {
 	);
 }
 
-/** A frame icon as drawn: an element as given, a Lucide icon at `className`. */
+/** A frame icon as drawn: an element as given, a icon component at `className`. */
 export function IconOf({ icon: Icon, className }: { readonly icon: FrameIcon; readonly className?: string }) {
 	return isValidElement(Icon) ? Icon : <Icon className={className} strokeWidth={1.75} aria-hidden />;
 }

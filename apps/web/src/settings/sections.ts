@@ -1,9 +1,9 @@
-import { Layers, type LucideIcon, Palette, Server } from "lucide-react";
+import { Palette, Server, WorkspaceIcon, type IconComponent } from "@/components/vuesax";
 
 export interface SettingsSection {
 	readonly to: "/settings/workspaces" | "/settings/themes" | "/settings/servers";
 	readonly label: string;
-	readonly icon: LucideIcon;
+	readonly icon: IconComponent;
 	/** Sidebar heading the section sits under. */
 	readonly group: string;
 	/** Extra words the search matches, beyond the label. */
@@ -14,7 +14,7 @@ const sections: readonly SettingsSection[] = [
 	{
 		to: "/settings/workspaces",
 		label: "Workspaces",
-		icon: Layers,
+		icon: WorkspaceIcon,
 		group: "App",
 		keywords: ["tabs", "shortcuts", "reorder", "rename", "delete"],
 	},

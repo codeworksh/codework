@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import { HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/components/vuesax";
 import { type ReactNode, useContext, useLayoutEffect, useMemo, useRef } from "react";
 
 import { makeHost } from "../kernel/host";
@@ -19,7 +19,7 @@ export function Page({
 }: {
 	readonly instanceId: string;
 	readonly title: string;
-	readonly icon: LucideIcon;
+	readonly icon: IconComponent;
 	readonly children: ReactNode;
 }) {
 	const registry = useContext(RegistryContext);

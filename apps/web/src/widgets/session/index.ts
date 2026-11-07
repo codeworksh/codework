@@ -1,6 +1,6 @@
+import { MessageSquare } from "@/components/vuesax";
 import { defineWidget } from "@codeworksh/widget/view";
 import { Schema } from "effect";
-import { MessageSquare } from "lucide-react";
 
 import { Session } from "./view";
 

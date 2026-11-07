@@ -1,6 +1,6 @@
+import { ChevronRight, MoreHorizontal, GripVertical } from "@/components/vuesax";
 import { useAtomSet } from "@effect/atom-react";
 import type { Grouping } from "@codeworksh/contract";
-import { ChevronRight, GripVertical, MoreHorizontal } from "lucide-react";
 import type { DragEvent, ReactNode } from "react";
 
 import {

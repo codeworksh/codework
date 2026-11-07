@@ -1,4 +1,4 @@
-import { Check, Copy, GitFork } from "lucide-react";
+import { Check, Copy, GitFork } from "@/components/vuesax";
 import { type ReactNode, useEffect, useState } from "react";
 
 /** Wall-clock stamp for a message or finished turn, in the reader's own locale. */

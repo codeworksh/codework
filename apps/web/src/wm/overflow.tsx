@@ -1,5 +1,6 @@
+import { ChevronUp } from "@/components/vuesax";
 import type { FrameIcon } from "@codeworksh/widget/view";
-import { ChevronUp } from "lucide-react";
+
 import type { Rect } from "webwm";
 
 import {
@@ -32,11 +33,11 @@ export function Overflow({
 }) {
 	return (
 		<div
-			className="absolute top-0 left-0 box-border p-1"
+			className="absolute top-0 left-0 box-border"
 			style={{ width: rect.w, height: rect.h, transform: `translate(${rect.x}px, ${rect.y}px)` }}
 		>
 			<DropdownMenu>
-				<DropdownMenuTrigger className="panel flex h-full w-full items-center gap-1.5 px-3 text-left text-ink-muted outline-none transition-colors select-none hover:text-ink data-[state=open]:text-ink">
+				<DropdownMenuTrigger className="flex h-full w-full border-t border-edge bg-frame items-center gap-1.5 px-3 text-left text-ink-muted outline-none transition-colors select-none hover:text-ink data-[state=open]:text-ink">
 					<ChevronUp className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
 					<span className="font-semibold">+{hidden.length} more</span>
 				</DropdownMenuTrigger>

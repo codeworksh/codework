@@ -1,5 +1,5 @@
+import { Check, ListFilter, Plus, SlidersHorizontal, X } from "@/components/vuesax";
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
-import { Check, ListFilter, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";

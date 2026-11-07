@@ -1,5 +1,6 @@
+import { ArrowLeft, Search } from "@/components/vuesax";
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+
 import { useRef, useState } from "react";
 import { useScrollFade } from "@/hooks/use-scroll-fade";
 
@@ -16,17 +17,26 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar";
 import { search } from "./sections";
+import { useWorkspaceReturn } from "../wm/workspaces";
 
 /** Settings replaces the sessions list within the same app shell and sidebar controls. */
 export function SettingsSidebar() {
 	const matchRoute = useMatchRoute();
 	const navigate = useNavigate();
+	const back = useWorkspaceReturn();
 	const [query, setQuery] = useState("");
 	const matches = search(query);
 	const groups = [...new Set(matches.map((section) => section.group))];
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
+				<Link
+					{...back}
+					className="mb-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<ArrowLeft className="size-4 shrink-0" aria-hidden />
+					{back.to === "/" ? "Back to app" : "Back to workspace"}
+				</Link>
 				<h1 className="flex h-7 items-center px-2.5 text-ui font-medium text-ink">Settings</h1>
 				<div className="relative">
 					<Search

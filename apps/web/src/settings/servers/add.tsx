@@ -1,5 +1,6 @@
+import { Check, GlobeIcon } from "@/components/vuesax";
 import { useAtomSet } from "@effect/atom-react";
-import { Check, Globe } from "lucide-react";
+
 import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,7 @@ export function AddServer({
 						<div className="grid grid-cols-2 gap-2">
 							<KindTile selected icon={<Mark />} title="Local" detail="Runs on this machine" />
 							<KindTile
-								icon={<Globe className="size-5 text-ink-muted" strokeWidth={1.75} />}
+								icon={<GlobeIcon className="size-5 text-ink-muted" strokeWidth={1.75} />}
 								title="Remote"
 								detail="Another machine's server"
 								badge={<Badge tone="info">Coming soon</Badge>}

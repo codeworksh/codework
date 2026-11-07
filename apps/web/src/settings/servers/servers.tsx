@@ -1,6 +1,7 @@
+import { Minus, Plus, RefreshCw, Undo2 } from "@/components/vuesax";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { DEFAULT_SERVER_HEALTH, type LocalServerStatus } from "@codeworksh/contract";
-import { Minus, Plus, RefreshCw, Undo2 } from "lucide-react";
+
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
@@ -42,70 +43,66 @@ export function ServersSettings() {
 	return (
 		<Page
 			title="Providers"
+			description="Manage the CodeWork servers that run your sessions."
 			actions={
-				<button
-					type="button"
-					title="Check again"
-					disabled={checking}
-					className="flex items-center gap-1.5 rounded-md px-2 py-1 text-ink-muted transition-colors hover:bg-muted hover:text-ink disabled:pointer-events-none"
-					onClick={() => runCheck({ payload: undefined })}
-				>
-					<RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
-					{checking ? "Checking…" : <Checked at={servers} />}
-				</button>
+				<div className="flex items-center gap-2">
+					<Button
+						size="sm"
+						variant="ghost"
+						title="Check again"
+						aria-label="Check provider status"
+						disabled={checking}
+						className="text-ink-muted"
+						onClick={() => runCheck({ payload: undefined })}
+					>
+						<RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
+						<span className="hidden @min-[640px]:inline">
+							{checking ? "Checking…" : <Checked at={servers} />}
+						</span>
+					</Button>
+					<Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+						<Plus aria-hidden />
+						Add Provider
+					</Button>
+				</div>
 			}
 		>
-			<div className="@container">
-				{/* Side by side, the split keeps a fixed height and each side scrolls on its own; stacked, the page scrolls. */}
-				<div className="grid items-start rounded-lg border border-edge/60 @3xl:h-[min(44rem,calc(100dvh-12.5rem))] @3xl:min-h-128 @3xl:grid-cols-[16rem_minmax(0,1fr)] @3xl:items-stretch @3xl:overflow-hidden">
-					<nav
-						aria-label="Providers"
-						className="flex flex-col border-edge/60 @max-3xl:border-b @3xl:min-h-0 @3xl:overflow-y-auto @3xl:border-r"
-					>
-						{servers?.map((server) => (
-							<button
-								key={server.id}
-								type="button"
-								aria-current={server.id === selected?.id ? "true" : undefined}
-								className={`border-b border-edge pr-5 text-left transition-colors ${server.id === selected?.id ? "bg-ink/4" : "hover:bg-ink/3"}`}
-								onClick={() => setSelectedId(server.id)}
-							>
-								<LocalItem status={server} />
-							</button>
-						))}
+			<Section title="Your providers">
+				<nav aria-label="Providers" className="grid grid-cols-1 gap-3 @min-[560px]:grid-cols-2">
+					{servers?.map((server) => (
 						<button
+							key={server.id}
 							type="button"
-							className="flex items-center gap-3 px-5 py-4 text-left text-ink-muted transition-colors hover:bg-ink/3 hover:text-ink"
-							onClick={() => setAdding(true)}
+							aria-current={server.id === selected?.id ? "true" : undefined}
+							className="min-w-0 rounded-xl border border-edge p-4 text-left outline-none hover:border-edge-focus focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-frame aria-current:border-brand aria-current:bg-brand/4"
+							onClick={() => setSelectedId(server.id)}
 						>
-							<Plus className="size-4" aria-hidden />
-							Add Provider
+							<LocalItem status={server} />
 						</button>
-					</nav>
-					{/* Mounted only while open, so each opening starts fresh and is named after the servers there are. */}
-					{adding && (
-						<AddServer
-							onClose={() => setAdding(false)}
-							defaultName={`CodeWork ${(servers?.length ?? 0) + 1}`}
-							detected={detected}
-							onAdded={setSelectedId}
-						/>
-					)}
-					<div className="min-w-0 @3xl:min-h-0 @3xl:overflow-y-auto">
-						{selected !== undefined ? (
-							<LocalDetail key={selected.id} status={selected} />
-						) : AsyncResult.isFailure(result) ? (
-							<p className="p-6 text-ink-muted">The app server did not answer.</p>
-						) : (
-							<div className="flex flex-col gap-3 p-6">
-								<Skeleton className="h-5 w-1/3" />
-								<Skeleton className="h-24 w-full" />
-								<Skeleton className="h-40 w-full" />
-							</div>
-						)}
-					</div>
+					))}
+				</nav>
+			</Section>
+			{adding && (
+				<AddServer
+					onClose={() => setAdding(false)}
+					defaultName={`CodeWork ${(servers?.length ?? 0) + 1}`}
+					detected={detected}
+					onAdded={setSelectedId}
+				/>
+			)}
+			{selected !== undefined ? (
+				<LocalDetail key={selected.id} status={selected} />
+			) : AsyncResult.isFailure(result) ? (
+				<p role="alert" className="rounded-lg border border-edge p-4 text-ink-muted">
+					The app server did not answer.
+				</p>
+			) : (
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-5 w-1/3" />
+					<Skeleton className="h-24 w-full" />
+					<Skeleton className="h-40 w-full" />
 				</div>
-			</div>
+			)}
 			<Section title="Advanced">
 				<Group>
 					<HealthInterval />

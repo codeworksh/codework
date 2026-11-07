@@ -1,5 +1,5 @@
+import { CircleAlert } from "@/components/vuesax";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { Problem } from "../kernel/servers";
@@ -16,7 +16,7 @@ export function OpenProviderSettings({ problem, className }: { problem: Problem;
 			title={`${problem.title}: ${problem.line}`}
 			onClick={() => void navigate({ to: "/settings/servers" })}
 			className={cn(
-				"flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-warning outline-none press transition-colors hover:bg-warning/10 focus-visible:bg-warning/10",
+				"flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:bg-warning/10",
 				className,
 			)}
 		>

@@ -1,5 +1,5 @@
+import { Plus, Lock, LockOpen, X } from "@/components/vuesax";
 import type { CliEnvVar } from "@codeworksh/contract";
-import { Lock, LockOpen, Plus, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,7 @@ export function Variables({
 						variant="ghost"
 						aria-label={`${row.sensitive ? "Unmark" : "Mark"} environment variable ${index + 1} as sensitive`}
 						title={row.sensitive ? "Sensitive: never shown again" : "Mark as sensitive"}
+						aria-pressed={row.sensitive}
 						onClick={() => {
 							// Unmarking never reveals a saved secret: a kept value is dropped and typed again.
 							const next = rows.map((other) =>

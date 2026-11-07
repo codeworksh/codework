@@ -1,6 +1,6 @@
+import { WorkspaceIcon, X } from "@/components/vuesax";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AppWindow, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { isMac } from "@codeworksh/widget/view";
@@ -166,7 +166,7 @@ function TabIcon({
 	const display = useRunDisplay(threads);
 	return (
 		<span className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}>
-			<RunMark display={display} idle={<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />} />
+			<RunMark display={display} idle={<WorkspaceIcon className="size-3.5" strokeWidth={1.75} aria-hidden />} />
 		</span>
 	);
 }

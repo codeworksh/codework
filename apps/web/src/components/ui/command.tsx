@@ -1,7 +1,7 @@
+import { Search as SearchIcon } from "@/components/vuesax";
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 import { cn } from "@/lib/utils";
-import { SearchIcon } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 

@@ -1,20 +1,19 @@
-import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { GithubIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { useNavigate } from "@tanstack/react-router";
-import { Cause, Option } from "effect";
-import { AsyncResult } from "effect/reactivity";
+import { ProviderIcon } from "@/components/provider";
 import {
 	ArrowLeft,
+	GitBranch,
+	Link,
 	CornerDownLeft,
 	Folder,
 	FolderGit2,
 	FolderOpen,
 	FolderPlus,
 	FolderUp,
-	GitBranch,
-	Link,
-} from "lucide-react";
+} from "@/components/vuesax";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Cause, Option } from "effect";
+import { AsyncResult } from "effect/reactivity";
 import { type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -174,7 +173,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 					<Row
 						value="source:github"
 						keywords={["clone", "remote", "repository", "repo", "git", "github"]}
-						icon={<HugeiconsIcon icon={GithubIcon} strokeWidth={1.75} />}
+						icon={<ProviderIcon id="github" name="GitHub" className="size-4" />}
 						title="GitHub Repository"
 						detail="Clone GitHub owner/repo"
 						disabled={status?.ready === false}
@@ -490,7 +489,7 @@ function Remote({ step, setQuery, push, pop, source }: Nav & { source: "url" | "
 					setQuery(next);
 				}}
 				placeholder={github ? "Enter GitHub repository (owner/repo)" : "Enter Git clone URL"}
-				icon={github ? <HugeiconsIcon icon={GithubIcon} strokeWidth={1.75} /> : <Link />}
+				icon={github ? <ProviderIcon id="github" name="GitHub" className="size-4" /> : <Link />}
 				pop={pop}
 				onKeyDown={onKeyDown}
 			/>

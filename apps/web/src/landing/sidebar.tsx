@@ -1,6 +1,5 @@
+import { ThreadsIcon, EditIcon, Search, Plus, Settings } from "@/components/vuesax";
 import { useAtom, useAtomValue } from "@effect/atom-react";
-import { ListViewIcon, PlusSignIcon, Search01Icon, Settings02Icon, SquarePenIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
 import type { SidebarSession } from "@codeworksh/contract";
@@ -37,7 +36,7 @@ import { RunMark } from "../widgets/session/run";
  */
 /** A sidebar action: New, All Threads, Settings. */
 const NAV_ROW =
-	"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press";
+	"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring";
 
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
@@ -86,12 +85,11 @@ export function SessionsSidebar() {
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-3">
 				<button type="button" onClick={startNew} className={NAV_ROW}>
-					<HugeiconsIcon icon={SquarePenIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					<EditIcon size={16} className="shrink-0 opacity-70" aria-hidden />
 					New
 				</button>
 				<div className="relative">
-					<HugeiconsIcon
-						icon={Search01Icon}
+					<Search
 						size={16}
 						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted opacity-70"
 						aria-hidden
@@ -109,7 +107,7 @@ export function SessionsSidebar() {
 					to="/threads"
 					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:text-ink`}
 				>
-					<HugeiconsIcon icon={ListViewIcon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					<ThreadsIcon size={16} className="shrink-0 opacity-70" />
 					All Threads
 				</Link>
 			</SidebarHeader>
@@ -130,15 +128,7 @@ export function SessionsSidebar() {
 								<>
 									<span>No projects yet</span>
 									<EmptyAction
-										icon={
-											<HugeiconsIcon
-												icon={PlusSignIcon}
-												size={12}
-												strokeWidth={2}
-												className="-mx-0.5 size-3"
-												aria-hidden
-											/>
-										}
+										icon={<Plus size={12} strokeWidth={2} className="-mx-0.5 size-3" aria-hidden />}
 										onClick={addProject}
 									>
 										Add project
@@ -167,7 +157,7 @@ export function SessionsSidebar() {
 			</SidebarContent>
 			<SidebarFooter className="p-2">
 				<Link to="/settings/workspaces" className={NAV_ROW}>
-					<HugeiconsIcon icon={Settings02Icon} size={16} className="shrink-0 opacity-70" aria-hidden />
+					<Settings size={16} className="shrink-0 opacity-70" aria-hidden />
 					Settings
 				</Link>
 			</SidebarFooter>

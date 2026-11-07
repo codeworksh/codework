@@ -1,6 +1,7 @@
+import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "@/components/vuesax";
 import { useAtomSet } from "@effect/atom-react";
 import { type CliAction, LOCAL_SERVER, type LocalServerStatus, type ServerUpdate } from "@codeworksh/contract";
-import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+
 import { type ReactNode, useState } from "react";
 
 import {
@@ -18,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import brand from "../../assets/codework.png";
 import { Server } from "../../kernel/rpc";
-import { Code, quietField as field, SavingInput } from "../blocks";
+import { Code, Group as Card, quietField as field, SavingInput } from "../blocks";
 import { Variables } from "./variables";
 
 const serviceAtom = Server.mutation("servers.service");
@@ -46,7 +47,7 @@ export const Badge = ({ tone, children }: { tone: Tone; children: ReactNode }) =
 export const Mark = () => <img src={brand} alt="" className="size-5 shrink-0" />;
 
 const Version = ({ version }: { version: string }) => (
-	<span className="font-mono text-sm text-ink-muted">v{version}</span>
+	<span className="font-mono text-xs text-ink-muted">v{version}</span>
 );
 
 /**
@@ -79,11 +80,11 @@ export function LocalItem({ status }: { status: LocalServerStatus }) {
 	// Only the binary is judged here; the server's own state belongs to the detail.
 	const problem = cli === null ? "No codework found" : "failure" in cli ? cli.failure : undefined;
 	return (
-		<div className="flex items-start gap-3 py-4 pl-5">
+		<div className="flex items-start gap-3">
 			<span className="pt-0.5">
 				<Mark />
 			</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-2">
+			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 				<span className="flex flex-wrap items-center gap-2">
 					<span className="truncate font-medium">{status.name}</span>
 					{cli !== null && "version" in cli && <Version version={cli.version} />}
@@ -92,12 +93,9 @@ export function LocalItem({ status }: { status: LocalServerStatus }) {
 							<title>{problem}</title>
 						</TriangleAlert>
 					)}
-				</span>
-				<StatusLine status={status} />
-				<span className="flex flex-wrap gap-1.5">
-					<Badge tone="muted">Local</Badge>
 					{status.isDefault && <Badge tone="info">Default</Badge>}
 				</span>
+				<StatusLine status={status} />
 			</div>
 		</div>
 	);
@@ -158,11 +156,11 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 	};
 
 	return (
-		<div className="flex min-w-0 flex-col gap-6 p-4 @3xl:p-6">
+		<div className="flex min-w-0 flex-col gap-5">
 			{/* As tall as its buttons, so a server that can be removed does not sit lower than one that cannot. */}
-			<header className="flex h-8 items-center gap-3 px-2">
+			<header className="flex min-h-8 flex-wrap items-center gap-2">
 				<Mark />
-				<span className="truncate text-base font-medium">{status.name}</span>
+				<h2 className="min-w-0 truncate text-ui font-medium">{status.name}</h2>
 				<Badge tone="muted">Local</Badge>
 				{status.isDefault && <Badge tone="info">Default</Badge>}
 				<span className="flex-1" />
@@ -171,7 +169,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 			</header>
 
 			<Card>
-				<Field title="Name" description="How this server is listed in codework.">
+				<Field title="Name" description="Shown in your provider list.">
 					<SavingInput
 						label="Server name"
 						value={status.name}
@@ -185,13 +183,10 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 					/>
 					{nameError !== null && <span className="text-sm text-destructive">{nameError}</span>}
 				</Field>
-			</Card>
-
-			<Card>
-				<div className="flex flex-wrap items-start gap-x-4 gap-y-3 px-5 py-4">
-					<div className="flex min-w-60 flex-1 flex-col gap-1">
-						<span className="font-medium">Server</span>
-						<span className="text-sm text-ink-muted">
+				<div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
+					<div className="flex min-w-0 flex-1 basis-60 flex-col gap-1">
+						<span className="font-medium">Connection</span>
+						<span className="text-ui text-ink-muted">
 							<ServerLine status={status} />
 						</span>
 					</div>
@@ -212,12 +207,12 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 					)}
 				</div>
 				{(actionError ?? error) !== null && (
-					<p className="px-5 pb-4 text-sm text-destructive">{actionError ?? error}</p>
+					<p className="px-4 pb-3 text-ui text-destructive">{actionError ?? error}</p>
 				)}
 			</Card>
 
-			<section className="flex flex-col gap-3">
-				<h3 className="px-2 text-sm text-ink-muted">Runtime</h3>
+			<section className="flex flex-col gap-2">
+				<h3 className="text-ui font-medium text-ink-muted">Runtime</h3>
 				<Card>
 					<SettingField
 						title="Executable"
@@ -235,13 +230,9 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
-						title={
-							<>
-								<Code>CODEWORK_HOME_DIR</Code> path
-							</>
-						}
+						title="Home directory"
 						label="CODEWORK_HOME_DIR path"
-						description="codework home and config directory."
+						description="Where this provider stores its sessions and configuration."
 						// An added server always has its own home, so only the built-in one shows a default to reset to.
 						value={status.home.fallback === null || status.home.custom ? status.home.path : ""}
 						placeholder={status.home.fallback ?? "~/.codework-2"}
@@ -249,8 +240,8 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						onSave={(next) => configure({ home: next || null })}
 					/>
 					<SettingField
-						title="Launch Args"
-						label="Launch Args"
+						title="Launch arguments"
+						label="Launch arguments"
 						description={
 							<>
 								Additional CLI arguments passed to <Code>codework service start</Code>.
@@ -263,15 +254,15 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 				</Card>
 			</section>
 
-			<section className="flex flex-col gap-3">
-				<h3 className="px-2 text-sm text-ink-muted">Environment</h3>
+			<section className="flex flex-col gap-2">
+				<h3 className="text-ui font-medium text-ink-muted">Environment</h3>
 				<Card>
-					<Field
-						title="Variables"
-						description="API keys, base URLs, and other settings the server starts with. Changes apply when it next starts or restarts."
-					>
+					<div className="flex flex-col gap-3 px-4 py-3">
+						<p className="text-ui text-ink-muted">
+							API keys and other variables for this provider. Changes apply after restarting.
+						</p>
 						<Variables key={JSON.stringify(status.env)} saved={status.env} onSave={(env) => configure({ env })} />
-					</Field>
+					</div>
 				</Card>
 			</section>
 		</div>
@@ -347,17 +338,15 @@ function ServerActions({ status, onError }: { status: LocalServerStatus; onError
 	);
 }
 
-const Card = ({ children }: { children: ReactNode }) => (
-	<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">{children}</div>
-);
-
 /** A titled block whose value sits under its description, as in a form. */
 function Field({ title, description, children }: { title: ReactNode; description: ReactNode; children?: ReactNode }) {
 	return (
-		<div className="flex flex-col gap-1 px-5 py-4">
-			<span className="font-medium">{title}</span>
-			<span className="text-sm text-ink-muted">{description}</span>
-			<div className="mt-2 flex flex-col gap-1">{children}</div>
+		<div className="grid items-start gap-3 px-4 py-3 @min-[560px]:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] @min-[560px]:gap-6">
+			<div className="flex min-w-0 flex-col gap-1">
+				<span className="font-medium">{title}</span>
+				<span className="text-ui text-ink-muted">{description}</span>
+			</div>
+			<div className="flex min-w-0 flex-col gap-1">{children}</div>
 		</div>
 	);
 }
@@ -431,20 +420,21 @@ function ServerLine({ status }: { status: LocalServerStatus }) {
 	if (server._tag === "Running")
 		return (
 			<>
-				Running at <code className="font-mono">{server.url}</code> · pid {server.pid}
+				Running at <code className="font-mono text-xs break-all">{server.url}</code> · pid {server.pid}
 			</>
 		);
 	if (server._tag === "Incompatible")
 		return (
 			<>
-				<code className="font-mono">{server.url}</code> · pid {server.pid} answers, but not in the form this app
-				expects: it is another build. Update the CLI, or run a server built with this app.
+				<code className="font-mono text-xs break-all">{server.url}</code> · pid {server.pid} answers, but not in the
+				form this app expects: it is another build. Update the CLI, or run a server built with this app.
 			</>
 		);
 	if (server._tag === "Unreachable")
 		return (
 			<>
-				Registered at <code className="font-mono">{server.url}</code> (pid {server.pid}) but not answering this app.
+				Registered at <code className="font-mono text-xs break-all">{server.url}</code> (pid {server.pid}) but not
+				answering this app.
 			</>
 		);
 	return "Not running. Once started, it keeps running in the background after the app quits.";

@@ -1,4 +1,4 @@
-import { ArrowUp } from "lucide-react";
+import { ArrowUp } from "@/components/vuesax";
 import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
@@ -115,7 +115,7 @@ export function ComposerSubmit({
 			type="submit"
 			aria-label={label}
 			disabled={disabled}
-			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:bg-primary/30 disabled:text-primary-foreground/40"
+			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame disabled:pointer-events-none disabled:bg-primary/30 disabled:text-primary-foreground/40"
 			title={title ?? `${label} (Enter)`}
 		>
 			<ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
@@ -143,7 +143,7 @@ export function ComposerButton({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring press enabled:hover:bg-primary/90 disabled:bg-primary/30 disabled:text-primary-foreground/40"
+			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring enabled:hover:bg-primary/90 disabled:bg-primary/30 disabled:text-primary-foreground/40"
 		>
 			{children}
 		</button>

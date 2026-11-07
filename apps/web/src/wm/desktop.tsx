@@ -408,14 +408,11 @@ export function Desktop({ workspace }: DesktopProps) {
 	const togglePin = (instance: Instance) =>
 		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
 
-	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
+	const mainClass = "box-border h-full overflow-auto";
 	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
 	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
 
-	// With each frame's p-1 inset, p-1 here gives even 8px gaps at edges and between frames.
-	// The scrollbar gutter is always reserved (on both edges, so gaps stay even): if a
-	// scrollbar could take width only when it shows, it would shrink the layout, the
-	// overflow would vanish with it, and the layout would jitter between both.
+	// Frames meet the workspace edges; the divider supplies its own resize hit area.
 	return (
 		<main className={mainClass} ref={ref}>
 			<div
