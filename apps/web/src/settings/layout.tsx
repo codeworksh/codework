@@ -30,14 +30,17 @@ export function SettingsSidebar() {
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
-				<Link
-					{...back}
-					className="mb-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
-				>
-					<ArrowLeft className="size-4 shrink-0" aria-hidden />
-					{back.to === "/" ? "Back to app" : "Back to workspace"}
-				</Link>
-				<h1 className="flex h-7 items-center px-2.5 text-ui font-medium text-ink">Settings</h1>
+				<div className="flex h-7 items-center px-1">
+					<Link
+						{...back}
+						className="mr-1.5 flex size-6 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+						aria-label={back.to === "/" ? "Back to app" : "Back to workspace"}
+						title={back.to === "/" ? "Back to app" : "Back to workspace"}
+					>
+						<ArrowLeft className="size-4 shrink-0" aria-hidden />
+					</Link>
+					<h1 className="text-ui font-medium text-ink">Settings</h1>
+				</div>
 				<div className="relative">
 					<Search
 						className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted"
