@@ -1,9 +1,10 @@
 "use client";
 
+import { PanelLeftIcon } from "@/components/vuesax";
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
-import { PanelLeftIcon } from "lucide-react";
+
 import { Slot } from "radix-ui";
 
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -264,6 +265,7 @@ function Sidebar({
 			/>
 			<div
 				data-slot="sidebar-container"
+				inert={state === "collapsed" && collapsible === "offcanvas"}
 				className={cn(
 					"fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-out in-data-resizing:transition-none md:flex",
 					side === "left"

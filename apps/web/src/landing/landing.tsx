@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { Folder } from "lucide-react";
+import { Folder } from "@/components/vuesax";
 import { useContext, useState } from "react";
 
 import { NoticeSlot } from "@/components/banner";
@@ -128,7 +128,7 @@ export function Landing() {
 									type="button"
 									title={place.kind === "folder" ? place.path : undefined}
 									onClick={addProject}
-									className="-ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none press hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+									className="-ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 								>
 									<Folder className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
 									<span className="truncate">{placeLabel(place)}</span>

@@ -1,11 +1,11 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { Desktop } from "../wm/desktop";
 import { deskQueryAtom } from "../wm/instances";
-import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
+import { lastWorkspaceAtom, useWorkspaces, useWorkspaceReturn, workspaceRoute, workspacesAtom } from "../wm/workspaces";
 import { settingsShortcut, workspaceShortcut } from "./switcher";
 
 /**
@@ -28,10 +28,7 @@ export function Shell() {
 	});
 	// An id that no longer exists (a deleted workspace) shows the first one.
 	const shown = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
-	// The workspace settings returns to; the one on screen when it opened.
-	const [lastId, setLastId] = useState<string>();
-	if (!overDesktop && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
-	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
+	const back = useWorkspaceReturn();
 
 	// With every workspace deleted there is nothing to show here; the start page needs none. Only once
 	// the list has settled: a first load, or the refetch after creating one, must not bounce the user out.
@@ -61,7 +58,7 @@ export function Shell() {
 				void navigate({ to: "/settings/workspaces" });
 			} else if (inSettings && event.key === "Escape" && !event.defaultPrevented && !isEditing(event.target)) {
 				// Dialogs and popovers claim Escape first by preventing its default.
-				void navigate(back === undefined ? { to: "/" } : workspaceRoute(back));
+				void navigate(back);
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);

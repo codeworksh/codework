@@ -1,5 +1,6 @@
+import { Check, Copy } from "@/components/vuesax";
 import { useAtomValue } from "@effect/atom-react";
-import { Check, Copy } from "lucide-react";
+
 import {
 	type ComponentProps,
 	createElement,
@@ -49,7 +50,7 @@ function CopyButton({ text }: { readonly text: string }) {
 			type="button"
 			aria-label={copied ? "Copied" : "Copy code"}
 			title="Copy code"
-			className="grid size-6 place-items-center rounded-md text-ink-muted hover:bg-ink/10 hover:text-ink press"
+			className="grid size-6 place-items-center rounded-md text-ink-muted hover:bg-ink/10 hover:text-ink"
 			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
 		>
 			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />

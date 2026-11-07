@@ -2,14 +2,15 @@
 
 :root,
 [data-theme="dark"] {
-	--t-bg: #141414;
-	--t-surface: #171717;
-	--t-surface-2: #202020;
-	--t-border-subtle: #1a1a1a;
+	--t-bg: #09090a;
+	--t-surface: #121213;
+	--t-surface-2: #1b1b1d;
+	--t-border-subtle: #252527;
 	--t-border-strong: #7a7a7a;
 	--t-text: #ebebeb;
 	--t-text-secondary: #c4c4c4;
 	--t-text-muted: #969696;
+	--t-scrollbar: rgba(235, 235, 235, 0.28);
 	--t-brand: #4c9ef5;
 	--t-brand-ink: #171717;
 	--t-field-bg: #070707;
@@ -22,14 +23,15 @@
 }
 
 [data-theme="light"] {
-	--t-bg: #efefef;
-	--t-surface: #f7f7f7;
-	--t-surface-2: #f5f5f5;
-	--t-border-subtle: #e8e8e8;
+	--t-bg: #efeff0;
+	--t-surface: #f9f9fa;
+	--t-surface-2: #ffffff;
+	--t-border-subtle: #dedee2;
 	--t-border-strong: #c0c0c0;
 	--t-text: #2e2e2e;
 	--t-text-secondary: #383838;
 	--t-text-muted: #6d6d6d;
+	--t-scrollbar: rgba(46, 46, 46, 0.28);
 	--t-brand: #1f6fc4;
 	--t-brand-ink: #ffffff;
 	--t-field-bg: #e8e8e8;

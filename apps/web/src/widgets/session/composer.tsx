@@ -1,6 +1,6 @@
 import { useBus, useKv } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { Square } from "lucide-react";
+import { Square } from "@/components/vuesax";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { Composer, ComposerButton, ComposerSubmit, type Submit } from "@/components/composer";
@@ -179,7 +179,7 @@ export const SessionComposer = memo(function SessionComposer({
 							disabled={stopping}
 							onClick={() => void stop()}
 						>
-							<Square className="size-2.5" fill="currentColor" strokeWidth={0} aria-hidden />
+							<Square className="size-3.5" aria-hidden />
 						</ComposerButton>
 					)}
 					<ComposerSubmit

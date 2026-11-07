@@ -1,10 +1,10 @@
+import { ChevronRight, CircleDashed, X } from "@/components/vuesax";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
-import { ChevronRight, CircleDashed, X } from "lucide-react";
 import { createContext, memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/logo";

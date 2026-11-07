@@ -1,6 +1,6 @@
+import { TagIcon, Box } from "@/components/vuesax";
 import type { Grouping, ListedThread } from "@codeworksh/contract";
 import { isMac } from "@codeworksh/widget/view";
-import { Box, Tag } from "lucide-react";
 import { type DragEvent, memo, type MouseEvent, type ReactNode } from "react";
 
 import { useRunDisplay } from "../session/display";
@@ -133,7 +133,7 @@ export const Row = memo(function Row({
 					`Group: ${grouping?.name ?? "No Group"}`,
 					"L",
 					grouping === undefined ? (
-						<Tag className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
+						<TagIcon className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
 					) : (
 						<span className="flex max-w-32 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary">
 							<Dot color={grouping.color} />

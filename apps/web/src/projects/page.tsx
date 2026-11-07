@@ -1,5 +1,4 @@
-import { FolderTree } from "lucide-react";
-
+import { FolderTree } from "@/components/vuesax";
 import { Page } from "../shell/page";
 import { Projects } from "./projects";
 

@@ -1,7 +1,15 @@
+import {
+	Pencil,
+	SendHorizontal,
+	Trash2,
+	Undo2,
+	CornerDownRight,
+	ListEnd,
+	type IconComponent,
+} from "@/components/vuesax";
 import type { Delivery, QueuedPrompt } from "@codeworksh/widget/codework";
 import { useBus } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { CornerDownRight, ListEnd, type LucideIcon, Pencil, SendHorizontal, Trash2, Undo2 } from "lucide-react";
 import { memo, useRef, useState } from "react";
 
 import { Json, type ThreadRef, topics } from "./schema";
@@ -103,11 +111,12 @@ export const Queue = memo(function Queue({
 					const pending = busy.has(prompt.id);
 					const draft = editing?.id === prompt.id ? editing.text : undefined;
 					// While idle both lanes wait for a wake, so the lane action is "send now".
-					const lane: { readonly label: string; readonly icon: LucideIcon; readonly delivery: Delivery } = !running
-						? { label: "Send now", icon: SendHorizontal, delivery: "steer" }
-						: steer
-							? { label: "Queue as follow-up", icon: ListEnd, delivery: "followUp" }
-							: { label: "Steer now", icon: CornerDownRight, delivery: "steer" };
+					const lane: { readonly label: string; readonly icon: IconComponent; readonly delivery: Delivery } =
+						!running
+							? { label: "Send now", icon: SendHorizontal, delivery: "steer" }
+							: steer
+								? { label: "Queue as follow-up", icon: ListEnd, delivery: "followUp" }
+								: { label: "Steer now", icon: CornerDownRight, delivery: "steer" };
 					return (
 						<li
 							key={prompt.id}
@@ -182,7 +191,7 @@ function Action({
 	onClick,
 }: {
 	readonly label: string;
-	readonly icon: LucideIcon;
+	readonly icon: IconComponent;
 	readonly danger?: boolean;
 	readonly disabled: boolean;
 	readonly onClick: () => void;

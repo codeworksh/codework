@@ -37,6 +37,13 @@ export const workspaceRoute = (workspace: Workspace) =>
 /** The workspace last on screen, for opening things from outside the desktop (the start page). */
 export const lastWorkspaceAtom = Atom.make<string | undefined>(undefined).pipe(Atom.keepAlive);
 
+/** Settings returns to the last workspace still present, or Home when there is none. */
+export function useWorkspaceReturn() {
+	const lastId = useAtomValue(lastWorkspaceAtom);
+	const workspace = useWorkspaces().find(({ id }) => id === lastId);
+	return workspace === undefined ? { to: "/" as const } : workspaceRoute(workspace);
+}
+
 /** A workspace route that, once shown, opens `address` there (see the route's `open` search). */
 export const openInWorkspaceRoute = (workspace: Workspace, address: string, mode: "replace" | "new") =>
 	({
