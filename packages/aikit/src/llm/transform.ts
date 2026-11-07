@@ -16,7 +16,6 @@ import { Pricing } from "./pricing.ts";
 import * as Model from "../model/model.ts";
 import { resolveToolGrammar, type ResponsesToolChange } from "../providers/responses/tools.ts";
 import { shortHash } from "../utils/hash.ts";
-import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
 import { packageForModel, resolveMethod } from "./registry.ts";
 import { resolveStrictParameters } from "./strict.ts";
@@ -789,13 +788,9 @@ export function mapUsage(
 	return result;
 }
 
-export type StreamingToolCallBlock = Message.ToolCallPendingPart & {
-	partialJson?: string;
-};
-
 export function toolCallFromPart(
 	part: Extract<TextStreamPart<ToolSet>, { type: "tool-call" }>,
-): StreamingToolCallBlock {
+): Message.ToolCallPendingPart {
 	return {
 		type: "toolCall",
 		callID: part.toolCallId,
@@ -807,10 +802,4 @@ export function toolCallFromPart(
 			end: Date.now(),
 		},
 	};
-}
-
-export function updateToolCallFromInput(block: StreamingToolCallBlock, partialJson: string): void {
-	block.partialJson = partialJson;
-	block.arguments = parseStreamingJson<Record<string, unknown>>(partialJson);
-	block.time.end = Date.now();
 }
