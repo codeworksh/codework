@@ -35,23 +35,6 @@
 	},
 	"snapshot": [
 		{
-			"_tag": "Session",
-			"session": {
-				"id": "<session>",
-				"spaceId": "<space>",
-				"slug": "<slug>",
-				"directory": "<home>",
-				"project": {
-					"id": "<project>",
-					"name": "Beta"
-				},
-				"createdAt": "<time>",
-				"updatedAt": "<time>",
-				"mainThreadId": "<main>"
-			},
-			"rev": "<rev 0>"
-		},
-		{
 			"_tag": "Thread",
 			"thread": {
 				"id": "<main>",
@@ -80,6 +63,23 @@
 				"createdAt": "<time>",
 				"sessionId": "<session>"
 			},
+			"rev": "<rev 0>"
+		},
+		{
+			"_tag": "Session",
+			"session": {
+				"id": "<session>",
+				"spaceId": "<space>",
+				"slug": "<slug>",
+				"directory": "<home>",
+				"project": {
+					"id": "<project>",
+					"name": "Beta"
+				},
+				"createdAt": "<time>",
+				"updatedAt": "<time>",
+				"mainThreadId": "<main>"
+			},
 			"rev": "<rev 1>"
 		},
 		{
@@ -107,7 +107,7 @@
 				"createdAt": "<time>",
 				"sessionId": "<session>"
 			},
-			"rev": "<rev 2>"
+			"rev": "<rev 1>"
 		},
 		{
 			"_tag": "Project",
@@ -118,7 +118,7 @@
 				"createdAt": "<time>",
 				"updatedAt": "<time>"
 			},
-			"rev": "<rev 3>"
+			"rev": "<rev 2>"
 		},
 		{
 			"_tag": "Space",
@@ -131,18 +131,18 @@
 				"createdAt": "<time>",
 				"updatedAt": "<time>"
 			},
-			"rev": "<rev 3>"
+			"rev": "<rev 2>"
 		},
 		{
 			"_tag": "Removed",
 			"kind": "session",
 			"id": "<doomed>",
-			"rev": "<rev 4>"
+			"rev": "<rev 3>"
 		},
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 4>"
+			"rev": "<rev 3>"
 		}
 	],
 	"resumed": [
@@ -155,7 +155,7 @@
 				"createdAt": "<time>",
 				"updatedAt": "<time>"
 			},
-			"rev": "<rev 3>"
+			"rev": "<rev 2>"
 		},
 		{
 			"_tag": "Space",
@@ -168,18 +168,18 @@
 				"createdAt": "<time>",
 				"updatedAt": "<time>"
 			},
-			"rev": "<rev 3>"
+			"rev": "<rev 2>"
 		},
 		{
 			"_tag": "Removed",
 			"kind": "session",
 			"id": "<doomed>",
-			"rev": "<rev 4>"
+			"rev": "<rev 3>"
 		},
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 4>"
+			"rev": "<rev 3>"
 		}
 	]
 }

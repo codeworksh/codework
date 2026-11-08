@@ -548,26 +548,22 @@ export const layer = Layer.effect(
 			for (const [partIndex, part] of parts.entries()) yield* writePart(entryId, threadId, partIndex, part);
 		});
 
-		// Usage lives on the thread and moves with the envelope stored; the session's last activity
-		// moves with it.
-		const touch = Effect.fnUntraced(function* (
+		// Usage lives on the thread and moves with the envelope stored.
+		const addUsage = Effect.fnUntraced(function* (
 			thread: ThreadRow,
 			delta?: { cost: number; input: number; output: number; cacheRead: number; cacheWrite: number },
 		) {
-			const now = yield* epochNow;
-			const rev = yield* store.rev;
+			if (delta === undefined) return;
 			yield* sql`
 				UPDATE thread SET
-					rev = ${rev},
-					updated_at = ${now},
-					cost = cost + ${delta?.cost ?? 0},
-					tokens_input = tokens_input + ${delta?.input ?? 0},
-					tokens_output = tokens_output + ${delta?.output ?? 0},
-					tokens_cache_read = tokens_cache_read + ${delta?.cacheRead ?? 0},
-					tokens_cache_write = tokens_cache_write + ${delta?.cacheWrite ?? 0}
+					rev = ${yield* store.rev},
+					cost = cost + ${delta.cost},
+					tokens_input = tokens_input + ${delta.input},
+					tokens_output = tokens_output + ${delta.output},
+					tokens_cache_read = tokens_cache_read + ${delta.cacheRead},
+					tokens_cache_write = tokens_cache_write + ${delta.cacheWrite}
 				WHERE id = ${thread.id}
 			`;
-			yield* sql`UPDATE session SET updated_at = ${now}, rev = ${rev} WHERE id = ${thread.sessionId}`;
 		});
 
 		type AppendTxResult =
@@ -659,7 +655,7 @@ export const layer = Layer.effect(
 							} as const;
 						}
 						yield* writeParts(input.id, input.threadId, parts);
-						yield* touch(
+						yield* addUsage(
 							thread.value,
 							usage === undefined
 								? undefined
@@ -730,7 +726,7 @@ export const layer = Layer.effect(
 						UPDATE entry SET data = ${input.data}, updated_at = ${now}, rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
-					yield* touch(thread, delta);
+					yield* addUsage(thread, delta);
 				}),
 			);
 		}, Effect.orDie);
@@ -809,7 +805,6 @@ export const layer = Layer.effect(
 				RETURNING id
 			`;
 				if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
-				yield* sql`UPDATE thread SET updated_at = ${now}, rev = ${yield* store.rev} WHERE id = ${input.threadId}`;
 			},
 			store.write,
 			Effect.orDie,
@@ -829,7 +824,7 @@ export const layer = Layer.effect(
 							rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
-					yield* touch(thread, delta);
+					yield* addUsage(thread, delta);
 				}),
 			);
 		}, Effect.orDie);

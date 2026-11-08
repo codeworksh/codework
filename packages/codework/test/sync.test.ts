@@ -138,6 +138,101 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 	}
 }, 40_000);
 
+it("updatedAt moves a thread with any change to it or below it, and its session with any change in it", async () => {
+	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-updated-")));
+	try {
+		const artifact = await Effect.gen(function* () {
+			const listener = yield* HttpServer.HttpServer;
+			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
+			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+
+			/** Every session's and thread's `updatedAt`, by id, as the index sends them. */
+			const times = Effect.gen(function* () {
+				const items = yield* rpc["index.sync"]({ after: 0 }).pipe(
+					Stream.takeUntil((item) => item._tag === "Synced"),
+					Stream.runCollect,
+				);
+				const at = new Map<string, number>();
+				for (const item of items) {
+					if (item._tag === "Session") at.set(item.session.id, item.session.updatedAt);
+					if (item._tag === "Thread") at.set(item.thread.id, item.thread.updatedAt);
+				}
+				return at;
+			});
+
+			const created = yield* rpc["session.create"]({ directory: home });
+			const sessionId = created.session.id;
+			const rows: Record<string, string> = { session: sessionId, main: created.id };
+			const steps: Array<Record<string, unknown>> = [];
+			let before = yield* times;
+			/** Runs `change` a clock tick after the last one, then records which rows it moved. */
+			const step = <A, E>(name: string, change: Effect.Effect<A, E>) =>
+				Effect.gen(function* () {
+					yield* Effect.sleep("5 millis");
+					const result = yield* change;
+					const after = yield* times;
+					const moved = Object.fromEntries(
+						Object.entries(rows).map(([row, id]) => {
+							const was = before.get(id);
+							return [row, was === undefined ? "new" : after.get(id)! > was];
+						}),
+					);
+					steps.push({ step: name, ...moved });
+					before = after;
+					return result;
+				});
+
+			yield* step(
+				"configure the main thread",
+				rpc["thread.configure"]({ sessionId, runtime: { thinkingLevel: "high" } }),
+			);
+			yield* step(
+				"prompt the main thread",
+				rpc["thread.prompt"]({ sessionId, text: "Main prompt" }).pipe(
+					Effect.andThen(rpc["thread.wait"]({ sessionId })),
+				),
+			);
+			const reply = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
+			if (reply === undefined) return yield* Effect.die("main thread has no reply");
+			const fork = yield* rpc["thread.fork"]({ sessionId, entryId: reply.id }).pipe(
+				Effect.tap((forked) => Effect.sync(() => (rows["fork"] = forked.thread.id))),
+				(forking) => step("fork the main thread", forking),
+			);
+			yield* step(
+				"prompt the fork",
+				rpc["thread.prompt"]({ sessionId, threadId: fork.thread.id, text: "Fork prompt" }).pipe(
+					Effect.andThen(rpc["thread.wait"]({ sessionId, threadId: fork.thread.id })),
+				),
+			);
+
+			expect(steps).toEqual([
+				{ step: "configure the main thread", session: true, main: true },
+				{ step: "prompt the main thread", session: true, main: true },
+				{ step: "fork the main thread", session: true, main: false, fork: "new" },
+				{ step: "prompt the fork", session: true, main: false, fork: true },
+			]);
+			return steps;
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(
+				Server.layer({
+					host: "127.0.0.1",
+					port: 0,
+					harness: { home, hostCwd: home, plugins: [], llm: immediateOpen() },
+				}),
+			),
+			Effect.timeout("30 seconds"),
+			Effect.runPromise,
+		);
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+			"./__artifacts__/sync.updated.json",
+		);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+}, 40_000);
+
 interface Reply {
 	readonly thinking?: ReadonlyArray<string>;
 	readonly text: ReadonlyArray<string>;

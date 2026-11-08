@@ -298,6 +298,9 @@ export const migrations = {
 		yield* sql`CREATE INDEX thread_rev_idx ON thread (rev)`;
 		yield* sql`CREATE INDEX entry_thread_rev_idx ON entry (thread_id, rev)`;
 		yield* sql`CREATE INDEX inbox_thread_rev_idx ON inbox (thread_id, rev)`;
+		// What a write touched, for the threads it moves (db/store.ts).
+		yield* sql`CREATE INDEX entry_rev_idx ON entry (rev)`;
+		yield* sql`CREATE INDEX inbox_rev_idx ON inbox (rev)`;
 		// Every insert and update carries the current transaction's revision, so a write path that
 		// forgets fails loudly. A row written twice in one transaction keeps its rev, which this allows.
 		for (const table of ["project", "space", "session", "thread", "entry", "inbox"]) {

@@ -1,0 +1,24 @@
+[
+	{
+		"step": "configure the main thread",
+		"session": true,
+		"main": true
+	},
+	{
+		"step": "prompt the main thread",
+		"session": true,
+		"main": true
+	},
+	{
+		"step": "fork the main thread",
+		"session": true,
+		"main": false,
+		"fork": "new"
+	},
+	{
+		"step": "prompt the fork",
+		"session": true,
+		"main": false,
+		"fork": true
+	}
+]
