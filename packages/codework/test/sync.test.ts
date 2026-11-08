@@ -1,6 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- starts the real server in a temporary home. */
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
 import { Effect, Layer, Queue, Stream } from "effect";
+import { Session } from "@codeworksh/harness/effect";
 import { HttpServer } from "effect/http";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -138,7 +139,7 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 	}
 }, 40_000);
 
-it("updatedAt moves a thread with any change to it or below it, and its session with any change in it", async () => {
+it("updatedAt moves a thread with any change to it or below it, and its session with its own row or a new thread", async () => {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-updated-")));
 	try {
 		const artifact = await Effect.gen(function* () {
@@ -183,6 +184,7 @@ it("updatedAt moves a thread with any change to it or below it, and its session 
 					return result;
 				});
 
+			yield* step("link the session", rpc["session.link"]({ sessionId, hostDir: Session.AbsolutePath.make(home) }));
 			yield* step(
 				"configure the main thread",
 				rpc["thread.configure"]({ sessionId, runtime: { thinkingLevel: "high" } }),
@@ -207,10 +209,11 @@ it("updatedAt moves a thread with any change to it or below it, and its session 
 			);
 
 			expect(steps).toEqual([
-				{ step: "configure the main thread", session: true, main: true },
-				{ step: "prompt the main thread", session: true, main: true },
+				{ step: "link the session", session: true, main: false },
+				{ step: "configure the main thread", session: false, main: true },
+				{ step: "prompt the main thread", session: false, main: true },
 				{ step: "fork the main thread", session: true, main: false, fork: "new" },
-				{ step: "prompt the fork", session: true, main: false, fork: true },
+				{ step: "prompt the fork", session: false, main: false, fork: true },
 			]);
 			return steps;
 		}).pipe(

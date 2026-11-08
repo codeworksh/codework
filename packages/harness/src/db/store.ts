@@ -11,8 +11,8 @@ export interface Interface {
 	/**
 	 * Runs `effect` as one write transaction, or inside the enclosing one. Every write to project,
 	 * space, session, thread, entry or inbox goes through it. Before a commit that took a revision, it
-	 * moves `updated_at` of every thread written in it or below it, then of every session written in it
-	 * or below it; after the commit, the doorbell rings.
+	 * moves `updated_at` of every thread written in it or below it, and of every session row written in
+	 * it; after the commit, the doorbell rings.
 	 */
 	readonly write: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | SqlError.SqlError, R>;
 	/** The enclosing write's revision, taken on first use; every row the write touches is stamped with it. */
@@ -40,8 +40,9 @@ export const layer = Layer.effect(
 
 		const ring = Effect.forEach(wakes, (wake) => PubSub.publish(wake, undefined), { discard: true });
 
-		// Rows a write touches carry its revision, so they say what changed: a thread or session moves with
-		// any change to itself or below it, and the move is stamped too, so sync sends it.
+		// Rows a write touches carry its revision, so they say what changed: a thread moves with any change
+		// to itself or below it, and the move is stamped too, so sync sends it. A session moves only with its
+		// own row: its activity is its newest thread's, read at query time.
 		const touch = (rev: number) =>
 			Effect.gen(function* () {
 				const now = yield* Clock.currentTimeMillis;
@@ -51,8 +52,7 @@ export const layer = Layer.effect(
 						OR id IN (SELECT thread_id FROM entry WHERE rev = ${rev} UNION SELECT thread_id FROM inbox WHERE rev = ${rev})
 				`;
 				yield* sql`
-					UPDATE session SET updated_at = ${now}, rev = ${rev}
-					WHERE rev = ${rev} OR id IN (SELECT session_id FROM thread WHERE rev = ${rev})
+					UPDATE session SET updated_at = ${now} WHERE rev = ${rev}
 				`;
 			});
 

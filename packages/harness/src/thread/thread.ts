@@ -515,6 +515,8 @@ export const layer = Layer.effect(
 					rev: yield* store.rev,
 				});
 				yield* insertThread(row);
+				// A new thread changes its session.
+				yield* sql`UPDATE session SET rev = ${row.rev} WHERE id = ${input.sessionId}`;
 			},
 			store.write,
 			Effect.orDie,

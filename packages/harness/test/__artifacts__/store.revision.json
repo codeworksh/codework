@@ -55,6 +55,7 @@
 			"writes": [
 				"session S1 insert",
 				"thread T1 insert",
+				"session S1 update",
 				"thread T1 update",
 				"thread T1 update",
 				"session S1 update"
@@ -65,8 +66,7 @@
 			"by": "session.thread.configured",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -74,8 +74,7 @@
 			"by": "session.prompt.admitted",
 			"writes": [
 				"inbox E1 insert",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -83,8 +82,7 @@
 			"by": "session.execution.started",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -102,8 +100,7 @@
 				"inbox E1 update",
 				"entry E1 insert",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -111,8 +108,7 @@
 			"by": "session.thread.system.changed",
 			"writes": [
 				"entry E2 insert",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -120,8 +116,7 @@
 			"by": "plain write",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -131,8 +126,7 @@
 				"thread T1 update",
 				"entry E3 insert",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -142,8 +136,7 @@
 				"entry E3 update",
 				"thread T1 update",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -151,8 +144,7 @@
 			"by": "session.tool.settled",
 			"writes": [
 				"entry E3 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -161,8 +153,7 @@
 			"writes": [
 				"entry E3 update",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -170,8 +161,7 @@
 			"by": "plain write",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -181,8 +171,7 @@
 				"thread T1 update",
 				"entry E4 insert",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -192,8 +181,7 @@
 				"entry E4 update",
 				"thread T1 update",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -202,8 +190,7 @@
 			"writes": [
 				"entry E4 update",
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -211,8 +198,7 @@
 			"by": "session.execution.succeeded",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
@@ -220,6 +206,7 @@
 			"by": "session.thread.forked",
 			"writes": [
 				"thread T2 insert",
+				"session S1 update",
 				"thread T2 update",
 				"thread T2 update",
 				"session S1 update"
@@ -232,8 +219,7 @@
 				"thread T1 update",
 				"thread T2 update",
 				"thread T1 update",
-				"thread T2 update",
-				"session S1 update"
+				"thread T2 update"
 			]
 		},
 		{
@@ -252,7 +238,7 @@
 			"SP1 rev=6"
 		],
 		"session": [
-			"S1 rev=20"
+			"S1 rev=19"
 		],
 		"thread": [
 			"T1 rev=20",

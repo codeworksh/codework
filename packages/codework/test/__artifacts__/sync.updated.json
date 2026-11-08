@@ -1,12 +1,17 @@
 [
 	{
-		"step": "configure the main thread",
+		"step": "link the session",
 		"session": true,
+		"main": false
+	},
+	{
+		"step": "configure the main thread",
+		"session": false,
 		"main": true
 	},
 	{
 		"step": "prompt the main thread",
-		"session": true,
+		"session": false,
 		"main": true
 	},
 	{
@@ -17,7 +22,7 @@
 	},
 	{
 		"step": "prompt the fork",
-		"session": true,
+		"session": false,
 		"main": false,
 		"fork": true
 	}

@@ -182,6 +182,8 @@ export const migrations = {
 		`;
 		yield* sql`CREATE UNIQUE INDEX thread_main_idx ON thread (session_id) WHERE origin_kind = 'main'`;
 		yield* sql`CREATE INDEX thread_origin_idx ON thread (origin_thread_id) WHERE origin_thread_id IS NOT NULL`;
+		// A session's threads by activity, which also orders sessions (session/session.ts).
+		yield* sql`CREATE INDEX thread_session_idx ON thread (session_id, updated_at)`;
 		// Call ids are unique per entry, not globally: one subagent per call of a thread.
 		yield* sql`
 			CREATE UNIQUE INDEX thread_call_idx ON thread (origin_thread_id, origin_call_id)
