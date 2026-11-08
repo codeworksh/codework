@@ -1017,7 +1017,7 @@ describe("WebSocket client", () => {
 				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/server.fork.json"),
 			));
 
-	it("does not adopt a failure that belongs to another client's prompt", () =>
+	it("leaves its prompt queued behind another client's failed run, without adopting that failure", () =>
 		Effect.gen(function* () {
 			const firstEntered = yield* Deferred.make<void>();
 			const release = yield* Deferred.make<void>();
@@ -1054,8 +1054,14 @@ describe("WebSocket client", () => {
 				}
 				yield* Deferred.succeed(release, undefined);
 
-				// The successor drain promotes ours; the remembered failure is dropped.
-				yield* Fiber.join(ours);
+				// Their run failing does not start the next one: ours stays queued, and their failure is not ours.
+				const exit = yield* Fiber.await(ours);
+				expect(exit).toMatchObject({
+					_tag: "Failure",
+					cause: { reasons: [{ error: { type: "unknown", message: "Prompt was not promoted" } }] },
+				});
+				const queued = yield* rpc["thread.queue"]({ sessionId: session.session.id, threadId: session.id });
+				expect(queued.entries.map((entry) => entry.text)).toEqual(["ours"]);
 			}).pipe(
 				Effect.scoped,
 				Effect.provide(

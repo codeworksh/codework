@@ -1,0 +1,84 @@
+{
+	"log": [
+		{
+			"seq": 3,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 6,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 8,
+			"type": "session.execution.interrupted",
+			"reason": "shutdown"
+		},
+		{
+			"seq": 9,
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"seq": 10,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 13,
+			"type": "session.execution.succeeded"
+		}
+	],
+	"stopped": {
+		"head": 0,
+		"restarts": 0,
+		"prompts": [
+			{
+				"text": "First.",
+				"delivery": "steer",
+				"admittedSeq": 2,
+				"tail": 2,
+				"promotedSeq": 4
+			}
+		]
+	},
+	"resumed": {
+		"head": 0,
+		"restarts": 0,
+		"prompts": [
+			{
+				"text": "First.",
+				"delivery": "steer",
+				"admittedSeq": 2,
+				"tail": 2,
+				"promotedSeq": 4
+			}
+		]
+	},
+	"finished": {
+		"head": 0,
+		"restarts": 0,
+		"prompts": [
+			{
+				"text": "First.",
+				"delivery": "steer",
+				"admittedSeq": 2,
+				"tail": 2,
+				"promotedSeq": 4
+			}
+		]
+	},
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "First."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "First."
+			}
+		]
+	]
+}

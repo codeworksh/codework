@@ -147,7 +147,6 @@ export const migrations = {
 				origin_entry_id    TEXT,
 				origin_call_id     TEXT,
 				title              TEXT,
-				execution          TEXT,
 				-- the run lifecycle, projected from the execution.* events; times are the events'
 				run_state          TEXT NOT NULL DEFAULT 'idle',
 				run_state_at       INTEGER,
@@ -157,6 +156,8 @@ export const migrations = {
 				run_error          TEXT,
 				restarts           INTEGER NOT NULL DEFAULT 0,
 				attempt            INTEGER,
+				-- the seq of the last run end that parks the queue; a pending prompt past it is runnable
+				head               INTEGER NOT NULL DEFAULT 0,
 				cost               REAL NOT NULL DEFAULT 0,
 				tokens_input       INTEGER NOT NULL DEFAULT 0,
 				tokens_output      INTEGER NOT NULL DEFAULT 0,
@@ -186,7 +187,6 @@ export const migrations = {
 			CREATE UNIQUE INDEX thread_call_idx ON thread (origin_thread_id, origin_call_id)
 			WHERE origin_call_id IS NOT NULL
 		`;
-		yield* sql`CREATE INDEX thread_running_idx ON thread (session_id) WHERE execution = 'running'`;
 
 		yield* sql`
 			CREATE TABLE entry (
@@ -249,6 +249,8 @@ export const migrations = {
 				data          TEXT NOT NULL,
 				delivery      TEXT NOT NULL,
 				admitted_seq  INTEGER NOT NULL,
+				-- the seq of its admission or latest move to steer: what wakes it
+				tail          INTEGER NOT NULL,
 				promoted_seq  INTEGER,
 				cancelled_seq INTEGER,
 				created_at    INTEGER NOT NULL,

@@ -147,7 +147,6 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	originCallId: Model.FieldOption(Schema.String),
 	// Absent until the thread's first own prompt names it.
 	title: Model.FieldOption(Schema.String),
-	execution: Model.FieldOption(ThreadSchema.Execution),
 	// The run lifecycle, written only by the session projector (`Thread.projectRun`). `runStateAt` is
 	// when `runState` last changed; the rest describe the last run, absent before the first.
 	runState: Model.GeneratedByDb(ThreadSchema.RunState),
@@ -157,6 +156,9 @@ export class ThreadRow extends Model.Class<ThreadRow>("ThreadRow")({
 	runOutcome: Model.GeneratedByDb(Schema.OptionFromNullOr(ThreadSchema.RunOutcome)),
 	runError: Model.GeneratedByDb(Schema.OptionFromNullOr(Schema.fromJsonString(ThreadSchema.RunError))),
 	restarts: Model.GeneratedByDb(Schema.Int),
+	// The seq of the last run end that parks the queue (`run.failed`, `execution.failed`, a user stop),
+	// written only by the session projector. A pending prompt whose `tail` is past it is runnable.
+	head: Model.GeneratedByDb(NonNegativeInt),
 	// The 1-based number of the provider request in flight, from its start until its response ends, the
 	// turn commits or the run ends: still set on recovery, the host died with that request out.
 	attempt: Model.FieldOption(Schema.Int),
@@ -181,6 +183,9 @@ export class InboxRow extends Model.Class<InboxRow>("InboxRow")({
 	data: Model.JsonFromString(Prompt),
 	delivery: Schema.Literals(inputDeliveries),
 	admittedSeq: Schema.Int,
+	// The seq of its admission, or of its latest move to the steer lane: what wakes it. Past the
+	// thread's `head` it is runnable; at or before it, parked until the next prompt.
+	tail: NonNegativeInt,
 	promotedSeq: Model.FieldOption(Schema.Int),
 	cancelledSeq: Model.FieldOption(Schema.Int),
 	createdAt: Model.DateTimeInsertFromNumber,

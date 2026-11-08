@@ -90,6 +90,8 @@ export interface ProjectCancelledInput {
 export interface ProjectUpdatedInput {
 	readonly id: SessionMessageSchema.ID;
 	readonly threadId: ThreadSchema.ID;
+	/** The update event's seq: a move to the steer lane wakes the prompt there. */
+	readonly seq: number;
 	readonly prompt?: Prompt | undefined;
 	readonly delivery?: Delivery | undefined;
 }
@@ -184,12 +186,15 @@ export const make = Effect.gen(function* () {
 			threadId: Schema.String,
 			data: Schema.NullOr(Schema.fromJsonString(Prompt)),
 			delivery: Schema.NullOr(Delivery),
+			tail: Schema.NullOr(Schema.Int),
 			rev: Schema.Int,
 		}),
 		Result: Schema.Struct({ id: Schema.String }),
 		// A null field is one the update left alone.
-		execute: ({ id, threadId, data, delivery, rev }) => sql`
-      UPDATE inbox SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery), rev = ${rev}
+		execute: ({ id, threadId, data, delivery, tail, rev }) => sql`
+      UPDATE inbox
+      SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery), tail = COALESCE(${tail}, tail),
+        rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
       RETURNING id
     `,
@@ -209,8 +214,8 @@ export const make = Effect.gen(function* () {
 		Result: Schema.Struct({ id: Schema.String }),
 		execute: ({ id, threadId, data, delivery, admittedSeq, createdAt, rev }) => sql`
       UPDATE inbox
-      SET data = ${data}, delivery = ${delivery}, admitted_seq = ${admittedSeq}, created_at = ${createdAt},
-        cancelled_seq = NULL, rev = ${rev}
+      SET data = ${data}, delivery = ${delivery}, admitted_seq = ${admittedSeq}, tail = ${admittedSeq},
+        created_at = ${createdAt}, cancelled_seq = NULL, rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NOT NULL
       RETURNING id
     `,
@@ -362,6 +367,7 @@ export const make = Effect.gen(function* () {
 				data: input.prompt,
 				delivery: input.delivery,
 				admittedSeq: input.admittedSeq,
+				tail: input.admittedSeq,
 				promotedSeq: Option.none(),
 				cancelledSeq: Option.none(),
 				createdAt: VariantSchema.Override(input.timeCreated),
@@ -421,6 +427,7 @@ export const make = Effect.gen(function* () {
 				data: input.prompt,
 				delivery: input.delivery,
 				admittedSeq: input.promotedSeq,
+				tail: input.promotedSeq,
 				promotedSeq: Option.some(input.promotedSeq),
 				cancelledSeq: Option.none(),
 				createdAt: VariantSchema.Override(input.timeCreated),
@@ -451,6 +458,7 @@ export const make = Effect.gen(function* () {
 				threadId: input.threadId,
 				data: input.prompt ?? null,
 				delivery: input.delivery ?? null,
+				tail: input.delivery === "steer" ? input.seq : null,
 				rev: yield* store.rev,
 			});
 			if (updated.length > 0) return;

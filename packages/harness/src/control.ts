@@ -101,16 +101,16 @@ export interface Interface {
 	/** Threads this process is currently draining. */
 	readonly active: Effect.Effect<ReadonlySet<ThreadSchema.ID>>;
 	/**
-	 * Resumes the runs the last process left unfinished, as the server starts. One a crash cut off
-	 * counts a restart, one a shutdown closed does not; at {@link RESTART_LIMIT} the run ends visibly
-	 * instead, the thread idle with its queue kept for the next prompt. Resolves once every resumed
-	 * run has settled.
+	 * Resumes the runs the last process left unfinished, as the server starts: a run a crash or a
+	 * shutdown cut off, or a prompt woken past the thread's head. A crash counts a restart, a shutdown
+	 * does not; at {@link RESTART_LIMIT} the run ends visibly instead, its queue parked for the next
+	 * prompt. Resolves once every resumed run has settled.
 	 */
 	readonly resumeUnfinished: Effect.Effect<void>;
 	/**
-	 * Ends every stored run the last process left open with a durable `execution.interrupted`:
-	 * `shutdown` where it closed the run, `crash` where it died in it. Runs as the server starts,
-	 * before it accepts connections and before {@link resumeUnfinished}.
+	 * Ends every stored run the last process left open with a durable `execution.interrupted`
+	 * `crash`: a shutdown ends its runs itself. Runs as the server starts, before it accepts
+	 * connections and before {@link resumeUnfinished}.
 	 */
 	readonly sweep: Effect.Effect<void>;
 	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
@@ -142,9 +142,9 @@ export const layer = Layer.effect(
 		const events = yield* Event.Service;
 		const isLifecycleConflict = Schema.is(Inbox.LifecycleConflict);
 
-		// Marked before the wake, so a prompt accepted here survives a crash before its run starts.
-		const wake = (threadId: ThreadSchema.ID) =>
-			threads.markRunning(threadId).pipe(Effect.andThen(execution.wake(threadId)));
+		// Only a hint: the admission or move to steer already recorded the prompt's tail, which is what makes
+		// it run, now or after a crash.
+		const wake = (threadId: ThreadSchema.ID) => execution.wake(threadId);
 
 		const resolve = Effect.fn("Control.resolve")(function* (ref: ThreadRef) {
 			if (ref.threadId === undefined) {
@@ -215,7 +215,6 @@ export const layer = Layer.effect(
 
 		const resume = Effect.fn("Control.resume")(function* (threadId: ThreadSchema.ID) {
 			yield* requireThread(threadId);
-			yield* threads.markRunning(threadId);
 			yield* execution.resume(threadId);
 		});
 
@@ -303,13 +302,13 @@ export const layer = Layer.effect(
 		}).pipe(Effect.withSpan("Control.resumeUnfinished"));
 
 		const sweep = Effect.gen(function* () {
+			// A shutdown ends its runs itself, so a run still open is one the process died in.
 			for (const row of yield* threads.open) {
-				const execution = Option.getOrUndefined(row.execution);
 				yield* events.publish(EventList.ExecutionInterrupted, {
 					timestamp: yield* DateTime.now,
 					sessionId: SessionSchema.ID.make(row.sessionId),
 					threadId: ThreadSchema.ID.make(row.id),
-					reason: execution === "closed" ? "shutdown" : "crash",
+					reason: "crash",
 				});
 			}
 		}).pipe(Effect.withSpan("Control.sweep"));

@@ -471,7 +471,7 @@ describeMachines("sync across OrbStack machines", () => {
 		const crashedAt = lastSeq(appHome);
 
 		await cwA.stop("KILL");
-		const harnessRow = `SELECT run_state, run_outcome, run_error, execution FROM thread WHERE id = '${ref.threadId}'`;
+		const harnessRow = `SELECT run_state, run_outcome, run_error, head FROM thread WHERE id = '${ref.threadId}'`;
 		const open = await cwA.sql(harnessRow);
 		await cwA.sweep();
 		const swept = await cwA.sql(harnessRow);

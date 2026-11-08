@@ -398,8 +398,9 @@ describe("runner loop — crash healing", () => {
 		}),
 	);
 
+	// The doorbell is only a hint: with nothing past the head there is no run, so nothing is touched.
 	it(
-		"heals a dangling draft before eligibility, then idles without capturing state",
+		"runs nothing for a wake with no prompt past the head",
 		Effect.gen(function* () {
 			contexts.length = 0;
 			snapshots = 0;
@@ -427,9 +428,7 @@ describe("runner loop — crash healing", () => {
 			while ((yield* execution.active).has(threadId)) yield* Effect.yieldNow;
 
 			const path = yield* threads.line(threadId);
-			expect(path).toHaveLength(1);
-			expect(path[0]!.entry.state).toBe("aborted");
-			expect(path[0]!.parts).toEqual([]);
+			expect(path.map((entry) => entry.entry.state)).toEqual(["draft"]);
 			expect(contexts).toEqual([]);
 			expect(snapshots).toBe(0);
 		}),
@@ -1042,9 +1041,10 @@ describe("runner loop — queued input", () => {
 		}),
 	);
 
-	// A prompt's wake survives the failure, so what was sent while the run failed goes out after it.
+	// A failed run does not start the next one: what was sent while it failed is parked, and the next
+	// prompt places it, steers with that prompt and follow-ups after.
 	it(
-		"runs prompts sent while a run fails right after it, steers first",
+		"keeps prompts sent while a run fails queued until the next prompt places them",
 		Effect.gen(function* () {
 			yield* reset;
 			const seen = yield* outcomes;
@@ -1060,8 +1060,17 @@ describe("runner loop — queued input", () => {
 			yield* send(threadId, "A");
 			yield* settle(threadId);
 
+			expect(seen).toEqual(["failed"]);
+			expect(contexts.map(texts)).toEqual([["A"]]);
+
+			yield* send(threadId, "N");
+			yield* settle(threadId);
+
 			expect(seen).toEqual(["failed", "succeeded"]);
-			expect(contexts.map(texts)).toEqual([["A"], ["A", "S1"], ["A", "S1", "F1"]]);
+			expect(contexts.map(texts).slice(1)).toEqual([
+				["A", "S1", "N"],
+				["A", "S1", "N", "F1"],
+			]);
 		}),
 	);
 
@@ -1114,21 +1123,20 @@ describe("runner loop — resume after restart", () => {
 	const { contexts, script } = provider;
 	const { effect: it } = testEffect(runtime({ open: provider.open }));
 
+	/** Whether the next server start would resume the thread, and its restart count. */
 	const stateOf = (threadId: ThreadSchema.ID) =>
 		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
-			const [row] = yield* sql<{ execution: string | null; restarts: number }>`
-				SELECT execution, restarts FROM thread WHERE id = ${threadId}
-			`;
-			return row;
+			const threads = yield* Thread.Service;
+			const row = Option.getOrThrow(yield* threads.get(threadId));
+			return { unfinished: yield* threads.resumable(threadId), restarts: row.restarts };
 		});
 
 	/** The thread's state each time a run starts, as it starts. */
 	const atEachStart = (threadId: ThreadSchema.ID) =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;
-			const sql = yield* SqlClient.SqlClient;
-			const seen: Array<{ execution: string | null; restarts: number } | undefined> = [];
+			const threads = yield* Thread.Service;
+			const seen: Array<{ unfinished: boolean; restarts: number }> = [];
 			yield* events.listen((event) =>
 				Schema.is(EventList.ExecutionStarted)(event) && event.data.threadId === threadId
 					? stateOf(threadId).pipe(
@@ -1136,7 +1144,7 @@ describe("runner loop — resume after restart", () => {
 								seen.push(state);
 							}),
 							Effect.orDie,
-							Effect.provideService(SqlClient.SqlClient, sql),
+							Effect.provideService(Thread.Service, threads),
 						)
 					: Effect.void,
 			);
@@ -1156,12 +1164,11 @@ describe("runner loop — resume after restart", () => {
 	});
 
 	/**
-	 * What a process that died mid-reply leaves: the prompt in the conversation, the reply it was
-	 * streaming still a draft, and the run still marked running.
+	 * What a process that died mid-reply leaves, once the next start swept it: the prompt in the
+	 * conversation, the reply it was streaming still a draft, and the run interrupted by a crash.
 	 */
 	const crashedMidReply = Effect.fnUntraced(function* (threadId: ThreadSchema.ID, id: string) {
 		const events = yield* Event.Service;
-		const threads = yield* Thread.Service;
 		const inputs = yield* Inbox.make;
 		yield* admit({ id, threadId, delivery: "steer" });
 		yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
@@ -1180,7 +1187,12 @@ describe("runner loop — resume after restart", () => {
 			messageId: SessionMessageSchema.ID.from(draft.messageId),
 			message: draft,
 		});
-		yield* threads.markRunning(threadId);
+		yield* events.publish(EventList.ExecutionInterrupted, {
+			timestamp: DateTime.makeUnsafe(2),
+			sessionId: yield* sessionOf(threadId),
+			threadId,
+			reason: "crash",
+		});
 	});
 
 	it(
@@ -1199,8 +1211,8 @@ describe("runner loop — resume after restart", () => {
 			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
 			yield* settle(threadId);
 
-			// The stop is the user's: what was queued behind it stays queued, unmarked.
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			// The stop is the user's: what was queued behind it stays parked, not resumed.
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 			yield* control.resumeUnfinished;
 
 			expect(seen).toEqual(["interrupted"]);
@@ -1230,17 +1242,18 @@ describe("runner loop — resume after restart", () => {
 			yield* execution.interrupt(threadId, "shutdown", { awaitSettlement: true });
 			yield* settle(threadId);
 
-			expect(yield* stateOf(threadId)).toEqual({ execution: "closed", restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: true, restarts: 0 });
 			const atStart = yield* atEachStart(threadId);
 			yield* control.resumeUnfinished;
 
-			expect(atStart).toEqual([{ execution: "running", restarts: 0 }]);
+			// S1 and F1 are still queued as the resumed run starts.
+			expect(atStart).toEqual([{ unfinished: true, restarts: 0 }]);
 			expect(seen).toEqual(["interrupted", "succeeded"]);
 			expect(contexts.map(texts).slice(1)).toEqual([
 				["A", "S1"],
 				["A", "S1", "F1"],
 			]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 		}),
 	);
 
@@ -1278,7 +1291,7 @@ describe("runner loop — resume after restart", () => {
 
 			yield* control.resumeUnfinished;
 
-			expect(atStart).toEqual([{ execution: "running", restarts: 1 }]);
+			expect(atStart).toEqual([{ unfinished: false, restarts: 1 }]);
 			expect(contexts.map(texts)).toEqual([["A"]]);
 			const path = yield* threads.line(threadId);
 			expect(path.map((entry) => [entry.entry.type, entry.entry.state])).toEqual([
@@ -1287,26 +1300,31 @@ describe("runner loop — resume after restart", () => {
 				["system", "committed"],
 				["assistant", "committed"],
 			]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 		}),
 	);
 
-	// Recovery chose the session, then the user ran and stopped it: the stop cleared the mark, and the
+	// Recovery chose the session, then the user ran and stopped it: the stop ended the run, and the
 	// recovered run must find nothing to resume rather than force another turn.
 	it(
 		"runs nothing when a session recovery chose was stopped before its run began",
 		Effect.gen(function* () {
 			yield* provider.reset;
-			const threads = yield* Thread.Service;
+			const events = yield* Event.Service;
 			const execution = yield* RunnerExecution.Service;
 			const { threadId } = yield* seedSession();
 			yield* crashedMidReply(threadId, "A");
-			yield* threads.endExecution(threadId, "stopped");
+			yield* events.publish(EventList.ExecutionInterrupted, {
+				timestamp: yield* DateTime.now,
+				sessionId: yield* sessionOf(threadId),
+				threadId,
+				reason: "user",
+			});
 
 			yield* execution.recover(threadId);
 
 			expect(contexts).toEqual([]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 		}),
 	);
 
@@ -1333,7 +1351,7 @@ describe("runner loop — resume after restart", () => {
 			yield* control.resumeUnfinished;
 
 			expect(contexts).toEqual([]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 			expect(failures.map((failure) => [failure.reason, failure.message])).toEqual([
 				["crashloop", `The run was interrupted ${Control.RESTART_LIMIT} times in a row; it is not resumed again`],
 			]);
@@ -1345,7 +1363,63 @@ describe("runner loop — resume after restart", () => {
 			yield* settle(threadId);
 
 			expect(contexts.map(texts)).toEqual([["A", "B"]]);
-			expect(yield* stateOf(threadId)).toEqual({ execution: null, restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
+	// The run's own terminal is its end: a stop that lands while `run.failed` commits must not end it twice
+	// as interrupted, which would make the thread resumable and run its parked queue on the next start.
+	it(
+		"ends a run once when a stop lands while its run.failed commits",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const { threadId } = yield* seedSession();
+			const terminals: Array<string> = [];
+			yield* events.listen((event) =>
+				event.type === EventList.RunFailed.type
+					? execution
+							.interrupt(threadId, "user")
+							.pipe(Effect.andThen(Effect.sync(() => terminals.push(event.type))))
+					: event.type.startsWith("session.execution.") && event.type !== EventList.ExecutionStarted.type
+						? Effect.sync(() => terminals.push(event.type))
+						: Effect.void,
+			);
+			yield* crashedMidReply(threadId, "A");
+			yield* admit({ id: "Q", threadId, delivery: "followUp" });
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1}, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
+
+			// The stop interrupts the recovery it joined.
+			yield* Effect.exit(control.resumeUnfinished);
+			yield* settle(threadId);
+
+			// The sweep's crash, then the abandoned run's own end, and nothing after it.
+			expect(terminals).toEqual(["session.execution.interrupted", "session.run.failed"]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
+	// The stop is accepted before the drain opened its run: it is still the user's, so what woke the drain
+	// is parked rather than left to run on the next start.
+	it(
+		"parks a prompt whose drain a stop interrupted before its run opened",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+
+			yield* send(threadId, "A");
+			expect(yield* execution.interrupt(threadId, "user")).toBe(true);
+			yield* settle(threadId);
+
+			expect(contexts).toEqual([]);
+			expect(seen).toEqual(["interrupted"]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+			expect((yield* delivered(threadId)).map((row) => [row.id, row.promotedSeq])).toEqual([["A", null]]);
 		}),
 	);
 
@@ -1366,7 +1440,7 @@ describe("runner loop — resume after restart", () => {
 			yield* send(threadId, "A");
 			yield* streaming;
 
-			expect(yield* stateOf(threadId)).toEqual({ execution: "running", restarts: 0 });
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 			yield* execution.interrupt(threadId, "user", { awaitSettlement: true });
 		}),
 	);
@@ -1377,15 +1451,15 @@ describe("runner loop — cancel and unfinished replies", () => {
 	const { effect: it } = testEffect(runtime({ open: provider.open }));
 
 	// A shutdown cut off the reply to A while B waited. Cancelling B must not drop A's unfinished
-	// reply: the session stays marked for the next start.
+	// reply: the next start still resumes the thread.
 	it(
-		"keeps a session marked when cancelling the last queued prompt leaves a reply cut off",
+		"keeps a thread unfinished when cancelling the last queued prompt leaves a reply cut off",
 		Effect.gen(function* () {
 			yield* provider.reset;
 			const control = yield* Control.Service;
 			const execution = yield* RunnerExecution.Service;
 			const events = yield* Event.Service;
-			const sql = yield* SqlClient.SqlClient;
+			const threads = yield* Thread.Service;
 			const { threadId } = yield* seedSession();
 			const streaming = yield* Deferred.make<void>();
 			yield* events.listen((event) =>
@@ -1402,8 +1476,7 @@ describe("runner loop — cancel and unfinished replies", () => {
 
 			yield* control.cancel(threadId, SessionMessageSchema.ID.make("B"));
 
-			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM thread WHERE id = ${threadId}`;
-			expect(row?.execution).toBe("closed");
+			expect(yield* threads.resumable(threadId)).toBe(true);
 		}),
 	);
 });

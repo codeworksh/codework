@@ -322,11 +322,11 @@ export const ToolSettled = EventSchema.define({
 export type ToolSettled = typeof ToolSettled.Type;
 
 /**
- * Lifecycle of a process-owned busy period. One `started` and exactly one
- * terminal per period, covering every drain the period coalesced. The terminals
- * are separate types rather than one event with a status, so each carries only
- * what its outcome actually has: a failure has an error, an interruption has a
- * reason, and a success has neither.
+ * Lifecycle of one run: a drain that ran, from `started`, published before it promotes anything, to
+ * exactly one terminal (or `session.run.failed`). The terminals are separate types rather than one
+ * event with a status, so each carries only what its outcome actually has: a failure has an error,
+ * an interruption has a reason, and a success has neither. A failure or a user stop parks the queue;
+ * see `thread.head`.
  */
 export const ExecutionStarted = EventSchema.define({
 	type: "session.execution.started",
@@ -360,7 +360,7 @@ export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
 /**
  * A run ended without its answer and is not resumed: the host died in it too often (`crashloop`),
  * with no retry left for the request it cut off (`interrupted`), or replies kept hitting the output
- * limit with tool calls (`truncated`). Queued prompts stay queued.
+ * limit with tool calls (`truncated`). Queued prompts stay parked until the next prompt.
  */
 export const RunFailed = EventSchema.define({
 	type: "session.run.failed",

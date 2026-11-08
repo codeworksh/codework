@@ -1,0 +1,125 @@
+{
+	"log": [
+		"session.prompt.admitted steer \"hold\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"hold\"",
+		"session.llm.started",
+		"session.prompt.admitted followUp \"parked by the loop\"",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.llm.started",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.llm.started",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.llm.started",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.llm.started",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.run.failed crashloop",
+		"session.prompt.admitted steer \"next\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"next\"",
+		"session.llm.started",
+		"session.prompt.promoted followUp \"parked by the loop\"",
+		"session.llm.started",
+		"session.execution.succeeded"
+	],
+	"steps": [
+		{
+			"step": "crash loop",
+			"head": "session.run.failed crashloop",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "failed",
+			"error": {
+				"_tag": "runFailed",
+				"reason": "crashloop",
+				"message": "The run was interrupted 5 times in a row; it is not resumed again"
+			},
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "parked by the loop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"parked by the loop\"",
+					"promoted": null,
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "restarted",
+			"head": "session.run.failed crashloop",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "failed",
+			"error": {
+				"_tag": "runFailed",
+				"reason": "crashloop",
+				"message": "The run was interrupted 5 times in a row; it is not resumed again"
+			},
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "parked by the loop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"parked by the loop\"",
+					"promoted": null,
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "next prompt",
+			"head": "session.run.failed crashloop",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "parked by the loop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"parked by the loop\"",
+					"promoted": "session.prompt.promoted followUp \"parked by the loop\"",
+					"runnable": false
+				},
+				{
+					"text": "next",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"next\"",
+					"promoted": "session.prompt.promoted steer \"next\"",
+					"runnable": false
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,118 @@
+{
+	"reason": "shutdown",
+	"log": [
+		"session.prompt.admitted steer \"gate\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"gate\"",
+		"session.llm.started",
+		"session.prompt.admitted followUp \"after the boot\"",
+		"session.llm.failed",
+		"session.execution.interrupted shutdown",
+		"session.execution.started resumed=true",
+		"session.llm.started",
+		"session.prompt.promoted followUp \"after the boot\"",
+		"session.llm.started",
+		"session.execution.succeeded"
+	],
+	"steps": [
+		{
+			"step": "in flight",
+			"head": null,
+			"restarts": 0,
+			"runState": "running",
+			"outcome": null,
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "after the boot",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the boot\"",
+					"promoted": null,
+					"runnable": true
+				}
+			]
+		},
+		{
+			"step": "booted",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "shutdown"
+			},
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "after the boot",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the boot\"",
+					"promoted": null,
+					"runnable": true
+				}
+			]
+		},
+		{
+			"step": "resumed",
+			"head": null,
+			"restarts": 0,
+			"runState": "running",
+			"outcome": null,
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "after the boot",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the boot\"",
+					"promoted": null,
+					"runnable": true
+				}
+			]
+		},
+		{
+			"step": "finished",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "after the boot",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the boot\"",
+					"promoted": "session.prompt.promoted followUp \"after the boot\"",
+					"runnable": false
+				}
+			]
+		}
+	]
+}

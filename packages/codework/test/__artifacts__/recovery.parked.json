@@ -65,6 +65,16 @@
 		},
 		{
 			"seq": 12,
+			"type": "session.prompt.admitted",
+			"delivery": "followUp",
+			"text": "And this."
+		},
+		{
+			"seq": 13,
+			"type": "session.prompt.updated"
+		},
+		{
+			"seq": 14,
 			"type": "session.llm.ended",
 			"reason": "length",
 			"parts": [
@@ -75,7 +85,7 @@
 			]
 		},
 		{
-			"seq": 13,
+			"seq": 15,
 			"type": "session.tool.settled",
 			"part": {
 				"tool": "bash",
@@ -84,107 +94,158 @@
 			}
 		},
 		{
-			"seq": 14,
+			"seq": 16,
 			"type": "session.turn.ended"
 		},
 		{
-			"seq": 15,
+			"seq": 17,
 			"type": "session.run.failed",
 			"reason": "truncated",
 			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
 		},
 		{
-			"seq": 16,
+			"seq": 18,
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Next."
+		},
+		{
+			"seq": 19,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 20,
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Then answer this."
 		},
 		{
-			"seq": 17,
-			"type": "session.llm.started"
-		},
-		{
-			"seq": 18,
-			"type": "session.execution.interrupted",
-			"reason": "crash"
-		},
-		{
-			"seq": 19,
-			"type": "session.execution.started",
-			"resumed": true
-		},
-		{
-			"seq": 20,
-			"type": "session.llm.failed",
-			"reason": "error",
-			"errorMessage": "The host stopped while the model was answering, on attempt 1",
-			"parts": []
-		},
-		{
 			"seq": 21,
-			"type": "session.retry.scheduled",
-			"attempt": 1,
-			"maxRetries": 3,
-			"delayMs": 10,
-			"message": "The host stopped while the model was answering, on attempt 1"
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "And this."
 		},
 		{
 			"seq": 22,
-			"type": "session.llm.started"
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Next."
 		},
 		{
 			"seq": 23,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 24,
 			"type": "session.llm.ended",
 			"reason": "stop",
 			"parts": [
 				{
-					"text": "Answered after the kill."
+					"text": "Answered with the queue."
 				}
 			]
 		},
 		{
-			"seq": 24,
+			"seq": 25,
 			"type": "session.turn.ended"
 		},
 		{
-			"seq": 25,
+			"seq": 26,
 			"type": "session.execution.succeeded"
 		}
 	],
-	"rows": [
+	"steps": [
 		{
-			"step": "in flight",
-			"state": "running",
-			"stateAt": "17 session.llm.started",
-			"startedAt": "3 session.execution.started",
-			"endedAt": "15 session.run.failed",
-			"outcome": "failed",
-			"error": {
-				"_tag": "runFailed",
-				"reason": "truncated",
-				"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
-			},
-			"execution": "running"
+			"step": "parked",
+			"head": 17,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then answer this.",
+					"delivery": "steer",
+					"admittedSeq": 11,
+					"tail": 11,
+					"promotedSeq": null
+				},
+				{
+					"text": "And this.",
+					"delivery": "steer",
+					"admittedSeq": 12,
+					"tail": 13,
+					"promotedSeq": null
+				}
+			]
 		},
 		{
-			"step": "resumed",
-			"state": "running",
-			"stateAt": "22 session.llm.started",
-			"startedAt": "19 session.execution.started",
-			"endedAt": null,
-			"outcome": null,
-			"error": null,
-			"execution": "running"
+			"step": "reopened",
+			"head": 17,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then answer this.",
+					"delivery": "steer",
+					"admittedSeq": 11,
+					"tail": 11,
+					"promotedSeq": null
+				},
+				{
+					"text": "And this.",
+					"delivery": "steer",
+					"admittedSeq": 12,
+					"tail": 13,
+					"promotedSeq": null
+				}
+			]
 		},
 		{
-			"step": "finished",
-			"state": "idle",
-			"stateAt": "25 session.execution.succeeded",
-			"startedAt": "19 session.execution.started",
-			"endedAt": "25 session.execution.succeeded",
-			"outcome": "succeeded",
-			"error": null,
-			"execution": null
+			"step": "next prompt",
+			"head": 17,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then answer this.",
+					"delivery": "steer",
+					"admittedSeq": 11,
+					"tail": 11,
+					"promotedSeq": 20
+				},
+				{
+					"text": "And this.",
+					"delivery": "steer",
+					"admittedSeq": 12,
+					"tail": 13,
+					"promotedSeq": 21
+				},
+				{
+					"text": "Next.",
+					"delivery": "steer",
+					"admittedSeq": 18,
+					"tail": 18,
+					"promotedSeq": 22
+				}
+			]
 		}
 	],
 	"requests": [
@@ -238,36 +299,14 @@
 			{
 				"role": "user",
 				"text": "Then answer this."
-			}
-		],
-		[
-			{
-				"role": "user",
-				"text": "Run a long command."
-			},
-			{
-				"role": "assistant",
-				"calls": [
-					"bash"
-				]
-			},
-			{
-				"role": "tool",
-				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
-			},
-			{
-				"role": "assistant",
-				"calls": [
-					"bash"
-				]
-			},
-			{
-				"role": "tool",
-				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
 			},
 			{
 				"role": "user",
-				"text": "Then answer this."
+				"text": "And this."
+			},
+			{
+				"role": "user",
+				"text": "Next."
 			}
 		]
 	]

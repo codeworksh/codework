@@ -4,13 +4,13 @@
 			"run_state": "running",
 			"run_outcome": null,
 			"run_error": null,
-			"execution": "running"
+			"head": 0
 		},
 		"swept": {
 			"run_state": "idle",
 			"run_outcome": "interrupted",
 			"run_error": "{\"_tag\":\"interrupted\",\"reason\":\"crash\"}",
-			"execution": "running"
+			"head": 0
 		},
 		"events": [
 			{

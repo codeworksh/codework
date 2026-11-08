@@ -158,12 +158,11 @@ describe("RunCoordinator", () => {
 	);
 
 	it.effect(
-		"lifecycle hooks run once across coalesced drains in one busy period",
+		"the settled hook runs once across coalesced drains in one busy period",
 		Effect.gen(function* () {
 			const started = yield* Deferred.make<void>();
 			const gate = yield* Deferred.make<void>();
 			let drains = 0;
-			let starts = 0;
 			const exits: Exit.Exit<void, never>[] = [];
 			const coordinator = yield* RunCoordinator.make<string, never>({
 				drain: () => {
@@ -172,7 +171,6 @@ describe("RunCoordinator", () => {
 						? Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(gate)))
 						: Effect.void;
 				},
-				started: () => Effect.sync(() => void starts++),
 				settled: (_key, exit) => Effect.sync(() => void exits.push(exit)),
 			});
 
@@ -183,7 +181,6 @@ describe("RunCoordinator", () => {
 			yield* coordinator.awaitIdle("thread");
 
 			expect(drains).toBe(2);
-			expect(starts).toBe(1);
 			expect(exits).toHaveLength(1);
 			expect(Exit.isSuccess(exits[0]!)).toBe(true);
 		}),

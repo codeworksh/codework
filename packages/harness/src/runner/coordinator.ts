@@ -41,8 +41,6 @@ type Execution<E, Reason> = {
 export const make = <Key, E, Reason = never>(options: {
 	/** Actual work serialized by the coordinator. */
 	readonly drain: (key: Key, force: boolean) => Effect.Effect<void, E>;
-	/** Runs once when a busy period begins, before its first drain. */
-	readonly started?: (key: Key) => Effect.Effect<void>;
 	/** Runs after the final drain exits and before joiners are released. */
 	readonly settled?: (key: Key, exit: Exit.Exit<void, E>, reason?: Reason) => Effect.Effect<void>;
 }): Effect.Effect<Coordinator<Key, E, Reason>, never, Scope.Scope> =>
@@ -73,7 +71,6 @@ export const make = <Key, E, Reason = never>(options: {
 			// trampolines successor executions after synchronous failures.
 			execution.owner = fork(
 				Effect.yieldNow.pipe(
-					Effect.andThen(Effect.uninterruptible(options.started?.(key) ?? Effect.void)),
 					Effect.andThen(loop(key, execution, force)),
 					Effect.onExit((exit) =>
 						Effect.sync(() => {

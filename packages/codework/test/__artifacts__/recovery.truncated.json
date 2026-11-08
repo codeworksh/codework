@@ -118,7 +118,7 @@
 			"reason": "truncated",
 			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
 		},
-		"execution": null
+		"head": 14
 	},
 	"requests": [
 		[

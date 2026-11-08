@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
-import { runCli, truncating, writeSettings } from "./fixtures/cli.ts";
+import { runCli, serveCli, streaming, toolCalls, truncating, writeSettings } from "./fixtures/cli.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -478,6 +478,29 @@ describe("codework CLI", () => {
 		await expect(
 			`${JSON.stringify({ status: result.status, stdout: result.stdout, warning }, null, "\t")}\n`,
 		).toMatchFileSnapshot("./__artifacts__/cli.truncated.json");
+	}, 60_000);
+
+	// A run ends with `session.run.failed`, never a success: a remote run must take that as its end.
+	it("reports a remote run ended by replies cut off with tool calls, and exits 1", async () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-cli-run-failed-"));
+		onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+		const fake = await streaming((_body, response) => {
+			response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
+			response.finish("length");
+		});
+		writeSettings(home, fake.url);
+		const env = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models };
+		const server = await serveCli(["--home", home, "--user-config-dir", home], { cwd: home, env });
+
+		const result = await runCli(["run", "--server", server.url, "Run a long command."], { cwd: home, env });
+
+		expect(result.status, result.stderr).toBe(1);
+		expect(fake.requests).toHaveLength(2);
+		const message = "The response hit the output token limit with tool calls 2 times in a row; the run is ended";
+		expect(result.stderr, result.stderr).toContain(message);
+		await expect(
+			`${JSON.stringify({ status: result.status, stderr: result.stderr.slice(result.stderr.indexOf("error")) }, null, "\t")}\n`,
+		).toMatchFileSnapshot("./__artifacts__/cli.run-failed.json");
 	}, 60_000);
 
 	it("reports a failed refresh", () => {

@@ -1,0 +1,312 @@
+{
+	"log": [
+		{
+			"seq": 1,
+			"type": "session.created"
+		},
+		{
+			"seq": 2,
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Run a long command."
+		},
+		{
+			"seq": 3,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 4,
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Run a long command."
+		},
+		{
+			"seq": 5,
+			"type": "session.thread.system.changed"
+		},
+		{
+			"seq": 6,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 7,
+			"type": "session.llm.ended",
+			"reason": "length",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"seq": 8,
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "skipped",
+				"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		},
+		{
+			"seq": 9,
+			"type": "session.turn.ended"
+		},
+		{
+			"seq": 10,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 11,
+			"type": "session.prompt.admitted",
+			"delivery": "followUp",
+			"text": "Then this."
+		},
+		{
+			"seq": 12,
+			"type": "session.llm.ended",
+			"reason": "length",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"seq": 13,
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "skipped",
+				"result": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		},
+		{
+			"seq": 14,
+			"type": "session.turn.ended"
+		},
+		{
+			"seq": 15,
+			"type": "session.run.failed",
+			"reason": "truncated",
+			"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended"
+		},
+		{
+			"seq": 16,
+			"type": "session.prompt.updated"
+		},
+		{
+			"seq": 17,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 18,
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Then this."
+		},
+		{
+			"seq": 19,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 20,
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"seq": 21,
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"seq": 22,
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "The host stopped while the model was answering, on attempt 1",
+			"parts": []
+		},
+		{
+			"seq": 23,
+			"type": "session.retry.scheduled",
+			"attempt": 1,
+			"maxRetries": 3,
+			"delayMs": 10,
+			"message": "The host stopped while the model was answering, on attempt 1"
+		},
+		{
+			"seq": 24,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 25,
+			"type": "session.llm.ended",
+			"reason": "stop",
+			"parts": [
+				{
+					"text": "Answered after the kill."
+				}
+			]
+		},
+		{
+			"seq": 26,
+			"type": "session.turn.ended"
+		},
+		{
+			"seq": 27,
+			"type": "session.execution.succeeded"
+		}
+	],
+	"steps": [
+		{
+			"step": "resent",
+			"head": 15,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then this.",
+					"delivery": "followUp",
+					"admittedSeq": 11,
+					"tail": 11,
+					"promotedSeq": null
+				}
+			]
+		},
+		{
+			"step": "moved",
+			"head": 15,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then this.",
+					"delivery": "steer",
+					"admittedSeq": 11,
+					"tail": 16,
+					"promotedSeq": 18
+				}
+			]
+		},
+		{
+			"step": "finished",
+			"head": 15,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run a long command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Then this.",
+					"delivery": "steer",
+					"admittedSeq": 11,
+					"tail": 16,
+					"promotedSeq": 18
+				}
+			]
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			},
+			{
+				"role": "user",
+				"text": "Then this."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run a long command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool call \"bash\" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments."
+			},
+			{
+				"role": "user",
+				"text": "Then this."
+			}
+		]
+	]
+}
