@@ -1498,6 +1498,29 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
+	// A thread a crash cut off, stopped before a drain opened a run: nothing is runnable, but the stop must
+	// still stand, or the next start resumes the run the user stopped.
+	it(
+		"keeps a stop that lands before the run opened on a thread a crash cut off",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+			yield* crashedMidReply(threadId, "A");
+
+			yield* execution.wake(threadId);
+			expect(yield* execution.interrupt(threadId, "user")).toBe(true);
+			yield* settle(threadId);
+			yield* control.resumeUnfinished;
+
+			expect(contexts).toEqual([]);
+			expect(seen).toEqual(["interrupted", "interrupted"]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
 	// The stop is accepted before the drain opened its run: it is still the user's, so what woke the drain
 	// is parked rather than left to run on the next start.
 	it(
