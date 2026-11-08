@@ -258,10 +258,14 @@ export const layer = (options: Options = {}) =>
 				yield* Effect.sleep(Duration.millis(delayMs));
 			});
 
-			/** Ends a run that is not resumed, leaving the thread idle with its queue kept. */
+			/**
+			 * Ends a run that is not resumed, leaving the thread idle with its queue kept. `since` is the log
+			 * position the run began at: a prompt admitted after it woke the thread for another run.
+			 */
 			const endRun = Effect.fn("Loop.endRun")(function* (
 				sessionId: SessionSchema.ID,
 				threadId: ThreadSchema.ID,
+				since: number,
 				reason: EventList.RunFailed["data"]["reason"],
 				message: string,
 			) {
@@ -274,7 +278,7 @@ export const layer = (options: Options = {}) =>
 							reason,
 							message,
 						});
-						yield* threads.idle(threadId);
+						yield* threads.idle(threadId, since);
 					}),
 				);
 				return "ended" as const;
@@ -602,10 +606,11 @@ export const layer = (options: Options = {}) =>
 				readonly force: boolean;
 				readonly recovered?: boolean;
 			}) {
+				const thread = yield* threads.get(input.threadId);
+				if (Option.isNone(thread)) return "drained" as const;
+				const since = yield* events.latestSequence(thread.value.sessionId);
 				// Only a dead host leaves a request marked in flight: every run that ends clears it.
-				const crashed = Option.getOrUndefined(
-					Option.flatMap(yield* threads.get(input.threadId), (row) => row.attempt),
-				);
+				const crashed = Option.getOrUndefined(thread.value.attempt);
 				const carried: Crashed | undefined =
 					crashed === undefined
 						? undefined
@@ -648,7 +653,7 @@ export const layer = (options: Options = {}) =>
 					if (carried !== undefined) {
 						const delayMs = Retry.delay(start.retry, carried.attempt, hostStopped(start, carried.message));
 						if (delayMs === undefined) {
-							return yield* endRun(start.sessionId, input.threadId, "interrupted", carried.message);
+							return yield* endRun(start.sessionId, input.threadId, since, "interrupted", carried.message);
 						}
 						yield* scheduleRetry(start, carried.attempt, delayMs, carried.message);
 					}
@@ -680,6 +685,7 @@ export const layer = (options: Options = {}) =>
 							return yield* endRun(
 								snapshot.sessionId,
 								input.threadId,
+								since,
 								"truncated",
 								`The response hit the output token limit with tool calls ${truncations} times in a row; the run is ended`,
 							);
@@ -714,6 +720,7 @@ export const layer = (options: Options = {}) =>
 				return yield* endRun(
 					SessionSchema.ID.make(thread.value.sessionId),
 					input.threadId,
+					yield* events.latestSequence(thread.value.sessionId),
 					"crashloop",
 					input.message,
 				);

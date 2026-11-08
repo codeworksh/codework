@@ -565,6 +565,62 @@ describe("recovery after the host is killed", () => {
 		).toMatchFileSnapshot("./__artifacts__/recovery.truncated.json");
 	}, 90_000);
 
+	it("a prompt sent while a run is ending as truncated keeps its run resumable across a kill", async () => {
+		const cut = gate();
+		const resend = gate();
+		const truncate = (response: Reply) => {
+			response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
+			response.finish("length");
+		};
+		const fake = await streaming((_body, response, index) => {
+			if (index === 0) return truncate(response);
+			// The second cut-off ends the run: held until the prompt is in.
+			if (index === 1) return void cut.opened.then(() => truncate(response));
+			// The run the prompt woke, killed with its request in flight; then its resend.
+			if (index === 2) return hang(response);
+			void resend.opened.then(() => answer(response, "Answered after the kill."));
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const rows: Array<{ step: string } & ReturnType<typeof runRow>> = [];
+		const record = (step: string, events: ReadonlyArray<EventEnvelope>) =>
+			rows.push({ step, ...runRow(home, ids.threadId, events) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first.url, ids, "session.llm.started", 2);
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then answer this." }));
+		await logged(first.url, ids, "session.prompt.admitted", 2);
+		cut.open();
+		await logged(first.url, ids, "session.run.failed");
+		const inFlight = await logged(first.url, ids, "session.llm.started", 3);
+		record("in flight", inFlight);
+		await first.kill();
+
+		const second = await start();
+		record("resumed", await logged(second.url, ids, "session.llm.started", 4));
+		resend.open();
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await log(second.url, ids);
+		record("finished", events);
+
+		expect(rows.find((row) => row.step === "in flight")).toMatchObject({ execution: "running" });
+		expect(fake.requests).toHaveLength(4);
+		expect(sent(fake.requests[3]!)).toEqual(sent(fake.requests[2]!));
+
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				// Read from the database file: the woken run in flight when the host died, resumed, finished.
+				rows,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.ending.json");
+	}, 90_000);
+
 	it("a deferred tool loaded before the host died is still offered to the resent request", async () => {
 		const tools = (request: ChatRequest) => (request.tools ?? []).map((tool) => tool.function.name).sort();
 		const fake = await streaming((_body, response, index) => {

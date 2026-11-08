@@ -234,10 +234,12 @@ export interface Interface {
 	/** Records the 1-based provider request now in flight, or none (null) once its response ended. */
 	readonly setAttempt: (threadId: ThreadSchema.ID, attempt: number | null) => Effect.Effect<void>;
 	/**
-	 * Leaves a run that is not resumed idle: no mark, no restarts, no request in flight, whatever is
-	 * queued. Its queued prompts wait for the next prompt to wake the thread.
+	 * Leaves a run that is not resumed idle: no restarts, no request in flight, whatever is queued. Its
+	 * queued prompts wait for the next prompt to wake the thread. The mark stays while a prompt
+	 * admitted after `since`, the log position the run began at, is pending: it woke the thread again,
+	 * so its run follows in this process and must survive a crash.
 	 */
-	readonly idle: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
+	readonly idle: (threadId: ThreadSchema.ID, since: number) => Effect.Effect<void>;
 	/** Root threads with a run left unfinished, oldest first. */
 	readonly unfinished: Effect.Effect<ReadonlyArray<ThreadRow>>;
 	/**
@@ -955,6 +957,14 @@ export const layer = Layer.effect(
 			Effect.orDie,
 		);
 
+		/** Whether the thread has a prompt admitted after log position `after` still pending. */
+		const pendingAfter = (threadId: ThreadSchema.ID, after: number) => sql`
+			EXISTS (
+				SELECT 1 FROM inbox
+				WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL AND admitted_seq > ${after}
+			)
+		`;
+
 		const markRunning = Effect.fn("Thread.markRunning")(
 			function* (threadId: ThreadSchema.ID) {
 				yield* sql`UPDATE thread SET execution = 'running', rev = ${yield* store.rev} WHERE id = ${threadId}`;
@@ -977,11 +987,7 @@ export const layer = Layer.effect(
 				const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
 				yield* sql`
 				UPDATE thread SET execution = NULL, restarts = 0, rev = ${rev}
-				WHERE id = ${threadId} AND NOT EXISTS (
-					SELECT 1 FROM inbox
-					WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
-						AND admitted_seq > ${after}
-				)
+				WHERE id = ${threadId} AND NOT ${pendingAfter(threadId, after)}
 			`;
 			},
 			store.write,
@@ -1020,9 +1026,12 @@ export const layer = Layer.effect(
 		);
 
 		const idle = Effect.fn("Thread.idle")(
-			function* (threadId: ThreadSchema.ID) {
+			function* (threadId: ThreadSchema.ID, since: number) {
 				yield* sql`
-				UPDATE thread SET execution = NULL, restarts = 0, attempt = NULL, rev = ${yield* store.rev} WHERE id = ${threadId}
+				UPDATE thread
+				SET execution = CASE WHEN ${pendingAfter(threadId, since)} THEN execution ELSE NULL END,
+					restarts = 0, attempt = NULL, rev = ${yield* store.rev}
+				WHERE id = ${threadId}
 			`;
 			},
 			store.write,
