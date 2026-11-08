@@ -277,6 +277,11 @@ export const layer = Layer.effect(
 				Effect.fnUntraced(function* (row) {
 					const threadId = ThreadSchema.ID.make(row.id);
 					if ((yield* execution.active).has(threadId)) return;
+					// No run was cut off, only a prompt woken past the head: it runs as its wake would have.
+					if (!(yield* threads.cutOff(threadId))) {
+						yield* execution.wake(threadId);
+						return yield* execution.awaitIdle(threadId);
+					}
 					// Claimed again here, not from the list: a stop since then cleared it, and must stand.
 					// Counted before resuming, so a crash inside the resumed run is counted too.
 					const restarts = yield* threads.claimRestart(threadId);

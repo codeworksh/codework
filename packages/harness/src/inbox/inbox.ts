@@ -489,8 +489,11 @@ export const make = Effect.gen(function* () {
 		if (Option.isNone(stored)) return Option.none<Admitted>();
 		const prompt =
 			patch.prompt === undefined || Prompt.equivalence(patch.prompt, stored.value.prompt) ? undefined : patch.prompt;
+		// Asking for the steer lane is recorded even for a steer: it wakes the prompt, so a parked one runs now.
 		const delivery =
-			patch.delivery === undefined || patch.delivery === stored.value.delivery ? undefined : patch.delivery;
+			patch.delivery === undefined || (patch.delivery === stored.value.delivery && patch.delivery !== "steer")
+				? undefined
+				: patch.delivery;
 		if (prompt === undefined && delivery === undefined) return stored;
 		const timestamp = yield* DateTime.now;
 		return yield* events

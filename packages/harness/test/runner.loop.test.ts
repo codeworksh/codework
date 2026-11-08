@@ -1074,6 +1074,56 @@ describe("runner loop — queued input", () => {
 		}),
 	);
 
+	// Asking for the steer lane wakes a parked prompt even when it already is a steer: "send now" runs it.
+	it(
+		"runs a parked steer asked for the steer lane again",
+		Effect.gen(function* () {
+			yield* reset;
+			const control = yield* Control.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
+			script.push("fail");
+			during.run = send(threadId, "S1").pipe(Effect.asVoid, Effect.orDie, Effect.provideContext(services));
+
+			yield* send(threadId, "A");
+			yield* settle(threadId);
+			expect(yield* control.update(threadId, SessionMessageSchema.ID.make("S1"), { delivery: "steer" })).toBe(true);
+			yield* settle(threadId);
+
+			expect(seen).toEqual(["failed", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "S1"]]);
+		}),
+	);
+
+	// A prompt accepted after a failure, whose host died before running it, runs on the next start as its
+	// wake would have: the parked follow-up first, not another answer to the failed reply.
+	it(
+		"runs a prompt accepted after a failure on the next start as its wake would have",
+		Effect.gen(function* () {
+			yield* reset;
+			const control = yield* Control.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
+			script.push("fail");
+			during.run = send(threadId, "F1", "followUp").pipe(
+				Effect.asVoid,
+				Effect.orDie,
+				Effect.provideContext(services),
+			);
+
+			yield* send(threadId, "A");
+			yield* settle(threadId);
+			// Accepted, with no wake: the host died before its run.
+			yield* admit({ id: "C", threadId, delivery: "followUp" });
+			yield* control.resumeUnfinished;
+
+			expect(seen).toEqual(["failed", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "F1"], ["A", "F1", "C"]]);
+		}),
+	);
+
 	// A stop claims the wakes of what was sent during the run: it stays queued, and the next prompt
 	// places it, steers with that prompt and follow-ups after.
 	it(

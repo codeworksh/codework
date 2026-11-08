@@ -230,6 +230,8 @@ export interface Interface {
 	readonly runnable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/** Whether the thread is among {@link unfinished}: still owed a resume, say not stopped since. */
 	readonly resumable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	/** Whether the thread's last run was cut off by the host, a crash or a shutdown: a run to resume. */
+	readonly cutOff: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/**
 	 * Root threads with a run left to resume, oldest first: their last run was interrupted by a crash or
 	 * a shutdown, or a pending prompt is runnable. Read after the startup sweep has closed open runs.
@@ -998,6 +1000,7 @@ export const layer = Layer.effect(
 			}, Effect.orDie);
 		const runnable = holds("Thread.runnable", runnableOf);
 		const resumable = holds("Thread.resumable", unfinishedOf);
+		const cutOff = holds("Thread.cutOff", interruptedOf(["crash", "shutdown"]));
 
 		const findUnfinished = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -1099,6 +1102,7 @@ export const layer = Layer.effect(
 			setAttempt,
 			runnable,
 			resumable,
+			cutOff,
 			unfinished,
 			projectRun,
 			open,

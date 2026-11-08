@@ -435,8 +435,9 @@ describe("Control.update", () => {
 		}),
 	);
 
-	// "Send now" on a steer left waiting by a stop: nothing to change, but the session must wake.
-	itWatched("wakes for a steer already in the steer lane without recording a change", () =>
+	// "Send now" on a steer left waiting by a stop: the lane is unchanged, but the move is recorded, since
+	// that is what makes the parked prompt run, now or after a crash.
+	itWatched("records and wakes a move to the steer lane for a steer already in it", () =>
 		Effect.gen(function* () {
 			const { control, sessionId, threadId } = yield* setup;
 			const steer = yield* control.prompt({ sessionId, prompt: prompt("Parked") });
@@ -445,7 +446,7 @@ describe("Control.update", () => {
 			expect(yield* control.update(threadId, steer.id, { delivery: "steer" })).toBe(true);
 
 			expect(wakes).toEqual([threadId]);
-			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
+			expect(yield* eventCount("session.prompt.updated.1")).toBe(1);
 		}),
 	);
 
