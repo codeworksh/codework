@@ -510,12 +510,13 @@ describe("threads", () => {
 			const [first] = yield* threads.line(main);
 			const t2 = ThreadSchema.ID.make((yield* threads.fork({ threadId: main, entryId: first!.entry.id })).thread.id);
 
-			// What a process dying mid-turn leaves: a promoted prompt, an open draft, the run still marked.
+			// What a process dying mid-turn leaves: a promoted prompt, an open draft, its run never ended.
 			const timestamp = yield* DateTime.now;
 			const prompt = PromptSchema.Prompt.fromText("cut off");
 			const messageId = SessionMessageSchema.ID.make("prompt_cut");
 			const base = { timestamp, sessionId, threadId: t2, messageId, prompt, delivery: "followUp" as const };
 			yield* events.publish(EventList.PromptAdmitted, base);
+			yield* events.publish(EventList.ExecutionStarted, { timestamp, sessionId, threadId: t2, resumed: false });
 			yield* events.publish(EventList.Prompted, base);
 			yield* events.publish(EventList.LLMStarted, {
 				timestamp,
@@ -542,7 +543,8 @@ describe("threads", () => {
 					parts: [{ type: "text", text: "half a rep" }],
 				}),
 			});
-			yield* threads.markRunning(t2);
+			// The next start sweeps the open run as a crash.
+			yield* control.sweep;
 
 			script.set(t2, [{ _tag: "reply", text: "answered again" }]);
 			yield* control.resumeUnfinished;
@@ -552,7 +554,7 @@ describe("threads", () => {
 				.map(({ entry }) => `${entry.type} ${entry.state}`);
 			expect(own).toEqual(["user committed", "assistant aborted", "system committed", "assistant committed"]);
 			const thread = Option.getOrThrow(yield* threads.get(t2));
-			expect(Option.getOrUndefined(thread.execution)).toBeUndefined();
+			expect(yield* threads.resumable(t2)).toBe(false);
 			expect(thread.restarts).toBe(0);
 			// Only the thread that was cut off ran again, from its committed entries: the inherited
 			// prompt and its own, without the aborted draft.
@@ -685,7 +687,7 @@ describe("threads", () => {
 							endedAt: at(log, row.id, row.runEndedAt, terminals),
 							outcome: Option.getOrNull(row.runOutcome),
 							error: Option.getOrNull(row.runError),
-							execution: Option.getOrNull(row.execution),
+							head: row.head,
 						});
 					}
 				});
@@ -714,7 +716,7 @@ describe("threads", () => {
 			yield* control.interrupt(main, { awaitSettlement: true });
 			yield* record("stopped");
 
-			// What a process dying mid-run leaves: a follow-up admitted, its run started and marked, never ended.
+			// What a process dying mid-run leaves: a follow-up admitted, its run started, never ended.
 			const died = (threadId: ThreadSchema.ID) =>
 				Effect.gen(function* () {
 					yield* events.publish(EventList.ExecutionStarted, {
@@ -723,7 +725,6 @@ describe("threads", () => {
 						threadId,
 						resumed: false,
 					});
-					yield* threads.markRunning(threadId);
 				});
 			yield* inputs.admit({
 				id: SessionMessageSchema.ID.make("prompt_cut"),
@@ -754,21 +755,6 @@ describe("threads", () => {
 			yield* Deferred.succeed(third.gate, undefined);
 			yield* Fiber.join(resuming);
 			yield* record("finished");
-
-			// A shutdown that closed the run and died before publishing its end: the sweep says `shutdown`.
-			const [first] = yield* threads.line(main);
-			const fork = ThreadSchema.ID.make(
-				(yield* threads.fork({ threadId: main, entryId: first!.entry.id })).thread.id,
-			);
-			name("T", fork);
-			yield* died(fork);
-			yield* threads.endExecution(fork, "closed");
-			yield* control.sweep;
-			yield* record("swept after shutdown");
-			expect(Option.getOrUndefined(Option.getOrThrow(yield* threads.get(fork)).runError)).toEqual({
-				_tag: "interrupted",
-				reason: "shutdown",
-			});
 
 			const log = yield* journal;
 			const resumed = log.filter((event) => event.type === lifecycle[0] && event.data["resumed"] === true);

@@ -236,7 +236,7 @@
 			"reason": "crashloop",
 			"message": "The run was interrupted 5 times in a row; it is not resumed again"
 		},
-		"execution": null
+		"head": 30
 	},
 	"requests": [
 		[

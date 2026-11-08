@@ -1,0 +1,99 @@
+{
+	"unreachable": true,
+	"log": [
+		"session.prompt.admitted steer \"gate\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"gate\"",
+		"session.llm.started",
+		"session.prompt.admitted followUp \"sent while cut\"",
+		"session.prompt.promoted followUp \"sent while cut\"",
+		"session.llm.started",
+		"session.execution.succeeded",
+		"session.prompt.admitted steer \"on a slow link\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"on a slow link\"",
+		"session.llm.started",
+		"session.execution.succeeded"
+	],
+	"steps": [
+		{
+			"step": "cut",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "sent while cut",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"sent while cut\"",
+					"promoted": "session.prompt.promoted followUp \"sent while cut\"",
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "retried",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "sent while cut",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"sent while cut\"",
+					"promoted": "session.prompt.promoted followUp \"sent while cut\"",
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "slow link",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				},
+				{
+					"text": "sent while cut",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"sent while cut\"",
+					"promoted": "session.prompt.promoted followUp \"sent while cut\"",
+					"runnable": false
+				},
+				{
+					"text": "on a slow link",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"on a slow link\"",
+					"promoted": "session.prompt.promoted steer \"on a slow link\"",
+					"runnable": false
+				}
+			]
+		}
+	]
+}

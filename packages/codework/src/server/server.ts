@@ -57,8 +57,9 @@ const managedShutdown = Layer.unwrap(
 const sweep = Layer.effectDiscard(Effect.flatMap(Control.Service, (control) => control.sweep));
 
 /**
- * Resumes the runs the last server left unfinished, whether it crashed or shut down: the session
- * table records them as they start, so this needs nothing from the previous process.
+ * Resumes the runs the last server left unfinished, whether it crashed or shut down, and the prompts
+ * woken past a thread's head: the log and its projections record both, so this needs nothing from the
+ * previous process.
  */
 const resumeUnfinished = Layer.effectDiscard(
 	Effect.gen(function* () {

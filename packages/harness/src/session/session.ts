@@ -240,6 +240,9 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM space WHERE id = ${id}`,
 		});
 
+		// A session's activity is its newest thread's: its own `updated_at` moves only with its row.
+		const activity = sql`(SELECT MAX(t.updated_at) FROM thread t WHERE t.session_id = s.id)`;
+
 		const selectByProject = SqlSchema.findAll({
 			Request: Schema.String,
 			Result: SessionRow,
@@ -247,28 +250,26 @@ export const layer = Layer.effect(
 				SELECT s.* FROM session s
 				JOIN space p ON p.id = s.space_id
 				WHERE p.project_id = ${projectId}
-				ORDER BY s.updated_at DESC
+				ORDER BY ${activity} DESC
 			`,
 		});
 
 		const selectBySpace = SqlSchema.findAll({
 			Request: Schema.String,
 			Result: SessionRow,
-			execute: (spaceId) => sql`SELECT * FROM session WHERE space_id = ${spaceId} ORDER BY updated_at DESC`,
+			execute: (spaceId) => sql`SELECT s.* FROM session s WHERE s.space_id = ${spaceId} ORDER BY ${activity} DESC`,
 		});
 
 		const selectAll = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: SessionRow,
-			execute: () => sql`SELECT * FROM session ORDER BY updated_at DESC`,
+			execute: () => sql`SELECT s.* FROM session s ORDER BY ${activity} DESC`,
 		});
 
 		const insertSession = SqlSchema.void({
 			Request: SessionRow.insert,
 			execute: (row) => sql`INSERT INTO session ${sql.insert(row)}`,
 		});
-
-		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
 		const projectCreated = Effect.fn("Session.projectCreated")(
 			function* (data: EventList.SessionCreated["data"], seq: number) {
@@ -388,10 +389,9 @@ export const layer = Layer.effect(
 		}) {
 			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
-			const now = yield* epochNow;
 			yield* Effect.gen(function* () {
 				yield* sql`
-					UPDATE session SET host_dir = ${input.hostDir}, updated_at = ${now}, rev = ${yield* store.rev}
+					UPDATE session SET host_dir = ${input.hostDir}, rev = ${yield* store.rev}
 					WHERE id = ${input.sessionId}
 				`;
 			}).pipe(store.write, Effect.orDie);
@@ -431,11 +431,9 @@ export const layer = Layer.effect(
 				);
 			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory_outside_space");
 			if (input.threadId === undefined) {
-				const now = yield* epochNow;
 				yield* Effect.gen(function* () {
 					yield* sql`
-						UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now},
-							rev = ${yield* store.rev}
+						UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, rev = ${yield* store.rev}
 						WHERE id = ${input.sessionId}
 					`;
 				}).pipe(store.write, Effect.orDie);

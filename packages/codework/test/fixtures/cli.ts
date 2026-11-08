@@ -179,6 +179,8 @@ export interface Served {
 	readonly url: string;
 	/** SIGKILLs the server, as a host dying would, and resolves once it is gone. */
 	readonly kill: () => Promise<void>;
+	/** SIGTERMs the server, a clean shutdown, and resolves once it is gone. */
+	readonly stop: () => Promise<void>;
 }
 
 /** Starts `codework serve` from source on an ephemeral port; resolves once it listens. */
@@ -192,10 +194,11 @@ export const serveCli = (
 			env: options.env,
 		});
 		const exited = new Promise<void>((done) => child.on("exit", () => done()));
-		const kill = () => {
-			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+		const signal = (name: NodeJS.Signals) => () => {
+			if (child.exitCode === null && child.signalCode === null) child.kill(name);
 			return exited;
 		};
+		const kill = signal("SIGKILL");
 		onTestFinished(kill);
 		let output = "";
 		const deadline = setTimeout(() => {
@@ -207,7 +210,7 @@ export const serveCli = (
 			const url = /listening on (ws:\/\/\S+)/.exec(output)?.[1];
 			if (url === undefined) return;
 			clearTimeout(deadline);
-			resolve({ url, kill });
+			resolve({ url, kill, stop: signal("SIGTERM") });
 		};
 		child.stdout.on("data", listen);
 		child.stderr.on("data", (data: Buffer) => (output += data.toString("utf8")));

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
@@ -435,8 +435,9 @@ describe("Control.update", () => {
 		}),
 	);
 
-	// "Send now" on a steer left waiting by a stop: nothing to change, but the session must wake.
-	itWatched("wakes for a steer already in the steer lane without recording a change", () =>
+	// "Send now" on a steer left waiting by a stop: the lane is unchanged, but the move is recorded, since
+	// that is what makes the parked prompt run, now or after a crash.
+	itWatched("records and wakes a move to the steer lane for a steer already in it", () =>
 		Effect.gen(function* () {
 			const { control, sessionId, threadId } = yield* setup;
 			const steer = yield* control.prompt({ sessionId, prompt: prompt("Parked") });
@@ -445,7 +446,7 @@ describe("Control.update", () => {
 			expect(yield* control.update(threadId, steer.id, { delivery: "steer" })).toBe(true);
 
 			expect(wakes).toEqual([threadId]);
-			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
+			expect(yield* eventCount("session.prompt.updated.1")).toBe(1);
 		}),
 	);
 
@@ -658,55 +659,59 @@ describe("Control queue races", () => {
 });
 
 describe("Control unfinished runs", () => {
-	const executionOf = (threadId: string) =>
+	const unfinished = (threadId: string) =>
 		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
-			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM thread WHERE id = ${threadId}`;
-			return row?.execution;
+			const threads = yield* Thread.Service;
+			return (yield* threads.unfinished).some((row) => row.id === threadId);
+		});
+	const end = (
+		event: typeof EventList.RunFailed | typeof EventList.ExecutionInterrupted,
+		ids: {
+			readonly sessionId: SessionSchema.ID;
+			readonly threadId: ThreadSchema.ID;
+		},
+	) =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const timestamp = yield* DateTime.now;
+			if (event === EventList.RunFailed)
+				return yield* events.publish(EventList.RunFailed, {
+					...ids,
+					timestamp,
+					reason: "truncated",
+					message: "cut",
+				});
+			return yield* events.publish(EventList.ExecutionInterrupted, { ...ids, timestamp, reason: "user" });
 		});
 
-	// Marked before the wake: a crash between accepting the prompt and its run starting must not lose it.
-	it("marks a thread running as soon as a prompt is accepted", () =>
+	// The admission itself records what makes the prompt run: a crash right after accepting it must not lose it.
+	it("leaves an accepted prompt runnable, and unfinished, from its admission", () =>
 		Effect.gen(function* () {
-			const { control, sessionId, threadId } = yield* setup;
-			expect(yield* executionOf(threadId)).toBeNull();
+			const { threads, control, sessionId, threadId } = yield* setup;
+			expect(yield* threads.runnable(threadId)).toBe(false);
 
 			yield* control.prompt({ sessionId, prompt: prompt(text) });
 
-			expect(yield* executionOf(threadId)).toBe("running");
+			expect(yield* threads.runnable(threadId)).toBe(true);
+			expect(yield* unfinished(threadId)).toBe(true);
 		}));
 
-	it("keeps a finished run marked while accepted prompts are still pending", () =>
+	it("parks what an unanswered end leaves queued; a later prompt or a move to steer wakes it", () =>
 		Effect.gen(function* () {
 			const { threads, control, sessionId, threadId } = yield* setup;
-			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
+			const queued = yield* control.prompt({ sessionId, prompt: prompt("Queued"), delivery: "followUp" });
 
-			yield* threads.endExecution(threadId, "finished");
-			expect(yield* executionOf(threadId)).toBe("running");
+			yield* end(EventList.RunFailed, { sessionId, threadId });
+			expect(yield* threads.runnable(threadId)).toBe(false);
+			expect(yield* unfinished(threadId)).toBe(false);
 
-			// Cancelling leaves the mark alone; the run that next ends with nothing pending clears it.
-			yield* control.cancel(threadId, admitted.id);
-			expect(yield* executionOf(threadId)).toBe("running");
-			yield* threads.endExecution(threadId, "finished");
-			expect(yield* executionOf(threadId)).toBeNull();
-		}));
+			yield* control.update(threadId, queued.id, { delivery: "steer" });
+			expect(yield* threads.runnable(threadId)).toBe(true);
 
-	it("keeps a closed run, and clears a stopped one unless a prompt came after the stop", () =>
-		Effect.gen(function* () {
-			const { threads, control, sessionId, threadId } = yield* setup;
-			const events = yield* Event.Service;
-			yield* control.prompt({ sessionId, prompt: prompt("Parked by the stop") });
-
-			yield* threads.endExecution(threadId, "closed");
-			expect(yield* executionOf(threadId)).toBe("closed");
-
-			// Sent while the stop was being cleaned up: its wake survives, so the mark must too.
-			const stop = yield* events.latestSequence(sessionId);
-			yield* control.prompt({ sessionId, prompt: prompt("Sent after the stop") });
-			yield* threads.endExecution(threadId, "stopped", stop);
-			expect(yield* executionOf(threadId)).toBe("running");
-
-			yield* threads.endExecution(threadId, "stopped", yield* events.latestSequence(sessionId));
-			expect(yield* executionOf(threadId)).toBeNull();
+			// A user stop parks the same way, and a prompt sent after it is runnable again.
+			yield* end(EventList.ExecutionInterrupted, { sessionId, threadId });
+			expect(yield* threads.runnable(threadId)).toBe(false);
+			yield* control.prompt({ sessionId, prompt: prompt("After the stop") });
+			expect(yield* threads.runnable(threadId)).toBe(true);
 		}));
 });

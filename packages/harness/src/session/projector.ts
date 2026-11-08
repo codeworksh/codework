@@ -108,11 +108,14 @@ export const layer = Layer.effectDiscard(
 		);
 
 		yield* events.project(EventList.PromptUpdated, (event) =>
-			input.projectUpdated({
-				id: event.data.messageId,
-				threadId: event.data.threadId,
-				...(event.data.prompt === undefined ? {} : { prompt: event.data.prompt }),
-				...(event.data.delivery === undefined ? {} : { delivery: event.data.delivery }),
+			Effect.gen(function* () {
+				yield* input.projectUpdated({
+					id: event.data.messageId,
+					threadId: event.data.threadId,
+					seq: yield* seqOf(event),
+					...(event.data.prompt === undefined ? {} : { prompt: event.data.prompt }),
+					...(event.data.delivery === undefined ? {} : { delivery: event.data.delivery }),
+				});
 			}),
 		);
 
@@ -162,28 +165,41 @@ export const layer = Layer.effectDiscard(
 		yield* events.project(EventList.ExecutionStarted, ({ data }) =>
 			threads.projectRun(data.threadId, data.timestamp, { _tag: "started" }),
 		);
-		yield* events.project(EventList.ExecutionSucceeded, ({ data }) =>
-			threads.projectRun(data.threadId, data.timestamp, { _tag: "ended", outcome: "succeeded" }),
+		// A run's end settles the thread at the event's own seq: an unanswered end moves its head.
+		const ended = (
+			event: { readonly type: string; readonly durable?: { readonly seq: number } },
+			threadId: ThreadSchema.ID,
+			at: DateTime.Utc,
+			outcome: ThreadSchema.RunOutcome,
+			error?: ThreadSchema.RunError,
+		) =>
+			seqOf(event).pipe(
+				Effect.flatMap((seq) =>
+					threads.projectRun(threadId, at, {
+						_tag: "ended",
+						outcome,
+						seq,
+						...(error === undefined ? {} : { error }),
+					}),
+				),
+			);
+		yield* events.project(EventList.ExecutionSucceeded, (event) =>
+			ended(event, event.data.threadId, event.data.timestamp, "succeeded"),
 		);
-		yield* events.project(EventList.ExecutionFailed, ({ data }) =>
-			threads.projectRun(data.threadId, data.timestamp, {
-				_tag: "ended",
-				outcome: "failed",
-				error: { _tag: "failed", error: data.error },
+		yield* events.project(EventList.ExecutionFailed, (event) =>
+			ended(event, event.data.threadId, event.data.timestamp, "failed", { _tag: "failed", error: event.data.error }),
+		);
+		yield* events.project(EventList.ExecutionInterrupted, (event) =>
+			ended(event, event.data.threadId, event.data.timestamp, "interrupted", {
+				_tag: "interrupted",
+				reason: event.data.reason,
 			}),
 		);
-		yield* events.project(EventList.ExecutionInterrupted, ({ data }) =>
-			threads.projectRun(data.threadId, data.timestamp, {
-				_tag: "ended",
-				outcome: "interrupted",
-				error: { _tag: "interrupted", reason: data.reason },
-			}),
-		);
-		yield* events.project(EventList.RunFailed, ({ data }) =>
-			threads.projectRun(data.threadId, data.timestamp, {
-				_tag: "ended",
-				outcome: "failed",
-				error: { _tag: "runFailed", reason: data.reason, message: data.message },
+		yield* events.project(EventList.RunFailed, (event) =>
+			ended(event, event.data.threadId, event.data.timestamp, "failed", {
+				_tag: "runFailed",
+				reason: event.data.reason,
+				message: event.data.message,
 			}),
 		);
 

@@ -258,7 +258,10 @@ export const layer = (options: Options = {}) =>
 				yield* Effect.sleep(Duration.millis(delayMs));
 			});
 
-			/** Ends a run that is not resumed, leaving the thread idle with its queue kept. */
+			/**
+			 * Ends a run that is not resumed. Its terminal parks the queue: a prompt woken before it waits for
+			 * the next one.
+			 */
 			const endRun = Effect.fn("Loop.endRun")(function* (
 				sessionId: SessionSchema.ID,
 				threadId: ThreadSchema.ID,
@@ -266,15 +269,12 @@ export const layer = (options: Options = {}) =>
 				message: string,
 			) {
 				yield* Effect.uninterruptible(
-					Effect.gen(function* () {
-						yield* events.publish(EventList.RunFailed, {
-							timestamp: yield* DateTime.now,
-							sessionId,
-							threadId,
-							reason,
-							message,
-						});
-						yield* threads.idle(threadId);
+					events.publish(EventList.RunFailed, {
+						timestamp: yield* DateTime.now,
+						sessionId,
+						threadId,
+						reason,
+						message,
 					}),
 				);
 				return "ended" as const;

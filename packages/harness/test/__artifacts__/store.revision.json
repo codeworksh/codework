@@ -3,7 +3,7 @@
 		"idIsSet": true,
 		"startRev": 0,
 		"sameId": true,
-		"head": 24
+		"head": 21
 	},
 	"doorbellRang": true,
 	"steps": [
@@ -25,19 +25,19 @@
 		},
 		{
 			"step": "prompt (tool call, settle, reply)",
-			"head": 21
+			"head": 18
 		},
 		{
 			"step": "fork",
-			"head": 22
+			"head": 19
 		},
 		{
 			"step": "session-scoped document",
-			"head": 23
+			"head": 20
 		},
 		{
 			"step": "session.delete",
-			"head": 24
+			"head": 21
 		}
 	],
 	"commits": [
@@ -55,13 +55,17 @@
 			"writes": [
 				"session S1 insert",
 				"thread T1 insert",
-				"thread T1 update"
+				"session S1 update",
+				"thread T1 update",
+				"thread T1 update",
+				"session S1 update"
 			]
 		},
 		{
 			"rev": 3,
 			"by": "session.thread.configured",
 			"writes": [
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
@@ -69,13 +73,15 @@
 			"rev": 4,
 			"by": "session.prompt.admitted",
 			"writes": [
-				"inbox E1 insert"
+				"inbox E1 insert",
+				"thread T1 update"
 			]
 		},
 		{
 			"rev": 5,
-			"by": "plain write",
+			"by": "session.execution.started",
 			"writes": [
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
@@ -83,121 +89,127 @@
 			"rev": 6,
 			"by": "plain write",
 			"writes": [
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 7,
-			"by": "session.execution.started",
-			"writes": [
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 8,
-			"by": "plain write",
-			"writes": [
 				"project P1 update",
 				"space SP1 update"
 			]
 		},
 		{
-			"rev": 9,
+			"rev": 7,
 			"by": "session.prompt.promoted",
 			"writes": [
 				"inbox E1 update",
 				"entry E1 insert",
 				"thread T1 update",
-				"session S1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 8,
+			"by": "session.thread.system.changed",
+			"writes": [
+				"entry E2 insert",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 9,
+			"by": "plain write",
+			"writes": [
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
 		{
 			"rev": 10,
-			"by": "session.thread.system.changed",
-			"writes": [
-				"entry E2 insert",
-				"thread T1 update",
-				"session S1 update"
-			]
-		},
-		{
-			"rev": 11,
-			"by": "plain write",
-			"writes": [
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 12,
 			"by": "session.llm.started",
 			"writes": [
 				"thread T1 update",
 				"entry E3 insert",
 				"thread T1 update",
-				"session S1 update"
+				"thread T1 update"
 			]
 		},
 		{
-			"rev": 13,
+			"rev": 11,
 			"by": "session.llm.ended",
 			"writes": [
 				"entry E3 update",
 				"thread T1 update",
-				"session S1 update",
+				"thread T1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 12,
+			"by": "session.tool.settled",
+			"writes": [
+				"entry E3 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 13,
+			"by": "session.turn.ended",
+			"writes": [
+				"entry E3 update",
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
 		{
 			"rev": 14,
-			"by": "session.tool.settled",
+			"by": "plain write",
 			"writes": [
-				"entry E3 update"
+				"thread T1 update",
+				"thread T1 update"
 			]
 		},
 		{
 			"rev": 15,
-			"by": "session.turn.ended",
+			"by": "session.llm.started",
 			"writes": [
-				"entry E3 update",
+				"thread T1 update",
+				"entry E4 insert",
 				"thread T1 update",
 				"thread T1 update"
 			]
 		},
 		{
 			"rev": 16,
-			"by": "plain write",
+			"by": "session.llm.ended",
 			"writes": [
+				"entry E4 update",
+				"thread T1 update",
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
 		{
 			"rev": 17,
-			"by": "session.llm.started",
-			"writes": [
-				"thread T1 update",
-				"entry E4 insert",
-				"thread T1 update",
-				"session S1 update"
-			]
-		},
-		{
-			"rev": 18,
-			"by": "session.llm.ended",
-			"writes": [
-				"entry E4 update",
-				"thread T1 update",
-				"session S1 update",
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 19,
 			"by": "session.turn.ended",
 			"writes": [
 				"entry E4 update",
 				"thread T1 update",
 				"thread T1 update"
+			]
+		},
+		{
+			"rev": 18,
+			"by": "session.execution.succeeded",
+			"writes": [
+				"thread T1 update",
+				"thread T1 update"
+			]
+		},
+		{
+			"rev": 19,
+			"by": "session.thread.forked",
+			"writes": [
+				"thread T2 insert",
+				"session S1 update",
+				"thread T2 update",
+				"thread T2 update",
+				"session S1 update"
 			]
 		},
 		{
@@ -205,34 +217,13 @@
 			"by": "plain write",
 			"writes": [
 				"thread T1 update",
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 21,
-			"by": "session.execution.succeeded",
-			"writes": [
-				"thread T1 update"
-			]
-		},
-		{
-			"rev": 22,
-			"by": "session.thread.forked",
-			"writes": [
-				"thread T2 insert",
-				"thread T2 update"
-			]
-		},
-		{
-			"rev": 23,
-			"by": "plain write",
-			"writes": [
+				"thread T2 update",
 				"thread T1 update",
 				"thread T2 update"
 			]
 		},
 		{
-			"rev": 24,
+			"rev": 21,
 			"by": "plain write",
 			"writes": [
 				"removed S1"
@@ -241,34 +232,34 @@
 	],
 	"rowsBeforeDelete": {
 		"project": [
-			"P1 rev=8"
+			"P1 rev=6"
 		],
 		"space": [
-			"SP1 rev=8"
+			"SP1 rev=6"
 		],
 		"session": [
-			"S1 rev=18"
+			"S1 rev=19"
 		],
 		"thread": [
-			"T1 rev=23",
-			"T2 rev=23"
+			"T1 rev=20",
+			"T2 rev=20"
 		],
 		"entry": [
-			"E1 rev=9",
-			"E2 rev=10",
-			"E3 rev=15",
-			"E4 rev=19"
+			"E1 rev=7",
+			"E2 rev=8",
+			"E3 rev=13",
+			"E4 rev=17"
 		],
 		"inbox": [
-			"E1 rev=9"
+			"E1 rev=7"
 		]
 	},
 	"rowsAfterDelete": {
 		"project": [
-			"P1 rev=8"
+			"P1 rev=6"
 		],
 		"space": [
-			"SP1 rev=8"
+			"SP1 rev=6"
 		],
 		"session": [],
 		"thread": [],
@@ -276,7 +267,7 @@
 		"inbox": []
 	},
 	"removed": [
-		"session S1 rev=24"
+		"session S1 rev=21"
 	],
 	"rejected": {
 		"staleRev": "rev is not the current revision",
