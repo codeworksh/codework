@@ -1402,6 +1402,52 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
+	// The stop lands after the run's success but before its drain returns: it is still the user's, so a prompt
+	// sent as the run ended is parked rather than left to run on the next start.
+	it(
+		"parks a prompt sent as its run succeeds when a stop lands before the drain returns",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+			const sessionId = yield* sessionOf(threadId);
+			let stopped = false;
+			yield* events.listen((event) =>
+				event.type === EventList.ExecutionSucceeded.type && !stopped
+					? Effect.sync(() => (stopped = true)).pipe(
+							Effect.andThen(
+								control.prompt({
+									sessionId,
+									threadId,
+									id: SessionMessageSchema.ID.make("Q"),
+									prompt: PromptSchema.Prompt.fromText("Q"),
+									delivery: "followUp",
+								}),
+							),
+							Effect.andThen(execution.interrupt(threadId, "user")),
+							Effect.orDie,
+							Effect.asVoid,
+						)
+					: Effect.void,
+			);
+
+			yield* send(threadId, "A");
+			yield* settle(threadId);
+			yield* control.resumeUnfinished;
+
+			expect(seen).toEqual(["succeeded", "interrupted"]);
+			expect(contexts.map(texts)).toEqual([["A"]]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+			expect((yield* delivered(threadId)).map((row) => [row.id, row.promotedSeq])).toEqual([
+				["A", expect.any(Number)],
+				["Q", null],
+			]);
+		}),
+	);
+
 	// The stop is accepted before the drain opened its run: it is still the user's, so what woke the drain
 	// is parked rather than left to run on the next start.
 	it(

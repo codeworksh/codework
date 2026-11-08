@@ -90,8 +90,11 @@ export const layer = Layer.effect(
 						const interrupted = Cause.hasInterruptsOnly(exit.cause);
 						const thread = yield* threads.get(threadId);
 						if (Option.isNone(thread)) return;
-						// A user stop is recorded even before its run opened: it parks what woke the drain.
-						if (ran ? thread.value.runState === "idle" : !(interrupted && reason === "user")) return;
+						// With no run open, before it opened or after it ended, a user stop is recorded only to park a
+						// prompt that would otherwise still run.
+						const open = ran && thread.value.runState !== "idle";
+						const stop = interrupted && reason === "user";
+						if (!open && !(stop && (yield* threads.runnable(threadId)))) return;
 						yield* publishLifecycle(threadId, (base) =>
 							interrupted
 								? // Nobody named a reason, so the process took the decision itself.
