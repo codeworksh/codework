@@ -57,7 +57,8 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 	// go idle, and only idleness proves our prompt is never running.
 	const stalled = yield* Deferred.make<void>();
 
-	const terminal = (event: EventSchema.Payload): ExecutionError | undefined => {
+	/** How a run ended, as this client reports it; `undefined` for a success. */
+	const failure = (event: EventList.RunEnded): ExecutionError | undefined => {
 		if (Schema.is(EventList.ExecutionInterrupted)(event))
 			return new ExecutionError({
 				type: "aborted",
@@ -93,18 +94,18 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 				}
 				if (Schema.is(EventList.Prompted)(event) && event.data.messageId === id) promoted = true;
 
-				const ended = terminal(event);
-				const succeeded = Schema.is(EventList.ExecutionSucceeded)(event);
+				const ended = EventList.isRunEnded(event);
+				const error = ended ? failure(event) : undefined;
 				if (!promoted) {
 					// Kept whatever arrives first: our admission comes from another fiber than the runs, so a
 					// run's end may be notified before it.
-					if ((ended !== undefined || succeeded) && seq !== undefined) ends.push({ at: seq, error: ended });
+					if (ended && seq !== undefined) ends.push({ at: seq, error });
 					if (admitted && ends.some(({ at }) => admittedAt === undefined || at > admittedAt))
 						yield* Deferred.succeed(stalled, undefined);
 					return;
 				}
-				if (ended !== undefined) return yield* ended;
-				if (succeeded) {
+				if (error !== undefined) return yield* error;
+				if (ended) {
 					settled = true;
 					return;
 				}

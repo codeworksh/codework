@@ -2,7 +2,6 @@ import type * as Acp from "@agentclientprotocol/sdk";
 import {
 	Control,
 	EventList,
-	type EventSchema,
 	type Harness,
 	PromptSchema,
 	Session,
@@ -22,10 +21,9 @@ const isNotFound = Schema.is(SessionStore.SessionNotFoundError);
 const isConflict = Schema.is(Control.PromptConflictError);
 const isInvalidPrompt = Schema.is(PromptSchema.InvalidPromptError);
 const isLLMEnded = Schema.is(EventList.LLMEnded);
-const isSucceeded = Schema.is(EventList.ExecutionSucceeded);
 const isFailed = Schema.is(EventList.ExecutionFailed);
 const isInterrupted = Schema.is(EventList.ExecutionInterrupted);
-const isSettled = (event: EventSchema.Payload) => isSucceeded(event) || isFailed(event) || isInterrupted(event);
+const isRunFailed = Schema.is(EventList.RunFailed);
 
 /** Harness failures as JSON-RPC errors; handlers raise protocol-level ones directly. */
 const toRequestError = (error: { readonly message: string }): Agent.RequestError => {
@@ -271,7 +269,7 @@ export const make = Effect.gen(function* () {
 									onSome: (update) => client.sessionUpdate({ sessionId: id, update }).pipe(Effect.ignore),
 								});
 							}),
-							Stream.filter(isSettled),
+							Stream.filter(EventList.isRunEnded),
 							Stream.runHead,
 							Effect.forkScoped({ startImmediately: true }),
 						);
@@ -289,6 +287,10 @@ export const make = Effect.gen(function* () {
 
 						if (Option.isNone(end) || isInterrupted(end.value)) return { stopReason: "cancelled" as const };
 						if (isFailed(end.value)) return yield* Agent.RequestError.internalError(end.value.data.error.message);
+						if (isRunFailed(end.value)) {
+							const { reason, message } = end.value.data;
+							return yield* Agent.RequestError.internalError(message, { reason });
+						}
 						return { stopReason: reason === "length" ? ("max_tokens" as const) : ("end_turn" as const) };
 					}).pipe(Effect.scoped),
 				),

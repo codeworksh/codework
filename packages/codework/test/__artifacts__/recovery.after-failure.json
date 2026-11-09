@@ -121,7 +121,7 @@
 		{
 			"seq": 21,
 			"type": "session.llm.failed",
-			"reason": "error",
+			"reason": "aborted",
 			"errorMessage": "The host stopped while the model was answering, on attempt 1",
 			"parts": []
 		},

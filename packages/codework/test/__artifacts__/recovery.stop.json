@@ -84,21 +84,27 @@
 		{
 			"seq": 15,
 			"type": "session.prompt.promoted",
-			"delivery": "steer",
-			"text": "Sent while stopping."
+			"delivery": "followUp",
+			"text": "Queued before the stop."
 		},
 		{
 			"seq": 16,
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
-			"text": "Next."
+			"text": "Sent while stopping."
 		},
 		{
 			"seq": 17,
-			"type": "session.llm.started"
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Next."
 		},
 		{
 			"seq": 18,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 19,
 			"type": "session.llm.ended",
 			"reason": "stop",
 			"parts": [
@@ -108,35 +114,11 @@
 			]
 		},
 		{
-			"seq": 19,
-			"type": "session.turn.ended"
-		},
-		{
 			"seq": 20,
-			"type": "session.prompt.promoted",
-			"delivery": "followUp",
-			"text": "Queued before the stop."
+			"type": "session.turn.ended"
 		},
 		{
 			"seq": 21,
-			"type": "session.llm.started"
-		},
-		{
-			"seq": 22,
-			"type": "session.llm.ended",
-			"reason": "stop",
-			"parts": [
-				{
-					"text": "Answer 2."
-				}
-			]
-		},
-		{
-			"seq": 23,
-			"type": "session.turn.ended"
-		},
-		{
-			"seq": 24,
 			"type": "session.execution.succeeded"
 		}
 	],
@@ -214,21 +196,21 @@
 					"delivery": "followUp",
 					"admittedSeq": 8,
 					"tail": 8,
-					"promotedSeq": 20
+					"promotedSeq": 15
 				},
 				{
 					"text": "Sent while stopping.",
 					"delivery": "steer",
 					"admittedSeq": 9,
 					"tail": 9,
-					"promotedSeq": 15
+					"promotedSeq": 16
 				},
 				{
 					"text": "Next.",
 					"delivery": "steer",
 					"admittedSeq": 13,
 					"tail": 13,
-					"promotedSeq": 16
+					"promotedSeq": 17
 				}
 			]
 		}
@@ -257,43 +239,15 @@
 			},
 			{
 				"role": "user",
-				"text": "Sent while stopping."
-			},
-			{
-				"role": "user",
-				"text": "Next."
-			}
-		],
-		[
-			{
-				"role": "user",
-				"text": "Run the stubborn command."
-			},
-			{
-				"role": "assistant",
-				"calls": [
-					"bash"
-				]
-			},
-			{
-				"role": "tool",
-				"text": "Tool Execution Interrupted"
-			},
-			{
-				"role": "user",
-				"text": "Sent while stopping."
-			},
-			{
-				"role": "user",
-				"text": "Next."
-			},
-			{
-				"role": "assistant",
-				"text": "Answer 1."
-			},
-			{
-				"role": "user",
 				"text": "Queued before the stop."
+			},
+			{
+				"role": "user",
+				"text": "Sent while stopping."
+			},
+			{
+				"role": "user",
+				"text": "Next."
 			}
 		]
 	]

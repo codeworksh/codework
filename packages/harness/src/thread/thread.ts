@@ -218,8 +218,8 @@ export interface Interface {
 	readonly retitle: (threadId: ThreadSchema.ID, title: string) => Effect.Effect<boolean>;
 	/**
 	 * Claims a thread's unfinished run for recovery, counting a restart when the sweep found its host
-	 * dead in it (a shutdown is not counted). The new count, or none when nothing is unfinished any
-	 * more, say because the user stopped it since.
+	 * dead in it, unless the run slept in retry backoff (a shutdown is not counted either). The new count,
+	 * or none when nothing is unfinished any more, say because the user stopped it since.
 	 */
 	readonly claimRestart: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<number>>;
 	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
@@ -233,14 +233,15 @@ export interface Interface {
 	/** Whether the thread's last run was cut off by the host, a crash or a shutdown: a run to resume. */
 	readonly cutOff: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/**
-	 * Root threads with a run left to resume, oldest first: their last run was interrupted by a crash or
-	 * a shutdown, or a pending prompt is runnable. Read after the startup sweep has closed open runs.
+	 * Threads with a run left to resume, oldest first: their last run was interrupted by a crash or a
+	 * shutdown, or a pending prompt is runnable. Read after the startup sweep has closed open runs.
 	 */
 	readonly unfinished: Effect.Effect<ReadonlyArray<ThreadRow>>;
 	/**
 	 * Projector-only: the `run_*` columns, at the time `at` of the event that changed them, and what a
 	 * run's end settles: `head` moves to an unanswered end (a failure or a user stop), which parks the
-	 * queue; the restart count and the request in flight clear, except where the run resumes.
+	 * queue; the restart count and the request in flight clear, except where the run resumes. An end
+	 * landing on a run already ended only moves `head`. Dies when the thread is gone, rolling the event back.
 	 */
 	readonly projectRun: (threadId: ThreadSchema.ID, at: DateTime.Utc, change: RunChange) => Effect.Effect<void>;
 	/** Threads whose stored run is not idle: at startup, the runs a dead process left open. */
@@ -959,12 +960,23 @@ export const layer = Layer.effect(
 		const interruptedOf = (reasons: ReadonlyArray<SessionSchema.InterruptReason>) =>
 			sql`(thread.run_outcome = 'interrupted' AND json_extract(thread.run_error, '$.reason') IN ${sql.in(reasons)})`;
 		const unfinishedOf = sql`(${interruptedOf(["crash", "shutdown"])} OR ${runnableOf})`;
+		/*
+		 * Over a `thread` row: its run sleeps in retry backoff, its attempt set and no draft open (the failed
+		 * attempt's draft was aborted before the sleep). A crash there is no restart: a receive count, as SQS
+		 * keeps one per message, counts only deliveries being worked on, and a sleeping one is not; its
+		 * carried attempt bounds it instead. The moment between setting the attempt and opening its draft
+		 * reads as asleep too, bounded the same way.
+		 */
+		const asleepOf = sql`(thread.attempt IS NOT NULL AND NOT EXISTS (
+			SELECT 1 FROM entry WHERE entry.thread_id = thread.id AND entry.state = 'draft'
+		))`;
 
 		const claimRestart = Effect.fn("Thread.claimRestart")(
 			function* (threadId: ThreadSchema.ID) {
 				const rows = yield* sql<{ restarts: number }>`
 				UPDATE thread
-				SET restarts = restarts + (CASE WHEN ${interruptedOf(["crash"])} THEN 1 ELSE 0 END), rev = ${yield* store.rev}
+				SET restarts = restarts + (CASE WHEN ${interruptedOf(["crash"])} AND NOT ${asleepOf} THEN 1 ELSE 0 END),
+					rev = ${yield* store.rev}
 				WHERE id = ${threadId} AND ${unfinishedOf}
 				RETURNING restarts
 			`;
@@ -1003,7 +1015,7 @@ export const layer = Layer.effect(
 			Request: Schema.Void,
 			Result: ThreadRow,
 			execute: () => sql`
-				SELECT * FROM thread WHERE origin_kind <> 'subagent' AND ${unfinishedOf} ORDER BY updated_at
+				SELECT * FROM thread WHERE ${unfinishedOf} ORDER BY updated_at
 			`,
 		});
 		const unfinished = findUnfinished(undefined).pipe(Effect.orDie, Effect.withSpan("Thread.unfinished"));
@@ -1019,34 +1031,53 @@ export const layer = Layer.effect(
 				change._tag === "started" ? "starting" : change._tag === "running" ? "running" : "idle";
 			// SET reads the old row, so `run_state_at` moves only when the state does.
 			const stateAt = sql`CASE WHEN run_state = ${state} THEN run_state_at ELSE ${time} END`;
+			// Checked inside the event's commit: a lifecycle event for a thread deleted since its publisher read it
+			// must roll back, or it recreates the session's sequence row.
+			const found = (rows: ReadonlyArray<unknown>) =>
+				rows.length > 0 ? Effect.void : Effect.die(new ThreadNotFoundError({ threadId }));
 			if (change._tag === "running") {
-				yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state}, rev = ${rev} WHERE id = ${threadId}`;
-				return;
+				return yield* found(
+					yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state}, rev = ${rev} WHERE id = ${threadId} RETURNING id`,
+				);
 			}
 			if (change._tag === "started") {
-				yield* sql`
+				return yield* found(
+					yield* sql`
 					UPDATE thread SET
 						run_state_at = ${stateAt}, run_state = ${state}, run_started_at = ${time},
 						run_ended_at = NULL, run_outcome = NULL, run_error = NULL, rev = ${rev}
 					WHERE id = ${threadId}
-				`;
-				return;
+					RETURNING id
+				`,
+				);
 			}
 			const error = change.error === undefined ? null : yield* encodeRunError(change.error);
 			const interrupted = change.error?._tag === "interrupted" ? change.error.reason : undefined;
 			// An unanswered end parks what is queued: a prompt woken before it waits for the next one.
 			const head = change.outcome === "failed" || interrupted === "user" ? sql`MAX(head, ${change.seq})` : sql`head`;
-			// A run the host cut off resumes: a crash keeps its count for the resume to claim and its request
-			// in flight for the retry; a shutdown ended its request itself.
-			const restarts = interrupted === "crash" || interrupted === "shutdown" ? sql`restarts` : sql`0`;
-			const attempt = interrupted === "crash" ? sql`attempt` : sql`NULL`;
-			yield* sql`
+			// A run already ended keeps the outcome of the terminal that ended it; a later one only parks. One the
+			// host cut off is still owed its end: a stop before its resume is that end.
+			const parked = yield* sql`
+				UPDATE thread SET head = ${head}, rev = ${rev}
+				WHERE id = ${threadId} AND run_state = 'idle' AND NOT ${interruptedOf(["crash", "shutdown"])}
+				RETURNING id
+			`;
+			if (parked.length > 0) return;
+			// A run the host cut off resumes, a clean shutdown's too: it keeps its count for the resume to claim and
+			// its attempt, so a restart does not hand a failing request a fresh retry budget.
+			const cutOff = interrupted === "crash" || interrupted === "shutdown";
+			const restarts = cutOff ? sql`restarts` : sql`0`;
+			const attempt = cutOff ? sql`attempt` : sql`NULL`;
+			yield* found(
+				yield* sql`
 				UPDATE thread SET
 					run_state_at = ${stateAt}, run_state = ${state}, run_ended_at = ${time},
 					run_outcome = ${change.outcome}, run_error = ${error}, head = ${head}, restarts = ${restarts},
 					attempt = ${attempt}, rev = ${rev}
 				WHERE id = ${threadId}
-			`;
+				RETURNING id
+			`,
+			);
 		}, Effect.orDie);
 
 		const findOpen = SqlSchema.findAll({

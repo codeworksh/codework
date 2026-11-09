@@ -769,3 +769,77 @@ describe("threads", () => {
 		}),
 	);
 });
+
+describe("thread runs left to resume", () => {
+	/** The thread's stored run, as a dead host left it once the next start swept it. */
+	const crashed = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID) {
+		const events = yield* Event.Service;
+		yield* events.publish(EventList.ExecutionStarted, {
+			timestamp: yield* DateTime.now,
+			sessionId,
+			threadId,
+			resumed: false,
+		});
+		yield* events.publish(EventList.ExecutionInterrupted, {
+			timestamp: yield* DateTime.now,
+			sessionId,
+			threadId,
+			reason: "crash",
+		});
+	});
+
+	it(
+		"lists a subagent thread whose run a crash cut off",
+		Effect.gen(function* () {
+			yield* reset;
+			const threads = yield* Thread.Service;
+			const { sessionId, main } = yield* createSession;
+			const subagent = ThreadSchema.ID.create();
+			yield* threads.insert({
+				id: subagent,
+				sessionId,
+				origin: { kind: "subagent", threadId: main, callId: "call_1" },
+				seq: 1,
+			});
+			yield* crashed(sessionId, subagent);
+
+			expect((yield* threads.unfinished).map((row) => row.id)).toContain(subagent);
+		}),
+	);
+
+	// A host that keeps dying at the same point between requests must reach the restart limit; only a run
+	// asleep in retry backoff is spared.
+	it(
+		"counts a crash as a restart unless the run slept in retry backoff",
+		Effect.gen(function* () {
+			yield* reset;
+			const threads = yield* Thread.Service;
+			const events = yield* Event.Service;
+			const { sessionId, main } = yield* createSession;
+			yield* crashed(sessionId, main);
+
+			// Between requests: no attempt marked, no draft open.
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(1));
+			// Asleep in backoff: the attempt it waits for is marked, the failed one's draft already aborted.
+			yield* threads.setAttempt(main, 2);
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(1));
+			// Streaming that attempt: its draft is open.
+			const input: LLM.Input = {
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
+				threadId: main,
+				context: { messages: [] },
+				provider: "openai",
+				model: "gpt-4o-mini",
+			};
+			const draft = assistant(input, 1, { parts: [{ type: "text", text: "half" }] });
+			yield* events.publish(EventList.LLMStarted, {
+				timestamp: yield* DateTime.now,
+				sessionId,
+				threadId: main,
+				messageId: SessionMessageSchema.ID.from(draft.messageId),
+				message: draft,
+			});
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(2));
+		}),
+	);
+});

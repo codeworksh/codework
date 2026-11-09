@@ -120,7 +120,7 @@ export const layer = Layer.effectDiscard(
 		);
 
 		// Publishing `Prompted` is what promotes an input, so this registration is
-		// what makes `promoteSteers` / `promoteFollowUp` take effect at all.
+		// what makes `promote` take effect at all.
 		yield* events.project(EventList.Prompted, (event) =>
 			Effect.gen(function* () {
 				const seq = yield* seqOf(event);

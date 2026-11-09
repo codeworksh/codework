@@ -1,0 +1,42 @@
+{
+	"broken": [
+		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"type": "session.execution.failed"
+		}
+	],
+	"healthy": [
+		{
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"type": "session.execution.succeeded"
+		}
+	],
+	"resent": [
+		{
+			"role": "user",
+			"text": "Healthy."
+		}
+	]
+}

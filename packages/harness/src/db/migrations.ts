@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 
@@ -316,3 +316,33 @@ export const migrations = {
 		}
 	}),
 };
+
+/**
+ * Columns added to `init` after databases were already created from it. The migrator never reruns an
+ * applied id, so an older database lacks them, and the first query reading one fails obscurely.
+ */
+const folded: ReadonlyArray<readonly [table: string, column: string]> = [
+	["thread", "head"],
+	["inbox", "tail"],
+];
+
+/** The database predates columns this version reads; it is recreated, not upgraded. */
+export class OutdatedError extends Schema.TaggedError<OutdatedError>()("Database.OutdatedError", {
+	location: Schema.String,
+	missing: Schema.Array(Schema.String),
+}) {
+	override get message(): string {
+		return `The database at ${this.location} was created by an older version and lacks ${this.missing.join(", ")}; delete it, with its -wal and -shm files, to recreate it`;
+	}
+}
+
+/** Fails with `OutdatedError` when the migrated database at `location` lacks a folded column. */
+export const verify = Effect.fn("Database.verify")(function* (location: string) {
+	const sql = yield* SqlClient.SqlClient;
+	const missing: Array<string> = [];
+	for (const [table, column] of folded) {
+		const columns = yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info(${table})`;
+		if (!columns.some((row) => row.name === column)) missing.push(`${table}.${column}`);
+	}
+	if (missing.length > 0) return yield* new OutdatedError({ location, missing });
+});

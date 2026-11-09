@@ -4,10 +4,11 @@ import { Migrator, SqlClient } from "effect/sql";
 import { Global } from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
-import { migrations } from "./migrations.ts";
+import { migrations, OutdatedError, verify } from "./migrations.ts";
 import { Store } from "./store.ts";
 
 export { SqlClient, SqlSchema } from "effect/sql";
+export { OutdatedError };
 
 // PRAGMAs and migrations run once during layer construction; the node:sqlite
 // client holds a single connection for the lifetime of the layer, so the settings
@@ -45,6 +46,13 @@ export function layer(location: string) {
 	return client.pipe(
 		Layer.tap((context) => setup.pipe(Effect.provide(context))),
 		Layer.orDie,
+		// Typed, unlike the setup above: an outdated database is the user's to delete, not a bug.
+		Layer.tap((context) =>
+			verify(location).pipe(
+				Effect.catchTag("SqlError", (error) => Effect.die(error)),
+				Effect.provide(context),
+			),
+		),
 		(sqlite) => Layer.provideMerge(Store.layer, sqlite),
 	);
 }

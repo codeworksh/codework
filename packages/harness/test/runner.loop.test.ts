@@ -157,7 +157,7 @@ describe("runner loop — aikit input/output", () => {
 	const { effect: it } = testEffect(runtime({ contexts }));
 
 	it(
-		"drains steers before follow-ups and persists each terminal assistant",
+		"places a follow-up older than a steer first, the two in the run's first request",
 		Effect.gen(function* () {
 			contexts.length = 0;
 			const execution = yield* RunnerExecution.Service;
@@ -170,20 +170,15 @@ describe("runner loop — aikit input/output", () => {
 
 			const rows = yield* delivered(threadId);
 			const bySeq = [...rows].sort((left, right) => (left.promotedSeq ?? 0) - (right.promotedSeq ?? 0));
-			expect(bySeq.map((row) => row.id)).toEqual(["msg_steer", "msg_follow"]);
+			expect(bySeq.map((row) => row.id)).toEqual(["msg_follow", "msg_steer"]);
 			expect((yield* threads.line(threadId)).map((item) => item.entry.type)).toEqual([
+				"user",
 				"user",
 				"system",
 				"assistant",
-				"user",
-				"assistant",
 			]);
-
-			// Every request is rebuilt from durable history. The second request sees
-			// the first terminal assistant and the newly promoted follow-up.
 			expect(contexts.map((context) => context.messages.map((message) => message.role))).toEqual([
-				["user", "system"],
-				["user", "system", "assistant", "user"],
+				["user", "user", "system"],
 			]);
 		}),
 	);
@@ -210,7 +205,7 @@ describe("runner loop — aikit input/output", () => {
 	);
 
 	it(
-		"promotes all current steers as one request, then follow-ups one per request",
+		"promotes all current steers with the oldest follow-up as one request, then follow-ups one per request",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
 			const threads = yield* Thread.Service;
@@ -228,18 +223,17 @@ describe("runner loop — aikit input/output", () => {
 				"user",
 				"user",
 				"user",
-				"system",
-				"assistant",
 				"user",
+				"system",
 				"assistant",
 				"user",
 				"assistant",
 			]);
 			expect(path.filter((item) => item.entry.type === "user").map((item) => item.entry.id)).toEqual([
 				"msg_s1",
+				"msg_f1",
 				"msg_s2",
 				"msg_s3",
-				"msg_f1",
 				"msg_f2",
 			]);
 		}),
@@ -1042,7 +1036,7 @@ describe("runner loop — queued input", () => {
 	);
 
 	// A failed run does not start the next one: what was sent while it failed is parked, and the next
-	// prompt places it, steers with that prompt and follow-ups after.
+	// prompt places it: the steers and the oldest follow-up with that prompt, in admission order.
 	it(
 		"keeps prompts sent while a run fails queued until the next prompt places them",
 		Effect.gen(function* () {
@@ -1067,10 +1061,7 @@ describe("runner loop — queued input", () => {
 			yield* settle(threadId);
 
 			expect(seen).toEqual(["failed", "succeeded"]);
-			expect(contexts.map(texts).slice(1)).toEqual([
-				["A", "S1", "N"],
-				["A", "S1", "N", "F1"],
-			]);
+			expect(contexts.map(texts).slice(1)).toEqual([["A", "F1", "S1", "N"]]);
 		}),
 	);
 
@@ -1125,7 +1116,7 @@ describe("runner loop — queued input", () => {
 	);
 
 	// A stop claims the wakes of what was sent during the run: it stays queued, and the next prompt
-	// places it, steers with that prompt and follow-ups after.
+	// places it: the steers and the oldest follow-up with that prompt, in admission order.
 	it(
 		"keeps prompts sent before a stop queued until the next prompt places them",
 		Effect.gen(function* () {
@@ -1160,10 +1151,7 @@ describe("runner loop — queued input", () => {
 			yield* settle(threadId);
 
 			expect(seen).toEqual(["interrupted", "succeeded"]);
-			expect(contexts.map(texts).slice(1)).toEqual([
-				["A", "S1", "N"],
-				["A", "S1", "N", "F1"],
-			]);
+			expect(contexts.map(texts).slice(1)).toEqual([["A", "S1", "F1", "N"]]);
 		}),
 	);
 });
@@ -1171,7 +1159,8 @@ describe("runner loop — queued input", () => {
 describe("runner loop — resume after restart", () => {
 	const provider = scriptedProvider();
 	const { contexts, script } = provider;
-	const { effect: it } = testEffect(runtime({ open: provider.open }));
+	// Live, with a short backoff: a resumed request whose attempt was carried waits out its retry first.
+	const { live: it } = testEffect(runtime({ open: provider.open, settings: settings({ baseDelayMs: 1 }) }));
 
 	/** Whether the next server start would resume the thread, and its restart count. */
 	const stateOf = (threadId: ThreadSchema.ID) =>
@@ -1221,7 +1210,7 @@ describe("runner loop — resume after restart", () => {
 		const events = yield* Event.Service;
 		const inputs = yield* Inbox.make;
 		yield* admit({ id, threadId, delivery: "steer" });
-		yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+		yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 		const input: LLM.Input = {
 			resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
 			threadId,
@@ -1498,6 +1487,85 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
+	// The drain is gone and its `settled` hook is running: a stop finds nothing to interrupt, yet a prompt sent
+	// in that window would otherwise run on its own at the next start. The stop is decided from durable state.
+	it(
+		"parks a prompt sent while a failed run settles when the stop finds no drain to interrupt",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const seen = yield* outcomes;
+			const { threadId } = yield* seedSession();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
+			const stopped: boolean[] = [];
+			yield* events.listen((event) =>
+				event.type === EventList.ExecutionFailed.type
+					? send(threadId, "Q", "followUp").pipe(
+							Effect.andThen(control.interrupt(threadId, { reason: "user" })),
+							Effect.map((accepted) => void stopped.push(accepted)),
+							Effect.orDie,
+							Effect.provideContext(services),
+						)
+					: Effect.void,
+			);
+			script.push("fail");
+
+			yield* send(threadId, "A");
+			yield* settle(threadId);
+			yield* control.resumeUnfinished;
+
+			// No drain was left to interrupt: the stop is recorded against the runnable prompt instead.
+			expect(stopped).toEqual([true]);
+			expect(seen).toEqual(["failed", "interrupted"]);
+			expect(contexts.map(texts)).toEqual([["A"]]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
+	// A stop after `run.failed` ends nothing: the run row keeps the failure, and the stop only parks what was
+	// sent in between.
+	it(
+		"keeps a run's failure when a stop after its run.failed parks a prompt sent in between",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const { threadId } = yield* seedSession();
+			const services = yield* Effect.context<Control.Service | Thread.Service>();
+			let failedSeq = 0;
+			yield* events.listen((event) =>
+				event.type === EventList.RunFailed.type
+					? Effect.sync(() => (failedSeq = event.durable?.seq ?? 0)).pipe(
+							Effect.andThen(send(threadId, "Q", "followUp")),
+							Effect.andThen(execution.interrupt(threadId, "user")),
+							Effect.asVoid,
+							Effect.orDie,
+							Effect.provideContext(services),
+						)
+					: Effect.void,
+			);
+			yield* crashedMidReply(threadId, "A");
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1}, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
+
+			yield* Effect.exit(control.resumeUnfinished);
+			yield* settle(threadId);
+
+			const [row] = yield* sql<{
+				runOutcome: string;
+				runError: string;
+				head: number;
+			}>`SELECT run_outcome, run_error, head FROM thread WHERE id = ${threadId}`;
+			expect(row!.runOutcome).toBe("failed");
+			expect(JSON.parse(row!.runError)).toMatchObject({ _tag: "runFailed", reason: "crashloop" });
+			expect(row!.head).toBeGreaterThan(failedSeq);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+			expect(contexts).toEqual([]);
+		}),
+	);
+
 	// A thread a crash cut off, stopped before a drain opened a run: nothing is runnable, but the stop must
 	// still stand, or the next start resumes the run the user stopped.
 	it(
@@ -1722,7 +1790,7 @@ describe("runner loop — lifecycle hooks", () => {
 		);
 
 		it(
-			"shows the queued steers, else the oldest follow-up, without promoting them",
+			"shows the queued steers and the oldest follow-up, without promoting them",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
 				const { threadId } = yield* seedSession();
@@ -1732,8 +1800,8 @@ describe("runner loop — lifecycle hooks", () => {
 
 				yield* execution.resume(threadId);
 
-				// Turn 1 (toolUse), turn 2 (stop), turn 3 (first follow-up), turn 4 (second follow-up).
-				expect(seen).toEqual([["followUp:msg_later"], ["followUp:msg_later"], ["followUp:msg_next"], []]);
+				// Turn 1 (the steer and the first follow-up; toolUse), turn 2 (stop), turn 3 (second follow-up).
+				expect(seen).toEqual([["followUp:msg_next"], ["followUp:msg_next"], []]);
 			}),
 		);
 	});
@@ -1741,54 +1809,46 @@ describe("runner loop — lifecycle hooks", () => {
 	describe("finishTurn end", () => {
 		const contexts: Message.Context[] = [];
 		let prepared = 0;
+		/** Runs as the hook ends a run. */
+		const ending = { run: Effect.void as Effect.Effect<void> };
 		const { effect: it } = testEffect(
 			runtime({
 				open: recording(contexts),
 				hooks: hooksOf({
-					finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined),
+					finishTurn: (turn) =>
+						turn.reason === "toolUse" ? ending.run.pipe(Effect.as("end" as const)) : Effect.undefined,
 					prepareNextTurn: (_turn, next) => Effect.sync(() => ((prepared += 1), next)),
 				}),
 				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
 			}),
 		);
 
+		// Level-triggered: the drain ends with a prompt still runnable, so it drains again with no new bell.
 		it(
-			"stops the run after the committed turn and leaves queued input for the next run",
+			"ends the run after the committed turn, and what is queued starts the next run without a new prompt",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
+				const seen = yield* outcomes;
 				const { threadId } = yield* seedSession();
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				ending.run = admit({ id: "msg_queued", threadId, delivery: "followUp" }).pipe(
+					Effect.asVoid,
+					Effect.provideContext(services),
+				);
 				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
-				yield* admit({ id: "msg_queued", threadId, delivery: "followUp" });
 
 				yield* execution.resume(threadId);
 
-				expect(contexts).toHaveLength(1);
 				expect(prepared).toBe(0);
-				const threads = yield* Thread.Service;
-				const path = yield* threads.line(threadId);
-				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
-					["user", "committed"],
-					["system", "committed"],
-					["assistant", "committed"],
+				expect(seen).toEqual(["succeeded", "succeeded"]);
+				// The next run places the follow-up where it lands, after the tool results.
+				expect(contexts.map((context) => context.messages.map((message) => message.role))).toEqual([
+					["user", "system"],
+					["user", "system", "assistant", "user"],
 				]);
-				const tool = path[2]!.parts.find((part) => part.type === "toolCall");
-				expect(tool).toBeDefined();
+				expect(contexts.map(texts)).toEqual([["msg_first"], ["msg_first", "msg_queued"]]);
 				const rows = yield* delivered(threadId);
-				expect(rows.find((row) => row.id === "msg_queued")?.promotedSeq).toBeNull();
-
-				// The next run answers the tool results first, then picks the queued follow-up up.
-				yield* execution.resume(threadId);
-				expect(contexts).toHaveLength(3);
-				expect(contexts[1]!.messages.map((message) => message.role)).toEqual(["user", "system", "assistant"]);
-				expect(contexts[2]!.messages.map((message) => message.role)).toEqual([
-					"user",
-					"system",
-					"assistant",
-					"assistant",
-					"user",
-				]);
-				const next = yield* delivered(threadId);
-				expect(next.find((row) => row.id === "msg_queued")?.promotedSeq).not.toBeNull();
+				expect(rows.find((row) => row.id === "msg_queued")?.promotedSeq).not.toBeNull();
 			}),
 		);
 	});
@@ -1811,8 +1871,9 @@ describe("runner loop — lifecycle hooks", () => {
 				const execution = yield* RunnerExecution.Service;
 				const { threadId } = yield* seedSession();
 				yield* admit({ id: "msg_first", threadId, delivery: "steer" });
-				yield* admit({ id: "msg_queued", threadId, delivery: "followUp" });
 				yield* execution.resume(threadId);
+				// Queued with no wake: the explicit resume below finds it behind the unanswered tool results.
+				yield* admit({ id: "msg_queued", threadId, delivery: "followUp" });
 
 				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
 				gate.run = admit({ id: "msg_late", threadId, delivery: "steer" }).pipe(

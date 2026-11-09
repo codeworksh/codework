@@ -3,7 +3,7 @@
  * Connects the process coordinator to the durable input/output loop.
  */
 
-import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Store } from "../db/store.ts";
 import { Event } from "../event/event.ts";
@@ -55,6 +55,7 @@ export const layer = Layer.effect(
 
 		// The session a thread belongs to, for the lifecycle events its log carries. Read every time, not
 		// cached: the events are durable, and one for a session deleted since would recreate its log.
+		const isThreadNotFound = Schema.is(Thread.ThreadNotFoundError);
 		const sessionOf = (threadId: ThreadId) =>
 			threads.get(threadId).pipe(Effect.map(Option.map((thread) => SessionSchema.ID.make(thread.sessionId))));
 		const publishLifecycle = (
@@ -68,7 +69,10 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				const sessionId = yield* sessionOf(threadId);
 				if (Option.isNone(sessionId)) return;
-				yield* publish({ sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now });
+				yield* publish({ sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now }).pipe(
+					// Deleted between the read and the commit: the projector rolled the event back.
+					Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.void : Effect.die(defect))),
+				);
 			});
 
 		// Threads being recovered: their run is announced as resumed.
@@ -106,102 +110,118 @@ export const layer = Layer.effect(
 						);
 					}),
 				),
-			// One run per drain that runs, opened before it promotes anything: a process dying anywhere in it
-			// leaves an open run, which the next server start sweeps as a crash and resumes.
-			drain: Effect.fnUntraced(function* (threadId: ThreadId, force) {
-				opened.delete(threadId);
-				const thread = yield* threads.get(threadId);
-				// Deleted with its session after something woke it: nothing is left to run.
-				if (Option.isNone(thread)) return;
-				const sessionId = thread.value.sessionId;
-				const recovered = recovering.delete(threadId);
-				// A recovery claimed the thread before its drain: a stop since then must stand.
-				if (recovered && !(yield* threads.resumable(threadId))) return;
-				// The doorbell is only a hint: an unforced drain runs only for a prompt woken past the head.
-				if (!force && !(yield* threads.runnable(threadId))) return;
-				// Whole or not at all: a stop lands either before the run opened or on an open run.
-				yield* Effect.uninterruptible(
-					Effect.sync(() => opened.add(threadId)).pipe(
-						Effect.andThen(
-							reportLifecycle(
-								threadId,
-								publishLifecycle(threadId, (base) =>
-									events.publish(EventList.ExecutionStarted, { ...base, resumed: recovered }),
-								),
+			// Level-triggered: work still runnable as a drain ends (queued behind a hook's `end`, or left by a
+			// lost lifecycle publish) is drained again rather than left waiting for a bell.
+			drain: (threadId: ThreadId, force: boolean): Effect.Effect<void, Runner.RunError> =>
+				drainOnce(threadId, force).pipe(
+					Effect.tap(() =>
+						Effect.gen(function* () {
+							if (yield* threads.runnable(threadId)) yield* coordinator.wake(threadId);
+						}),
+					),
+				),
+		});
+
+		// One run per drain that runs, opened before it promotes anything: a process dying anywhere in it
+		// leaves an open run, which the next server start sweeps as a crash and resumes.
+		const drainOnce = Effect.fnUntraced(function* (threadId: ThreadId, force: boolean) {
+			opened.delete(threadId);
+			const thread = yield* threads.get(threadId);
+			// Deleted with its session after something woke it: nothing is left to run.
+			if (Option.isNone(thread)) return;
+			const sessionId = thread.value.sessionId;
+			// Read before `execution.started` clears it.
+			const shutdown = Option.exists(
+				thread.value.runError,
+				(error) => error._tag === "interrupted" && error.reason === "shutdown",
+			);
+			const recovered = recovering.delete(threadId);
+			// A recovery claimed the thread before its drain: a stop since then must stand.
+			if (recovered && !(yield* threads.resumable(threadId))) return;
+			// The doorbell is only a hint: an unforced drain runs only for a prompt woken past the head.
+			if (!force && !(yield* threads.runnable(threadId))) return;
+			// Whole or not at all: a stop lands either before the run opened or on an open run.
+			yield* Effect.uninterruptible(
+				Effect.sync(() => opened.add(threadId)).pipe(
+					Effect.andThen(
+						reportLifecycle(
+							threadId,
+							publishLifecycle(threadId, (base) =>
+								events.publish(EventList.ExecutionStarted, { ...base, resumed: recovered }),
 							),
 						),
 					),
-				);
-				// `ended`: the run published its own terminal, `session.run.failed`. A stop arriving meanwhile
-				// waits for the success to land, so `settled` finds the run ended.
-				const close = (outcome: Runner.Outcome) =>
-					outcome === "ended"
-						? Effect.void
-						: Effect.uninterruptible(
-								reportLifecycle(
-									threadId,
-									publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionSucceeded, base)),
-								),
-							);
-				// Only the drain the abandon itself started: one it joined is a live run, which must stand.
-				const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
-				if (abandoned !== undefined)
-					return yield* runner.abandon({ threadId, message: abandoned }).pipe(Effect.flatMap(close));
-				// The thread's placement, else the session's space and directory. A placement names its
-				// space in a document no FK guards, so a space gone since is typed: `relink --thread`
-				// is the repair.
-				const placement = yield* sessions.placement(threadId);
-				if (Option.isNone(placement)) {
-					return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId, threadId });
+				),
+			);
+			// `ended`: the run published its own terminal, `session.run.failed`. A stop arriving meanwhile
+			// waits for the success to land, so `settled` finds the run ended.
+			const close = (outcome: Runner.Outcome) =>
+				outcome === "ended"
+					? Effect.void
+					: Effect.uninterruptible(
+							reportLifecycle(
+								threadId,
+								publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionSucceeded, base)),
+							),
+						);
+			// Only the drain the abandon itself started: one it joined is a live run, which must stand.
+			const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
+			if (abandoned !== undefined)
+				return yield* runner.abandon({ threadId, message: abandoned }).pipe(Effect.flatMap(close));
+			// The thread's placement, else the session's space and directory. A placement names its
+			// space in a document no FK guards, so a space gone since is typed: `relink --thread`
+			// is the repair.
+			const placement = yield* sessions.placement(threadId);
+			if (Option.isNone(placement)) {
+				return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId, threadId });
+			}
+			const instanceId = placement.value.space.env;
+			const mount = sandbox.mount(instanceId, { cwd: placement.value.directory });
+
+			const scopedRun = Effect.gen(function* () {
+				const mountContext = yield* Layer.build(mount);
+				const current = Context.get(mountContext, SandboxIO.Current);
+				const fs = Context.get(mountContext, SandboxIO.FileSystem);
+				if (!(yield* fs.exists(current.cwd))) {
+					return yield* new Runner.SandboxDirectoryNotFoundError({
+						threadId,
+						sandboxInstanceId: instanceId,
+						directory: current.cwd,
+					});
 				}
-				const instanceId = placement.value.space.env;
-				const mount = sandbox.mount(instanceId, { cwd: placement.value.directory });
 
-				const scopedRun = Effect.gen(function* () {
-					const mountContext = yield* Layer.build(mount);
-					const current = Context.get(mountContext, SandboxIO.Current);
-					const fs = Context.get(mountContext, SandboxIO.FileSystem);
-					if (!(yield* fs.exists(current.cwd))) {
-						return yield* new Runner.SandboxDirectoryNotFoundError({
-							threadId,
-							sandboxInstanceId: instanceId,
-							directory: current.cwd,
-						});
-					}
-
-					const location = Location.layerMounted().pipe(
-						Layer.provide(Layer.succeedContext(mountContext)),
-						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
-						Layer.provide(Layer.succeed(Store.Service, store)),
-					);
-					const locationContext = yield* Layer.build(location).pipe(
-						Effect.catchTag(
-							["Location.DirectoryNotFoundError", "Location.NotDirectoryError"],
-							(error) =>
-								new Runner.SandboxDirectoryNotFoundError({
-									threadId,
-									sandboxInstanceId: error.sandboxInstanceId,
-									directory: error.directory,
-								}),
-						),
-					);
-
-					// The thread's MCP servers stay open while its drain runs, and idle out after.
-					yield* mcp.lease({ sessionId, threadId });
-					return yield* runner
-						.run({ threadId, force, recovered })
-						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)), Effect.flatMap(close));
-				});
-
-				return yield* scopedRun.pipe(
-					Effect.scoped,
-					Effect.tapCause((cause) =>
-						Cause.hasDies(cause)
-							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ threadId }))
-							: Effect.void,
+				const location = Location.layerMounted().pipe(
+					Layer.provide(Layer.succeedContext(mountContext)),
+					Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
+					Layer.provide(Layer.succeed(Store.Service, store)),
+				);
+				const locationContext = yield* Layer.build(location).pipe(
+					Effect.catchTag(
+						["Location.DirectoryNotFoundError", "Location.NotDirectoryError"],
+						(error) =>
+							new Runner.SandboxDirectoryNotFoundError({
+								threadId,
+								sandboxInstanceId: error.sandboxInstanceId,
+								directory: error.directory,
+							}),
 					),
 				);
-			}),
+
+				// The thread's MCP servers stay open while its drain runs, and idle out after.
+				yield* mcp.lease({ sessionId, threadId });
+				return yield* runner
+					.run({ threadId, force, recovered, shutdown })
+					.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)), Effect.flatMap(close));
+			});
+
+			return yield* scopedRun.pipe(
+				Effect.scoped,
+				Effect.tapCause((cause) =>
+					Cause.hasDies(cause)
+						? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ threadId }))
+						: Effect.void,
+				),
+			);
 		});
 
 		const interrupt: RunnerExecution.Interface["interrupt"] = (threadId, reason, options) =>

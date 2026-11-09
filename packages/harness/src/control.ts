@@ -14,7 +14,7 @@
  * execution and on storage, and neither depends back.
  */
 
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Event } from "./event/event.ts";
 import { EventList } from "./event/list.ts";
 import { Inbox } from "./inbox/inbox.ts";
@@ -82,8 +82,9 @@ export interface Interface {
 	/** Starts a drain while the thread is idle, or joins the one already running. */
 	readonly resume: (threadId: ThreadSchema.ID) => Effect.Effect<void, Thread.ThreadNotFoundError | Runner.RunError>;
 	/**
-	 * Stops work owned by this process. Idle is a no-op. Resolves once the
-	 * interruption is accepted and returns whether there was work to accept it;
+	 * Stops work owned by this process. Idle is a no-op, except that a user stop still ends a run the
+	 * last process cut off, or parks a runnable prompt, when no execution here owns the thread. Resolves
+	 * once the interruption is accepted and returns whether there was work to accept it;
 	 * `awaitSettlement` additionally waits for that execution's cleanup, without
 	 * following work another caller admits in the meantime.
 	 */
@@ -102,9 +103,10 @@ export interface Interface {
 	readonly active: Effect.Effect<ReadonlySet<ThreadSchema.ID>>;
 	/**
 	 * Resumes the runs the last process left unfinished, as the server starts: a run a crash or a
-	 * shutdown cut off, or a prompt woken past the thread's head. A crash counts a restart, a shutdown
-	 * does not; at {@link RESTART_LIMIT} the run ends visibly instead, its queue parked for the next
-	 * prompt. Resolves once every resumed run has settled.
+	 * shutdown cut off, or a prompt woken past the thread's head. A crash counts a restart unless the
+	 * run slept in retry backoff, a shutdown does not; at {@link RESTART_LIMIT} the run ends
+	 * visibly instead, its queue parked for the next prompt. One thread failing to resume leaves the
+	 * others resuming. Resolves once every resumed run has settled.
 	 */
 	readonly resumeUnfinished: Effect.Effect<void>;
 	/**
@@ -218,11 +220,49 @@ export const layer = Layer.effect(
 			yield* execution.resume(threadId);
 		});
 
+		const isThreadNotFound = Schema.is(Thread.ThreadNotFoundError);
+
+		/**
+		 * A user stop that found no execution here still ends what durable state says is owed a run: a run
+		 * cut off by the last process and not resumed yet, or a prompt left runnable. It is recorded as the
+		 * stop it is, and lands on an execution a wake started meanwhile too.
+		 */
+		const stopIdle = Effect.fnUntraced(function* (
+			threadId: ThreadSchema.ID,
+			options?: { readonly awaitSettlement?: boolean },
+		) {
+			const thread = yield* threads.get(threadId);
+			if (Option.isNone(thread) || !(yield* threads.resumable(threadId))) return false;
+			yield* events
+				.publish(EventList.ExecutionInterrupted, {
+					timestamp: yield* DateTime.now,
+					sessionId: SessionSchema.ID.make(thread.value.sessionId),
+					threadId,
+					reason: "user",
+				})
+				.pipe(
+					// Deleted between the read and the commit: the projector rolled the event back.
+					Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.void : Effect.die(defect))),
+				);
+			if ((yield* execution.active).has(threadId)) yield* execution.interrupt(threadId, "user", options);
+			return true;
+		});
+
 		const interrupt = Effect.fn("Control.interrupt")(
 			(
 				threadId: ThreadSchema.ID,
 				options?: { readonly reason?: SessionSchema.InterruptReason; readonly awaitSettlement?: boolean },
-			) => Effect.uninterruptible(execution.interrupt(threadId, options?.reason ?? "user", options)),
+			) =>
+				Effect.uninterruptible(
+					Effect.gen(function* () {
+						const reason = options?.reason ?? "user";
+						if (yield* execution.interrupt(threadId, reason, options)) return true;
+						// Nothing here to interrupt: durable state says whether work is still owed, now or on the
+						// next start, and the stop is recorded against it.
+						if (reason !== "user") return false;
+						return yield* stopIdle(threadId, options);
+					}),
+				),
 		);
 
 		const interruptSession = Effect.fn("Control.interruptSession")(function* (
@@ -274,34 +314,37 @@ export const layer = Layer.effect(
 			const unfinished = (yield* threads.unfinished).filter((row) => !running.has(ThreadSchema.ID.make(row.id)));
 			yield* Effect.forEach(
 				unfinished,
-				Effect.fnUntraced(function* (row) {
+				(row) => {
 					const threadId = ThreadSchema.ID.make(row.id);
-					if ((yield* execution.active).has(threadId)) return;
-					// No run was cut off, only a prompt woken past the head: it runs as its wake would have.
-					if (!(yield* threads.cutOff(threadId))) {
-						yield* execution.wake(threadId);
-						return yield* execution.awaitIdle(threadId);
-					}
-					// Claimed again here, not from the list: a stop since then cleared it, and must stand.
-					// Counted before resuming, so a crash inside the resumed run is counted too.
-					const restarts = yield* threads.claimRestart(threadId);
-					if (Option.isNone(restarts)) return;
-					const recovery =
-						restarts.value >= RESTART_LIMIT
+					return Effect.gen(function* () {
+						if ((yield* execution.active).has(threadId)) return;
+						// No run was cut off, only a prompt woken past the head: it runs as its wake would have.
+						if (!(yield* threads.cutOff(threadId))) {
+							yield* execution.wake(threadId);
+							return yield* execution.awaitIdle(threadId);
+						}
+						// Claimed again here, not from the list: a stop since then cleared it, and must stand.
+						// Counted before resuming, so a crash inside the resumed run is counted too.
+						const restarts = yield* threads.claimRestart(threadId);
+						if (Option.isNone(restarts)) return;
+						yield* restarts.value >= RESTART_LIMIT
 							? execution.abandon(
 									threadId,
 									`The run was interrupted ${restarts.value} times in a row; it is not resumed again`,
 								)
 							: execution.recover(threadId);
-					yield* recovery.pipe(
+					}).pipe(
+						// Defects included: one thread that cannot be resumed must not cancel the others.
 						Effect.tapCause((cause) =>
-							Effect.logWarning("Resuming an unfinished thread failed", cause).pipe(
-								Effect.annotateLogs({ threadId }),
-							),
+							Cause.hasInterruptsOnly(cause)
+								? Effect.void
+								: Effect.logWarning("Resuming an unfinished thread failed", cause).pipe(
+										Effect.annotateLogs({ threadId }),
+									),
 						),
-						Effect.ignore,
+						Effect.ignoreCause,
 					);
-				}),
+				},
 				{ concurrency: "unbounded", discard: true },
 			);
 		}).pipe(Effect.withSpan("Control.resumeUnfinished"));

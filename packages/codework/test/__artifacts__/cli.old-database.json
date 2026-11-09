@@ -1,0 +1,4 @@
+{
+	"status": 1,
+	"stderr": "error[database-outdated]: The database at <home>/data/codework.db was created by an older version and lacks thread.head, inbox.tail; delete it, with its -wal and -shm files, to recreate it\n"
+}

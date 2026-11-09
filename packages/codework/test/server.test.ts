@@ -357,14 +357,16 @@ describe("server", () => {
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const events = yield* Event.Service;
+			// A run end for a thread that does not exist rolls back; the thread must be real.
+			const created = yield* rpc["session.create"]({});
 			const queue = yield* rpc["event.subscribe"]({}).pipe(Stream.toQueue({ capacity: 16 }));
 			expect((yield* Queue.take(queue)).type).toBe(Envelope.Connected.type);
 			yield* events.publish(EventSchema.define({ type: "plugin.test.custom", schema: { value: Schema.String } }), {
 				value: "hello",
 			});
 			yield* events.publish(EventList.ExecutionSucceeded, {
-				sessionId: Session.SessionSchema.ID.create(),
-				threadId: Session.ThreadSchema.ID.create(),
+				sessionId: Session.SessionSchema.ID.make(created.session.id),
+				threadId: Session.ThreadSchema.ID.make(created.id),
 				timestamp: yield* DateTime.now,
 			});
 			expect((yield* Queue.take(queue)).type).toBe(EventList.ExecutionSucceeded.type);

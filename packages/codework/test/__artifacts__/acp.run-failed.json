@@ -1,0 +1,10 @@
+{
+	"answer": {
+		"code": -32603,
+		"message": "The response hit the output token limit with tool calls 2 times in a row; the run is ended",
+		"data": {
+			"reason": "truncated"
+		}
+	},
+	"requests": 2
+}
