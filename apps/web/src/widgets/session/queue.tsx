@@ -99,7 +99,7 @@ export const Queue = memo(function Queue({
 
 	const many = queued.length > 4;
 	return (
-		<div className="mx-2 rounded-t-lg border border-b-0 border-ink/10 bg-(--cw-composer) px-2.5 py-0.5 text-ui leading-snug text-ink-muted backdrop-blur-xl">
+		<div className="mx-2 rounded-t-lg border border-b-0 border-ink/10 bg-(--cw-composer) px-2.5 py-0.5 text-ui leading-snug text-ink-muted backdrop-blur-xl transition-[transform,opacity] duration-180 ease-out starting:translate-y-1 starting:opacity-0">
 			{queued.length > 3 && <p className="py-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
 			<ol
 				aria-label="Queued messages"
@@ -148,7 +148,7 @@ export const Queue = memo(function Queue({
 									{prompt.text}
 								</span>
 							)}
-							<div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+							<div className="flex shrink-0 items-center transition-opacity duration-150 ease-out pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
 								<Action
 									label={lane.label}
 									icon={lane.icon}
@@ -203,7 +203,7 @@ function Action({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className={`grid size-6 shrink-0 place-items-center rounded-md text-ink-muted transition-colors outline-none hover:bg-ink/8 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none ${danger ? "hover:text-destructive" : "hover:text-ink"}`}
+			className={`grid size-6 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/8 focus-visible:ring-2 focus-visible:ring-ring enabled:active:scale-95 disabled:pointer-events-none ${danger ? "hover:text-destructive" : "hover:text-ink"}`}
 		>
 			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
 		</button>

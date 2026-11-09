@@ -14,10 +14,10 @@ const END_SMOOTH = { ...END, animated: true } as const satisfies MaintainScrollA
 
 const CANCEL = Object.freeze({});
 
-const PROMPT_RISE_MS = 560;
-const PROMPT_REVEAL_MS = 320;
-const PROMPT_FADE_MS = 480;
+const PROMPT_RISE_MS = 220;
+const PROMPT_REVEAL_MS = 180;
 const PROMPT_RISE_FROM = 0.3;
+const PROMPT_RISE_MAX_PX = 24;
 
 const isAtEnd = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight <= END_BAND;
 
@@ -167,13 +167,18 @@ function riseIntoAnchor(scroller: HTMLElement | undefined, promptId: string) {
 	if (row === null || typeof row.animate !== "function") return undefined;
 	if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
 	const view = scroller.getBoundingClientRect();
-	const dy = view.top + view.height * PROMPT_RISE_FROM - row.getBoundingClientRect().top;
+	const dy = Math.min(PROMPT_RISE_MAX_PX, view.top + view.height * PROMPT_RISE_FROM - row.getBoundingClientRect().top);
 	if (dy <= 1) return undefined;
-	const animation = row.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], {
-		duration: PROMPT_RISE_MS,
-		easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-	});
-	const fade = row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: PROMPT_FADE_MS, easing: "ease-out" });
+	const animation = row.animate(
+		[
+			{ opacity: 0, transform: `translateY(${dy}px)` },
+			{ opacity: 1, transform: "translateY(0)" },
+		],
+		{
+			duration: PROMPT_RISE_MS,
+			easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+		},
+	);
 	const turn = row.closest<HTMLElement>(".transcript-turn");
 	let revealTimer: ReturnType<typeof setTimeout> | undefined;
 	turn?.setAttribute("data-prompt-rise", "rising");
@@ -183,7 +188,6 @@ function riseIntoAnchor(scroller: HTMLElement | undefined, promptId: string) {
 	};
 	return () => {
 		animation.cancel();
-		fade.cancel();
 		clearTimeout(revealTimer);
 		turn?.removeAttribute("data-prompt-rise");
 	};

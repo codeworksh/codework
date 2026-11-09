@@ -41,19 +41,31 @@ function CopyButton({ text }: { readonly text: string }) {
 	const [copied, setCopied] = useState(false);
 	useEffect(() => {
 		if (!copied) return;
-		const timer = setTimeout(() => setCopied(false), 1200);
+		const timer = setTimeout(() => setCopied(false), 1500);
 		return () => clearTimeout(timer);
 	}, [copied]);
-	const Icon = copied ? Check : Copy;
 	return (
 		<button
 			type="button"
 			aria-label={copied ? "Copied" : "Copy code"}
-			title="Copy code"
-			className="grid size-6 place-items-center rounded-md text-ink-muted hover:bg-ink/10 hover:text-ink"
+			title={copied ? "Copied" : "Copy code"}
+			className="grid size-6 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
 			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
 		>
-			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
+			<Copy
+				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
+					copied ? "scale-75 opacity-0 blur-[2px]" : "scale-100 opacity-100"
+				}`}
+				strokeWidth={1.75}
+				aria-hidden
+			/>
+			<Check
+				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
+					copied ? "scale-100 opacity-100" : "scale-75 opacity-0 blur-[2px]"
+				}`}
+				strokeWidth={1.75}
+				aria-hidden
+			/>
 		</button>
 	);
 }

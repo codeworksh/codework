@@ -29,21 +29,18 @@ export function SettingsSidebar() {
 	const groups = [...new Set(matches.map((section) => section.group))];
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
-			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
-				<div className="flex h-7 items-center px-1">
-					<Link
-						{...back}
-						className="mr-1.5 flex size-6 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
-						aria-label={back.to === "/" ? "Back to app" : "Back to workspace"}
-						title={back.to === "/" ? "Back to app" : "Back to workspace"}
-					>
-						<ArrowLeft className="size-4 shrink-0" aria-hidden />
-					</Link>
-					<h1 className="text-ui font-medium text-ink">Settings</h1>
-				</div>
+			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-2">
+				<Link
+					{...back}
+					className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<ArrowLeft size={15} className="shrink-0" aria-hidden />
+					<span>Back to app</span>
+				</Link>
 				<div className="relative">
 					<Search
-						className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted"
+						size={15}
+						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted"
 						aria-hidden
 					/>
 					<SidebarInput
@@ -51,7 +48,7 @@ export function SettingsSidebar() {
 						placeholder="Search"
 						aria-label="Search settings"
 						value={query}
-						className="h-7 rounded-md border-transparent bg-transparent pl-8 text-ui shadow-none focus-visible:bg-selection-subtle"
+						className="h-7 rounded-md border-0 bg-transparent pr-2 pl-[30px] text-ui shadow-none dark:bg-transparent placeholder:text-ink-muted hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring"
 						onChange={(event) => setQuery(event.target.value)}
 						onKeyDown={(event) => {
 							const first = matches[0];
@@ -64,12 +61,14 @@ export function SettingsSidebar() {
 					/>
 				</div>
 			</SidebarHeader>
-			<SidebarContent className="px-2 pb-2">
-				<nav aria-label="Settings navigation">
+			<SidebarContent className="gap-0 px-2 pb-2">
+				<nav aria-label="Settings navigation" className="flex flex-col gap-3 pt-1">
 					{groups.map((group) => (
-						<SidebarGroup key={group} className="px-0">
-							<SidebarGroupLabel className="px-2.5 text-2xs text-ink-muted">{group}</SidebarGroupLabel>
-							<SidebarMenu>
+						<SidebarGroup key={group} className="p-0">
+							<SidebarGroupLabel className="h-6 px-2 text-2xs font-medium text-ink-muted/75">
+								{group}
+							</SidebarGroupLabel>
+							<SidebarMenu className="gap-0.5">
 								{matches
 									.filter((section) => section.group === group)
 									.map(({ to, label, icon: Icon }) => {
@@ -79,10 +78,10 @@ export function SettingsSidebar() {
 												<SidebarMenuButton
 													asChild
 													isActive={current}
-													className="h-7 rounded-md px-2.5 text-ui text-ink-muted data-[active=true]:bg-selection data-[active=true]:text-ink"
+													className="h-7 gap-2 rounded-md px-2 text-ui text-ink-muted transition-none hover:bg-selection-subtle hover:text-ink data-[active=true]:bg-selection-current data-[active=true]:font-medium data-[active=true]:text-ink [&>svg]:size-[15px]"
 												>
 													<Link to={to} aria-current={current ? "page" : undefined}>
-														<Icon className="size-4" strokeWidth={1.5} aria-hidden />
+														<Icon size={15} className="shrink-0" aria-hidden />
 														<span>{label}</span>
 													</Link>
 												</SidebarMenuButton>
@@ -93,7 +92,7 @@ export function SettingsSidebar() {
 						</SidebarGroup>
 					))}
 					{matches.length === 0 && (
-						<p className="px-2.5 py-2 text-xs text-ink-muted">No settings match “{query}”.</p>
+						<p className="px-2 py-2 text-xs text-ink-muted">No settings match “{query}”.</p>
 					)}
 				</nav>
 			</SidebarContent>

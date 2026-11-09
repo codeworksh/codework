@@ -13,19 +13,31 @@ function CopyButton({ text, label }: { readonly text: string; readonly label: st
 	const [copied, setCopied] = useState(false);
 	useEffect(() => {
 		if (!copied) return;
-		const timer = setTimeout(() => setCopied(false), 2000);
+		const timer = setTimeout(() => setCopied(false), 1500);
 		return () => clearTimeout(timer);
 	}, [copied]);
-	const Icon = copied ? Check : Copy;
 	return (
 		<button
 			type="button"
 			title={copied ? "Copied" : label}
 			aria-label={copied ? "Copied" : label}
 			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
-			className="-ml-1 rounded-md p-1 text-ink-muted hover:bg-ink/8 hover:text-ink"
+			className="-ml-1 grid place-items-center rounded-md p-1 text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/8 hover:text-ink active:scale-95"
 		>
-			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
+			<Copy
+				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
+					copied ? "scale-75 opacity-0 blur-[2px]" : "scale-100 opacity-100"
+				}`}
+				strokeWidth={1.75}
+				aria-hidden
+			/>
+			<Check
+				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
+					copied ? "scale-100 opacity-100" : "scale-75 opacity-0 blur-[2px]"
+				}`}
+				strokeWidth={1.75}
+				aria-hidden
+			/>
 		</button>
 	);
 }
@@ -37,7 +49,7 @@ function ForkButton({ onFork }: { readonly onFork: () => void }) {
 			title="Fork from here"
 			aria-label="Fork from here"
 			onClick={onFork}
-			className="-ml-1 rounded-md p-1 text-ink-muted hover:bg-ink/8 hover:text-ink"
+			className="-ml-1 rounded-md p-1 text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/8 hover:text-ink active:scale-95"
 		>
 			<GitFork className="size-3.5" strokeWidth={1.75} aria-hidden />
 		</button>
