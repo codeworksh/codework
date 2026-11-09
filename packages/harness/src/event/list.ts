@@ -374,6 +374,15 @@ export const RunFailed = EventSchema.define({
 export type RunFailed = typeof RunFailed.Type;
 
 /**
+ * The one way a run ends, whatever the outcome: a consumer waiting for a run reads this and nothing
+ * else, as an io_uring consumer waits on one completion queue. A terminal left out of it is the hang
+ * a client cannot see.
+ */
+export const RunEnded = Schema.Union([ExecutionSucceeded, ExecutionFailed, ExecutionInterrupted, RunFailed]);
+export type RunEnded = typeof RunEnded.Type;
+export const isRunEnded = Schema.is(RunEnded);
+
+/**
  * Kernel lifecycle notice for one plugin module.
  * The `plugin.<id>.` namespace belongs to plugin-declared types, so this kernel type can never collide with one.
  */

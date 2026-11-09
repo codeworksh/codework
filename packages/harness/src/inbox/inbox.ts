@@ -107,6 +107,9 @@ export interface ProjectPromptedInput extends AdmitInput {
 	readonly timeCreated: DateTime.Utc;
 }
 
+/** Where a run promotes: before a reply without tool results (`final`), or after tool results. */
+export type Boundary = "final" | "postTools";
+
 export interface Interface {
 	readonly find: (id: SessionMessageSchema.ID) => Effect.Effect<Option.Option<Admitted>>;
 	/** Records a prompt durably. Re-admitting the same id returns the stored row. */
@@ -139,22 +142,18 @@ export interface Interface {
 	/** Whether the lane holds an input that has not been promoted yet. */
 	readonly hasPending: (threadId: ThreadSchema.ID, delivery: Delivery) => Effect.Effect<boolean>;
 	/**
-	 * Promotes every pending steer admitted at or before `cutoff`, in admission
-	 * order. The cutoff keeps a steer that lands mid-promotion out of a request
-	 * that is already being assembled.
+	 * Promotes, in admission order, every pending input admitted at or before `cutoff` that the boundary
+	 * takes: at `final` (a run's first promotion, or a reply without tool results) every steer and the
+	 * oldest follow-up, placed together; at `postTools` (tool results waiting for a reply) steers only.
+	 * One follow-up per boundary is what makes that lane turn-at-a-time. The cutoff keeps an input that
+	 * lands mid-promotion out of a request that is already being assembled.
 	 *
 	 * Counts promotions *this* caller won. A row another drainer promoted first
 	 * is not counted: callers treat a positive count as new work to answer, and
 	 * counting a promotion someone else committed would have two workers answer
 	 * one prompt.
 	 */
-	readonly promoteSteers: (threadId: ThreadSchema.ID, cutoff: number) => Effect.Effect<number>;
-	/**
-	 * Promotes the single oldest pending follow-up, if any. One per run, unlike
-	 * steers, which is what makes the follow-up lane strictly turn-at-a-time.
-	 * False when there was none, or when another caller promoted it first.
-	 */
-	readonly promoteFollowUp: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	readonly promote: (threadId: ThreadSchema.ID, cutoff: number, boundary: Boundary) => Effect.Effect<number>;
 }
 
 export const make = Effect.gen(function* () {
@@ -277,28 +276,20 @@ export const make = Effect.gen(function* () {
     `,
 	});
 
-	const selectPendingSteers = SqlSchema.findAll({
-		Request: Schema.Struct({ threadId: Schema.String, cutoff: Schema.Int }),
+	const selectBoundary = SqlSchema.findAll({
+		Request: Schema.Struct({ threadId: Schema.String, cutoff: Schema.Int, final: Schema.Boolean }),
 		Result: InboxRow,
-		execute: ({ threadId, cutoff }) => sql`
+		execute: ({ threadId, cutoff, final }) => sql`
       SELECT * FROM inbox
-      WHERE thread_id = ${threadId}
-        AND promoted_seq IS NULL
-        AND cancelled_seq IS NULL
-        AND delivery = 'steer'
-        AND admitted_seq <= ${cutoff}
+      WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL AND admitted_seq <= ${cutoff}
+        AND (delivery = 'steer' OR (${final ? 1 : 0} = 1 AND id = (
+          SELECT id FROM inbox
+          WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
+            AND admitted_seq <= ${cutoff} AND delivery = 'followUp'
+          ORDER BY admitted_seq
+          LIMIT 1
+        )))
       ORDER BY admitted_seq
-    `,
-	});
-
-	const selectPendingFollowUp = SqlSchema.findAll({
-		Request: Schema.String,
-		Result: InboxRow,
-		execute: (threadId) => sql`
-      SELECT * FROM inbox
-      WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL AND delivery = 'followUp'
-      ORDER BY admitted_seq
-      LIMIT 1
     `,
 	});
 
@@ -584,15 +575,13 @@ export const make = Effect.gen(function* () {
 		return rows.length > 0;
 	}, Effect.orDie);
 
-	const promoteSteers = Effect.fn("Inbox.promoteSteers")(function* (threadId: ThreadSchema.ID, cutoff: number) {
-		const rows = yield* selectPendingSteers({ threadId, cutoff }).pipe(Effect.orDie);
+	const promote = Effect.fn("Inbox.promote")(function* (
+		threadId: ThreadSchema.ID,
+		cutoff: number,
+		boundary: Boundary,
+	) {
+		const rows = yield* selectBoundary({ threadId, cutoff, final: boundary === "final" }).pipe(Effect.orDie);
 		return yield* publishPrompted(rows);
-	});
-
-	const promoteFollowUp = Effect.fn("Inbox.promoteFollowUp")(function* (threadId: ThreadSchema.ID) {
-		const rows = yield* selectPendingFollowUp(threadId).pipe(Effect.orDie);
-		if (rows.length === 0) return false;
-		return (yield* publishPrompted(rows)) > 0;
 	});
 
 	return {
@@ -606,8 +595,7 @@ export const make = Effect.gen(function* () {
 		cancel,
 		pending,
 		hasPending,
-		promoteSteers,
-		promoteFollowUp,
+		promote,
 	} satisfies Interface;
 });
 

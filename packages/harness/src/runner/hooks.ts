@@ -20,8 +20,8 @@ export interface Completed {
 	/** `toolUse` means tool results wait for a reply. */
 	readonly reason: "stop" | "length" | "toolUse";
 	/**
-	 * What the next run would promote, read without promoting it: the queued steers, or the oldest
-	 * follow-up when there are none. As of the commit; input admitted later is not in it.
+	 * What the next run would promote, read without promoting it: the queued steers and the oldest
+	 * follow-up, in admission order. As of the commit; input admitted later is not in it.
 	 */
 	readonly pending: ReadonlyArray<Admitted>;
 }
@@ -44,9 +44,9 @@ export interface Interface {
 	/** Before every provider attempt, retries included; may replace the request. */
 	readonly prepareRequest: (request: Request, attempt: Attempt) => Effect.Effect<Request>;
 	/**
-	 * After a turn commits. `end` stops the run and leaves queued steers and follow-ups for the
-	 * next one; `continue` asks for one more request, which the loop only sends when something
-	 * was appended after the assistant message.
+	 * After a turn commits. `end` ends this run; queued items start the next one. `continue` asks
+	 * for one more request, which the loop only sends when something was appended after the
+	 * assistant message.
 	 */
 	readonly finishTurn: (turn: Completed) => Effect.Effect<Decision | undefined>;
 }

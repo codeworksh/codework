@@ -4,6 +4,8 @@
 import { Control, Session } from "@codeworksh/harness/effect";
 import { Effect, Fiber, Layer, Predicate, Stream } from "effect";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -258,6 +260,23 @@ const truncate = (response: Reply) => {
 	response.finish("length");
 };
 
+/** The thread's provider request in flight, or the last one failed while a retry waits, read from the database file. */
+const attemptOf = (home: string, threadId: string) => {
+	const db = new DatabaseSync(join(home, "data", "codework.db"));
+	const row = db.prepare("SELECT attempt FROM thread WHERE id = ?").get(threadId)!;
+	db.close();
+	return row["attempt"];
+};
+
+/** A provider address nothing listens on: every request fails to connect, a transient failure. */
+const refused = async () => {
+	const server = createServer();
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const { port } = server.address() as AddressInfo;
+	await new Promise<void>((resolve) => server.close(() => resolve()));
+	return `http://127.0.0.1:${port}`;
+};
+
 /** The thread's head and restart count, and each prompt's tail, read from the database file. */
 const positions = (home: string, threadId: string) => {
 	const db = new DatabaseSync(join(home, "data", "codework.db"));
@@ -383,7 +402,7 @@ describe("recovery after the host is killed", () => {
 
 		const failed = events.find((event) => event.type === "session.llm.failed");
 		expect(summary(failed!)).toMatchObject({
-			reason: "error",
+			reason: "aborted",
 			errorMessage: "The host stopped while the model was answering, on attempt 1",
 			parts: [{ text: "Partial answer, streamed before the host died." }],
 		});
@@ -764,12 +783,17 @@ describe("recovery after the host is killed", () => {
 		await call(second.url, (rpc) => rpc["thread.wait"](ids));
 		record("next prompt");
 
-		// Steers with the next prompt, the follow-up once they are answered.
+		// One request: the steers and the oldest follow-up go in with the next prompt, in the order they were
+		// sent, so the follow-up queued before the stop comes first.
 		expect(fake.requests.map((request) => sent(request).at(-1)?.text)).toEqual([
 			"Run the stubborn command.",
 			"Next.",
-			"Queued before the stop.",
 		]);
+		expect(
+			sent(fake.requests[1]!)
+				.filter((message) => message.role === "user")
+				.map((message) => message.text),
+		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Sent while stopping.", "Next."]);
 		const events = await log(second.url, ids);
 		await expect(
 			artifact({
@@ -855,7 +879,9 @@ describe("recovery after the host is killed", () => {
 		await logged(first.url, ids, "session.llm.started");
 		await until("the request", () => fake.requests.length === 1);
 		await first.stop();
-		const stopped = positions(home, ids.threadId);
+		const stopped = { ...positions(home, ids.threadId), attempt: attemptOf(home, ids.threadId) };
+		// The request the shutdown ended keeps its attempt: the resume goes on counting from it.
+		expect(stopped.attempt).toBe(1);
 
 		const second = await start();
 		await logged(second.url, ids, "session.llm.started", 2);
@@ -930,4 +956,114 @@ describe("recovery after the host is killed", () => {
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.tools.json");
 	}, 90_000);
+
+	it("a thread that cannot be resumed fails alone: the other thread cut off with it still resumes", async () => {
+		let answering = false;
+		const fake = await streaming((_body, response) => (answering ? answer(response, "Resumed.") : hang(response)));
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const broken = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const healthy = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const brokenIds = { sessionId: broken.session.id, threadId: broken.id };
+		const healthyIds = { sessionId: healthy.session.id, threadId: healthy.id };
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...brokenIds, text: "Broken." }));
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...healthyIds, text: "Healthy." }));
+		await logged(first.url, brokenIds, "session.llm.started");
+		await logged(first.url, healthyIds, "session.llm.started");
+		await until("both requests", () => fake.requests.length === 2);
+		await first.kill();
+		// A draft no resume can read: healing it dies.
+		const db = new DatabaseSync(join(home, "data", "codework.db"));
+		db.prepare(
+			"UPDATE entry SET data = 'not json', rev = (SELECT rev FROM store) WHERE thread_id = ? AND state = 'draft'",
+		).run(brokenIds.threadId);
+		db.close();
+
+		answering = true;
+		const second = await start();
+		await logged(second.url, brokenIds, "session.execution.failed");
+		const events = await logged(second.url, healthyIds, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](healthyIds));
+		await call(second.url, (rpc) => rpc["thread.wait"](brokenIds));
+
+		expect(fake.requests).toHaveLength(3);
+		const lifecycle = (log: ReadonlyArray<EventEnvelope>) =>
+			log
+				.filter((event) => event.type.startsWith("session.execution.") || event.type === "session.run.failed")
+				.map(summary);
+		await expect(
+			artifact({
+				broken: lifecycle(await log(second.url, brokenIds)),
+				healthy: lifecycle(events),
+				resent: sent(fake.requests[2]!),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.isolation.json");
+	}, 90_000);
+
+	it("a run killed, then shut down, while it waits out a retry is resumed uncounted, its attempt carried", async () => {
+		const resend = gate();
+		const fake = await streaming((_body, response) => void resend.opened.then(() => answer(response, "Answered.")));
+		const dead = await refused();
+		// The backoff outlasts the test: the host is killed and stopped while it sleeps.
+		const asleep = { retry: { maxRetries: 3, baseDelayMs: 60_000, maxDelayMs: 60_000 } };
+		const { home, start } = setup(dead, asleep);
+		const steps: Array<{ step: string; restarts: number; attempt: unknown }> = [];
+		let threadId = "";
+		const record = (step: string) =>
+			steps.push({ step, restarts: positions(home, threadId).restarts, attempt: attemptOf(home, threadId) });
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		threadId = ids.threadId;
+		const live = subscribe(first.url, ids.threadId);
+		await live.ready;
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Wait it out." }));
+		await until("the retry", () => live.events.find((event) => event.type === "session.retry.scheduled"));
+		record("backoff");
+		await first.kill();
+
+		// The resume waits out the carried retry again: a kill in backoff counted no restart.
+		const second = await start();
+		await until("the resumed run", async () =>
+			(await log(second.url, ids)).find(
+				(event) => event.type === "session.execution.started" && (event.data as Json)["resumed"] === true,
+			),
+		);
+		record("resumed");
+		await second.stop();
+		record("stopped");
+
+		writeSettings(home, fake.url, retry);
+		const third = await start();
+		const resumed = subscribe(third.url, ids.threadId);
+		await resumed.ready;
+		await until("the resend", () => fake.requests.length === 1);
+		resend.open();
+		await until("retry.finished", () => resumed.events.find((event) => event.type === "session.retry.finished"));
+		const events = await logged(third.url, ids, "session.execution.succeeded");
+		await call(third.url, (rpc) => rpc["thread.wait"](ids));
+		record("finished");
+
+		expect(steps.map((step) => step.restarts)).toEqual([0, 0, 0, 0]);
+		// The attempt the backoff waits for, past the one that failed: the shutdown keeps it, and it is sent next.
+		expect(steps.find((step) => step.step === "stopped")?.attempt).toBe(2);
+		await expect(
+			artifact({
+				log: events
+					.filter((event) =>
+						["session.execution.", "session.llm.", "session.retry."].some((prefix) =>
+							event.type.startsWith(prefix),
+						),
+					)
+					.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				// The resend goes on from the attempt the host stopped in.
+				live: resumed.events.filter((event) => event.type === "session.retry.finished").map(summary),
+				steps,
+				requests: fake.requests.map(sent),
+				// The refused address is a fresh port each run.
+			}).replaceAll(new URL(dead).host, "<refused>"),
+		).toMatchFileSnapshot("./__artifacts__/recovery.backoff.json");
+	}, 120_000);
 });

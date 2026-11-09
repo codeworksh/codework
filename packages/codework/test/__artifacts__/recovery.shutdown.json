@@ -39,7 +39,8 @@
 				"tail": 2,
 				"promotedSeq": 4
 			}
-		]
+		],
+		"attempt": 1
 	},
 	"resumed": {
 		"head": 0,

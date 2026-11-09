@@ -1,4 +1,12 @@
-import { ModelCatalog, Plugin, Runner, SandboxError, SessionStore, Settings } from "@codeworksh/harness/effect";
+import {
+	Database,
+	ModelCatalog,
+	Plugin,
+	Runner,
+	SandboxError,
+	SessionStore,
+	Settings,
+} from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { Client } from "../server/client.ts";
@@ -38,6 +46,7 @@ const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
 const isExecutionError = Schema.is(Client.ExecutionError);
+const isDatabaseOutdatedError = Schema.is(Database.OutdatedError);
 
 const credentialHint = (provider: string): string => {
 	switch (provider) {
@@ -195,6 +204,9 @@ export const renderError = (error: unknown): string => {
 	}
 	if (isInvalidInputError(error)) {
 		return `error: ${error.message}\n`;
+	}
+	if (isDatabaseOutdatedError(error)) {
+		return `error[database-outdated]: ${error.message}\n`;
 	}
 	if (isOAuthError(error)) {
 		return (

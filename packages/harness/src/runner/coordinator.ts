@@ -120,7 +120,8 @@ export const make = <Key, E, Reason = never>(options: {
 				if (execution === undefined || execution.stopping) return Effect.succeed(false);
 				if (execution.owner === undefined) {
 					// The terminal exit is already decided. Claim earlier wakes so settlement
-					// does not restart work for the interrupted intent.
+					// does not restart work for the interrupted intent; the caller decides the
+					// rest from durable state.
 					execution.pendingWake = false;
 					return Effect.succeed(false);
 				}

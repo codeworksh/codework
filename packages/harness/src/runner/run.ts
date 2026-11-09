@@ -195,6 +195,8 @@ export interface Interface {
 		readonly force: boolean;
 		/** Resuming a run a previous process left unfinished: its cut-off reply is answered first. */
 		readonly recovered?: boolean;
+		/** The last run was ended by a clean shutdown: the request it stopped is resent at once, as the same attempt. */
+		readonly shutdown?: boolean;
 	}) => Effect.Effect<Outcome, RunError, SandboxIO.Provides | Location.Service>;
 	/**
 	 * Ends a run the server no longer resumes: settles what the dead process left of its reply,
