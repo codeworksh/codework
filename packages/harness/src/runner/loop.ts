@@ -616,8 +616,8 @@ export const layer = (options: Options = {}) =>
 			}) {
 				// Only a host that stopped leaves an attempt marked: every run that ends otherwise clears it. It is
 				// the request in flight, or the one a retry backoff waits for. A shutdown failed nothing: that
-				// request goes again as itself. A crash with the request streaming (its draft open) failed that
-				// attempt; one in backoff failed only the attempts before it.
+				// request goes again as itself. A crash failed that attempt, streaming or not: with no draft open
+				// the restart went uncounted, so the retry budget is what bounds a host that keeps dying there.
 				const stored = Option.getOrUndefined(
 					Option.flatMap(yield* threads.get(input.threadId), (row) => row.attempt),
 				);
@@ -627,17 +627,12 @@ export const layer = (options: Options = {}) =>
 						? undefined
 						: input.shutdown === true
 							? { retries: stored - 1 }
-							: streaming
-								? {
-										retries: stored,
-										failed: `The host stopped while the model was answering, on attempt ${stored}`,
-									}
-								: stored === 1
-									? { retries: 0 }
-									: {
-											retries: stored - 1,
-											failed: `The host stopped while waiting to retry, before attempt ${stored}`,
-										};
+							: {
+									retries: stored,
+									failed: streaming
+										? `The host stopped while the model was answering, on attempt ${stored}`
+										: `The host stopped before attempt ${stored} was sent`,
+								};
 				yield* healDraft(input.threadId, carried?.failed);
 
 				const hasSteer = yield* inputs.hasPending(input.threadId, "steer");

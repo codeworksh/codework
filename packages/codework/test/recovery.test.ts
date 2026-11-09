@@ -1024,7 +1024,8 @@ describe("recovery after the host is killed", () => {
 		record("backoff");
 		await first.kill();
 
-		// The resume waits out the carried retry again: a kill in backoff counted no restart.
+		// The resume counts the attempt it slept for as failed and waits out the next: a kill in backoff
+		// counted no restart, the retry budget bounds it instead.
 		const second = await start();
 		await until("the resumed run", async () =>
 			(await log(second.url, ids)).find(
@@ -1047,8 +1048,8 @@ describe("recovery after the host is killed", () => {
 		record("finished");
 
 		expect(steps.map((step) => step.restarts)).toEqual([0, 0, 0, 0]);
-		// The attempt the backoff waits for, past the one that failed: the shutdown keeps it, and it is sent next.
-		expect(steps.find((step) => step.step === "stopped")?.attempt).toBe(2);
+		// The attempt the backoff waits for, past the two that failed: the shutdown keeps it, and it is sent next.
+		expect(steps.find((step) => step.step === "stopped")?.attempt).toBe(3);
 		await expect(
 			artifact({
 				log: events

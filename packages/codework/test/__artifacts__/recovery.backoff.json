@@ -37,10 +37,10 @@
 		{
 			"seq": 11,
 			"type": "session.retry.scheduled",
-			"attempt": 1,
+			"attempt": 2,
 			"maxRetries": 3,
 			"delayMs": 60000,
-			"message": "The host stopped while waiting to retry, before attempt 2"
+			"message": "The host stopped before attempt 2 was sent"
 		},
 		{
 			"seq": 12,
@@ -74,7 +74,7 @@
 	"live": [
 		{
 			"type": "session.retry.finished",
-			"attempt": 1,
+			"attempt": 2,
 			"success": true
 		}
 	],
@@ -87,12 +87,12 @@
 		{
 			"step": "resumed",
 			"restarts": 0,
-			"attempt": 2
+			"attempt": 3
 		},
 		{
 			"step": "stopped",
 			"restarts": 0,
-			"attempt": 2
+			"attempt": 3
 		},
 		{
 			"step": "finished",
