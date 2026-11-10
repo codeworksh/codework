@@ -47,7 +47,7 @@ export const SidebarSession = Schema.Struct({
 	/** Its main thread. */
 	threadId: Schema.String,
 	spaceKind: SpaceInfo.fields.kind,
-	/** Hex; null is the default. */
+	/** Its main thread's color, else its own, as All Threads shows it; hex, null is the default. */
 	color: Schema.NullOr(Schema.String),
 	/** The main thread's title, or what an untitled one is called. */
 	title: Schema.String,

@@ -25,12 +25,14 @@ export function MenuCheck() {
 
 /**
  * One choice of a menu: its mark and name, opening its picks beside it with the current one checked.
- * `after` holds actions rather than picks, such as clearing it, below a separator.
+ * `current` names the pick on the row itself, before the chevron. `after` holds actions rather than
+ * picks, such as clearing it, below a separator.
  */
 export function MenuChoice<A extends string>({
 	label,
 	mark,
 	value,
+	current,
 	options,
 	onChange,
 	after,
@@ -38,15 +40,22 @@ export function MenuChoice<A extends string>({
 	readonly label: string;
 	readonly mark: ReactNode;
 	readonly value: A | undefined;
+	readonly current?: string | undefined;
 	readonly options: ReadonlyArray<{ readonly value: A; readonly label: string; readonly mark: ReactNode }>;
 	readonly onChange: (value: A) => void;
 	readonly after?: ReactNode;
 }) {
 	return (
 		<DropdownMenuSub>
-			<DropdownMenuSubTrigger className={`${MENU_ROW} [&>svg:last-child]:size-3.5`}>
-				{mark}
+			<DropdownMenuSubTrigger
+				className={`${MENU_ROW} [&>svg:last-child]:size-3.5 ${current === undefined ? "" : "[&>svg:last-child]:ml-0"}`}
+			>
+				{/* One width for every mark, so a dot's label lines up with an icon's. */}
+				<span className="grid size-[15px] shrink-0 place-items-center">{mark}</span>
 				{label}
+				{current !== undefined && (
+					<span className="ml-auto max-w-28 truncate pl-4 text-[12px] text-ink-muted">{current}</span>
+				)}
 			</DropdownMenuSubTrigger>
 			{/* Shifted up by its padding and border, so its first row lines up with the trigger. */}
 			<DropdownMenuSubContent alignOffset={-5} className="min-w-40">

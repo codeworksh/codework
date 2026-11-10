@@ -80,7 +80,8 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		createdAt: number;
 		updatedAt: number;
 	}>`
-		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind, session.color,
+		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind,
+			COALESCE(thread.color, session.color) AS color,
 			session.dir, session.hostdir, thread.id AS thread_id, thread.title, thread.model_provider,
 			thread.model_id, thread.run_state, thread.status, thread.priority, thread.created_at,
 			(SELECT MAX(activity.updated_at) FROM thread AS activity

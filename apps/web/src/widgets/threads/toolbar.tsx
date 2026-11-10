@@ -143,6 +143,7 @@ export function Toolbar({
 						label="Grouping"
 						mark={<LayoutGrid aria-hidden />}
 						value={options.group}
+						current={GROUPS.find(({ value }) => value === options.group)?.label}
 						options={marked(GROUPS)}
 						onChange={(group) => onChange({ group })}
 					/>
@@ -150,6 +151,7 @@ export function Toolbar({
 						label="Ordering"
 						mark={<ArrowUpDown aria-hidden />}
 						value={options.order}
+						current={ORDERS.find(({ value }) => value === options.order)?.label}
 						options={marked(ORDERS)}
 						onChange={(order) => onChange({ order })}
 					/>

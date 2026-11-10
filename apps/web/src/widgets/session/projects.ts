@@ -19,7 +19,7 @@ import { Server } from "../../kernel/rpc";
 const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
 const decodeTracking = Schema.decodeUnknownOption(SyncTracking);
 
-/** Whether an event changes what the sidebar shows: an index row, a removed session, a session's color, or a thread's status or priority. */
+/** Whether an event changes what the sidebar shows: an index row, a removed session, a session's color, or a thread's status, priority or color. */
 const touches = (event: Event) =>
 	event.topic === syncTopics.status ||
 	(event.topic === syncTopics.changed
@@ -35,7 +35,9 @@ const touches = (event: Event) =>
 			)
 		: Option.exists(
 				decodeTracking(event.payload),
-				(edit) => edit._tag === "Session" || (edit._tag === "Thread" && edit.priority !== undefined),
+				(edit) =>
+					edit._tag === "Session" ||
+					(edit._tag === "Thread" && (edit.priority !== undefined || edit.color !== undefined)),
 			));
 
 const sameSession = (a: SidebarSession, b: SidebarSession) =>

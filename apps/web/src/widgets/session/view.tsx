@@ -1,5 +1,5 @@
 import { ChevronRight, CircleDashed, Folder, X } from "@/components/vuesax";
-import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
@@ -14,6 +14,7 @@ import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
+import { menuThreads } from "./menu";
 import { Message } from "./message";
 import { Queue } from "./queue";
 import { type Handoff, handoffs } from "./handoff";
@@ -45,6 +46,7 @@ export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	// The thread this frame showed before, so a switch can keep it in view while the next one loads.
 	const [shown, setShown] = useState<{ readonly key: string; readonly previous?: string }>({ key });
 	if (shown.key !== key) setShown({ key, previous: shown.key });
+	useAtomMount(menuThreads);
 	if (thread === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
 	return <Conversation key={key} thread={thread} instanceId={instanceId} previous={shown.previous} />;
 }
