@@ -1,9 +1,11 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite writes its home and settings with node:fs. */
 /* @effect-diagnostics globalTimers:off -- polling for a dying server runs outside any Effect. */
 /* @effect-diagnostics globalDate:off -- so does its deadline. */
-import { Control } from "@codeworksh/harness/effect";
-import { Effect, Fiber, Layer, Stream } from "effect";
+import { Control, Session } from "@codeworksh/harness/effect";
+import { Effect, Fiber, Layer, Predicate, Stream } from "effect";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -35,6 +37,12 @@ const setup = (url: string, settings: object = {}) => {
 	return { home, project, start };
 };
 
+/** A connection that never opened sent nothing, so opening another is safe; a loaded host can be slow to accept. */
+const unopened = (error: unknown) =>
+	Predicate.isTagged(error, "RpcClientError") &&
+	Predicate.hasProperty(error, "reason") &&
+	Predicate.isTagged(error.reason, "SocketOpenError");
+
 /** One RPC exchange over its own connection. */
 const call = <A, E>(url: string, use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
 	Effect.runPromise(
@@ -42,7 +50,7 @@ const call = <A, E>(url: string, use: (rpc: Client.Client) => Effect.Effect<A, E
 			const context = yield* Layer.build(Client.layer(url));
 			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
 			return yield* use(rpc);
-		}).pipe(Effect.scoped),
+		}).pipe(Effect.scoped, Effect.retry({ times: 2, while: unopened })),
 	);
 
 type Ids = { readonly sessionId: Parameters<Client.Client["thread.wait"]>[0]["sessionId"] };
@@ -208,7 +216,7 @@ const runRow = (home: string, threadId: string, events: ReadonlyArray<EventEnvel
 	const db = new DatabaseSync(join(home, "data", "codework.db"));
 	const row = db
 		.prepare(
-			"SELECT run_state, run_state_at, run_started_at, run_ended_at, run_outcome, run_error, execution FROM thread WHERE id = ?",
+			"SELECT run_state, run_state_at, run_started_at, run_ended_at, run_outcome, run_error, head FROM thread WHERE id = ?",
 		)
 		.get(threadId)!;
 	db.close();
@@ -235,7 +243,7 @@ const runRow = (home: string, threadId: string, events: ReadonlyArray<EventEnvel
 		endedAt: at("run_ended_at", ends),
 		outcome: row["run_outcome"],
 		error: row["run_error"] === null ? null : JSON.parse(String(row["run_error"])),
-		execution: row["execution"],
+		head: row["head"],
 	};
 };
 
@@ -244,6 +252,51 @@ const endedRow = async (url: string, home: string, ids: Ids & { readonly threadI
 	const row = runRow(home, ids.threadId, await log(url, ids));
 	expect(row).toMatchObject({ state: "idle", outcome: "failed", error: { _tag: "runFailed", reason } });
 	return row;
+};
+
+/** Cuts the reply off at the output limit with a tool call, as a run that gets truncated sees it. */
+const truncate = (response: Reply) => {
+	response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
+	response.finish("length");
+};
+
+/** The thread's provider request in flight, or the last one failed while a retry waits, read from the database file. */
+const attemptOf = (home: string, threadId: string) => {
+	const db = new DatabaseSync(join(home, "data", "codework.db"));
+	const row = db.prepare("SELECT attempt FROM thread WHERE id = ?").get(threadId)!;
+	db.close();
+	return row["attempt"];
+};
+
+/** A provider address nothing listens on: every request fails to connect, a transient failure. */
+const refused = async () => {
+	const server = createServer();
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const { port } = server.address() as AddressInfo;
+	await new Promise<void>((resolve) => server.close(() => resolve()));
+	return `http://127.0.0.1:${port}`;
+};
+
+/** The thread's head and restart count, and each prompt's tail, read from the database file. */
+const positions = (home: string, threadId: string) => {
+	const db = new DatabaseSync(join(home, "data", "codework.db"));
+	const thread = db.prepare("SELECT head, restarts FROM thread WHERE id = ?").get(threadId)!;
+	const prompts = db
+		.prepare(
+			"SELECT data, delivery, admitted_seq, tail, promoted_seq FROM inbox WHERE thread_id = ? ORDER BY admitted_seq",
+		)
+		.all(threadId)
+		.map((row) => ({
+			text: (JSON.parse(String(row["data"])) as { parts: ReadonlyArray<{ text?: string }> }).parts
+				.map((one) => one.text)
+				.join(""),
+			delivery: row["delivery"],
+			admittedSeq: row["admitted_seq"],
+			tail: row["tail"],
+			promotedSeq: row["promoted_seq"],
+		}));
+	db.close();
+	return { head: Number(thread["head"]), restarts: Number(thread["restarts"]), prompts };
 };
 
 describe("recovery after the host is killed", () => {
@@ -268,6 +321,8 @@ describe("recovery after the host is killed", () => {
 		record("succeeded", await log(first.url, ids));
 		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Second." }));
 		const inFlight = await logged(first.url, ids, "session.llm.started", 2);
+		// `llm.started` goes out before the request: killed sooner, the resend would take the hanging slot.
+		await until("the second request", () => fake.requests.length === 2);
 		record("in flight", inFlight);
 		await first.kill();
 		// What the dead host left: the run still open.
@@ -292,7 +347,7 @@ describe("recovery after the host is killed", () => {
 		);
 		// Swept first, resumed after, with nothing of the run in between.
 		expect(resumed).toBe(swept + 1);
-		expect(rows.find((row) => row.step === "resumed")).toMatchObject({ state: "running", execution: "running" });
+		expect(rows.find((row) => row.step === "resumed")).toMatchObject({ state: "running" });
 
 		const lifecycle = new Set([
 			"session.execution.started",
@@ -347,7 +402,7 @@ describe("recovery after the host is killed", () => {
 
 		const failed = events.find((event) => event.type === "session.llm.failed");
 		expect(summary(failed!)).toMatchObject({
-			reason: "error",
+			reason: "aborted",
 			errorMessage: "The host stopped while the model was answering, on attempt 1",
 			parts: [{ text: "Partial answer, streamed before the host died." }],
 		});
@@ -416,11 +471,14 @@ describe("recovery after the host is killed", () => {
 		await logged(first.url, ids, "session.llm.started");
 		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
 		await logged(first.url, ids, "session.prompt.admitted", 2);
+		await until("the request", () => fake.requests.length === 1);
 		await first.kill();
 
 		// The one retry: the request is resent, and the host dies with it in flight again.
 		const second = await start();
 		await logged(second.url, ids, "session.llm.started", 2);
+		// `llm.started` goes out before the request: wait for it, or the kill can beat the resend.
+		await until("the resend", () => fake.requests.length === 2);
 		await second.kill();
 
 		const third = await start();
@@ -462,6 +520,7 @@ describe("recovery after the host is killed", () => {
 		// The first run, then a resume each until the limit: each dies with its request in flight.
 		for (let started = 1; started <= Control.RESTART_LIMIT; started++) {
 			await logged(server.url, ids, "session.llm.started", started);
+			await until(`request ${started}`, () => fake.requests.length === started);
 			await server.kill();
 			server = await start();
 		}
@@ -565,6 +624,355 @@ describe("recovery after the host is killed", () => {
 		).toMatchFileSnapshot("./__artifacts__/recovery.truncated.json");
 	}, 90_000);
 
+	it("prompts sent while a run fails are parked: a kill runs none of them, the next prompt runs them all", async () => {
+		const cut = gate();
+		const fake = await streaming((_body, response, index) => {
+			if (index === 0) return truncate(response);
+			// The second cut-off ends the run: held until the prompts are in.
+			if (index === 1) return void cut.opened.then(() => truncate(response));
+			answer(response, "Answered with the queue.");
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first.url, ids, "session.llm.started", 2);
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then answer this." }));
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "And this.", delivery: "followUp" }));
+		const queued = await call(first.url, (rpc) => rpc["thread.queue"](ids));
+		const moved = queued.entries.find((entry) => entry.text === "And this.")!;
+		// Moved to steer while the run is still failing: that wake is before the end too.
+		await call(first.url, (rpc) =>
+			rpc["thread.update"]({ ...ids, messageId: Session.SessionMessageSchema.ID.make(moved.id), delivery: "steer" }),
+		);
+		cut.open();
+		await logged(first.url, ids, "session.run.failed");
+		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		record("parked");
+		expect(fake.requests).toHaveLength(2);
+		await first.kill();
+
+		const second = await start();
+		const reopened = await call(second.url, (rpc) => rpc["thread.queue"](ids));
+		record("reopened");
+		expect(reopened.entries.map((entry) => [entry.delivery, entry.text])).toEqual([
+			["steer", "Then answer this."],
+			["steer", "And this."],
+		]);
+		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("next prompt");
+
+		// Nothing ran between the failure and the next prompt, which took the parked queue with it.
+		expect(fake.requests).toHaveLength(3);
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				// Read from the database file: head, and each prompt's tail, across the kill.
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.parked.json");
+	}, 90_000);
+
+	it("a prompt sent after a run failed runs, and is resumed after a kill", async () => {
+		const resend = gate();
+		const fake = await streaming((_body, response, index) => {
+			if (index <= 1) return truncate(response);
+			// The prompt's run, killed with its request in flight; then its resend.
+			if (index === 2) return hang(response);
+			void resend.opened.then(() => answer(response, "Answered after the kill."));
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first.url, ids, "session.run.failed");
+		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Now this." }));
+		await logged(first.url, ids, "session.llm.started", 3);
+		// `llm.started` goes out before the request: killed sooner, the resend would take the hanging slot.
+		await until("the prompt's request", () => fake.requests.length === 3);
+		record("in flight");
+		await first.kill();
+
+		const second = await start();
+		await logged(second.url, ids, "session.llm.started", 4);
+		record("resumed");
+		resend.open();
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("finished");
+
+		expect(fake.requests).toHaveLength(4);
+		expect(sent(fake.requests[3]!)).toEqual(sent(fake.requests[2]!));
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.after-failure.json");
+	}, 90_000);
+
+	it("a stop parks what was queued and what was sent while it wound down: a kill runs none, the next prompt runs all", async () => {
+		const marker = join(realpathSync(mkdtempSync(join(tmpdir(), "codework-recovery-marker-"))), "ran");
+		onTestFinished(() => rmSync(join(marker, ".."), { recursive: true, force: true }));
+		const fake = await streaming((_body, response, index) => {
+			if (index > 0) return answer(response, `Answer ${index}.`);
+			// Ignores SIGTERM, so the stop winds down for the whole force-kill grace.
+			response.send(
+				toolCalls([{ name: "bash", arguments: { command: `trap '' TERM; echo ran > ${marker}; sleep 20` } }]),
+			);
+			response.finish("tool_calls");
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
+		await until("the tool to run", () => existsSync(marker));
+		await call(first.url, (rpc) =>
+			rpc["thread.prompt"]({ ...ids, text: "Queued before the stop.", delivery: "followUp" }),
+		);
+		// Sent together on one connection: the prompt waits for no reply, so it lands inside the kill grace.
+		await call(first.url, (rpc) =>
+			Effect.all([rpc["thread.interrupt"](ids), rpc["thread.prompt"]({ ...ids, text: "Sent while stopping." })], {
+				concurrency: "unbounded",
+			}),
+		);
+		await logged(first.url, ids, "session.execution.interrupted");
+		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		record("stopped");
+		const stopped = await log(first.url, ids);
+		const seqOf = (type: string, text?: string) =>
+			stopped.find(
+				(event) =>
+					event.type === type && (text === undefined || (summary(event) as { text?: string }).text === text),
+			)!.durable!.seq;
+		// The prompt really landed while the stop wound down: after the stop was asked, before it ended.
+		expect(seqOf("session.prompt.admitted", "Sent while stopping.")).toBeLessThan(
+			seqOf("session.execution.interrupted"),
+		);
+		expect(fake.requests).toHaveLength(1);
+		await first.kill();
+
+		const second = await start();
+		const reopened = await call(second.url, (rpc) => rpc["thread.queue"](ids));
+		record("reopened");
+		expect(reopened.entries.map((entry) => entry.text)).toEqual(["Queued before the stop.", "Sent while stopping."]);
+		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("next prompt");
+
+		// One request: the steers and the oldest follow-up go in with the next prompt, in the order they were
+		// sent, so the follow-up queued before the stop comes first.
+		expect(fake.requests.map((request) => sent(request).at(-1)?.text)).toEqual([
+			"Run the stubborn command.",
+			"Next.",
+		]);
+		expect(
+			sent(fake.requests[1]!)
+				.filter((message) => message.role === "user")
+				.map((message) => message.text),
+		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Sent while stopping.", "Next."]);
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.stop.json");
+	}, 90_000);
+
+	it("a host killed while a stop winds down keeps the stop: the run is not resumed, its queue parked", async () => {
+		const marker = join(realpathSync(mkdtempSync(join(tmpdir(), "codework-recovery-marker-"))), "ran");
+		onTestFinished(() => rmSync(join(marker, ".."), { recursive: true, force: true }));
+		const fake = await streaming((_body, response, index) => {
+			if (index > 0) return answer(response, `Answer ${index}.`);
+			// Ignores SIGTERM, so the stop is still winding down when the host is killed.
+			response.send(
+				toolCalls([{ name: "bash", arguments: { command: `trap '' TERM; echo ran > ${marker}; sleep 20` } }]),
+			);
+			response.finish("tool_calls");
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
+		await until("the tool to run", () => existsSync(marker));
+		await call(first.url, (rpc) =>
+			rpc["thread.prompt"]({ ...ids, text: "Queued before the stop.", delivery: "followUp" }),
+		);
+		expect(await call(first.url, (rpc) => rpc["thread.interrupt"](ids))).toEqual({ interrupted: true });
+		// The stop was accepted, and its run has not ended yet.
+		expect(count(await log(first.url, ids), "session.execution.interrupted")).toBe(0);
+		await first.kill();
+
+		const second = await start();
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("reopened");
+		const reopened = await log(second.url, ids);
+		expect(
+			reopened.filter((event) => event.type === "session.execution.interrupted").map((event) => summary(event)),
+		).toEqual([{ type: "session.execution.interrupted", reason: "user" }]);
+		expect(count(reopened, "session.execution.started")).toBe(1);
+		expect(fake.requests).toHaveLength(1);
+		// What a remote client reads to tell a queue that waits from one about to run.
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(true);
+
+		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("next prompt");
+		expect(
+			sent(fake.requests[1]!)
+				.filter((message) => message.role === "user")
+				.map((message) => message.text),
+		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Next."]);
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(false);
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.stop-killed.json");
+	}, 90_000);
+
+	it("a parked prompt moved to steer runs now and is resumed after a kill; resending it changes nothing", async () => {
+		const cut = gate();
+		const resend = gate();
+		const fake = await streaming((_body, response, index) => {
+			if (index === 0) return truncate(response);
+			if (index === 1) return void cut.opened.then(() => truncate(response));
+			// The run the move started, killed with its request in flight; then its resend.
+			if (index === 2) return hang(response);
+			void resend.opened.then(() => answer(response, "Answered after the kill."));
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first.url, ids, "session.llm.started", 2);
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
+		cut.open();
+		await logged(first.url, ids, "session.run.failed");
+		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		const [parked] = (await call(first.url, (rpc) => rpc["thread.queue"](ids))).entries;
+		const messageId = Session.SessionMessageSchema.ID.make(parked!.id);
+
+		// A retry of the same request is the same prompt: it stays parked.
+		await call(first.url, (rpc) =>
+			rpc["thread.prompt"]({ ...ids, id: messageId, text: "Then this.", delivery: "followUp" }),
+		);
+		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		record("resent");
+		expect(fake.requests).toHaveLength(2);
+
+		await call(first.url, (rpc) => rpc["thread.update"]({ ...ids, messageId, delivery: "steer" }));
+		await logged(first.url, ids, "session.llm.started", 3);
+		await until("the moved prompt's request", () => fake.requests.length === 3);
+		record("moved");
+		await first.kill();
+
+		const second = await start();
+		await logged(second.url, ids, "session.llm.started", 4);
+		resend.open();
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("finished");
+
+		expect(fake.requests).toHaveLength(4);
+		expect(sent(fake.requests[3]!)).toEqual(sent(fake.requests[2]!));
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.moved.json");
+	}, 90_000);
+
+	it("a run a clean shutdown stopped resumes without counting a restart", async () => {
+		const resend = gate();
+		const fake = await streaming((_body, response, index) => {
+			if (index === 0) return hang(response);
+			void resend.opened.then(() => answer(response, "Answered after the restart."));
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
+		await logged(first.url, ids, "session.llm.started");
+		await until("the request", () => fake.requests.length === 1);
+		await first.stop();
+		const stopped = { ...positions(home, ids.threadId), attempt: attemptOf(home, ids.threadId) };
+		// The request the shutdown ended keeps its attempt: the resume goes on counting from it.
+		expect(stopped.attempt).toBe(1);
+
+		const second = await start();
+		await logged(second.url, ids, "session.llm.started", 2);
+		await until("the resend", () => fake.requests.length === 2);
+		// Read while the resumed run is in flight: a run that completes resets the count either way.
+		const resumed = positions(home, ids.threadId);
+		resend.open();
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await log(second.url, ids);
+
+		expect(stopped.restarts).toBe(0);
+		expect(resumed.restarts).toBe(0);
+		expect(summary(events.find((event) => event.type === "session.execution.interrupted")!)).toEqual({
+			type: "session.execution.interrupted",
+			reason: "shutdown",
+		});
+		await expect(
+			artifact({
+				log: events
+					.filter((event) => event.type.startsWith("session.execution.") || event.type === "session.llm.started")
+					.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				stopped,
+				resumed,
+				finished: positions(home, ids.threadId),
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.shutdown.json");
+	}, 90_000);
+
 	it("a deferred tool loaded before the host died is still offered to the resent request", async () => {
 		const tools = (request: ChatRequest) => (request.tools ?? []).map((tool) => tool.function.name).sort();
 		const fake = await streaming((_body, response, index) => {
@@ -589,6 +997,7 @@ describe("recovery after the host is killed", () => {
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Find the echo tool." }));
 		await logged(first.url, ids, "session.llm.started", 2);
+		await until("the second request", () => fake.requests.length === 2);
 		await first.kill();
 
 		const second = await start();
@@ -608,4 +1017,115 @@ describe("recovery after the host is killed", () => {
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.tools.json");
 	}, 90_000);
+
+	it("a thread that cannot be resumed fails alone: the other thread cut off with it still resumes", async () => {
+		let answering = false;
+		const fake = await streaming((_body, response) => (answering ? answer(response, "Resumed.") : hang(response)));
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const broken = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const healthy = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const brokenIds = { sessionId: broken.session.id, threadId: broken.id };
+		const healthyIds = { sessionId: healthy.session.id, threadId: healthy.id };
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...brokenIds, text: "Broken." }));
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...healthyIds, text: "Healthy." }));
+		await logged(first.url, brokenIds, "session.llm.started");
+		await logged(first.url, healthyIds, "session.llm.started");
+		await until("both requests", () => fake.requests.length === 2);
+		await first.kill();
+		// A draft no resume can read: healing it dies.
+		const db = new DatabaseSync(join(home, "data", "codework.db"));
+		db.prepare(
+			"UPDATE entry SET data = 'not json', rev = (SELECT rev FROM store) WHERE thread_id = ? AND state = 'draft'",
+		).run(brokenIds.threadId);
+		db.close();
+
+		answering = true;
+		const second = await start();
+		await logged(second.url, brokenIds, "session.execution.failed");
+		const events = await logged(second.url, healthyIds, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](healthyIds));
+		await call(second.url, (rpc) => rpc["thread.wait"](brokenIds));
+
+		expect(fake.requests).toHaveLength(3);
+		const lifecycle = (log: ReadonlyArray<EventEnvelope>) =>
+			log
+				.filter((event) => event.type.startsWith("session.execution.") || event.type === "session.run.failed")
+				.map(summary);
+		await expect(
+			artifact({
+				broken: lifecycle(await log(second.url, brokenIds)),
+				healthy: lifecycle(events),
+				resent: sent(fake.requests[2]!),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.isolation.json");
+	}, 90_000);
+
+	it("a run killed, then shut down, while it waits out a retry is resumed uncounted, its attempt carried", async () => {
+		const resend = gate();
+		const fake = await streaming((_body, response) => void resend.opened.then(() => answer(response, "Answered.")));
+		const dead = await refused();
+		// The backoff outlasts the test: the host is killed and stopped while it sleeps.
+		const asleep = { retry: { maxRetries: 3, baseDelayMs: 60_000, maxDelayMs: 60_000 } };
+		const { home, start } = setup(dead, asleep);
+		const steps: Array<{ step: string; restarts: number; attempt: unknown }> = [];
+		let threadId = "";
+		const record = (step: string) =>
+			steps.push({ step, restarts: positions(home, threadId).restarts, attempt: attemptOf(home, threadId) });
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		threadId = ids.threadId;
+		const live = subscribe(first.url, ids.threadId);
+		await live.ready;
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Wait it out." }));
+		await until("the retry", () => live.events.find((event) => event.type === "session.retry.scheduled"));
+		record("backoff");
+		await first.kill();
+
+		// The resume counts the attempt it slept for as failed and waits out the next: a kill in backoff
+		// counted no restart, the retry budget bounds it instead.
+		const second = await start();
+		await until("the resumed run", async () =>
+			(await log(second.url, ids)).find(
+				(event) => event.type === "session.execution.started" && (event.data as Json)["resumed"] === true,
+			),
+		);
+		record("resumed");
+		await second.stop();
+		record("stopped");
+
+		writeSettings(home, fake.url, retry);
+		const third = await start();
+		const resumed = subscribe(third.url, ids.threadId);
+		await resumed.ready;
+		await until("the resend", () => fake.requests.length === 1);
+		resend.open();
+		await until("retry.finished", () => resumed.events.find((event) => event.type === "session.retry.finished"));
+		const events = await logged(third.url, ids, "session.execution.succeeded");
+		await call(third.url, (rpc) => rpc["thread.wait"](ids));
+		record("finished");
+
+		expect(steps.map((step) => step.restarts)).toEqual([0, 0, 0, 0]);
+		// The attempt the backoff waits for, past the two that failed: the shutdown keeps it, and it is sent next.
+		expect(steps.find((step) => step.step === "stopped")?.attempt).toBe(3);
+		await expect(
+			artifact({
+				log: events
+					.filter((event) =>
+						["session.execution.", "session.llm.", "session.retry."].some((prefix) =>
+							event.type.startsWith(prefix),
+						),
+					)
+					.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				// The resend goes on from the attempt the host stopped in.
+				live: resumed.events.filter((event) => event.type === "session.retry.finished").map(summary),
+				steps,
+				requests: fake.requests.map(sent),
+				// The refused address is a fresh port each run.
+			}).replaceAll(new URL(dead).host, "<refused>"),
+		).toMatchFileSnapshot("./__artifacts__/recovery.backoff.json");
+	}, 120_000);
 });

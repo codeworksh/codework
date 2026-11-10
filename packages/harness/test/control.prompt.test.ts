@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
@@ -116,8 +116,8 @@ describe("Control.prompt", () => {
 
 			const counts = yield* Effect.all(
 				[
-					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
-					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
+					inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools"),
+					inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools"),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -146,9 +146,15 @@ describe("Control.prompt", () => {
 			const inputs = yield* Inbox.make;
 			yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 
-			const won = yield* Effect.all([inputs.promoteFollowUp(threadId), inputs.promoteFollowUp(threadId)], {
-				concurrency: "unbounded",
-			});
+			const won = yield* Effect.all(
+				[
+					inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "final"),
+					inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "final"),
+				],
+				{
+					concurrency: "unbounded",
+				},
+			);
 
 			expect(won.filter(Boolean).length).toBe(1);
 			expect(yield* eventCount("session.prompt.promoted.1")).toBe(1);
@@ -163,7 +169,7 @@ describe("Control.prompt", () => {
 			const cutoff = first.admittedSeq;
 			const second = yield* control.prompt({ sessionId, prompt: prompt("After cutoff") });
 
-			yield* inputs.promoteSteers(threadId, cutoff);
+			yield* inputs.promote(threadId, cutoff, "postTools");
 
 			expect(some(yield* inputs.find(first.id)).promotedSeq).toBeDefined();
 			expect(some(yield* inputs.find(second.id)).promotedSeq).toBeUndefined();
@@ -178,7 +184,7 @@ describe("Control threads", () => {
 			const inputs = yield* Inbox.make;
 			const first = yield* control.prompt({ sessionId, prompt: prompt("On main") });
 			expect(first.threadId).toBe(threadId);
-			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 
 			const forked = yield* threads.fork({ threadId, entryId: first.id });
 			const fork = ThreadSchema.ID.make(forked.thread.id);
@@ -221,6 +227,59 @@ describe("Control threads", () => {
 		}));
 });
 
+describe("Control lifecycle", () => {
+	// The publisher read the thread, then the session was deleted before the commit: the event must roll back
+	// with its projection, or it recreates the session's sequence row.
+	it("rolls back a lifecycle event for a thread deleted since, leaving no sequence row", () =>
+		Effect.gen(function* () {
+			const { sessions, sessionId, threadId } = yield* setup;
+			const events = yield* Event.Service;
+			const sql = yield* SqlClient.SqlClient;
+			yield* sessions.delete(sessionId);
+
+			const exit = yield* events
+				.publish(EventList.ExecutionStarted, {
+					timestamp: yield* DateTime.now,
+					sessionId,
+					threadId,
+					resumed: false,
+				})
+				.pipe(Effect.exit);
+
+			expect(Exit.isFailure(exit) && Schema.is(Thread.ThreadNotFoundError)(Cause.squash(exit.cause))).toBe(true);
+			expect(yield* sql`SELECT seq FROM sequence WHERE aggregate_id = ${sessionId}`).toEqual([]);
+			expect(yield* sql`SELECT id FROM event WHERE aggregate_id = ${sessionId}`).toEqual([]);
+		}));
+});
+
+describe("Control.interrupt", () => {
+	// No execution here owns the thread (the next start has not resumed it yet), but durable state says its
+	// run is owed a resume: the stop must stand, not be dropped.
+	it("ends a run the last process cut off when no execution here owns it", () =>
+		Effect.gen(function* () {
+			const { threads, control, sessionId, threadId } = yield* setup;
+			const events = yield* Event.Service;
+			yield* events.publish(EventList.ExecutionStarted, {
+				timestamp: yield* DateTime.now,
+				sessionId,
+				threadId,
+				resumed: false,
+			});
+			yield* events.publish(EventList.ExecutionInterrupted, {
+				timestamp: yield* DateTime.now,
+				sessionId,
+				threadId,
+				reason: "crash",
+			});
+
+			expect(yield* control.interrupt(threadId)).toBe(true);
+			expect(yield* threads.resumable(threadId)).toBe(false);
+			expect((yield* threads.unfinished).map((row) => row.id)).not.toContain(threadId);
+			// Nothing is owed any more: a second stop has nothing to end.
+			expect(yield* control.interrupt(threadId)).toBe(false);
+		}));
+});
+
 describe("Control.cancel", () => {
 	it("lists pending prompts of both lanes in admission order, without promoted or cancelled ones", () =>
 		Effect.gen(function* () {
@@ -239,7 +298,7 @@ describe("Control.cancel", () => {
 			]);
 
 			yield* control.cancel(threadId, dropped.id);
-			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([later.id]);
 		}));
 
@@ -257,7 +316,7 @@ describe("Control.cancel", () => {
 			expect(yield* inputs.hasPending(threadId, "steer")).toBe(false);
 			expect(some(yield* inputs.find(admitted.id)).cancelledSeq).toBeDefined();
 			// Nothing is left to promote, and nothing reaches the conversation.
-			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(0);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")).toBe(0);
 			expect(yield* threads.line(threadId)).toEqual([]);
 		}));
 
@@ -285,7 +344,7 @@ describe("Control.cancel", () => {
 			const { threads, control, sessionId, threadId } = yield* setup;
 			const inputs = yield* Inbox.make;
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
-			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 
 			expect(yield* control.cancel(threadId, admitted.id)).toBe(false);
 
@@ -319,7 +378,7 @@ describe("Control.cancel", () => {
 				}),
 			).toEqual(retried);
 
-			expect(yield* inputs.promoteFollowUp(threadId)).toBe(true);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "final")).toBe(1);
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([messageId]);
 			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
@@ -359,7 +418,7 @@ describe("Control.cancel", () => {
 			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
 
 			const [cancelled, promoted] = yield* Effect.all(
-				[control.cancel(threadId, admitted.id), inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)],
+				[control.cancel(threadId, admitted.id), inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")],
 				{ concurrency: "unbounded" },
 			);
 
@@ -394,8 +453,6 @@ const watched = Control.layer.pipe(
 			RunnerExecution.Service.of({
 				active: Effect.succeed(new Set()),
 				resume: () => Effect.void,
-				recover: () => Effect.void,
-				abandon: () => Effect.void,
 				wake: (threadId) => Effect.sync(() => wakes.push(threadId)),
 				interrupt: () => Effect.succeed(false),
 				awaitIdle: () => Effect.void,
@@ -435,8 +492,9 @@ describe("Control.update", () => {
 		}),
 	);
 
-	// "Send now" on a steer left waiting by a stop: nothing to change, but the session must wake.
-	itWatched("wakes for a steer already in the steer lane without recording a change", () =>
+	// "Send now" on a steer left waiting by a stop: the lane is unchanged, but the move is recorded, since
+	// that is what makes the parked prompt run, now or after a crash.
+	itWatched("records and wakes a move to the steer lane for a steer already in it", () =>
 		Effect.gen(function* () {
 			const { control, sessionId, threadId } = yield* setup;
 			const steer = yield* control.prompt({ sessionId, prompt: prompt("Parked") });
@@ -445,7 +503,7 @@ describe("Control.update", () => {
 			expect(yield* control.update(threadId, steer.id, { delivery: "steer" })).toBe(true);
 
 			expect(wakes).toEqual([threadId]);
-			expect(yield* eventCount("session.prompt.updated.1")).toBe(0);
+			expect(yield* eventCount("session.prompt.updated.1")).toBe(1);
 		}),
 	);
 
@@ -459,7 +517,7 @@ describe("Control.update", () => {
 			expect(yield* control.update(threadId, first.id, { prompt: prompt("Fix the flaky test only") })).toBe(true);
 			expect((yield* control.pending(threadId)).map((input) => input.id)).toEqual([first.id, second.id]);
 
-			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
 			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[0]!))[0]).toMatchObject({
@@ -479,7 +537,7 @@ describe("Control.update", () => {
 				tag: "test",
 			});
 			const promoted = yield* control.prompt({ sessionId, prompt: prompt("Promoted") });
-			yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER);
+			yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools");
 			const cancelled = yield* control.prompt({ sessionId, prompt: prompt("Cancelled") });
 			yield* control.cancel(threadId, cancelled.id);
 			const pending = yield* control.prompt({ sessionId, prompt: prompt("Pending"), delivery: "followUp" });
@@ -503,7 +561,7 @@ describe("Control.update", () => {
 			const [updated, promoted] = yield* Effect.all(
 				[
 					control.update(threadId, admitted.id, { prompt: prompt("Rewritten") }),
-					inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER),
+					inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools"),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -574,11 +632,11 @@ describe("Control queue races", () => {
 					: Effect.void,
 			);
 
-			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")).toBe(1);
 			expect(rewritten).toBe(true);
 			expect(yield* control.pending(threadId)).toMatchObject([{ id: second.id }]);
 
-			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")).toBe(1);
 			const line = yield* threads.line(threadId);
 			expect(line.map((h) => h.entry.id)).toEqual([first.id, second.id]);
 			expect(ContextCodec.parts(yield* ContextCodec.decodeMessage(line[1]!))[0]).toMatchObject({
@@ -609,13 +667,13 @@ describe("Control queue races", () => {
 					: Effect.void,
 			);
 
-			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")).toBe(1);
 			expect(resent).toBe(true);
 			const [pending] = yield* control.pending(threadId);
 			expect(pending?.id).toBe(second.id);
 			expect(pending!.admittedSeq).toBeGreaterThan(before.admittedSeq);
 
-			expect(yield* inputs.promoteSteers(threadId, Number.MAX_SAFE_INTEGER)).toBe(1);
+			expect(yield* inputs.promote(threadId, Number.MAX_SAFE_INTEGER, "postTools")).toBe(1);
 			expect((yield* threads.line(threadId)).map((h) => h.entry.id)).toEqual([first.id, second.id]);
 		}));
 
@@ -658,55 +716,59 @@ describe("Control queue races", () => {
 });
 
 describe("Control unfinished runs", () => {
-	const executionOf = (threadId: string) =>
+	const unfinished = (threadId: string) =>
 		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
-			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM thread WHERE id = ${threadId}`;
-			return row?.execution;
+			const threads = yield* Thread.Service;
+			return (yield* threads.unfinished).some((row) => row.id === threadId);
+		});
+	const end = (
+		event: typeof EventList.RunFailed | typeof EventList.ExecutionInterrupted,
+		ids: {
+			readonly sessionId: SessionSchema.ID;
+			readonly threadId: ThreadSchema.ID;
+		},
+	) =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const timestamp = yield* DateTime.now;
+			if (event === EventList.RunFailed)
+				return yield* events.publish(EventList.RunFailed, {
+					...ids,
+					timestamp,
+					reason: "truncated",
+					message: "cut",
+				});
+			return yield* events.publish(EventList.ExecutionInterrupted, { ...ids, timestamp, reason: "user" });
 		});
 
-	// Marked before the wake: a crash between accepting the prompt and its run starting must not lose it.
-	it("marks a thread running as soon as a prompt is accepted", () =>
+	// The admission itself records what makes the prompt run: a crash right after accepting it must not lose it.
+	it("leaves an accepted prompt runnable, and unfinished, from its admission", () =>
 		Effect.gen(function* () {
-			const { control, sessionId, threadId } = yield* setup;
-			expect(yield* executionOf(threadId)).toBeNull();
+			const { threads, control, sessionId, threadId } = yield* setup;
+			expect(yield* threads.runnable(threadId)).toBe(false);
 
 			yield* control.prompt({ sessionId, prompt: prompt(text) });
 
-			expect(yield* executionOf(threadId)).toBe("running");
+			expect(yield* threads.runnable(threadId)).toBe(true);
+			expect(yield* unfinished(threadId)).toBe(true);
 		}));
 
-	it("keeps a finished run marked while accepted prompts are still pending", () =>
+	it("parks what an unanswered end leaves queued; a later prompt or a move to steer wakes it", () =>
 		Effect.gen(function* () {
 			const { threads, control, sessionId, threadId } = yield* setup;
-			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
+			const queued = yield* control.prompt({ sessionId, prompt: prompt("Queued"), delivery: "followUp" });
 
-			yield* threads.endExecution(threadId, "finished");
-			expect(yield* executionOf(threadId)).toBe("running");
+			yield* end(EventList.RunFailed, { sessionId, threadId });
+			expect(yield* threads.runnable(threadId)).toBe(false);
+			expect(yield* unfinished(threadId)).toBe(false);
 
-			// Cancelling leaves the mark alone; the run that next ends with nothing pending clears it.
-			yield* control.cancel(threadId, admitted.id);
-			expect(yield* executionOf(threadId)).toBe("running");
-			yield* threads.endExecution(threadId, "finished");
-			expect(yield* executionOf(threadId)).toBeNull();
-		}));
+			yield* control.update(threadId, queued.id, { delivery: "steer" });
+			expect(yield* threads.runnable(threadId)).toBe(true);
 
-	it("keeps a closed run, and clears a stopped one unless a prompt came after the stop", () =>
-		Effect.gen(function* () {
-			const { threads, control, sessionId, threadId } = yield* setup;
-			const events = yield* Event.Service;
-			yield* control.prompt({ sessionId, prompt: prompt("Parked by the stop") });
-
-			yield* threads.endExecution(threadId, "closed");
-			expect(yield* executionOf(threadId)).toBe("closed");
-
-			// Sent while the stop was being cleaned up: its wake survives, so the mark must too.
-			const stop = yield* events.latestSequence(sessionId);
-			yield* control.prompt({ sessionId, prompt: prompt("Sent after the stop") });
-			yield* threads.endExecution(threadId, "stopped", stop);
-			expect(yield* executionOf(threadId)).toBe("running");
-
-			yield* threads.endExecution(threadId, "stopped", yield* events.latestSequence(sessionId));
-			expect(yield* executionOf(threadId)).toBeNull();
+			// A user stop parks the same way, and a prompt sent after it is runnable again.
+			yield* end(EventList.ExecutionInterrupted, { sessionId, threadId });
+			expect(yield* threads.runnable(threadId)).toBe(false);
+			yield* control.prompt({ sessionId, prompt: prompt("After the stop") });
+			expect(yield* threads.runnable(threadId)).toBe(true);
 		}));
 });

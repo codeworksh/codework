@@ -41,17 +41,31 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 	let admitted = false;
 	let promoted = false;
 	let settled = false;
-	let unattributed: ExecutionError | undefined;
-	// Raised once a busy period ends without our prompt in it: the session may be
-	// about to go idle, and only idleness proves our prompt is never running.
+	// By log position, since notifications may arrive out of order: a run that started after our
+	// admission is one our prompt woke, so its failure before promoting us is ours. A run already going
+	// fails on its own, and parks our prompt behind it.
+	let admittedAt: number | undefined;
+	const starts: Array<number> = [];
+	// Runs that ended before promoting us, failed ones with their error.
+	const ends: Array<{ readonly at: number; readonly error: ExecutionError | undefined }> = [];
+	const ours = () =>
+		ends.findLast(({ at, error }) => {
+			const start = Math.max(...starts.filter((seq) => seq < at));
+			return error !== undefined && admittedAt !== undefined && start > admittedAt;
+		})?.error;
+	// Raised once a run ends after our admission without our prompt in it: the session may be about to
+	// go idle, and only idleness proves our prompt is never running.
 	const stalled = yield* Deferred.make<void>();
 
-	const terminal = (event: EventSchema.Payload): ExecutionError | undefined => {
+	/** How a run ended, as this client reports it; `undefined` for a success. */
+	const failure = (event: EventList.RunEnded): ExecutionError | undefined => {
 		if (Schema.is(EventList.ExecutionInterrupted)(event))
 			return new ExecutionError({
 				type: "aborted",
 				message: event.data.reason === "shutdown" ? "Server stopped the session" : "Session interrupted",
 			});
+		if (Schema.is(EventList.RunFailed)(event))
+			return new ExecutionError({ type: `run.${event.data.reason}`, message: event.data.message });
 		if (Schema.is(EventList.ExecutionFailed)(event))
 			return new ExecutionError({
 				type: event.data.error.type,
@@ -72,25 +86,26 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 					Effect.catchTag("UnknownEventTypeError", () => Effect.void),
 				);
 				if (event === undefined) return;
-				if (Schema.is(EventList.PromptAdmitted)(event) && event.data.messageId === id) admitted = true;
-				if (Schema.is(EventList.Prompted)(event) && event.data.messageId === id) {
-					promoted = true;
-					// Our prompt is running after all; whatever ended before it was not ours.
-					unattributed = undefined;
+				const seq = event.durable?.seq;
+				if (Schema.is(EventList.ExecutionStarted)(event) && seq !== undefined) starts.push(seq);
+				if (Schema.is(EventList.PromptAdmitted)(event) && event.data.messageId === id) {
+					admitted = true;
+					admittedAt = seq;
 				}
-				if (!admitted) return;
+				if (Schema.is(EventList.Prompted)(event) && event.data.messageId === id) promoted = true;
 
-				const ended = terminal(event);
-				const succeeded = Schema.is(EventList.ExecutionSucceeded)(event);
+				const ended = EventList.isRunEnded(event);
+				const error = ended ? failure(event) : undefined;
 				if (!promoted) {
-					if (ended !== undefined) unattributed = ended;
-					// A busy period that ended without us: wait for idle to find out
-					// whether a successor still picks our prompt up.
-					if (ended !== undefined || succeeded) yield* Deferred.succeed(stalled, undefined);
+					// Kept whatever arrives first: our admission comes from another fiber than the runs, so a
+					// run's end may be notified before it.
+					if (ended && seq !== undefined) ends.push({ at: seq, error });
+					if (admitted && ends.some(({ at }) => admittedAt === undefined || at > admittedAt))
+						yield* Deferred.succeed(stalled, undefined);
 					return;
 				}
-				if (ended !== undefined) return yield* ended;
-				if (succeeded) {
+				if (error !== undefined) return yield* error;
+				if (ended) {
 					settled = true;
 					return;
 				}
@@ -121,8 +136,7 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 
 	yield* Effect.raceFirst(consume, reconcile);
 	if (settled) return;
-	if (abandoned)
-		return yield* unattributed ?? new ExecutionError({ type: "unknown", message: "Prompt was not promoted" });
+	if (abandoned) return yield* ours() ?? new ExecutionError({ type: "unknown", message: "Prompt was not promoted" });
 	return yield* new ExecutionError({
 		type: "transport.disconnected",
 		message: "Event stream ended before the prompt finished; its output was not rendered",

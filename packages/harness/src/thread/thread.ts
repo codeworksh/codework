@@ -20,6 +20,11 @@ import { EventList } from "../event/list.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { ThreadSchema } from "./schema.ts";
 
+/** A host interruption landed on a run the user had asked to stop; see `projectRun`. */
+export class RunStoppingError extends Schema.TaggedError<RunStoppingError>()("RunStoppingError", {
+	threadId: Schema.String,
+}) {}
+
 export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>()("ThreadNotFoundError", {
 	threadId: Schema.String,
 }) {
@@ -133,7 +138,7 @@ export interface Forked {
 	readonly text?: string;
 }
 
-/** What a projector inserts for a new thread; usage and execution start empty. */
+/** What a projector inserts for a new thread; usage and run state start empty. */
 export interface InsertThread {
 	readonly id: ThreadSchema.ID;
 	readonly sessionId: SessionSchema.ID;
@@ -146,7 +151,20 @@ export interface InsertThread {
 export type RunChange =
 	| { readonly _tag: "started" }
 	| { readonly _tag: "running" }
-	| { readonly _tag: "ended"; readonly outcome: ThreadSchema.RunOutcome; readonly error?: ThreadSchema.RunError };
+	/** A user stop accepted for the open run: kept on the row until the run's terminal lands. */
+	| { readonly _tag: "stopping" }
+	| {
+			readonly _tag: "ended";
+			readonly outcome: ThreadSchema.RunOutcome;
+			readonly error?: ThreadSchema.RunError;
+			/** The ending event's seq. */
+			readonly seq: number;
+	  };
+
+/** Whether the row's open run was asked to stop by the user; see `session.execution.stopping`. */
+export const stopping = (row: Pick<ThreadRow, "runState" | "runError">) =>
+	row.runState !== "idle" &&
+	Option.exists(row.runError, (error) => error._tag === "interrupted" && error.reason === "user");
 
 // Entry row + its part rows, zipped. Message decode happens above this layer.
 export interface HydratedEntry {
@@ -210,39 +228,35 @@ export interface Interface {
 	readonly projectForked: (input: EventList.ThreadForked["data"], seq: number) => Effect.Effect<void>;
 	/** Names an untitled thread. Returns whether the title changed. */
 	readonly retitle: (threadId: ThreadSchema.ID, title: string) => Effect.Effect<boolean>;
-	/** Records that the thread has a run to do: one starting, or one a prompt just woke. */
-	readonly markRunning: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/**
-	 * Records how a run ended. `closed` (a shutdown) leaves it to resume. `stopped` (the user) and
-	 * `finished` clear it and the restart count, except that a finished run with prompts still
-	 * pending stays marked: they are accepted work a successor, or the next server start, runs.
-	 */
-	readonly endExecution: (
-		threadId: ThreadSchema.ID,
-		end: "finished" | "stopped" | "closed",
-		/** For a stop: the log position it was asked at. A prompt admitted after it keeps the mark. */
-		stoppedAt?: number,
-	) => Effect.Effect<void>;
-	/**
-	 * Claims a thread's unfinished run for recovery: marks it running again, counting a restart when
-	 * a dying process left it running (a shutdown's closed run is not counted). The new count, or none
-	 * when nothing is unfinished any more, say because the user stopped it since.
+	 * Claims the run the host cut off for recovery, counting a restart when the sweep found its host
+	 * dead in it, unless the run slept in retry backoff (a shutdown is not counted either). The new count,
+	 * or none when no run is cut off any more, say because the user stopped it since.
 	 */
 	readonly claimRestart: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<number>>;
 	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
 	readonly resetRestarts: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/** Records the 1-based provider request now in flight, or none (null) once its response ended. */
 	readonly setAttempt: (threadId: ThreadSchema.ID, attempt: number | null) => Effect.Effect<void>;
+	/** Whether a pending prompt of the thread is past its head: woken since its last unanswered end. */
+	readonly runnable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/**
-	 * Leaves a run that is not resumed idle: no mark, no restarts, no request in flight, whatever is
-	 * queued. Its queued prompts wait for the next prompt to wake the thread.
+	 * Whether the thread holds queued prompts that wait for its next prompt: idle, nothing owed a run, and a
+	 * prompt pending. Derived from the positions, never stored.
 	 */
-	readonly idle: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
-	/** Root threads with a run left unfinished, oldest first. */
+	readonly parked: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	/** Whether the thread is among {@link unfinished}: still owed a resume, say not stopped since. */
+	readonly resumable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	/**
+	 * Threads with a run left to resume, oldest first: their last run was interrupted by a crash or a
+	 * shutdown, or a pending prompt is runnable. Read after the startup sweep has closed open runs.
+	 */
 	readonly unfinished: Effect.Effect<ReadonlyArray<ThreadRow>>;
 	/**
-	 * Projector-only: the `run_*` columns, at the time `at` of the event that changed them. The one
-	 * writer of those columns.
+	 * Projector-only: the `run_*` columns, at the time `at` of the event that changed them, and what a
+	 * run's end settles: `head` moves to an unanswered end (a failure or a user stop), which parks the
+	 * queue; the restart count and the request in flight clear, except where the run resumes. An end
+	 * landing on a run already ended only moves `head`. Dies when the thread is gone, rolling the event back.
 	 */
 	readonly projectRun: (threadId: ThreadSchema.ID, at: DateTime.Utc, change: RunChange) => Effect.Effect<void>;
 	/** Threads whose stored run is not idle: at startup, the runs a dead process left open. */
@@ -512,12 +526,13 @@ export const layer = Layer.effect(
 					originEntryId: origin.kind === "main" ? Option.none() : Option.fromUndefinedOr(origin.entryId),
 					originCallId: origin.kind === "subagent" ? Option.some(origin.callId) : Option.none(),
 					title: Option.fromUndefinedOr(input.title),
-					execution: Option.none(),
 					attempt: Option.none(),
 					createdSeq: input.seq,
 					rev: yield* store.rev,
 				});
 				yield* insertThread(row);
+				// A new thread changes its session.
+				yield* sql`UPDATE session SET rev = ${row.rev} WHERE id = ${input.sessionId}`;
 			},
 			store.write,
 			Effect.orDie,
@@ -551,26 +566,22 @@ export const layer = Layer.effect(
 			for (const [partIndex, part] of parts.entries()) yield* writePart(entryId, threadId, partIndex, part);
 		});
 
-		// Usage lives on the thread and moves with the envelope stored; the session's last activity
-		// moves with it.
-		const touch = Effect.fnUntraced(function* (
+		// Usage lives on the thread and moves with the envelope stored.
+		const addUsage = Effect.fnUntraced(function* (
 			thread: ThreadRow,
 			delta?: { cost: number; input: number; output: number; cacheRead: number; cacheWrite: number },
 		) {
-			const now = yield* epochNow;
-			const rev = yield* store.rev;
+			if (delta === undefined) return;
 			yield* sql`
 				UPDATE thread SET
-					rev = ${rev},
-					updated_at = ${now},
-					cost = cost + ${delta?.cost ?? 0},
-					tokens_input = tokens_input + ${delta?.input ?? 0},
-					tokens_output = tokens_output + ${delta?.output ?? 0},
-					tokens_cache_read = tokens_cache_read + ${delta?.cacheRead ?? 0},
-					tokens_cache_write = tokens_cache_write + ${delta?.cacheWrite ?? 0}
+					rev = ${yield* store.rev},
+					cost = cost + ${delta.cost},
+					tokens_input = tokens_input + ${delta.input},
+					tokens_output = tokens_output + ${delta.output},
+					tokens_cache_read = tokens_cache_read + ${delta.cacheRead},
+					tokens_cache_write = tokens_cache_write + ${delta.cacheWrite}
 				WHERE id = ${thread.id}
 			`;
-			yield* sql`UPDATE session SET updated_at = ${now}, rev = ${rev} WHERE id = ${thread.sessionId}`;
 		});
 
 		type AppendTxResult =
@@ -662,7 +673,7 @@ export const layer = Layer.effect(
 							} as const;
 						}
 						yield* writeParts(input.id, input.threadId, parts);
-						yield* touch(
+						yield* addUsage(
 							thread.value,
 							usage === undefined
 								? undefined
@@ -733,7 +744,7 @@ export const layer = Layer.effect(
 						UPDATE entry SET data = ${input.data}, updated_at = ${now}, rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
-					yield* touch(thread, delta);
+					yield* addUsage(thread, delta);
 				}),
 			);
 		}, Effect.orDie);
@@ -812,7 +823,6 @@ export const layer = Layer.effect(
 				RETURNING id
 			`;
 				if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
-				yield* sql`UPDATE thread SET updated_at = ${now}, rev = ${yield* store.rev} WHERE id = ${input.threadId}`;
 			},
 			store.write,
 			Effect.orDie,
@@ -832,7 +842,7 @@ export const layer = Layer.effect(
 							rev = ${yield* store.rev}
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
-					yield* touch(thread, delta);
+					yield* addUsage(thread, delta);
 				}),
 			);
 		}, Effect.orDie);
@@ -955,46 +965,35 @@ export const layer = Layer.effect(
 			Effect.orDie,
 		);
 
-		const markRunning = Effect.fn("Thread.markRunning")(
-			function* (threadId: ThreadSchema.ID) {
-				yield* sql`UPDATE thread SET execution = 'running', rev = ${yield* store.rev} WHERE id = ${threadId}`;
-			},
-			store.write,
-			Effect.orDie,
-		);
-
-		const endExecution = Effect.fn("Thread.endExecution")(
-			function* (threadId: ThreadSchema.ID, end: "finished" | "stopped" | "closed", stoppedAt?: number) {
-				// A run that ended in this process has no request in flight: only a dead host leaves one.
-				const rev = yield* store.rev;
-				if (end === "closed") {
-					yield* sql`UPDATE thread SET execution = 'closed', attempt = NULL, rev = ${rev} WHERE id = ${threadId}`;
-					return;
-				}
-				yield* sql`UPDATE thread SET attempt = NULL, rev = ${rev} WHERE id = ${threadId}`;
-				// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
-				// after it, since what was queued before it stays parked by the user's choice.
-				const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
-				yield* sql`
-				UPDATE thread SET execution = NULL, restarts = 0, rev = ${rev}
-				WHERE id = ${threadId} AND NOT EXISTS (
-					SELECT 1 FROM inbox
-					WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
-						AND admitted_seq > ${after}
-				)
-			`;
-			},
-			store.write,
-			Effect.orDie,
-		);
+		/** Over a `thread` row: a pending prompt past its head, woken since the last unanswered end. */
+		const runnableOf = sql`EXISTS (
+			SELECT 1 FROM inbox
+			WHERE inbox.thread_id = thread.id AND inbox.promoted_seq IS NULL AND inbox.cancelled_seq IS NULL
+				AND inbox.tail > thread.head
+		)`;
+		/** Over a `thread` row: its last run was cut off by the host, not ended. */
+		const interruptedOf = (reasons: ReadonlyArray<SessionSchema.InterruptReason>) =>
+			sql`(thread.run_outcome = 'interrupted' AND json_extract(thread.run_error, '$.reason') IN ${sql.in(reasons)})`;
+		const unfinishedOf = sql`(${interruptedOf(["crash", "shutdown"])} OR ${runnableOf})`;
+		/*
+		 * Over a `thread` row: its run sleeps in retry backoff, its attempt set and no draft open (the failed
+		 * attempt's draft was aborted before the sleep). A crash there is no restart: a receive count, as SQS
+		 * keeps one per message, counts only deliveries being worked on, and a sleeping one is not. The
+		 * resume counts the attempt it slept for as failed, so the retry budget bounds a host that keeps dying
+		 * there. The moment between setting the attempt and opening its draft reads as asleep too, bounded
+		 * the same way.
+		 */
+		const asleepOf = sql`(thread.attempt IS NOT NULL AND NOT EXISTS (
+			SELECT 1 FROM entry WHERE entry.thread_id = thread.id AND entry.state = 'draft'
+		))`;
 
 		const claimRestart = Effect.fn("Thread.claimRestart")(
 			function* (threadId: ThreadSchema.ID) {
 				const rows = yield* sql<{ restarts: number }>`
 				UPDATE thread
-				SET restarts = restarts + (CASE WHEN execution = 'running' THEN 1 ELSE 0 END), execution = 'running',
+				SET restarts = restarts + (CASE WHEN ${interruptedOf(["crash"])} AND NOT ${asleepOf} THEN 1 ELSE 0 END),
 					rev = ${yield* store.rev}
-				WHERE id = ${threadId} AND execution IS NOT NULL
+				WHERE id = ${threadId} AND ${interruptedOf(["crash", "shutdown"])}
 				RETURNING restarts
 			`;
 				return Option.fromUndefinedOr(rows[0]?.restarts);
@@ -1019,21 +1018,26 @@ export const layer = Layer.effect(
 			Effect.orDie,
 		);
 
-		const idle = Effect.fn("Thread.idle")(
-			function* (threadId: ThreadSchema.ID) {
-				yield* sql`
-				UPDATE thread SET execution = NULL, restarts = 0, attempt = NULL, rev = ${yield* store.rev} WHERE id = ${threadId}
-			`;
-			},
-			store.write,
-			Effect.orDie,
+		const holds = (name: string, predicate: Statement.Fragment) =>
+			Effect.fn(name)(function* (threadId: ThreadSchema.ID) {
+				const rows = yield* sql<{ holds: number }>`SELECT ${predicate} AS holds FROM thread WHERE id = ${threadId}`;
+				return rows[0]?.holds === 1;
+			}, Effect.orDie);
+		const runnable = holds("Thread.runnable", runnableOf);
+		const resumable = holds("Thread.resumable", unfinishedOf);
+		const parked = holds(
+			"Thread.parked",
+			sql`(thread.run_state = 'idle' AND NOT ${unfinishedOf} AND EXISTS (
+				SELECT 1 FROM inbox
+				WHERE inbox.thread_id = thread.id AND inbox.promoted_seq IS NULL AND inbox.cancelled_seq IS NULL
+			))`,
 		);
 
 		const findUnfinished = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: ThreadRow,
 			execute: () => sql`
-				SELECT * FROM thread WHERE execution IS NOT NULL AND origin_kind <> 'subagent' ORDER BY updated_at
+				SELECT * FROM thread WHERE ${unfinishedOf} ORDER BY updated_at
 			`,
 		});
 		const unfinished = findUnfinished(undefined).pipe(Effect.orDie, Effect.withSpan("Thread.unfinished"));
@@ -1045,30 +1049,76 @@ export const layer = Layer.effect(
 		) {
 			const time = DateTime.toEpochMillis(at);
 			const rev = yield* store.rev;
+			if (change._tag === "stopping") {
+				// Only an open run is asked to stop: one that ended meanwhile keeps the error it ended with.
+				const stop = yield* encodeRunError({ _tag: "interrupted", reason: "user" });
+				const rows = yield* sql`
+					UPDATE thread SET run_error = CASE WHEN run_state <> 'idle' THEN ${stop} ELSE run_error END, rev = ${yield* store.rev}
+					WHERE id = ${threadId}
+					RETURNING id
+				`;
+				return rows.length > 0 ? undefined : yield* Effect.die(new ThreadNotFoundError({ threadId }));
+			}
 			const state: ThreadSchema.RunState =
 				change._tag === "started" ? "starting" : change._tag === "running" ? "running" : "idle";
 			// SET reads the old row, so `run_state_at` moves only when the state does.
 			const stateAt = sql`CASE WHEN run_state = ${state} THEN run_state_at ELSE ${time} END`;
+			// Checked inside the event's commit: a lifecycle event for a thread deleted since its publisher read it
+			// must roll back, or it recreates the session's sequence row.
+			const found = (rows: ReadonlyArray<unknown>) =>
+				rows.length > 0 ? Effect.void : Effect.die(new ThreadNotFoundError({ threadId }));
 			if (change._tag === "running") {
-				yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state}, rev = ${rev} WHERE id = ${threadId}`;
-				return;
+				return yield* found(
+					yield* sql`UPDATE thread SET run_state_at = ${stateAt}, run_state = ${state}, rev = ${rev} WHERE id = ${threadId} RETURNING id`,
+				);
 			}
 			if (change._tag === "started") {
-				yield* sql`
+				return yield* found(
+					yield* sql`
 					UPDATE thread SET
 						run_state_at = ${stateAt}, run_state = ${state}, run_started_at = ${time},
 						run_ended_at = NULL, run_outcome = NULL, run_error = NULL, rev = ${rev}
 					WHERE id = ${threadId}
-				`;
-				return;
+					RETURNING id
+				`,
+				);
 			}
 			const error = change.error === undefined ? null : yield* encodeRunError(change.error);
-			yield* sql`
+			const interrupted = change.error?._tag === "interrupted" ? change.error.reason : undefined;
+			// An unanswered end parks what is queued: a prompt woken before it waits for the next one.
+			const head = change.outcome === "failed" || interrupted === "user" ? sql`MAX(head, ${change.seq})` : sql`head`;
+			// A run already ended keeps the outcome of the terminal that ended it; a later one only parks. One the
+			// host cut off is still owed its end: a stop before its resume is that end.
+			const parked = yield* sql`
+				UPDATE thread SET head = ${head}, rev = ${rev}
+				WHERE id = ${threadId} AND run_state = 'idle' AND NOT ${interruptedOf(["crash", "shutdown"])}
+				RETURNING id
+			`;
+			if (parked.length > 0) return;
+			// A run the host cut off resumes, a clean shutdown's too: it keeps its count for the resume to claim and
+			// its attempt, so a restart does not hand a failing request a fresh retry budget.
+			const cutOff = interrupted === "crash" || interrupted === "shutdown";
+			// A run asked to stop ends as stopped: a host interruption that lost the race to the stop's record
+			// rolls back, for its publisher to end the run as the user's.
+			if (cutOff) {
+				const asked = yield* sql`
+					SELECT 1 FROM thread
+					WHERE id = ${threadId} AND run_state <> 'idle' AND json_extract(run_error, '$.reason') = 'user'
+				`;
+				if (asked.length > 0) return yield* Effect.die(new RunStoppingError({ threadId }));
+			}
+			const restarts = cutOff ? sql`restarts` : sql`0`;
+			const attempt = cutOff ? sql`attempt` : sql`NULL`;
+			yield* found(
+				yield* sql`
 				UPDATE thread SET
 					run_state_at = ${stateAt}, run_state = ${state}, run_ended_at = ${time},
-					run_outcome = ${change.outcome}, run_error = ${error}, rev = ${rev}
+					run_outcome = ${change.outcome}, run_error = ${error}, head = ${head}, restarts = ${restarts},
+					attempt = ${attempt}, rev = ${rev}
 				WHERE id = ${threadId}
-			`;
+				RETURNING id
+			`,
+			);
 		}, Effect.orDie);
 
 		const findOpen = SqlSchema.findAll({
@@ -1116,12 +1166,12 @@ export const layer = Layer.effect(
 			fork,
 			projectForked,
 			retitle,
-			markRunning,
-			endExecution,
 			claimRestart,
 			resetRestarts,
 			setAttempt,
-			idle,
+			runnable,
+			resumable,
+			parked,
 			unfinished,
 			projectRun,
 			open,

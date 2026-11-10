@@ -1,0 +1,83 @@
+{
+	"log": [
+		"session.prompt.admitted steer \"gate\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"gate\"",
+		"session.llm.started",
+		"session.execution.interrupted crash",
+		"session.execution.started resumed=true",
+		"session.llm.failed",
+		"session.llm.started",
+		"session.execution.succeeded"
+	],
+	"steps": [
+		{
+			"step": "in flight",
+			"head": null,
+			"restarts": 0,
+			"runState": "running",
+			"outcome": null,
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "killed",
+			"head": null,
+			"restarts": 0,
+			"runState": "running",
+			"outcome": null,
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "resumed",
+			"head": null,
+			"restarts": 1,
+			"runState": "running",
+			"outcome": null,
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "finished",
+			"head": null,
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "gate",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"gate\"",
+					"promoted": "session.prompt.promoted steer \"gate\"",
+					"runnable": false
+				}
+			]
+		}
+	]
+}

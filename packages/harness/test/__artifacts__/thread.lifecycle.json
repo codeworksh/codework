@@ -5,15 +5,13 @@
 		"9 session.execution.succeeded.1 T1",
 		"11 session.execution.started.1 T1 {\"resumed\":false}",
 		"13 session.llm.started.1 T1",
-		"15 session.execution.interrupted.1 T1 {\"reason\":\"user\"}",
-		"17 session.execution.started.1 T1 {\"resumed\":false}",
-		"18 session.execution.interrupted.1 T1 {\"reason\":\"crash\"}",
-		"19 session.execution.started.1 T1 {\"resumed\":true}",
-		"20 session.llm.started.1 T1",
-		"24 session.llm.started.1 T1",
-		"27 session.execution.succeeded.1 T1",
-		"29 session.execution.started.1 T2 {\"resumed\":false}",
-		"30 session.execution.interrupted.1 T2 {\"reason\":\"shutdown\"}"
+		"16 session.execution.interrupted.1 T1 {\"reason\":\"user\"}",
+		"18 session.execution.started.1 T1 {\"resumed\":false}",
+		"19 session.execution.interrupted.1 T1 {\"reason\":\"crash\"}",
+		"20 session.execution.started.1 T1 {\"resumed\":true}",
+		"21 session.llm.started.1 T1",
+		"25 session.llm.started.1 T1",
+		"28 session.execution.succeeded.1 T1"
 	],
 	"states": [
 		{
@@ -25,7 +23,7 @@
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": null
+			"head": 0
 		},
 		{
 			"step": "succeeded",
@@ -36,7 +34,7 @@
 			"endedAt": "9 session.execution.succeeded.1",
 			"outcome": "succeeded",
 			"error": null,
-			"execution": null
+			"head": 0
 		},
 		{
 			"step": "in flight",
@@ -47,93 +45,68 @@
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 0
 		},
 		{
 			"step": "stopped",
 			"thread": "T1",
 			"state": "idle",
-			"stateAt": "15 session.execution.interrupted.1",
+			"stateAt": "16 session.execution.interrupted.1",
 			"startedAt": "11 session.execution.started.1",
-			"endedAt": "15 session.execution.interrupted.1",
+			"endedAt": "16 session.execution.interrupted.1",
 			"outcome": "interrupted",
 			"error": {
 				"_tag": "interrupted",
 				"reason": "user"
 			},
-			"execution": null
+			"head": 16
 		},
 		{
 			"step": "died",
 			"thread": "T1",
 			"state": "starting",
-			"stateAt": "17 session.execution.started.1",
-			"startedAt": "17 session.execution.started.1",
+			"stateAt": "18 session.execution.started.1",
+			"startedAt": "18 session.execution.started.1",
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 16
 		},
 		{
 			"step": "swept",
 			"thread": "T1",
 			"state": "idle",
-			"stateAt": "18 session.execution.interrupted.1",
-			"startedAt": "17 session.execution.started.1",
-			"endedAt": "18 session.execution.interrupted.1",
+			"stateAt": "19 session.execution.interrupted.1",
+			"startedAt": "18 session.execution.started.1",
+			"endedAt": "19 session.execution.interrupted.1",
 			"outcome": "interrupted",
 			"error": {
 				"_tag": "interrupted",
 				"reason": "crash"
 			},
-			"execution": "running"
+			"head": 16
 		},
 		{
 			"step": "resumed",
 			"thread": "T1",
 			"state": "running",
-			"stateAt": "20 session.llm.started.1",
-			"startedAt": "19 session.execution.started.1",
+			"stateAt": "21 session.llm.started.1",
+			"startedAt": "20 session.execution.started.1",
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 16
 		},
 		{
 			"step": "finished",
 			"thread": "T1",
 			"state": "idle",
-			"stateAt": "27 session.execution.succeeded.1",
-			"startedAt": "19 session.execution.started.1",
-			"endedAt": "27 session.execution.succeeded.1",
+			"stateAt": "28 session.execution.succeeded.1",
+			"startedAt": "20 session.execution.started.1",
+			"endedAt": "28 session.execution.succeeded.1",
 			"outcome": "succeeded",
 			"error": null,
-			"execution": null
-		},
-		{
-			"step": "swept after shutdown",
-			"thread": "T1",
-			"state": "idle",
-			"stateAt": "27 session.execution.succeeded.1",
-			"startedAt": "19 session.execution.started.1",
-			"endedAt": "27 session.execution.succeeded.1",
-			"outcome": "succeeded",
-			"error": null,
-			"execution": null
-		},
-		{
-			"step": "swept after shutdown",
-			"thread": "T2",
-			"state": "idle",
-			"stateAt": "30 session.execution.interrupted.1",
-			"startedAt": "29 session.execution.started.1",
-			"endedAt": "30 session.execution.interrupted.1",
-			"outcome": "interrupted",
-			"error": {
-				"_tag": "interrupted",
-				"reason": "shutdown"
-			},
-			"execution": "closed"
+			"head": 16
 		}
 	]
 }

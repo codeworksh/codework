@@ -8,22 +8,20 @@ import type { SessionSchema } from "../session/schema.ts";
 import type { ThreadSchema } from "../thread/schema.ts";
 import { Runner } from "./run.ts";
 
+/**
+ * Times in a row a run may be cut off by a dying process before it ends (`session.run.failed`,
+ * `crashloop`) instead of resuming. A committed turn starts the count over.
+ */
+export const RESTART_LIMIT = 5;
+
 export interface Interface {
 	/** Snapshots active execution owned by this process. */
 	readonly active: Effect.Effect<ReadonlySet<ThreadSchema.ID>>;
-	/** Starts execution while idle or joins the active execution. */
+	/**
+	 * Starts execution while idle or joins the active execution. A run the last process left cut off is
+	 * resumed by whichever drain reaches it first, this one or a wake's.
+	 */
 	readonly resume: (threadId: ThreadSchema.ID) => Effect.Effect<void, Runner.RunError>;
-	/**
-	 * Resumes a run the last process left unfinished. Like `resume`, except that it marks nothing,
-	 * and runs nothing when the thread is no longer marked as it begins: a stop that landed since
-	 * recovery chose the thread stands.
-	 */
-	readonly recover: (threadId: ThreadSchema.ID) => Effect.Effect<void, Runner.RunError>;
-	/**
-	 * Ends a run the last process left unfinished instead of resuming it, under the thread's execution
-	 * like `recover`; see `Runner.Interface.abandon`.
-	 */
-	readonly abandon: (threadId: ThreadSchema.ID, message: string) => Effect.Effect<void, Runner.RunError>;
 	/** Registers newly recorded work. Repeated wakeups may coalesce. */
 	readonly wake: (threadId: ThreadSchema.ID) => Effect.Effect<void>;
 	/**
@@ -47,8 +45,6 @@ export const noopLayer = Layer.succeed(
 	Service.of({
 		active: Effect.succeed(new Set()),
 		resume: () => Effect.void,
-		recover: () => Effect.void,
-		abandon: () => Effect.void,
 		wake: () => Effect.void,
 		interrupt: () => Effect.succeed(false),
 		awaitIdle: () => Effect.void,

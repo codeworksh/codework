@@ -50,7 +50,7 @@
 			"endedAt": "9 session.execution.succeeded",
 			"outcome": "succeeded",
 			"error": null,
-			"execution": null
+			"head": 0
 		},
 		{
 			"step": "in flight",
@@ -60,7 +60,7 @@
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 0
 		},
 		{
 			"step": "killed",
@@ -70,7 +70,7 @@
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 0
 		},
 		{
 			"step": "resumed",
@@ -80,7 +80,7 @@
 			"endedAt": null,
 			"outcome": null,
 			"error": null,
-			"execution": "running"
+			"head": 0
 		},
 		{
 			"step": "finished",
@@ -90,7 +90,7 @@
 			"endedAt": "21 session.execution.succeeded",
 			"outcome": "succeeded",
 			"error": null,
-			"execution": null
+			"head": 0
 		}
 	],
 	"requests": [

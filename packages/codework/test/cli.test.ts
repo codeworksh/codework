@@ -3,10 +3,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
-import { runCli, truncating, writeSettings } from "./fixtures/cli.ts";
+import { runCli, serveCli, streaming, toolCalls, truncating, writeSettings } from "./fixtures/cli.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -478,6 +479,57 @@ describe("codework CLI", () => {
 		await expect(
 			`${JSON.stringify({ status: result.status, stdout: result.stdout, warning }, null, "\t")}\n`,
 		).toMatchFileSnapshot("./__artifacts__/cli.truncated.json");
+	}, 60_000);
+
+	// A run ends with `session.run.failed`, never a success: a remote run must take that as its end.
+	it("reports a remote run ended by replies cut off with tool calls, and exits 1", async () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-cli-run-failed-"));
+		onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+		const fake = await streaming((_body, response) => {
+			response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
+			response.finish("length");
+		});
+		writeSettings(home, fake.url);
+		const env = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models };
+		const server = await serveCli(["--home", home, "--user-config-dir", home], { cwd: home, env });
+
+		const result = await runCli(["run", "--server", server.url, "Run a long command."], { cwd: home, env });
+
+		expect(result.status, result.stderr).toBe(1);
+		expect(fake.requests).toHaveLength(2);
+		const message = "The response hit the output token limit with tool calls 2 times in a row; the run is ended";
+		expect(result.stderr, result.stderr).toContain(message);
+		await expect(
+			`${JSON.stringify({ status: result.status, stderr: result.stderr.slice(result.stderr.indexOf("error")) }, null, "\t")}\n`,
+		).toMatchFileSnapshot("./__artifacts__/cli.run-failed.json");
+	}, 60_000);
+
+	// `head` and `tail` were folded into the applied `init` migration, so the migrator never adds them.
+	it("refuses a database created before folded columns, naming the file, and exits 1", async () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-cli-old-database-"));
+		onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+		const fake = await streaming((_body, response) => {
+			response.send({ role: "assistant", content: "hello" });
+			response.finish("stop");
+		});
+		writeSettings(home, fake.url);
+		const options = { cwd: home, env: { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models } };
+		const args = ["--home", home, "--user-config-dir", home, "run", "Say hello."];
+		const created = await runCli(args, options);
+		expect(created.status, created.stderr).toBe(0);
+
+		const file = join(home, "data", "codework.db");
+		const db = new DatabaseSync(file);
+		db.exec("ALTER TABLE thread DROP COLUMN head; ALTER TABLE inbox DROP COLUMN tail;");
+		db.close();
+		const result = await runCli(args, options);
+
+		expect(result.status, result.stderr).toBe(1);
+		expect(fake.requests).toHaveLength(1);
+		expect(result.stderr).toContain(file);
+		await expect(
+			`${JSON.stringify({ status: result.status, stderr: result.stderr.replaceAll(home, "<home>") }, null, "\t")}\n`,
+		).toMatchFileSnapshot("./__artifacts__/cli.old-database.json");
 	}, 60_000);
 
 	it("reports a failed refresh", () => {

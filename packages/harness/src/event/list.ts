@@ -322,11 +322,11 @@ export const ToolSettled = EventSchema.define({
 export type ToolSettled = typeof ToolSettled.Type;
 
 /**
- * Lifecycle of a process-owned busy period. One `started` and exactly one
- * terminal per period, covering every drain the period coalesced. The terminals
- * are separate types rather than one event with a status, so each carries only
- * what its outcome actually has: a failure has an error, an interruption has a
- * reason, and a success has neither.
+ * Lifecycle of one run: a drain that ran, from `started`, published before it promotes anything, to
+ * exactly one terminal (or `session.run.failed`). The terminals are separate types rather than one
+ * event with a status, so each carries only what its outcome actually has: a failure has an error,
+ * an interruption has a reason, and a success has neither. A failure or a user stop parks the queue;
+ * see `thread.head`.
  */
 export const ExecutionStarted = EventSchema.define({
 	type: "session.execution.started",
@@ -350,6 +350,18 @@ export const ExecutionFailed = EventSchema.define({
 });
 export type ExecutionFailed = typeof ExecutionFailed.Type;
 
+/**
+ * A user stop accepted for the run that is open, recorded before anything is interrupted: the run's
+ * terminal follows once its cleanup settles, and a host that dies in between still ends it as the
+ * user's stop rather than resuming it as a crash.
+ */
+export const ExecutionStopping = EventSchema.define({
+	type: "session.execution.stopping",
+	...durableOptions,
+	schema: baseOptions,
+});
+export type ExecutionStopping = typeof ExecutionStopping.Type;
+
 export const ExecutionInterrupted = EventSchema.define({
 	type: "session.execution.interrupted",
 	...durableOptions,
@@ -360,7 +372,7 @@ export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
 /**
  * A run ended without its answer and is not resumed: the host died in it too often (`crashloop`),
  * with no retry left for the request it cut off (`interrupted`), or replies kept hitting the output
- * limit with tool calls (`truncated`). Queued prompts stay queued.
+ * limit with tool calls (`truncated`). Queued prompts stay parked until the next prompt.
  */
 export const RunFailed = EventSchema.define({
 	type: "session.run.failed",
@@ -372,6 +384,15 @@ export const RunFailed = EventSchema.define({
 	},
 });
 export type RunFailed = typeof RunFailed.Type;
+
+/**
+ * The one way a run ends, whatever the outcome: a consumer waiting for a run reads this and nothing
+ * else, as an io_uring consumer waits on one completion queue. A terminal left out of it is the hang
+ * a client cannot see.
+ */
+export const RunEnded = Schema.Union([ExecutionSucceeded, ExecutionFailed, ExecutionInterrupted, RunFailed]);
+export type RunEnded = typeof RunEnded.Type;
+export const isRunEnded = Schema.is(RunEnded);
 
 /**
  * Kernel lifecycle notice for one plugin module.
@@ -446,6 +467,7 @@ export const Definitions = EventSchema.inventory(
 	ExecutionStarted,
 	ExecutionSucceeded,
 	ExecutionFailed,
+	ExecutionStopping,
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
@@ -489,6 +511,7 @@ export const DurableDefinitions = EventSchema.inventory(
 	ExecutionStarted,
 	ExecutionSucceeded,
 	ExecutionFailed,
+	ExecutionStopping,
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,

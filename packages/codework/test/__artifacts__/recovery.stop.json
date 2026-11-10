@@ -1,0 +1,258 @@
+{
+	"log": [
+		{
+			"seq": 1,
+			"type": "session.created"
+		},
+		{
+			"seq": 2,
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Run the stubborn command."
+		},
+		{
+			"seq": 3,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 4,
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Run the stubborn command."
+		},
+		{
+			"seq": 5,
+			"type": "session.thread.system.changed"
+		},
+		{
+			"seq": 6,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 7,
+			"type": "session.llm.ended",
+			"reason": "toolUse",
+			"parts": [
+				{
+					"tool": "bash",
+					"status": "pending"
+				}
+			]
+		},
+		{
+			"seq": 8,
+			"type": "session.prompt.admitted",
+			"delivery": "followUp",
+			"text": "Queued before the stop."
+		},
+		{
+			"seq": 9,
+			"type": "session.execution.stopping"
+		},
+		{
+			"seq": 10,
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Sent while stopping."
+		},
+		{
+			"seq": 11,
+			"type": "session.tool.settled",
+			"part": {
+				"tool": "bash",
+				"status": "aborted",
+				"result": "Tool Execution Interrupted"
+			}
+		},
+		{
+			"seq": 12,
+			"type": "session.turn.ended"
+		},
+		{
+			"seq": 13,
+			"type": "session.execution.interrupted",
+			"reason": "user"
+		},
+		{
+			"seq": 14,
+			"type": "session.prompt.admitted",
+			"delivery": "steer",
+			"text": "Next."
+		},
+		{
+			"seq": 15,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 16,
+			"type": "session.prompt.promoted",
+			"delivery": "followUp",
+			"text": "Queued before the stop."
+		},
+		{
+			"seq": 17,
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Sent while stopping."
+		},
+		{
+			"seq": 18,
+			"type": "session.prompt.promoted",
+			"delivery": "steer",
+			"text": "Next."
+		},
+		{
+			"seq": 19,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 20,
+			"type": "session.llm.ended",
+			"reason": "stop",
+			"parts": [
+				{
+					"text": "Answer 1."
+				}
+			]
+		},
+		{
+			"seq": 21,
+			"type": "session.turn.ended"
+		},
+		{
+			"seq": 22,
+			"type": "session.execution.succeeded"
+		}
+	],
+	"steps": [
+		{
+			"step": "stopped",
+			"head": 13,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run the stubborn command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Queued before the stop.",
+					"delivery": "followUp",
+					"admittedSeq": 8,
+					"tail": 8,
+					"promotedSeq": null
+				},
+				{
+					"text": "Sent while stopping.",
+					"delivery": "steer",
+					"admittedSeq": 10,
+					"tail": 10,
+					"promotedSeq": null
+				}
+			]
+		},
+		{
+			"step": "reopened",
+			"head": 13,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run the stubborn command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Queued before the stop.",
+					"delivery": "followUp",
+					"admittedSeq": 8,
+					"tail": 8,
+					"promotedSeq": null
+				},
+				{
+					"text": "Sent while stopping.",
+					"delivery": "steer",
+					"admittedSeq": 10,
+					"tail": 10,
+					"promotedSeq": null
+				}
+			]
+		},
+		{
+			"step": "next prompt",
+			"head": 13,
+			"restarts": 0,
+			"prompts": [
+				{
+					"text": "Run the stubborn command.",
+					"delivery": "steer",
+					"admittedSeq": 2,
+					"tail": 2,
+					"promotedSeq": 4
+				},
+				{
+					"text": "Queued before the stop.",
+					"delivery": "followUp",
+					"admittedSeq": 8,
+					"tail": 8,
+					"promotedSeq": 16
+				},
+				{
+					"text": "Sent while stopping.",
+					"delivery": "steer",
+					"admittedSeq": 10,
+					"tail": 10,
+					"promotedSeq": 17
+				},
+				{
+					"text": "Next.",
+					"delivery": "steer",
+					"admittedSeq": 14,
+					"tail": 14,
+					"promotedSeq": 18
+				}
+			]
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Run the stubborn command."
+			}
+		],
+		[
+			{
+				"role": "user",
+				"text": "Run the stubborn command."
+			},
+			{
+				"role": "assistant",
+				"calls": [
+					"bash"
+				]
+			},
+			{
+				"role": "tool",
+				"text": "Tool Execution Interrupted"
+			},
+			{
+				"role": "user",
+				"text": "Queued before the stop."
+			},
+			{
+				"role": "user",
+				"text": "Sent while stopping."
+			},
+			{
+				"role": "user",
+				"text": "Next."
+			}
+		]
+	]
+}

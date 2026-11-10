@@ -1,0 +1,105 @@
+{
+	"log": [
+		"session.prompt.admitted steer \"hold\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted steer \"hold\"",
+		"session.llm.started",
+		"session.prompt.admitted followUp \"after the stop\"",
+		"session.execution.stopping",
+		"session.llm.failed",
+		"session.execution.interrupted user",
+		"session.prompt.admitted steer \"next\"",
+		"session.execution.started resumed=false",
+		"session.prompt.promoted followUp \"after the stop\"",
+		"session.prompt.promoted steer \"next\"",
+		"session.llm.started",
+		"session.execution.succeeded"
+	],
+	"steps": [
+		{
+			"step": "stopped",
+			"head": "session.execution.interrupted user",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "user"
+			},
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "after the stop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the stop\"",
+					"promoted": null,
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "restarted",
+			"head": "session.execution.interrupted user",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "interrupted",
+			"error": {
+				"_tag": "interrupted",
+				"reason": "user"
+			},
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "after the stop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the stop\"",
+					"promoted": null,
+					"runnable": false
+				}
+			]
+		},
+		{
+			"step": "next prompt",
+			"head": "session.execution.interrupted user",
+			"restarts": 0,
+			"runState": "idle",
+			"outcome": "succeeded",
+			"error": null,
+			"prompts": [
+				{
+					"text": "hold",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"hold\"",
+					"promoted": "session.prompt.promoted steer \"hold\"",
+					"runnable": false
+				},
+				{
+					"text": "after the stop",
+					"delivery": "followUp",
+					"tail": "session.prompt.admitted followUp \"after the stop\"",
+					"promoted": "session.prompt.promoted followUp \"after the stop\"",
+					"runnable": false
+				},
+				{
+					"text": "next",
+					"delivery": "steer",
+					"tail": "session.prompt.admitted steer \"next\"",
+					"promoted": "session.prompt.promoted steer \"next\"",
+					"runnable": false
+				}
+			]
+		}
+	]
+}

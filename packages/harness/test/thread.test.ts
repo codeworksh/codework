@@ -510,12 +510,13 @@ describe("threads", () => {
 			const [first] = yield* threads.line(main);
 			const t2 = ThreadSchema.ID.make((yield* threads.fork({ threadId: main, entryId: first!.entry.id })).thread.id);
 
-			// What a process dying mid-turn leaves: a promoted prompt, an open draft, the run still marked.
+			// What a process dying mid-turn leaves: a promoted prompt, an open draft, its run never ended.
 			const timestamp = yield* DateTime.now;
 			const prompt = PromptSchema.Prompt.fromText("cut off");
 			const messageId = SessionMessageSchema.ID.make("prompt_cut");
 			const base = { timestamp, sessionId, threadId: t2, messageId, prompt, delivery: "followUp" as const };
 			yield* events.publish(EventList.PromptAdmitted, base);
+			yield* events.publish(EventList.ExecutionStarted, { timestamp, sessionId, threadId: t2, resumed: false });
 			yield* events.publish(EventList.Prompted, base);
 			yield* events.publish(EventList.LLMStarted, {
 				timestamp,
@@ -542,7 +543,8 @@ describe("threads", () => {
 					parts: [{ type: "text", text: "half a rep" }],
 				}),
 			});
-			yield* threads.markRunning(t2);
+			// The next start sweeps the open run as a crash.
+			yield* control.sweep;
 
 			script.set(t2, [{ _tag: "reply", text: "answered again" }]);
 			yield* control.resumeUnfinished;
@@ -552,7 +554,7 @@ describe("threads", () => {
 				.map(({ entry }) => `${entry.type} ${entry.state}`);
 			expect(own).toEqual(["user committed", "assistant aborted", "system committed", "assistant committed"]);
 			const thread = Option.getOrThrow(yield* threads.get(t2));
-			expect(Option.getOrUndefined(thread.execution)).toBeUndefined();
+			expect(yield* threads.resumable(t2)).toBe(false);
 			expect(thread.restarts).toBe(0);
 			// Only the thread that was cut off ran again, from its committed entries: the inherited
 			// prompt and its own, without the aborted draft.
@@ -685,7 +687,7 @@ describe("threads", () => {
 							endedAt: at(log, row.id, row.runEndedAt, terminals),
 							outcome: Option.getOrNull(row.runOutcome),
 							error: Option.getOrNull(row.runError),
-							execution: Option.getOrNull(row.execution),
+							head: row.head,
 						});
 					}
 				});
@@ -714,7 +716,7 @@ describe("threads", () => {
 			yield* control.interrupt(main, { awaitSettlement: true });
 			yield* record("stopped");
 
-			// What a process dying mid-run leaves: a follow-up admitted, its run started and marked, never ended.
+			// What a process dying mid-run leaves: a follow-up admitted, its run started, never ended.
 			const died = (threadId: ThreadSchema.ID) =>
 				Effect.gen(function* () {
 					yield* events.publish(EventList.ExecutionStarted, {
@@ -723,7 +725,6 @@ describe("threads", () => {
 						threadId,
 						resumed: false,
 					});
-					yield* threads.markRunning(threadId);
 				});
 			yield* inputs.admit({
 				id: SessionMessageSchema.ID.make("prompt_cut"),
@@ -755,21 +756,6 @@ describe("threads", () => {
 			yield* Fiber.join(resuming);
 			yield* record("finished");
 
-			// A shutdown that closed the run and died before publishing its end: the sweep says `shutdown`.
-			const [first] = yield* threads.line(main);
-			const fork = ThreadSchema.ID.make(
-				(yield* threads.fork({ threadId: main, entryId: first!.entry.id })).thread.id,
-			);
-			name("T", fork);
-			yield* died(fork);
-			yield* threads.endExecution(fork, "closed");
-			yield* control.sweep;
-			yield* record("swept after shutdown");
-			expect(Option.getOrUndefined(Option.getOrThrow(yield* threads.get(fork)).runError)).toEqual({
-				_tag: "interrupted",
-				reason: "shutdown",
-			});
-
 			const log = yield* journal;
 			const resumed = log.filter((event) => event.type === lifecycle[0] && event.data["resumed"] === true);
 			expect(resumed.map((event) => event.data["threadId"])).toEqual([main]);
@@ -780,6 +766,80 @@ describe("threads", () => {
 				}),
 				states,
 			});
+		}),
+	);
+});
+
+describe("thread runs left to resume", () => {
+	/** The thread's stored run, as a dead host left it once the next start swept it. */
+	const crashed = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, threadId: ThreadSchema.ID) {
+		const events = yield* Event.Service;
+		yield* events.publish(EventList.ExecutionStarted, {
+			timestamp: yield* DateTime.now,
+			sessionId,
+			threadId,
+			resumed: false,
+		});
+		yield* events.publish(EventList.ExecutionInterrupted, {
+			timestamp: yield* DateTime.now,
+			sessionId,
+			threadId,
+			reason: "crash",
+		});
+	});
+
+	it(
+		"lists a subagent thread whose run a crash cut off",
+		Effect.gen(function* () {
+			yield* reset;
+			const threads = yield* Thread.Service;
+			const { sessionId, main } = yield* createSession;
+			const subagent = ThreadSchema.ID.create();
+			yield* threads.insert({
+				id: subagent,
+				sessionId,
+				origin: { kind: "subagent", threadId: main, callId: "call_1" },
+				seq: 1,
+			});
+			yield* crashed(sessionId, subagent);
+
+			expect((yield* threads.unfinished).map((row) => row.id)).toContain(subagent);
+		}),
+	);
+
+	// A host that keeps dying at the same point between requests must reach the restart limit; only a run
+	// asleep in retry backoff is spared.
+	it(
+		"counts a crash as a restart unless the run slept in retry backoff",
+		Effect.gen(function* () {
+			yield* reset;
+			const threads = yield* Thread.Service;
+			const events = yield* Event.Service;
+			const { sessionId, main } = yield* createSession;
+			yield* crashed(sessionId, main);
+
+			// Between requests: no attempt marked, no draft open.
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(1));
+			// Asleep in backoff: the attempt it waits for is marked, the failed one's draft already aborted.
+			yield* threads.setAttempt(main, 2);
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(1));
+			// Streaming that attempt: its draft is open.
+			const input: LLM.Input = {
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
+				threadId: main,
+				context: { messages: [] },
+				provider: "openai",
+				model: "gpt-4o-mini",
+			};
+			const draft = assistant(input, 1, { parts: [{ type: "text", text: "half" }] });
+			yield* events.publish(EventList.LLMStarted, {
+				timestamp: yield* DateTime.now,
+				sessionId,
+				threadId: main,
+				messageId: SessionMessageSchema.ID.from(draft.messageId),
+				message: draft,
+			});
+			expect(yield* threads.claimRestart(main)).toEqual(Option.some(2));
 		}),
 	);
 });

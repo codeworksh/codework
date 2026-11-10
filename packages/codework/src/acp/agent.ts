@@ -5,10 +5,12 @@ import { Cause, Deferred, Effect, Exit, Option, Schema, type Scope, type Stdio, 
 export class RequestError extends Schema.TaggedError<RequestError>()("AcpRequestError", {
 	code: Schema.Int,
 	message: Schema.String,
+	data: Schema.optionalKey(Schema.Json),
 }) {
 	static invalidRequest = (message: string) => new RequestError({ code: -32600, message });
 	static invalidParams = (message: string) => new RequestError({ code: -32602, message });
-	static internalError = (message: string) => new RequestError({ code: -32603, message });
+	static internalError = (message: string, data?: Schema.Json) =>
+		new RequestError({ code: -32603, message, ...(data === undefined ? {} : { data }) });
 	static resourceNotFound = (message: string) => new RequestError({ code: -32002, message });
 }
 
@@ -60,7 +62,7 @@ export const serve = Effect.fn("ACP.serve")(function* (
 	// A JSON-RPC answer for a handler that didn't succeed; the SDK sends what `handle` throws.
 	const toWire = (cause: Cause.Cause<RequestError>): Acp.RequestError => {
 		const error = Cause.findErrorOption(cause);
-		if (Option.isSome(error)) return new Acp.RequestError(error.value.code, error.value.message);
+		if (Option.isSome(error)) return new Acp.RequestError(error.value.code, error.value.message, error.value.data);
 		if (Cause.hasInterruptsOnly(cause)) return Acp.RequestError.requestCancelled();
 		return Acp.RequestError.internalError(undefined, String(Cause.squash(cause)));
 	};

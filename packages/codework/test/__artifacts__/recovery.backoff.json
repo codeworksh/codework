@@ -1,0 +1,111 @@
+{
+	"log": [
+		{
+			"seq": 3,
+			"type": "session.execution.started",
+			"resumed": false
+		},
+		{
+			"seq": 6,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 7,
+			"type": "session.llm.failed",
+			"reason": "error",
+			"errorMessage": "cannot connect to API: connect ECONNREFUSED <refused>",
+			"parts": []
+		},
+		{
+			"seq": 8,
+			"type": "session.retry.scheduled",
+			"attempt": 1,
+			"maxRetries": 3,
+			"delayMs": 60000,
+			"message": "mcp/mcp-model: cannot connect to API: connect ECONNREFUSED <refused>"
+		},
+		{
+			"seq": 9,
+			"type": "session.execution.interrupted",
+			"reason": "crash"
+		},
+		{
+			"seq": 10,
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"seq": 11,
+			"type": "session.retry.scheduled",
+			"attempt": 2,
+			"maxRetries": 3,
+			"delayMs": 60000,
+			"message": "The host stopped before attempt 2 was sent"
+		},
+		{
+			"seq": 12,
+			"type": "session.execution.interrupted",
+			"reason": "shutdown"
+		},
+		{
+			"seq": 13,
+			"type": "session.execution.started",
+			"resumed": true
+		},
+		{
+			"seq": 14,
+			"type": "session.llm.started"
+		},
+		{
+			"seq": 15,
+			"type": "session.llm.ended",
+			"reason": "stop",
+			"parts": [
+				{
+					"text": "Answered."
+				}
+			]
+		},
+		{
+			"seq": 17,
+			"type": "session.execution.succeeded"
+		}
+	],
+	"live": [
+		{
+			"type": "session.retry.finished",
+			"attempt": 2,
+			"success": true
+		}
+	],
+	"steps": [
+		{
+			"step": "backoff",
+			"restarts": 0,
+			"attempt": 2
+		},
+		{
+			"step": "resumed",
+			"restarts": 0,
+			"attempt": 3
+		},
+		{
+			"step": "stopped",
+			"restarts": 0,
+			"attempt": 3
+		},
+		{
+			"step": "finished",
+			"restarts": 0,
+			"attempt": null
+		}
+	],
+	"requests": [
+		[
+			{
+				"role": "user",
+				"text": "Wait it out."
+			}
+		]
+	]
+}

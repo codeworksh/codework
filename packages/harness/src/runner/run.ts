@@ -185,8 +185,8 @@ export type RunError =
 	| SandboxMountError
 	| SandboxFileSystem.FileSystemError;
 
-/** `ended`: the run published its own terminal, `session.run.failed`; `drained`: it left that to its execution. */
-export type Outcome = "ended" | "drained";
+/** How a run that returned ended: `drained` with its work answered, or failed with why it is not resumed. */
+export type Outcome = "drained" | { readonly reason: ThreadSchema.RunFailedReason; readonly message: string };
 
 export interface Interface {
 	/** Drains eligible durable work. Explicit runs perform one provider attempt even when no work is eligible. */
@@ -195,10 +195,12 @@ export interface Interface {
 		readonly force: boolean;
 		/** Resuming a run a previous process left unfinished: its cut-off reply is answered first. */
 		readonly recovered?: boolean;
+		/** The last run was ended by a clean shutdown: the request it stopped is resent at once, as the same attempt. */
+		readonly shutdown?: boolean;
 	}) => Effect.Effect<Outcome, RunError, SandboxIO.Provides | Location.Service>;
 	/**
-	 * Ends a run the server no longer resumes: settles what the dead process left of its reply,
-	 * records `session.run.failed` with `message`, and leaves the thread idle, its queue kept.
+	 * Ends a run the server no longer resumes: settles what the dead process left of its reply and
+	 * returns the failure its execution records, `crashloop` with `message`.
 	 */
 	readonly abandon: (input: {
 		readonly threadId: ThreadSchema.ID;

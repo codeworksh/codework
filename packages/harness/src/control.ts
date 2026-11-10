@@ -56,11 +56,7 @@ export interface PromptInput extends ThreadRef {
 
 export type ResolveError = Session.SessionNotFoundError | Thread.ThreadNotFoundError;
 
-/**
- * Times in a row a run may be cut off by a dying process before it ends (`session.run.failed`,
- * `crashloop`) instead of resuming. A committed turn starts the count over.
- */
-export const RESTART_LIMIT = 5;
+export const RESTART_LIMIT = RunnerExecution.RESTART_LIMIT;
 
 export interface Interface {
 	/** The thread a reference names. A thread of another session is not found. */
@@ -82,8 +78,9 @@ export interface Interface {
 	/** Starts a drain while the thread is idle, or joins the one already running. */
 	readonly resume: (threadId: ThreadSchema.ID) => Effect.Effect<void, Thread.ThreadNotFoundError | Runner.RunError>;
 	/**
-	 * Stops work owned by this process. Idle is a no-op. Resolves once the
-	 * interruption is accepted and returns whether there was work to accept it;
+	 * Stops work owned by this process. Idle is a no-op, except that a user stop still ends a run the
+	 * last process cut off, or parks a runnable prompt, when no execution here owns the thread. Resolves
+	 * once the interruption is accepted and returns whether there was work to accept it;
 	 * `awaitSettlement` additionally waits for that execution's cleanup, without
 	 * following work another caller admits in the meantime.
 	 */
@@ -101,16 +98,17 @@ export interface Interface {
 	/** Threads this process is currently draining. */
 	readonly active: Effect.Effect<ReadonlySet<ThreadSchema.ID>>;
 	/**
-	 * Resumes the runs the last process left unfinished, as the server starts. One a crash cut off
-	 * counts a restart, one a shutdown closed does not; at {@link RESTART_LIMIT} the run ends visibly
-	 * instead, the thread idle with its queue kept for the next prompt. Resolves once every resumed
-	 * run has settled.
+	 * Wakes the threads the last process left unfinished, as the server starts: a run a crash or a
+	 * shutdown cut off, or a prompt woken past the thread's head. A crash counts a restart unless the
+	 * run slept in retry backoff, a shutdown does not; at {@link RESTART_LIMIT} the run ends
+	 * visibly instead, its queue parked for the next prompt. One thread failing to resume leaves the
+	 * others resuming. Resolves once every woken thread is idle.
 	 */
 	readonly resumeUnfinished: Effect.Effect<void>;
 	/**
-	 * Ends every stored run the last process left open with a durable `execution.interrupted`:
-	 * `shutdown` where it closed the run, `crash` where it died in it. Runs as the server starts,
-	 * before it accepts connections and before {@link resumeUnfinished}.
+	 * Ends every stored run the last process left open with a durable `execution.interrupted`, as a
+	 * `crash`, or as the `user` stop it had been asked for: a shutdown ends its runs itself. Runs as the server starts, before it accepts
+	 * connections and before {@link resumeUnfinished}.
 	 */
 	readonly sweep: Effect.Effect<void>;
 	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
@@ -142,9 +140,9 @@ export const layer = Layer.effect(
 		const events = yield* Event.Service;
 		const isLifecycleConflict = Schema.is(Inbox.LifecycleConflict);
 
-		// Marked before the wake, so a prompt accepted here survives a crash before its run starts.
-		const wake = (threadId: ThreadSchema.ID) =>
-			threads.markRunning(threadId).pipe(Effect.andThen(execution.wake(threadId)));
+		// Only a hint: the admission or move to steer already recorded the prompt's tail, which is what makes
+		// it run, now or after a crash.
+		const wake = (threadId: ThreadSchema.ID) => execution.wake(threadId);
 
 		const resolve = Effect.fn("Control.resolve")(function* (ref: ThreadRef) {
 			if (ref.threadId === undefined) {
@@ -215,15 +213,73 @@ export const layer = Layer.effect(
 
 		const resume = Effect.fn("Control.resume")(function* (threadId: ThreadSchema.ID) {
 			yield* requireThread(threadId);
-			yield* threads.markRunning(threadId);
 			yield* execution.resume(threadId);
+		});
+
+		const isThreadNotFound = Schema.is(Thread.ThreadNotFoundError);
+
+		/**
+		 * A user stop that found no execution here still ends what durable state says is owed a run: a run
+		 * cut off by the last process and not resumed yet, or a prompt left runnable. It is recorded as the
+		 * stop it is, and lands on an execution a wake started meanwhile too.
+		 */
+		const stopIdle = Effect.fnUntraced(function* (
+			threadId: ThreadSchema.ID,
+			options?: { readonly awaitSettlement?: boolean },
+		) {
+			const thread = yield* threads.get(threadId);
+			if (Option.isNone(thread) || !(yield* threads.resumable(threadId))) return false;
+			yield* events
+				.publish(EventList.ExecutionInterrupted, {
+					timestamp: yield* DateTime.now,
+					sessionId: SessionSchema.ID.make(thread.value.sessionId),
+					threadId,
+					reason: "user",
+				})
+				.pipe(
+					// Deleted between the read and the commit: the projector rolled the event back.
+					Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.void : Effect.die(defect))),
+				);
+			if ((yield* execution.active).has(threadId)) yield* execution.interrupt(threadId, "user", options);
+			return true;
+		});
+
+		const requestStop = Effect.fnUntraced(function* (threadId: ThreadSchema.ID) {
+			const thread = yield* threads.get(threadId);
+			if (Option.isNone(thread) || thread.value.runState === "idle" || Thread.stopping(thread.value)) return;
+			yield* events
+				.publish(EventList.ExecutionStopping, {
+					timestamp: yield* DateTime.now,
+					sessionId: SessionSchema.ID.make(thread.value.sessionId),
+					threadId,
+				})
+				.pipe(Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.void : Effect.die(defect))));
 		});
 
 		const interrupt = Effect.fn("Control.interrupt")(
 			(
 				threadId: ThreadSchema.ID,
 				options?: { readonly reason?: SessionSchema.InterruptReason; readonly awaitSettlement?: boolean },
-			) => Effect.uninterruptible(execution.interrupt(threadId, options?.reason ?? "user", options)),
+			) =>
+				Effect.uninterruptible(
+					Effect.gen(function* () {
+						const reason = options?.reason ?? "user";
+						// Recorded before anything is interrupted, as a prompt is admitted before its wake: a host
+						// that dies while the stop winds down ends the run as stopped instead of resuming it.
+						if (reason === "user") yield* requestStop(threadId);
+						if (yield* execution.interrupt(threadId, reason)) {
+							// Checked again, as a futex re-reads before it sleeps: a drain that opened its run
+							// between the record above and the interrupt would otherwise wind down unmarked.
+							if (reason === "user") yield* requestStop(threadId);
+							if (options?.awaitSettlement === true) yield* execution.interrupt(threadId, reason, options);
+							return true;
+						}
+						// Nothing here to interrupt: durable state says whether work is still owed, now or on the
+						// next start, and the stop is recorded against it.
+						if (reason !== "user") return false;
+						return yield* stopIdle(threadId, options);
+					}),
+				),
 		);
 
 		const interruptSession = Effect.fn("Control.interruptSession")(function* (
@@ -270,46 +326,28 @@ export const layer = Layer.effect(
 				),
 		);
 
+		// Only the bell: each drain reads what its thread is owed, a resume, an end at the restart limit or
+		// a parked queue, from the thread itself.
 		const resumeUnfinished = Effect.gen(function* () {
-			const running = yield* execution.active;
-			const unfinished = (yield* threads.unfinished).filter((row) => !running.has(ThreadSchema.ID.make(row.id)));
 			yield* Effect.forEach(
-				unfinished,
-				Effect.fnUntraced(function* (row) {
+				yield* threads.unfinished,
+				(row) => {
 					const threadId = ThreadSchema.ID.make(row.id);
-					if ((yield* execution.active).has(threadId)) return;
-					// Claimed again here, not from the list: a stop since then cleared it, and must stand.
-					// Counted before resuming, so a crash inside the resumed run is counted too.
-					const restarts = yield* threads.claimRestart(threadId);
-					if (Option.isNone(restarts)) return;
-					const recovery =
-						restarts.value >= RESTART_LIMIT
-							? execution.abandon(
-									threadId,
-									`The run was interrupted ${restarts.value} times in a row; it is not resumed again`,
-								)
-							: execution.recover(threadId);
-					yield* recovery.pipe(
-						Effect.tapCause((cause) =>
-							Effect.logWarning("Resuming an unfinished thread failed", cause).pipe(
-								Effect.annotateLogs({ threadId }),
-							),
-						),
-						Effect.ignore,
-					);
-				}),
+					return execution.wake(threadId).pipe(Effect.andThen(execution.awaitIdle(threadId)));
+				},
 				{ concurrency: "unbounded", discard: true },
 			);
 		}).pipe(Effect.withSpan("Control.resumeUnfinished"));
 
 		const sweep = Effect.gen(function* () {
+			// A shutdown ends its runs itself, so a run still open is one the process died in. One the user
+			// had asked to stop ends as stopped: its host died while the stop wound down.
 			for (const row of yield* threads.open) {
-				const execution = Option.getOrUndefined(row.execution);
 				yield* events.publish(EventList.ExecutionInterrupted, {
 					timestamp: yield* DateTime.now,
 					sessionId: SessionSchema.ID.make(row.sessionId),
 					threadId: ThreadSchema.ID.make(row.id),
-					reason: execution === "closed" ? "shutdown" : "crash",
+					reason: Thread.stopping(row) ? "user" : "crash",
 				});
 			}
 		}).pipe(Effect.withSpan("Control.sweep"));

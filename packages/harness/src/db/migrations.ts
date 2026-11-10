@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 
@@ -147,7 +147,6 @@ export const migrations = {
 				origin_entry_id    TEXT,
 				origin_call_id     TEXT,
 				title              TEXT,
-				execution          TEXT,
 				-- the run lifecycle, projected from the execution.* events; times are the events'
 				run_state          TEXT NOT NULL DEFAULT 'idle',
 				run_state_at       INTEGER,
@@ -157,6 +156,8 @@ export const migrations = {
 				run_error          TEXT,
 				restarts           INTEGER NOT NULL DEFAULT 0,
 				attempt            INTEGER,
+				-- the seq of the last run end that parks the queue; a pending prompt past it is runnable
+				head               INTEGER NOT NULL DEFAULT 0,
 				cost               REAL NOT NULL DEFAULT 0,
 				tokens_input       INTEGER NOT NULL DEFAULT 0,
 				tokens_output      INTEGER NOT NULL DEFAULT 0,
@@ -181,12 +182,13 @@ export const migrations = {
 		`;
 		yield* sql`CREATE UNIQUE INDEX thread_main_idx ON thread (session_id) WHERE origin_kind = 'main'`;
 		yield* sql`CREATE INDEX thread_origin_idx ON thread (origin_thread_id) WHERE origin_thread_id IS NOT NULL`;
+		// A session's threads by activity, which also orders sessions (session/session.ts).
+		yield* sql`CREATE INDEX thread_session_idx ON thread (session_id, updated_at)`;
 		// Call ids are unique per entry, not globally: one subagent per call of a thread.
 		yield* sql`
 			CREATE UNIQUE INDEX thread_call_idx ON thread (origin_thread_id, origin_call_id)
 			WHERE origin_call_id IS NOT NULL
 		`;
-		yield* sql`CREATE INDEX thread_running_idx ON thread (session_id) WHERE execution = 'running'`;
 
 		yield* sql`
 			CREATE TABLE entry (
@@ -249,6 +251,8 @@ export const migrations = {
 				data          TEXT NOT NULL,
 				delivery      TEXT NOT NULL,
 				admitted_seq  INTEGER NOT NULL,
+				-- the seq of its admission or latest move to steer: what wakes it
+				tail          INTEGER NOT NULL,
 				promoted_seq  INTEGER,
 				cancelled_seq INTEGER,
 				created_at    INTEGER NOT NULL,
@@ -296,6 +300,9 @@ export const migrations = {
 		yield* sql`CREATE INDEX thread_rev_idx ON thread (rev)`;
 		yield* sql`CREATE INDEX entry_thread_rev_idx ON entry (thread_id, rev)`;
 		yield* sql`CREATE INDEX inbox_thread_rev_idx ON inbox (thread_id, rev)`;
+		// What a write touched, for the threads it moves (db/store.ts).
+		yield* sql`CREATE INDEX entry_rev_idx ON entry (rev)`;
+		yield* sql`CREATE INDEX inbox_rev_idx ON inbox (rev)`;
 		// Every insert and update carries the current transaction's revision, so a write path that
 		// forgets fails loudly. A row written twice in one transaction keeps its rev, which this allows.
 		for (const table of ["project", "space", "session", "thread", "entry", "inbox"]) {
@@ -309,3 +316,33 @@ export const migrations = {
 		}
 	}),
 };
+
+/**
+ * Columns added to `init` after databases were already created from it. The migrator never reruns an
+ * applied id, so an older database lacks them, and the first query reading one fails obscurely.
+ */
+const folded: ReadonlyArray<readonly [table: string, column: string]> = [
+	["thread", "head"],
+	["inbox", "tail"],
+];
+
+/** The database predates columns this version reads; it is recreated, not upgraded. */
+export class OutdatedError extends Schema.TaggedError<OutdatedError>()("Database.OutdatedError", {
+	location: Schema.String,
+	missing: Schema.Array(Schema.String),
+}) {
+	override get message(): string {
+		return `The database at ${this.location} was created by an older version and lacks ${this.missing.join(", ")}; delete it, with its -wal and -shm files, to recreate it`;
+	}
+}
+
+/** Fails with `OutdatedError` when the migrated database at `location` lacks a folded column. */
+export const verify = Effect.fn("Database.verify")(function* (location: string) {
+	const sql = yield* SqlClient.SqlClient;
+	const missing: Array<string> = [];
+	for (const [table, column] of folded) {
+		const columns = yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info(${table})`;
+		if (!columns.some((row) => row.name === column)) missing.push(`${table}.${column}`);
+	}
+	if (missing.length > 0) return yield* new OutdatedError({ location, missing });
+});

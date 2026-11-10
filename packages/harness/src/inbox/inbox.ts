@@ -90,6 +90,8 @@ export interface ProjectCancelledInput {
 export interface ProjectUpdatedInput {
 	readonly id: SessionMessageSchema.ID;
 	readonly threadId: ThreadSchema.ID;
+	/** The update event's seq: a move to the steer lane wakes the prompt there. */
+	readonly seq: number;
 	readonly prompt?: Prompt | undefined;
 	readonly delivery?: Delivery | undefined;
 }
@@ -104,6 +106,9 @@ export interface ProjectPromptedInput extends AdmitInput {
 	readonly promotedSeq: number;
 	readonly timeCreated: DateTime.Utc;
 }
+
+/** Where a run promotes: before a reply without tool results (`final`), or after tool results. */
+export type Boundary = "final" | "postTools";
 
 export interface Interface {
 	readonly find: (id: SessionMessageSchema.ID) => Effect.Effect<Option.Option<Admitted>>;
@@ -137,22 +142,18 @@ export interface Interface {
 	/** Whether the lane holds an input that has not been promoted yet. */
 	readonly hasPending: (threadId: ThreadSchema.ID, delivery: Delivery) => Effect.Effect<boolean>;
 	/**
-	 * Promotes every pending steer admitted at or before `cutoff`, in admission
-	 * order. The cutoff keeps a steer that lands mid-promotion out of a request
-	 * that is already being assembled.
+	 * Promotes, in admission order, every pending input admitted at or before `cutoff` that the boundary
+	 * takes: at `final` (a run's first promotion, or a reply without tool results) every steer and the
+	 * oldest follow-up, placed together; at `postTools` (tool results waiting for a reply) steers only.
+	 * One follow-up per boundary is what makes that lane turn-at-a-time. The cutoff keeps an input that
+	 * lands mid-promotion out of a request that is already being assembled.
 	 *
 	 * Counts promotions *this* caller won. A row another drainer promoted first
 	 * is not counted: callers treat a positive count as new work to answer, and
 	 * counting a promotion someone else committed would have two workers answer
 	 * one prompt.
 	 */
-	readonly promoteSteers: (threadId: ThreadSchema.ID, cutoff: number) => Effect.Effect<number>;
-	/**
-	 * Promotes the single oldest pending follow-up, if any. One per run, unlike
-	 * steers, which is what makes the follow-up lane strictly turn-at-a-time.
-	 * False when there was none, or when another caller promoted it first.
-	 */
-	readonly promoteFollowUp: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	readonly promote: (threadId: ThreadSchema.ID, cutoff: number, boundary: Boundary) => Effect.Effect<number>;
 }
 
 export const make = Effect.gen(function* () {
@@ -184,12 +185,15 @@ export const make = Effect.gen(function* () {
 			threadId: Schema.String,
 			data: Schema.NullOr(Schema.fromJsonString(Prompt)),
 			delivery: Schema.NullOr(Delivery),
+			tail: Schema.NullOr(Schema.Int),
 			rev: Schema.Int,
 		}),
 		Result: Schema.Struct({ id: Schema.String }),
 		// A null field is one the update left alone.
-		execute: ({ id, threadId, data, delivery, rev }) => sql`
-      UPDATE inbox SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery), rev = ${rev}
+		execute: ({ id, threadId, data, delivery, tail, rev }) => sql`
+      UPDATE inbox
+      SET data = COALESCE(${data}, data), delivery = COALESCE(${delivery}, delivery), tail = COALESCE(${tail}, tail),
+        rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
       RETURNING id
     `,
@@ -209,8 +213,8 @@ export const make = Effect.gen(function* () {
 		Result: Schema.Struct({ id: Schema.String }),
 		execute: ({ id, threadId, data, delivery, admittedSeq, createdAt, rev }) => sql`
       UPDATE inbox
-      SET data = ${data}, delivery = ${delivery}, admitted_seq = ${admittedSeq}, created_at = ${createdAt},
-        cancelled_seq = NULL, rev = ${rev}
+      SET data = ${data}, delivery = ${delivery}, admitted_seq = ${admittedSeq}, tail = ${admittedSeq},
+        created_at = ${createdAt}, cancelled_seq = NULL, rev = ${rev}
       WHERE id = ${id} AND thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NOT NULL
       RETURNING id
     `,
@@ -272,28 +276,20 @@ export const make = Effect.gen(function* () {
     `,
 	});
 
-	const selectPendingSteers = SqlSchema.findAll({
-		Request: Schema.Struct({ threadId: Schema.String, cutoff: Schema.Int }),
+	const selectBoundary = SqlSchema.findAll({
+		Request: Schema.Struct({ threadId: Schema.String, cutoff: Schema.Int, final: Schema.Boolean }),
 		Result: InboxRow,
-		execute: ({ threadId, cutoff }) => sql`
+		execute: ({ threadId, cutoff, final }) => sql`
       SELECT * FROM inbox
-      WHERE thread_id = ${threadId}
-        AND promoted_seq IS NULL
-        AND cancelled_seq IS NULL
-        AND delivery = 'steer'
-        AND admitted_seq <= ${cutoff}
+      WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL AND admitted_seq <= ${cutoff}
+        AND (delivery = 'steer' OR (${final ? 1 : 0} = 1 AND id = (
+          SELECT id FROM inbox
+          WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
+            AND admitted_seq <= ${cutoff} AND delivery = 'followUp'
+          ORDER BY admitted_seq
+          LIMIT 1
+        )))
       ORDER BY admitted_seq
-    `,
-	});
-
-	const selectPendingFollowUp = SqlSchema.findAll({
-		Request: Schema.String,
-		Result: InboxRow,
-		execute: (threadId) => sql`
-      SELECT * FROM inbox
-      WHERE thread_id = ${threadId} AND promoted_seq IS NULL AND cancelled_seq IS NULL AND delivery = 'followUp'
-      ORDER BY admitted_seq
-      LIMIT 1
     `,
 	});
 
@@ -348,6 +344,12 @@ export const make = Effect.gen(function* () {
 			);
 	});
 
+	// A thread's `parked` is derived from what is pending, so a change to it carries the thread's revision
+	// forward: a client that follows by revision reads the thread again.
+	const followed = Effect.fnUntraced(function* (threadId: string) {
+		yield* sql`UPDATE thread SET rev = ${yield* store.rev} WHERE id = ${threadId}`;
+	});
+
 	const projectAdmitted = Effect.fn("Inbox.projectAdmitted")(
 		function* (input: ProjectAdmittedInput) {
 			// Safe to read first here: the commit transaction already opened with the
@@ -362,12 +364,13 @@ export const make = Effect.gen(function* () {
 				data: input.prompt,
 				delivery: input.delivery,
 				admittedSeq: input.admittedSeq,
+				tail: input.admittedSeq,
 				promotedSeq: Option.none(),
 				cancelledSeq: Option.none(),
 				createdAt: VariantSchema.Override(input.timeCreated),
 				rev: yield* store.rev,
 			});
-			if (stored.length > 0) return;
+			if (stored.length > 0) return yield* followed(input.threadId);
 			const revived = yield* reviveRow({
 				id: input.id,
 				threadId: input.threadId,
@@ -378,6 +381,7 @@ export const make = Effect.gen(function* () {
 				rev: yield* store.rev,
 			});
 			if (revived.length === 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+			yield* followed(input.threadId);
 		},
 		store.write,
 		Effect.orDie,
@@ -421,6 +425,7 @@ export const make = Effect.gen(function* () {
 				data: input.prompt,
 				delivery: input.delivery,
 				admittedSeq: input.promotedSeq,
+				tail: input.promotedSeq,
 				promotedSeq: Option.some(input.promotedSeq),
 				cancelledSeq: Option.none(),
 				createdAt: VariantSchema.Override(input.timeCreated),
@@ -434,7 +439,7 @@ export const make = Effect.gen(function* () {
 	const projectCancelled = Effect.fn("Inbox.projectCancelled")(
 		function* (input: ProjectCancelledInput) {
 			const updated = yield* cancelRow({ ...input, rev: yield* store.rev });
-			if (updated.length > 0) return;
+			if (updated.length > 0) return yield* followed(input.threadId);
 			// Nothing moved: this exact cancel being replayed, or the row was promoted or cancelled first.
 			const stored = yield* find(input.id);
 			if (Option.isSome(stored) && stored.value.cancelledSeq === input.cancelledSeq) return;
@@ -451,9 +456,10 @@ export const make = Effect.gen(function* () {
 				threadId: input.threadId,
 				data: input.prompt ?? null,
 				delivery: input.delivery ?? null,
+				tail: input.delivery === "steer" ? input.seq : null,
 				rev: yield* store.rev,
 			});
-			if (updated.length > 0) return;
+			if (updated.length > 0) return yield* followed(input.threadId);
 			// Promoted or cancelled first: the update lost, and its event rolls back.
 			return yield* Effect.die(new LifecycleConflict({ id: input.id }));
 		},
@@ -481,8 +487,11 @@ export const make = Effect.gen(function* () {
 		if (Option.isNone(stored)) return Option.none<Admitted>();
 		const prompt =
 			patch.prompt === undefined || Prompt.equivalence(patch.prompt, stored.value.prompt) ? undefined : patch.prompt;
+		// Asking for the steer lane is recorded even for a steer: it wakes the prompt, so a parked one runs now.
 		const delivery =
-			patch.delivery === undefined || patch.delivery === stored.value.delivery ? undefined : patch.delivery;
+			patch.delivery === undefined || (patch.delivery === stored.value.delivery && patch.delivery !== "steer")
+				? undefined
+				: patch.delivery;
 		if (prompt === undefined && delivery === undefined) return stored;
 		const timestamp = yield* DateTime.now;
 		return yield* events
@@ -573,15 +582,13 @@ export const make = Effect.gen(function* () {
 		return rows.length > 0;
 	}, Effect.orDie);
 
-	const promoteSteers = Effect.fn("Inbox.promoteSteers")(function* (threadId: ThreadSchema.ID, cutoff: number) {
-		const rows = yield* selectPendingSteers({ threadId, cutoff }).pipe(Effect.orDie);
+	const promote = Effect.fn("Inbox.promote")(function* (
+		threadId: ThreadSchema.ID,
+		cutoff: number,
+		boundary: Boundary,
+	) {
+		const rows = yield* selectBoundary({ threadId, cutoff, final: boundary === "final" }).pipe(Effect.orDie);
 		return yield* publishPrompted(rows);
-	});
-
-	const promoteFollowUp = Effect.fn("Inbox.promoteFollowUp")(function* (threadId: ThreadSchema.ID) {
-		const rows = yield* selectPendingFollowUp(threadId).pipe(Effect.orDie);
-		if (rows.length === 0) return false;
-		return (yield* publishPrompted(rows)) > 0;
 	});
 
 	return {
@@ -595,8 +602,7 @@ export const make = Effect.gen(function* () {
 		cancel,
 		pending,
 		hasPending,
-		promoteSteers,
-		promoteFollowUp,
+		promote,
 	} satisfies Interface;
 });
 

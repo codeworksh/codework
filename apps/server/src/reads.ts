@@ -299,6 +299,7 @@ const head = (sql: SqlClient.SqlClient, { sessionId, threadId }: LineRequest) =>
 		runEndedAt: number | null;
 		runOutcome: string | null;
 		runError: string | null;
+		parked: number;
 		updatedAt: number;
 		floor: number | null;
 		dir: string;
@@ -309,7 +310,7 @@ const head = (sql: SqlClient.SqlClient, { sessionId, threadId }: LineRequest) =>
 	}>`
 		SELECT thread.id, thread.session_id, session.machine_id, thread.title, thread.model_provider, thread.model_id,
 			thread.thinking_level, thread.run_state, thread.run_started_at, thread.run_ended_at, thread.run_outcome,
-			thread.run_error, thread.updated_at, thread.floor, session.dir, session.hostdir,
+			thread.run_error, thread.parked, thread.updated_at, thread.floor, session.dir, session.hostdir,
 			project.id AS project_id, project.name AS project_name,
 			thread.deleted_at IS NOT NULL OR session.deleted_at IS NOT NULL AS removed
 		FROM thread
@@ -395,6 +396,7 @@ export const line = Effect.fn("Reads.line")(function* (request: LineRequest) {
 			...(row.thinkingLevel === null ? {} : { thinkingLevel: row.thinkingLevel }),
 			runState: row.runState,
 			...lastRun,
+			parked: row.parked === 1,
 			updatedAt: row.updatedAt,
 			directory: row.dir,
 			...(row.hostdir === null ? {} : { hostDir: row.hostdir }),

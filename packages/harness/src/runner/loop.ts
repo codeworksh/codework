@@ -29,7 +29,7 @@ import { RunnerPart } from "./part.ts";
 import { Retry } from "./retry.ts";
 import { Runner } from "./run.ts";
 
-export type Promotion = "steer" | "followUp" | undefined;
+export type Promotion = Inbox.Boundary | undefined;
 
 /** A turn that committed an assistant message; `undefined` when it sent no request. */
 export type TurnResult =
@@ -82,10 +82,11 @@ const hostStopped = (snapshot: State.Snapshot, message: string) =>
 		reason: new Runner.ProviderTransportError({ message, isRetryable: true }),
 	});
 
-/** A request still in flight when the host died, as recovery finds it. */
-interface Crashed {
-	readonly attempt: number;
-	readonly message: string;
+/** Where a resumed run's retries start: the attempts already failed, and why the last one did. */
+interface Carried {
+	readonly retries: number;
+	/** Set when the host's death failed an attempt: the resend waits out its retry first. */
+	readonly failed?: string;
 }
 
 const errorPart = (
@@ -164,13 +165,21 @@ export const layer = (options: Options = {}) =>
 				);
 			});
 
-			const publishFailure = Effect.fn("Loop.publishFailure")(function* (
+			const publishFailure = (
 				draft: Thread.HydratedEntry,
 				cause: EventList.TurnAbortCause,
 				partial?: Message.AssistantMessage,
+			) =>
+				cause._tag === "interrupted"
+					? publishAborted(draft, "aborted", "turn interrupted before commit", partial)
+					: publishAborted(draft, "error", cause.message, partial);
+
+			const publishAborted = Effect.fn("Loop.publishAborted")(function* (
+				draft: Thread.HydratedEntry,
+				reason: "aborted" | "error",
+				message: string,
+				partial: Message.AssistantMessage | undefined,
 			) {
-				const reason = cause._tag === "interrupted" ? "aborted" : "error";
-				const message = cause._tag === "interrupted" ? "turn interrupted before commit" : cause.message;
 				yield* events.publish(EventList.LLMFailed, {
 					timestamp: yield* DateTime.now,
 					sessionId: draft.entry.sessionId,
@@ -211,8 +220,8 @@ export const layer = (options: Options = {}) =>
 			});
 
 			/**
-			 * Settles the draft a dead process left. One whose request was in flight (`inFlight`, its
-			 * failure) is aborted with what streamed. One whose response ended with tool calls had them
+			 * Settles the draft a dead process left. One whose request was in flight (`inFlight`, why it
+			 * stopped) is aborted with what streamed: the host stopped it, the provider did not fail it. One whose response ended with tool calls had them
 			 * running: those not settled are aborted, never run again, and the turn commits so the model
 			 * sees what ran. Anything else is aborted as interrupted.
 			 */
@@ -222,7 +231,7 @@ export const layer = (options: Options = {}) =>
 			) {
 				const draft = yield* threads.draft(threadId);
 				if (Option.isNone(draft)) return;
-				if (inFlight !== undefined) return yield* publishFailure(draft.value, { _tag: "error", message: inFlight });
+				if (inFlight !== undefined) return yield* publishAborted(draft.value, "aborted", inFlight, undefined);
 				const decoded = yield* decodeDraft(draft.value);
 				if (!hasToolCalls(decoded)) return yield* publishFailure(draft.value, { _tag: "interrupted" });
 				const ids = { sessionId: draft.value.entry.sessionId, threadId };
@@ -246,6 +255,9 @@ export const layer = (options: Options = {}) =>
 				delayMs: number,
 				message: string,
 			) {
+				// The attempt the sleep waits for: a resume after a shutdown sends it at once, one after a crash
+				// waits again first.
+				yield* threads.setAttempt(snapshot.threadId, attempt + 1);
 				yield* events.publish(EventList.RetryScheduled, {
 					timestamp: yield* DateTime.now,
 					sessionId: snapshot.sessionId,
@@ -258,26 +270,10 @@ export const layer = (options: Options = {}) =>
 				yield* Effect.sleep(Duration.millis(delayMs));
 			});
 
-			/** Ends a run that is not resumed, leaving the thread idle with its queue kept. */
-			const endRun = Effect.fn("Loop.endRun")(function* (
-				sessionId: SessionSchema.ID,
-				threadId: ThreadSchema.ID,
-				reason: EventList.RunFailed["data"]["reason"],
-				message: string,
-			) {
-				yield* Effect.uninterruptible(
-					Effect.gen(function* () {
-						yield* events.publish(EventList.RunFailed, {
-							timestamp: yield* DateTime.now,
-							sessionId,
-							threadId,
-							reason,
-							message,
-						});
-						yield* threads.idle(threadId);
-					}),
-				);
-				return "ended" as const;
+			/** A run that is not resumed: its execution records the end, which parks the queue. */
+			const failed = (reason: ThreadSchema.RunFailedReason, message: string): Runner.Outcome => ({
+				reason,
+				message,
 			});
 
 			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
@@ -436,16 +432,15 @@ export const layer = (options: Options = {}) =>
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 				continuing: boolean,
-				carried: Crashed | undefined,
+				carried: Carried | undefined,
 			) {
 				const { sessionId, threadId } = snapshot;
 				if (promotion !== undefined) {
 					const cutoff = yield* events.latestSequence(sessionId);
-					const followUp = promotion === "followUp" && (yield* inputs.promoteFollowUp(threadId));
-					const steers = yield* inputs.promoteSteers(threadId, cutoff);
+					const promoted = yield* inputs.promote(threadId, cutoff, promotion);
 					// The pending input this turn was started for was cancelled before promotion: with no
 					// earlier work to continue there is nothing to answer, so no provider request.
-					if (!continuing && !followUp && steers === 0) return undefined;
+					if (!continuing && promoted === 0) return undefined;
 				}
 
 				const assembled = yield* context.assemble(threadId);
@@ -456,8 +451,8 @@ export const layer = (options: Options = {}) =>
 				let publisher: LLMEventPublisher.Publisher | undefined;
 				let committed = false;
 				// A recovered run goes on counting from the request the host died with.
-				let retries = carried?.attempt ?? 0;
-				let failed: string | undefined = carried?.message;
+				let retries = carried?.retries ?? 0;
+				let failed: string | undefined = carried?.failed;
 
 				/** Abort the latest attempt's draft, unless its own terminal event already did. */
 				const settleDraft = (cause: EventList.TurnAbortCause) =>
@@ -592,7 +587,7 @@ export const layer = (options: Options = {}) =>
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 				continuing: boolean,
-				carried: Crashed | undefined,
+				carried: Carried | undefined,
 			) {
 				return yield* runTurnAttempt(promotion, snapshot, continuing, carried);
 			});
@@ -601,22 +596,31 @@ export const layer = (options: Options = {}) =>
 				readonly threadId: ThreadSchema.ID;
 				readonly force: boolean;
 				readonly recovered?: boolean;
+				readonly shutdown?: boolean;
 			}) {
-				// Only a dead host leaves a request marked in flight: every run that ends clears it.
-				const crashed = Option.getOrUndefined(
+				// Only a host that stopped leaves an attempt marked: every run that ends otherwise clears it. It is
+				// the request in flight, or the one a retry backoff waits for. A shutdown failed nothing: that
+				// request goes again as itself. A crash failed that attempt, streaming or not: with no draft open
+				// the restart went uncounted, so the retry budget is what bounds a host that keeps dying there.
+				const stored = Option.getOrUndefined(
 					Option.flatMap(yield* threads.get(input.threadId), (row) => row.attempt),
 				);
-				const carried: Crashed | undefined =
-					crashed === undefined
+				const streaming = Option.isSome(yield* threads.draft(input.threadId));
+				const carried: Carried | undefined =
+					stored === undefined
 						? undefined
-						: {
-								attempt: crashed,
-								message: `The host stopped while the model was answering, on attempt ${crashed}`,
-							};
-				yield* healDraft(input.threadId, carried?.message);
+						: input.shutdown === true
+							? { retries: stored - 1 }
+							: {
+									retries: stored,
+									failed: streaming
+										? `The host stopped while the model was answering, on attempt ${stored}`
+										: `The host stopped before attempt ${stored} was sent`,
+								};
+				yield* healDraft(input.threadId, carried?.failed);
 
 				const hasSteer = yield* inputs.hasPending(input.threadId, "steer");
-				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.threadId, "followUp");
+				const hasFollowUp = yield* inputs.hasPending(input.threadId, "followUp");
 				if (!input.force && !hasSteer && !hasFollowUp) return "drained" as const;
 				yield* Effect.annotateCurrentSpan({
 					"gen_ai.operation.name": "invoke_agent",
@@ -629,28 +633,27 @@ export const layer = (options: Options = {}) =>
 				// join it either way. A wake from a new prompt is neither: its input goes in where it lands.
 				const cutOff =
 					(input.recovered === true || input.force) &&
-					!hasSteer &&
 					hasFollowUp &&
 					(yield* context
 						.assemble(input.threadId)
 						.pipe(Effect.map((assembled) => assembled.messages.length > 0 && !leafAnswered(assembled))));
 				// A cut-off run still promotes steers that land while it loads: they join the reply being answered.
-				let promotion: Promotion = hasSteer || cutOff ? "steer" : hasFollowUp ? "followUp" : undefined;
-				/** Steers when there are any, else the oldest follow-up: what a run promotes first. */
+				let promotion: Promotion = cutOff ? "postTools" : hasSteer || hasFollowUp ? "final" : undefined;
+				/** The steers and the oldest follow-up, in admission order: what a run promotes first. */
 				const peekPending = (threadId: ThreadSchema.ID) =>
 					Effect.map(inputs.pending(threadId), (queued) => {
-						const steers = queued.filter((item) => item.delivery === "steer");
-						return steers.length > 0 ? steers : queued.slice(0, 1);
+						const followUp = queued.find((item) => item.delivery === "followUp");
+						return queued.filter((item) => item.delivery === "steer" || item === followUp);
 					});
 
 				const drain = Effect.gen(function* () {
 					const start = yield* state.snapshot(input.threadId);
-					if (carried !== undefined) {
-						const delayMs = Retry.delay(start.retry, carried.attempt, hostStopped(start, carried.message));
+					if (carried?.failed !== undefined) {
+						const delayMs = Retry.delay(start.retry, carried.retries, hostStopped(start, carried.failed));
 						if (delayMs === undefined) {
-							return yield* endRun(start.sessionId, input.threadId, "interrupted", carried.message);
+							return failed("interrupted", carried.failed);
 						}
-						yield* scheduleRetry(start, carried.attempt, delayMs, carried.message);
+						yield* scheduleRetry(start, carried.retries, delayMs, carried.failed);
 					}
 					let snapshot = start;
 					let continuing = input.force;
@@ -674,12 +677,10 @@ export const layer = (options: Options = {}) =>
 										pending: yield* peekPending(input.threadId),
 									};
 						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
-						// Queued steers and follow-ups stay for the next run.
+						// Queued steers and follow-ups start the next run.
 						if (decision === "end") return "drained" as const;
 						if (truncations >= TRUNCATION_LIMIT) {
-							return yield* endRun(
-								snapshot.sessionId,
-								input.threadId,
+							return failed(
 								"truncated",
 								`The response hit the output token limit with tool calls ${truncations} times in a row; the run is ended`,
 							);
@@ -689,11 +690,13 @@ export const layer = (options: Options = {}) =>
 						// `runTurnAttempt` ends the turn unless something was appended after it.
 						continuing = toolUse || decision === "continue";
 						const steer = yield* inputs.hasPending(input.threadId, "steer");
-						// Only tool results outrank a follow-up. A forced continuation rides along with it: the
-						// follow-up is the natural next request, and the continuation only its fallback.
-						const followUp = !toolUse && !steer && (yield* inputs.hasPending(input.threadId, "followUp"));
+						// Only tool results hold a follow-up back: past them steers alone join. A reply without them is
+						// a final boundary, where steers and the oldest follow-up go in together, in admission order. A
+						// forced continuation rides along: the follow-up is the natural next request, the continuation
+						// only its fallback.
+						const followUp = !toolUse && (yield* inputs.hasPending(input.threadId, "followUp"));
 						if (!continuing && !steer && !followUp) return "drained" as const;
-						promotion = followUp ? "followUp" : "steer";
+						promotion = toolUse ? "postTools" : "final";
 
 						const next = holdServers(start, yield* state.snapshot(input.threadId));
 						snapshot = completed === undefined ? next : yield* hooks.prepareNextTurn(completed, next);
@@ -711,12 +714,7 @@ export const layer = (options: Options = {}) =>
 				const thread = yield* threads.get(input.threadId);
 				if (Option.isNone(thread)) return "drained" as const;
 				yield* healDraft(input.threadId, Option.isSome(thread.value.attempt) ? input.message : undefined);
-				return yield* endRun(
-					SessionSchema.ID.make(thread.value.sessionId),
-					input.threadId,
-					"crashloop",
-					input.message,
-				);
+				return failed("crashloop", input.message);
 			});
 
 			return Runner.Service.of({ run, abandon });

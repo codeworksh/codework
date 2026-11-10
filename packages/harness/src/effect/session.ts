@@ -161,6 +161,8 @@ export interface ThreadSummary {
 		readonly outcome?: ThreadSchema.RunOutcome;
 		readonly error?: ThreadSchema.RunError;
 	};
+	/** Whether it holds queued prompts that wait for its next prompt instead of running by themselves. */
+	readonly parked: boolean;
 	/** Automatic restarts of the current run. */
 	readonly restarts: number;
 	/** The 1-based provider request in flight; absent when none is. */
@@ -375,6 +377,7 @@ export const threadSummary = Effect.fn("Session.threadSummary")(function* (id: T
 						...(error === undefined ? {} : { error }),
 					},
 				}),
+		parked: yield* threads.parked(id),
 		restarts: row.restarts,
 		...(attempt === undefined ? {} : { attempt }),
 		createdSeq: row.createdSeq,

@@ -13,7 +13,7 @@
 	},
 	"list": {
 		"status": 0,
-		"stdout": "<before>  fork of <main>  openai/gpt-6-luna  0 tok $0.0000  (untitled)\n<at>  fork of <main>  openai/gpt-6-luna  2 tok $0.0000  branch\n<main>  main                                              openai/gpt-6-luna  2 tok $0.0000  hello\n"
+		"stdout": "<at>  fork of <main>  openai/gpt-6-luna  2 tok $0.0000  branch\n<before>  fork of <main>  openai/gpt-6-luna  0 tok $0.0000  (untitled)\n<main>  main                                              openai/gpt-6-luna  2 tok $0.0000  hello\n"
 	},
 	"listJson": [
 		{

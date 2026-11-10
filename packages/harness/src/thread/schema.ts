@@ -25,14 +25,6 @@ export type Origin =
 	| { readonly kind: "subagent"; readonly threadId: ThreadID; readonly callId: string; readonly entryId?: string };
 
 /**
- * A run left unfinished: `running` while one is in flight, and still after the process died during
- * it; `closed` once a shutdown stopped it. Either resumes when the server starts again; a run that
- * ended any other way leaves none.
- */
-export const Execution = Schema.Literals(["running", "closed"]);
-export type Execution = typeof Execution.Type;
-
-/**
  * Where the thread's run is, projected from its lifecycle events: `starting` from
  * `execution.started` until the first `llm.started`, `running` after it, `idle` once it ended.
  */
@@ -46,7 +38,10 @@ export type RunOutcome = typeof RunOutcome.Type;
 export const RunFailedReason = Schema.Literals(["crashloop", "interrupted", "truncated"]);
 export type RunFailedReason = typeof RunFailedReason.Type;
 
-/** Why the last run did not succeed; stored as `thread.run_error` JSON. */
+/**
+ * Why the last run did not succeed; stored as `thread.run_error` JSON. On a run still open it holds the
+ * user stop that run was asked for, until its terminal lands.
+ */
 export const RunError = Schema.Union([
 	Schema.TaggedStruct("failed", { error: SessionFailure.Error }),
 	Schema.TaggedStruct("runFailed", { reason: RunFailedReason, message: Schema.String }),

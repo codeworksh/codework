@@ -195,7 +195,7 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 8>"
+			"rev": "<rev 7>"
 		}
 	],
 	"settled": [
@@ -221,7 +221,7 @@
 				],
 				"size": 89
 			},
-			"rev": "<rev 9>"
+			"rev": "<rev 8>"
 		},
 		{
 			"_tag": "Entry",
@@ -241,7 +241,7 @@
 				],
 				"size": 38
 			},
-			"rev": "<rev 10>"
+			"rev": "<rev 9>"
 		},
 		{
 			"_tag": "Inbox",
@@ -253,7 +253,7 @@
 				"createdAt": "<time>"
 			},
 			"state": "promoted",
-			"rev": "<rev 10>"
+			"rev": "<rev 9>"
 		},
 		{
 			"_tag": "Entry",
@@ -273,12 +273,12 @@
 				],
 				"size": 35
 			},
-			"rev": "<rev 11>"
+			"rev": "<rev 10>"
 		},
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 12>"
+			"rev": "<rev 11>"
 		}
 	],
 	"streamed": [
@@ -354,7 +354,7 @@
 				],
 				"size": 89
 			},
-			"rev": "<rev 9>"
+			"rev": "<rev 8>"
 		}
 	],
 	"otherThread": {

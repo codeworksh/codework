@@ -13,6 +13,7 @@ import { crc32, deflateSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
+import { streaming, toolCalls } from "./fixtures/cli.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -167,7 +168,11 @@ const settle = <A>(effect: Effect.Effect<A, Acp.RequestError>) =>
 		if (Exit.isSuccess(exit)) return { ok: exit.value };
 		const failure = EffectCause.findErrorOption(exit.cause);
 		return Option.isSome(failure)
-			? { code: failure.value.code, message: failure.value.message }
+			? {
+					code: failure.value.code,
+					message: failure.value.message,
+					...(failure.value.data === undefined ? {} : { data: failure.value.data }),
+				}
 			: { defect: String(exit.cause) };
 	});
 
@@ -364,6 +369,42 @@ describe("codework acp", () => {
 			}),
 		);
 	});
+
+	// A run can end in `session.run.failed` rather than an execution terminal: the prompt must answer it.
+	it("answers a prompt whose run fails with an internal error carrying the reason", () => {
+		const { home, project } = workspace();
+		return run(
+			Effect.gen(function* () {
+				const provider = yield* Effect.promise(() =>
+					streaming((_body, response) => {
+						response.send(toolCalls([{ name: "bash", arguments: { command: "echo cut" } }]));
+						response.finish("length");
+					}),
+				);
+				writeSettings(join(home, "settings.jsonc"), {
+					model: { provider: "fake", id: "echo" },
+					models: [newModel({ id: "fake", name: "Fake" }, "echo", { baseUrl: `${provider.url}/v1` })],
+				});
+				yield* withAgent(
+					home,
+					(acp) =>
+						Effect.gen(function* () {
+							const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+							const answer = yield* settle(
+								acp.agent.prompt({ sessionId, prompt: [{ type: "text", text: "Run a long command." }] }),
+							);
+							expect(answer).toMatchObject({ code: -32603, data: { reason: "truncated" } });
+							yield* Effect.promise(() =>
+								expect(artifact({ answer, requests: provider.requests.length })).toMatchFileSnapshot(
+									"./__artifacts__/acp.run-failed.json",
+								),
+							);
+						}),
+					withoutProviderKeys(),
+				);
+			}),
+		);
+	}, 60_000);
 
 	it("offers the models its credentials reach, and starts from the project's model", () => {
 		const { home, project } = workspace();
