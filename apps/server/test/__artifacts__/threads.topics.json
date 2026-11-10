@@ -10,22 +10,27 @@
 			},
 			"after": [
 				{
-					"list": "working",
-					"names": []
-				},
-				{
-					"list": "attention",
-					"names": []
-				},
-				{
-					"list": "settled",
+					"list": "enqueued",
 					"names": [
-						"A fork",
+						"A fork"
+					]
+				},
+				{
+					"list": "working",
+					"names": [
 						"D",
 						"A",
 						"C",
 						"B"
 					]
+				},
+				{
+					"list": "review",
+					"names": []
+				},
+				{
+					"list": "settled",
+					"names": []
 				},
 				{
 					"list": "cancelled",
@@ -34,33 +39,38 @@
 			]
 		},
 		{
-			"step": "set B attention",
+			"step": "set B review",
 			"topic": "sync/status",
 			"payload": {
 				"threadId": "<thread B>",
-				"status": "attention",
-				"previous": "settled",
+				"status": "review",
+				"previous": "working",
 				"at": "<time>"
 			},
 			"after": [
 				{
-					"list": "working",
-					"names": []
+					"list": "enqueued",
+					"names": [
+						"A fork"
+					]
 				},
 				{
-					"list": "attention",
+					"list": "working",
+					"names": [
+						"D",
+						"A",
+						"C"
+					]
+				},
+				{
+					"list": "review",
 					"names": [
 						"B"
 					]
 				},
 				{
 					"list": "settled",
-					"names": [
-						"A fork",
-						"D",
-						"A",
-						"C"
-					]
+					"names": []
 				},
 				{
 					"list": "cancelled",

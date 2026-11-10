@@ -19,7 +19,7 @@
 				"payload": {
 					"threadId": "<thread>",
 					"status": "cancelled",
-					"previous": "settled",
+					"previous": "enqueued",
 					"at": "<time>"
 				}
 			}
@@ -293,7 +293,7 @@
 			"payload": {
 				"threadId": "<thread>",
 				"status": "cancelled",
-				"previous": "settled",
+				"previous": "enqueued",
 				"at": "<time>"
 			}
 		},

@@ -25,6 +25,22 @@ export { CodeworkUnavailable, LineRequest, LineThread, SyncError, SyncThread, Th
 /** The organization the UI shows until auth exists; every synced project starts in it. */
 export const PERSONAL_ORGANIZATION = "personal";
 
+/**
+ * Where a thread's work is, as Linear's workflow states. `enqueued` and `working` follow its runs: a
+ * run starting sets `working`, which stays when it ends; prompts parked before a run set `enqueued`.
+ * The user sets the rest.
+ */
+export const ThreadStatus = Schema.Literals(["enqueued", "working", "review", "settled", "cancelled"]);
+export type ThreadStatus = typeof ThreadStatus.Type;
+
+/** The statuses a user sets; the others follow the thread's runs. */
+export const ManualStatus = Schema.Literals(["review", "settled", "cancelled"]);
+export type ManualStatus = typeof ManualStatus.Type;
+
+/** Linear's scale: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+export const Priority = Schema.Literals([0, 1, 2, 3, 4]);
+export type Priority = typeof Priority.Type;
+
 /** A session as the sidebar lists it: its space's kind, its color and its main thread. */
 export const SidebarSession = Schema.Struct({
 	id: Schema.String,
@@ -37,6 +53,10 @@ export const SidebarSession = Schema.Struct({
 	title: Schema.String,
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	runState: RunState,
+	status: ThreadStatus,
+	priority: Priority,
+	/** When it started: its main thread's creation; epoch milliseconds. */
+	created: Schema.Finite,
 	/** The session's last activity: the newest change to any of its threads, forks included; epoch milliseconds. */
 	updated: Schema.Finite,
 	/** The host folder it is anchored to, else its directory. */
@@ -49,8 +69,10 @@ export const SidebarProject = Schema.Struct({
 	machine: Schema.Struct({ id: Schema.String, name: Schema.String }),
 	id: Schema.String,
 	name: Schema.String,
-	/** Its newest session's folder, else its primary space's location: where it was last worked on. */
+	/** Its newest primary-space session's folder, else its primary space's location: where a new thread starts. */
 	path: Schema.String,
+	/** When it was first seen; epoch milliseconds. */
+	created: Schema.Finite,
 	sessions: Schema.Array(SidebarSession),
 });
 export type SidebarProject = typeof SidebarProject.Type;
@@ -293,9 +315,6 @@ export const SyncChanged = Schema.Struct({
 });
 export type SyncChanged = typeof SyncChanged.Type;
 
-export const ThreadStatus = Schema.Literals(["working", "settled", "attention", "cancelled"]);
-export type ThreadStatus = typeof ThreadStatus.Type;
-
 /** A thread's status moved; `at` is the app server's clock. */
 export const SyncStatus = Schema.Struct({
 	threadId: Schema.String,
@@ -304,10 +323,6 @@ export const SyncStatus = Schema.Struct({
 	at: Schema.Number,
 });
 export type SyncStatus = typeof SyncStatus.Type;
-
-/** Linear's scale: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
-export const Priority = Schema.Literals([0, 1, 2, 3, 4]);
-export type Priority = typeof Priority.Type;
 
 /** A custom group of an organization's threads, in its own `ordering`. */
 export const Grouping = Schema.Struct({
@@ -398,7 +413,7 @@ export type AllThreads = typeof AllThreads.Type;
 /**
  * The topics a client follows to keep each read current; it reads again when one fires.
  * - `sidebar.list`: `sync/changed` naming a project, space, session or thread, or a removed session;
- *   `sync/tracking` for a session's color.
+ *   every `sync/status`; `sync/tracking` for a session's color or a thread's priority.
  * - `threads.line`: `sync/changed` whose `threadId` is the thread (its entries and inbox) or that
  *   names a thread (the thread itself, or the ancestor an untitled fork takes its title from);
  *   `sync/delta/<thread>` streams its draft between checkpoints.
@@ -406,7 +421,7 @@ export type AllThreads = typeof AllThreads.Type;
  *   `sync/tracking`.
  */
 export const readTopics = {
-	sidebar: [syncTopics.changed, syncTopics.tracking],
+	sidebar: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	threads: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
 };
@@ -613,9 +628,9 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ entries: Schema.Int, floor: Schema.NullOr(Schema.Int) }),
 		error: Schema.Union([CodeworkUnavailable, SyncError]),
 	}),
-	/** Sets a thread's status until its next run change; published on `sync/status`. */
+	/** Sets a thread's status until its next run starts; published on `sync/status`. */
 	Rpc.make("threads.setStatus", {
-		payload: { threadId: Schema.String, status: ThreadStatus },
+		payload: { threadId: Schema.String, status: ManualStatus },
 		success: Schema.Void,
 		error: TrackingError,
 	}),

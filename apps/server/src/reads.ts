@@ -52,9 +52,10 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		id: string;
 		name: string;
 		location: string | null;
+		createdAt: number;
 		updatedAt: number;
 	}>`
-		SELECT project.machine_id, machine.name AS machine_name, project.id, project.name, project.updated_at,
+		SELECT project.machine_id, machine.name AS machine_name, project.id, project.name, project.created_at, project.updated_at,
 			(SELECT location FROM space WHERE space.machine_id = project.machine_id AND space.project_id = project.id
 				ORDER BY space.kind = 'primary' DESC, space.created_at LIMIT 1) AS location
 		FROM project JOIN machine ON machine.id = project.machine_id
@@ -74,11 +75,14 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		modelProvider: string | null;
 		modelId: string | null;
 		runState: SidebarSession["runState"];
+		status: SidebarSession["status"];
+		priority: SidebarSession["priority"];
+		createdAt: number;
 		updatedAt: number;
 	}>`
 		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind, session.color,
 			session.dir, session.hostdir, thread.id AS thread_id, thread.title, thread.model_provider,
-			thread.model_id, thread.run_state,
+			thread.model_id, thread.run_state, thread.status, thread.priority, thread.created_at,
 			(SELECT MAX(activity.updated_at) FROM thread AS activity
 				WHERE activity.session_id = session.id AND activity.deleted_at IS NULL) AS updated_at
 		FROM session
@@ -100,28 +104,39 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 			title: row.title ?? UNTITLED,
 			...model(row.modelProvider, row.modelId),
 			runState: row.runState,
+			status: row.status,
+			priority: row.priority,
+			created: row.createdAt,
 			updated: row.updatedAt,
 			path: row.hostdir ?? row.dir,
 		});
 		byProject.set(key, list);
 	}
-	const listed = projects.map((project): SidebarProject => {
-		const list = byProject.get(`${project.machineId}/${project.id}`) ?? [];
-		return {
-			machine: { id: project.machineId, name: project.machineName },
-			id: project.id,
-			name: project.name,
-			path: list[0]?.path ?? project.location ?? project.name,
-			sessions: list,
-		};
-	});
+	const sessionsOf = (project: (typeof projects)[number]) => byProject.get(`${project.machineId}/${project.id}`) ?? [];
 	// Newest activity first; a project without sessions by its own last change.
-	const activity = (project: SidebarProject) => project.sessions[0]?.updated ?? -1;
-	return listed.toSorted((a, b) => activity(b) - activity(a));
+	const activity = (project: (typeof projects)[number]) => sessionsOf(project)[0]?.updated ?? project.updatedAt;
+	return projects
+		.toSorted((a, b) => activity(b) - activity(a))
+		.map((project): SidebarProject => {
+			const list = sessionsOf(project);
+			return {
+				machine: { id: project.machineId, name: project.machineName },
+				id: project.id,
+				name: project.name,
+				// A worktree session's folder is not the project's, so new threads start in the primary space.
+				path:
+					list.find((session) => session.spaceKind === "primary")?.path ??
+					project.location ??
+					list[0]?.path ??
+					project.name,
+				created: project.createdAt,
+				sessions: list,
+			};
+		});
 }, Effect.orDie);
 
-/** The status lists in the order All Threads shows them: what needs the user first. */
-const STATUSES: ReadonlyArray<ThreadStatus> = ["working", "attention", "settled", "cancelled"];
+/** The status lists in the order All Threads shows them: Linear's workflow, unstarted to closed. */
+const STATUSES: ReadonlyArray<ThreadStatus> = ["enqueued", "working", "review", "settled", "cancelled"];
 /** Urgent first and none last, as Linear. */
 const PRIORITIES: ReadonlyArray<Priority> = [1, 2, 3, 4, 0];
 

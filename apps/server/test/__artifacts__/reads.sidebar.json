@@ -8,6 +8,7 @@
 			"id": "<id 2>",
 			"name": "Alpha",
 			"path": "<home>",
+			"created": "<time>",
 			"sessions": [
 				{
 					"id": "<ses 1>",
@@ -16,6 +17,9 @@
 					"color": null,
 					"title": "hold",
 					"runState": "running",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				},
@@ -26,6 +30,9 @@
 					"color": null,
 					"title": "Idle prompt",
 					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				}
@@ -41,6 +48,7 @@
 			"id": "<id 2>",
 			"name": "Alpha",
 			"path": "<home>",
+			"created": "<time>",
 			"sessions": [
 				{
 					"id": "<ses 2>",
@@ -49,6 +57,9 @@
 					"color": null,
 					"title": "Idle prompt",
 					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				},
@@ -59,6 +70,9 @@
 					"color": null,
 					"title": "hold",
 					"runState": "running",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				}

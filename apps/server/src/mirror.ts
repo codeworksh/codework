@@ -63,23 +63,24 @@ const upsert = (table: string, keys: ReadonlyArray<string>, core: Record<string,
 const organizationOf = (query: Effect.Effect<ReadonlyArray<{ organizationId: string }>, unknown>) =>
 	query.pipe(Effect.map((rows) => rows[0]?.organizationId ?? ORGANIZATION));
 
-/** Where a thread goes when its run moves, by the incoming row against the stored one (section 5 of the design). */
+/**
+ * Where a thread goes when its run moves, by the incoming row against the stored one: a run starting
+ * sets `working`, prompts parked while idle set `enqueued`. A run ending changes nothing; the user
+ * moves the thread on from there.
+ */
 const moved = (
-	stored: { readonly runStartedAt: number | null; readonly runEndedAt: number | null },
+	stored: { readonly runStartedAt: number | null; readonly parked: number },
 	thread: Codework.ThreadSummary,
 ): ThreadStatus | undefined => {
-	const run = thread.lastRun;
-	if (run === undefined) return undefined;
-	if (run.startedAt !== stored.runStartedAt && thread.runState !== "idle") return "working";
-	if (run.endedAt === undefined || run.endedAt === stored.runEndedAt) return undefined;
-	if (run.outcome === "succeeded" || run.outcome === "failed") return "attention";
-	if (run.error?._tag === "interrupted" && run.error.reason === "user") return "cancelled";
-	// Shutdown or crash: a resume or a `run.failed` follows and decides.
+	if (thread.lastRun !== undefined && thread.lastRun.startedAt !== stored.runStartedAt && thread.runState !== "idle")
+		return "working";
+	if (thread.parked && stored.parked === 0 && thread.runState === "idle") return "enqueued";
 	return undefined;
 };
 
+/** A thread not run yet, or holding parked prompts, has work still to start. */
 const firstSeen = (thread: Codework.ThreadSummary): ThreadStatus =>
-	thread.runState !== "idle" ? "working" : thread.lastRun?.outcome === "failed" ? "attention" : "settled";
+	thread.runState === "idle" && (thread.lastRun === undefined || thread.parked) ? "enqueued" : "working";
 
 const threadCore = (thread: Codework.ThreadSummary) => {
 	const origin = thread.origin;
@@ -124,8 +125,8 @@ const storeThread = (thread: Codework.ThreadSummary, now: number, append: Append
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		const core = threadCore(thread);
-		const [stored] = yield* sql<{ status: ThreadStatus; runStartedAt: number | null; runEndedAt: number | null }>`
-			SELECT status, run_started_at, run_ended_at FROM thread WHERE id = ${thread.id}
+		const [stored] = yield* sql<{ status: ThreadStatus; runStartedAt: number | null; parked: number }>`
+			SELECT status, run_started_at, parked FROM thread WHERE id = ${thread.id}
 		`;
 		if (stored === undefined) {
 			const organizationId = yield* organizationOf(

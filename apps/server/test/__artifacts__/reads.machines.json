@@ -8,6 +8,7 @@
 			"id": "<id 1>",
 			"name": "Local",
 			"path": "<home>",
+			"created": "<time>",
 			"sessions": [
 				{
 					"id": "<ses 1>",
@@ -16,6 +17,9 @@
 					"color": null,
 					"title": "On the default machine",
 					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				}
@@ -31,6 +35,7 @@
 			"id": "<id 1>",
 			"name": "Local",
 			"path": "<home>",
+			"created": "<time>",
 			"sessions": [
 				{
 					"id": "<ses 1>",
@@ -39,6 +44,9 @@
 					"color": null,
 					"title": "On the default machine",
 					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				}
@@ -52,6 +60,7 @@
 			"id": "<id 3>",
 			"name": "Remote",
 			"path": "<home>",
+			"created": "<time>",
 			"sessions": [
 				{
 					"id": "<ses 2>",
@@ -60,6 +69,9 @@
 					"color": null,
 					"title": "On a remote machine",
 					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"created": "<time>",
 					"updated": "<time>",
 					"path": "<home>"
 				}

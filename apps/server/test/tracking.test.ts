@@ -157,22 +157,29 @@ it("every edit changes its row with its event in the same transaction, and a sec
 	await snapshot("rejected", normalize({ rejected, thread: threadRow(appHome, threadId) }));
 }, 90_000);
 
-it("a user-set status stays through rows without a run change, then the next run's transitions win", async () => {
+it("a user-set status stays through rows without a run change and a run ending; the next run starting reopens it", async () => {
 	const { cwHome, appHome, server, desk, sessions } = await setup("status", 1);
 	const ref = sessions[0]!;
 	const status = () => query(appHome, "SELECT status, thinking_level FROM thread WHERE id = ?", ref.threadId)[0]!;
 	const reach = (value: string) => waitFor(() => (status().status === value ? status() : undefined), value);
+	const runState = () => query(appHome, "SELECT run_state, run_ended_at FROM thread WHERE id = ?", ref.threadId)[0]!;
 	/** A reply held after its first chunk, so its start and its end arrive as two rows. */
 	const run = async (server: Codework) => {
 		await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "gate" }));
 		await reach("working");
 		for (let step = 0; step < 4; step++) server.release();
 		await server.run((rpc) => rpc["thread.wait"](ref));
-		return reach("attention");
+		await waitFor(
+			() => (runState().run_state === "idle" && runState().run_ended_at !== null ? true : undefined),
+			"the run's end",
+		);
+		return status();
 	};
 	const steps: Array<Row> = [{ step: "first seen", ...status() }];
 
+	// A run ending moves nothing: the thread stays working.
 	steps.push({ step: "run succeeded", ...(await run(server)) });
+	expect(status().status).toBe("working");
 	await desk.run((rpc) => rpc["threads.setStatus"]({ threadId: ref.threadId, status: "settled" }));
 	steps.push({ step: "user settled", ...status() });
 	await server.run((rpc) => rpc["thread.configure"]({ ...ref, runtime: { thinkingLevel: "high" } }));
@@ -190,11 +197,9 @@ it("a user-set status stays through rows without a run change, then the next run
 		status: event.payload.status,
 	}));
 	expect(moves).toEqual([
+		{ source: "sync", previous: "enqueued", status: "working" },
+		{ source: "tracking", previous: "working", status: "settled" },
 		{ source: "sync", previous: "settled", status: "working" },
-		{ source: "sync", previous: "working", status: "attention" },
-		{ source: "tracking", previous: "attention", status: "settled" },
-		{ source: "sync", previous: "settled", status: "working" },
-		{ source: "sync", previous: "working", status: "attention" },
 	]);
 	await snapshot("status", normalizer([cwHome, appHome])({ steps, moves }));
 }, 90_000);

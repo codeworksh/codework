@@ -261,6 +261,23 @@ const migrations = {
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
+	// Statuses become Linear-like: only the user sets review, settled and cancelled, so each other status
+	// is derived again from the run. A settled or cancelled one stays only when the user's edit set it.
+	"202611100001_status": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			UPDATE thread SET status = CASE
+				WHEN run_state = 'idle' AND (run_started_at IS NULL OR parked = 1) THEN 'enqueued'
+				ELSE 'working'
+			END
+			WHERE NOT (status IN ('settled', 'cancelled') AND (
+				SELECT event.source = 'tracking' AND json_extract(event.payload, '$.status') = thread.status
+				FROM event
+				WHERE event.topic = 'sync/status' AND json_extract(event.payload, '$.threadId') = thread.id
+				ORDER BY event.seq DESC LIMIT 1
+			) IS 1)
+		`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

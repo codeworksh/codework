@@ -524,7 +524,7 @@ describeMachines("sync across OrbStack machines", () => {
 		const machineId = idOf(cwB);
 		const before = await session(cwB, work(cwB), "Before backup");
 		await caughtUp(machineId, cwB);
-		write(appHome, "UPDATE thread SET priority = 2, color = '#ff8800', status = 'attention' WHERE id = ?", before.id);
+		write(appHome, "UPDATE thread SET priority = 2, color = '#ff8800', status = 'review' WHERE id = ?", before.id);
 		write(appHome, "UPDATE session SET color = '#00aa88' WHERE id = ?", before.session.id);
 
 		await cwB.stop("TERM");
@@ -558,7 +558,7 @@ describeMachines("sync across OrbStack machines", () => {
 		expect(rows.thread.find((row) => row.id === before.id)).toMatchObject({
 			priority: 2,
 			color: "#ff8800",
-			status: "attention",
+			status: "review",
 			deleted_at: null,
 		});
 		expect(rows.session.find((row) => row.id === before.session.id)).toMatchObject({

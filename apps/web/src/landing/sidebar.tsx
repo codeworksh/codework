@@ -1,10 +1,23 @@
-import { ChevronRight, EditIcon, Folder, Plus, Search, Settings, ThreadsIcon } from "@/components/vuesax";
+import {
+	ArrowUpDown,
+	ChevronRight,
+	EditIcon,
+	Folder,
+	FolderOpen,
+	LayoutGrid,
+	Plus,
+	Search,
+	Settings,
+	ThreadsIcon,
+} from "@/components/vuesax";
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Option, Schema } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import type { SidebarProject, SidebarSession } from "@codeworksh/contract";
+import type { SidebarSession } from "@codeworksh/contract";
 import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
+import { DisplayChoice, DisplayMenu } from "@/components/display";
 import {
 	Sidebar,
 	SidebarContent,
@@ -28,6 +41,8 @@ import { useAddProject } from "../shell/palette";
 import { placeAtom } from "./place";
 import { useRunDisplay } from "../widgets/session/display";
 import { RunMark } from "../widgets/session/run";
+import { PriorityIcon, StatusIcon } from "../widgets/threads/marks";
+import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDisplay } from "./groups";
 
 /**
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
@@ -36,6 +51,18 @@ import { RunMark } from "../widgets/session/run";
 /** A sidebar action: New, All Threads, Settings. */
 const NAV_ROW =
 	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring";
+
+const collapsedKey = "codework.sidebar.collapsed";
+const decodeCollapsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
+
+function savedCollapsed(): ReadonlySet<string> {
+	try {
+		return new Set(Option.getOrElse(decodeCollapsed(localStorage.getItem(collapsedKey)), () => []));
+	} catch {
+		// Storage can be unavailable; every project starts expanded.
+		return new Set();
+	}
+}
 
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
@@ -72,12 +99,18 @@ export function SessionsSidebar() {
 		void opener.current(sessionAddress(sessionId), projectName, placement);
 	}, []);
 
-	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+	// Kept in this window's storage, so projects reopen as left, after a restart too.
+	const [collapsed, setCollapsed] = useState(savedCollapsed);
 	const toggle = useCallback((key: string) => {
 		setCollapsed((previous) => {
 			const next = new Set(previous);
 			if (next.has(key)) next.delete(key);
 			else next.add(key);
+			try {
+				localStorage.setItem(collapsedKey, JSON.stringify([...next]));
+			} catch {
+				// The state still applies until the page closes.
+			}
 			return next;
 		});
 	}, []);
@@ -89,18 +122,9 @@ export function SessionsSidebar() {
 		[navigate, setPlace],
 	);
 
+	const [display, changeDisplay] = useDisplay();
 	const needle = query.trim().toLowerCase();
-	const groups = AsyncResult.isSuccess(result)
-		? result.value.flatMap((project) => {
-				const sessions =
-					needle === ""
-						? project.sessions
-						: project.sessions.filter((session) =>
-								`${session.title} ${project.name}`.toLowerCase().includes(needle),
-							);
-				return sessions.length === 0 ? [] : [{ project, sessions }];
-			})
-		: [];
+	const groups = AsyncResult.isSuccess(result) ? groupsOf(result.value, display, needle) : [];
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
@@ -167,23 +191,37 @@ export function SessionsSidebar() {
 						</Empty>
 					)
 				) : (
-					<div aria-label="Threads" className="flex flex-col gap-1.5 pt-1">
-						{groups.map(({ project, sessions }) => {
-							const key = `${project.machine.id}/${project.id}`;
-							const expanded = needle !== "" || !collapsed.has(key);
-							return (
-								<ProjectGroup
-									key={key}
-									project={project}
-									sessions={sessions}
-									expanded={expanded}
-									current={current}
-									onToggle={() => toggle(key)}
-									onStartNew={() => startIn(project.path)}
-									onOpen={open}
+					<div aria-label="Threads" className="flex flex-col gap-1">
+						<div className="flex h-6 items-center justify-between pr-1 pl-2">
+							<span className="text-2xs font-medium text-ink-muted">Threads</span>
+							<DisplayMenu align="start" side="right" triggerClassName="size-5 text-ink-muted">
+								<DisplayChoice
+									label="Grouping"
+									icon={LayoutGrid}
+									value={display.group}
+									options={GROUPS}
+									onChange={(group) => changeDisplay({ group })}
 								/>
-							);
-						})}
+								<DisplayChoice
+									label="Ordering"
+									icon={ArrowUpDown}
+									value={display.order}
+									options={ORDERS}
+									onChange={(order) => changeDisplay({ order })}
+								/>
+							</DisplayMenu>
+						</div>
+						{groups.map((group) => (
+							<GroupSection
+								key={group.key}
+								group={group}
+								expanded={needle !== "" || !collapsed.has(group.key)}
+								current={current}
+								onToggle={() => toggle(group.key)}
+								onStartNew={group.kind === "project" ? () => startIn(group.project.path) : undefined}
+								onOpen={open}
+							/>
+						))}
 					</div>
 				)}
 			</SidebarContent>
@@ -198,80 +236,88 @@ export function SessionsSidebar() {
 	);
 }
 
-function ProjectGroup({
-	project,
-	sessions,
+/** What a group's header shows: a project's folder, open while expanded, a status's ring or a priority's bars. */
+function GroupMark({ group, expanded }: { readonly group: Group; readonly expanded: boolean }) {
+	if (group.kind === "status") return <StatusIcon status={group.status} />;
+	if (group.kind === "priority") return <PriorityIcon priority={group.priority} />;
+	return expanded ? <FolderOpen size={14} aria-hidden /> : <Folder size={14} aria-hidden />;
+}
+
+function GroupSection({
+	group,
 	expanded,
 	current,
 	onToggle,
 	onStartNew,
 	onOpen,
 }: {
-	readonly project: SidebarProject;
-	readonly sessions: ReadonlyArray<SidebarSession>;
+	readonly group: Group;
 	readonly expanded: boolean;
 	readonly current: string | undefined;
 	readonly onToggle: () => void;
-	readonly onStartNew: () => void;
+	/** A project's new thread; other groups have none. */
+	readonly onStartNew: (() => void) | undefined;
 	readonly onOpen: (sessionId: string, projectName: string, event: MouseEvent) => void;
 }) {
+	const label = groupLabel(group);
+	const open = expanded ? undefined : group.entries.find(({ session }) => sessionAddress(session.id) === current);
+	const row = ({ session, project }: Entry) => (
+		<SessionRow
+			key={session.id}
+			session={session}
+			projectName={project.name}
+			machineName={project.machine.name}
+			current={sessionAddress(session.id) === current}
+			onOpen={onOpen}
+		/>
+	);
 	return (
 		<section className="flex flex-col">
-			<div className="group/project relative flex h-7 items-center">
+			<div className="group/project relative flex h-[26px] items-center">
 				<button
 					type="button"
 					aria-expanded={expanded}
-					title={`${project.path} on ${project.machine.name}`}
+					title={group.kind === "project" ? `${group.project.path} on ${group.project.machine.name}` : undefined}
 					onClick={onToggle}
-					className="group/toggle flex h-7 w-full min-w-0 items-center gap-2 rounded-md pr-7 pl-2 text-left text-ui font-medium text-ink-secondary outline-none group-hover/project:bg-selection-subtle group-hover/project:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+					className={`group/toggle flex h-[26px] w-full min-w-0 items-center gap-2 rounded-md pl-2 text-left text-xs text-ink-muted outline-none group-hover/project:bg-selection-subtle group-hover/project:text-ink focus-visible:ring-2 focus-visible:ring-ring ${onStartNew === undefined ? "pr-2" : "pr-7"}`}
 				>
 					<span className="relative flex size-[15px] shrink-0 items-center justify-center text-ink-muted">
-						<Folder
-							size={15}
-							className="transition-[opacity,transform] duration-150 ease-out group-hover/project:scale-90 group-hover/project:opacity-0 group-focus-visible/toggle:scale-90 group-focus-visible/toggle:opacity-0"
-							aria-hidden
-						/>
+						{/* Hover swaps the mark for the chevron by opacity alone; only the chevron's turn moves. */}
+						<span className="flex transition-opacity duration-100 group-hover/project:opacity-0 group-focus-visible/toggle:opacity-0">
+							<GroupMark group={group} expanded={expanded} />
+						</span>
 						<ChevronRight
-							size={13}
-							className={`absolute scale-90 opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover/project:scale-100 group-hover/project:opacity-100 group-focus-visible/toggle:scale-100 group-focus-visible/toggle:opacity-100 ${
+							size={12}
+							className={`absolute opacity-0 [transition:opacity_100ms_ease,transform_150ms_var(--ease-out)] group-hover/project:opacity-100 group-focus-visible/toggle:opacity-100 ${
 								expanded ? "rotate-90" : ""
 							}`}
 							aria-hidden
 						/>
 					</span>
-					<span className="min-w-0 truncate">{project.name}</span>
+					<span className="min-w-0 truncate">{label}</span>
+					{group.kind !== "project" && (
+						<span className="text-2xs text-ink-muted tabular-nums">{group.entries.length}</span>
+					)}
 				</button>
-				<button
-					type="button"
-					aria-label={`New thread in ${project.name}`}
-					title={`New thread in ${project.name}`}
-					onClick={onStartNew}
-					className="absolute right-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-muted opacity-0 outline-none transition-[opacity,transform] duration-150 ease-out group-hover/project:opacity-100 hover:bg-selection-strong hover:text-ink active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
-				>
-					<Plus size={13} aria-hidden />
-				</button>
+				{onStartNew !== undefined && (
+					<button
+						type="button"
+						aria-label={`New thread in ${label}`}
+						title={`New thread in ${label}`}
+						onClick={onStartNew}
+						className="absolute right-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-muted opacity-0 outline-none transition-[opacity,transform] duration-150 ease-out group-hover/project:opacity-100 hover:bg-selection-strong hover:text-ink active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+					>
+						<Plus size={13} aria-hidden />
+					</button>
+				)}
 			</div>
-			<div
-				inert={!expanded || undefined}
-				className={`grid transition-[grid-template-rows,opacity] duration-180 ease-out ${
-					expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-				}`}
-			>
-				<div className="min-h-0 overflow-hidden">
-					<ul aria-label={project.name} className="mt-0.5 flex flex-col gap-0.5">
-						{sessions.map((session) => (
-							<SessionRow
-								key={session.id}
-								session={session}
-								projectName={project.name}
-								machineName={project.machine.name}
-								current={sessionAddress(session.id) === current}
-								onOpen={onOpen}
-							/>
-						))}
-					</ul>
-				</div>
-			</div>
+			{/* Rows show at once, as Linear's do: a group is toggled too often to wait on motion. A collapsed
+			    group mounts only the open thread's row. */}
+			{(expanded ? group.entries.length > 0 : open !== undefined) && (
+				<ul aria-label={label} className="mt-px flex flex-col gap-px">
+					{expanded ? group.entries.map(row) : open !== undefined && row(open)}
+				</ul>
+			)}
 		</section>
 	);
 }
@@ -294,25 +340,17 @@ const SessionRow = memo(function SessionRow({
 	// The main thread's key is its session's id.
 	const display = useRunDisplay([{ key: session.id, runState: session.runState }]);
 	return (
-		<li className="[contain-intrinsic-size:auto_28px] [content-visibility:auto]">
+		<li className="[contain-intrinsic-size:auto_26px] [content-visibility:auto]">
 			<button
 				type="button"
 				title={`${session.path} on ${machineName}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 				aria-current={current ? "true" : undefined}
-				className="group/row relative flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:font-medium aria-current:text-ink"
+				className="group/row relative flex h-[26px] w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:font-medium aria-current:text-ink"
 				onClick={(event) => onOpen(session.id, projectName, event)}
 				onAuxClick={(event) => onOpen(session.id, projectName, event)}
 			>
 				<span className="flex size-[15px] shrink-0 items-center justify-center text-ink-muted group-aria-current/row:text-ink">
-					<RunMark
-						display={display}
-						idle={
-							<span
-								aria-hidden
-								className="size-[5px] rounded-full bg-current opacity-40 transition-opacity duration-150 ease-out group-hover/row:opacity-75 group-aria-current/row:opacity-90"
-							/>
-						}
-					/>
+					<RunMark display={display} />
 				</span>
 				<span className="min-w-0 flex-1 truncate">{session.title}</span>
 				<span className="relative flex shrink-0 items-center justify-end pl-1 text-2xs tabular-nums text-ink-muted/75">

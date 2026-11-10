@@ -28,7 +28,17 @@ import {
 } from "./data";
 import { heading, SectionHeader } from "./header";
 import { byOf, filtering, type Options, type Section, sections, useOptions } from "./options";
-import { COLORS, Dot, PRIORITIES, PRIORITY, PriorityIcon, STATUS, STATUSES, StatusIcon } from "./marks";
+import {
+	COLORS,
+	Dot,
+	isManual,
+	MANUAL_STATUSES,
+	PRIORITIES,
+	PRIORITY,
+	PriorityIcon,
+	STATUS,
+	StatusIcon,
+} from "./marks";
 import { Picker } from "./picker";
 import { PICKER_KEYS, type Picker as Kind, Row, type RowActions } from "./row";
 import { Toolbar } from "./toolbar";
@@ -200,7 +210,9 @@ function List({
 		const list = section.list;
 		if (list === undefined) return Promise.resolve();
 		return list._tag === "Status"
-			? status({ payload: { threadId: thread.id, status: list.status } })
+			? isManual(list.status)
+				? status({ payload: { threadId: thread.id, status: list.status } })
+				: Promise.resolve()
 			: list._tag === "Priority"
 				? priority({ payload: { threadId: thread.id, priority: list.priority } })
 				: group({ payload: { threadId: thread.id, groupingId: list.groupingId } });
@@ -212,6 +224,8 @@ function List({
 		if (thread === undefined) return;
 		const source = sections.find((section) => section.threads.some((candidate) => candidate.id === thread.id));
 		const same = source?.key === target.key;
+		// Enqueued and Working follow the thread's runs, so a drop cannot put a thread there.
+		if (!same && target.list?._tag === "Status" && !isManual(target.list.status)) return;
 		if (same && (!manual || source.threads.findIndex((candidate) => candidate.id === thread.id) === index)) return;
 		const others = all.filter((candidate) => candidate.id !== thread.id);
 		const to = manual
@@ -452,13 +466,13 @@ function ThreadPicker({
 				placeholder="Change status…"
 				digits
 				value={thread.status}
-				options={STATUSES.map((value) => ({
+				options={MANUAL_STATUSES.map((value) => ({
 					value,
 					label: STATUS[value].label,
 					mark: <StatusIcon status={value} />,
 				}))}
 				onPick={(value) => {
-					const next = STATUSES.find((candidate) => candidate === value);
+					const next = MANUAL_STATUSES.find((candidate) => candidate === value);
 					if (next !== undefined) void set.status({ payload: { threadId, status: next } }).catch(failed);
 				}}
 			/>

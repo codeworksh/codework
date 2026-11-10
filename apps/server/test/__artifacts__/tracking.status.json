@@ -2,12 +2,12 @@
 	"steps": [
 		{
 			"step": "first seen",
-			"status": "settled",
+			"status": "enqueued",
 			"thinking_level": null
 		},
 		{
 			"step": "run succeeded",
-			"status": "attention",
+			"status": "working",
 			"thinking_level": null
 		},
 		{
@@ -22,35 +22,25 @@
 		},
 		{
 			"step": "next run succeeded",
-			"status": "attention",
+			"status": "working",
 			"thinking_level": "high"
 		}
 	],
 	"moves": [
 		{
 			"source": "sync",
-			"previous": "settled",
+			"previous": "enqueued",
 			"status": "working"
 		},
 		{
-			"source": "sync",
-			"previous": "working",
-			"status": "attention"
-		},
-		{
 			"source": "tracking",
-			"previous": "attention",
+			"previous": "working",
 			"status": "settled"
 		},
 		{
 			"source": "sync",
 			"previous": "settled",
 			"status": "working"
-		},
-		{
-			"source": "sync",
-			"previous": "working",
-			"status": "attention"
 		}
 	]
 }

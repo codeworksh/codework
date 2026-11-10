@@ -111,7 +111,8 @@ it("first sync copies a session with a fork and a prompt, with first-seen deskto
 			created_at: thread.createdAt,
 			updated_at: thread.updatedAt,
 			tokens_input: thread.usage.input,
-			status: "settled",
+			// Not run yet, a fork's work is still to start; a run thread is working.
+			status: thread.lastRun === undefined ? "enqueued" : "working",
 			priority: 0,
 			cursor: null,
 		});
@@ -368,7 +369,7 @@ it("a restored store is read again in full: returning rows keep their desktop co
 
 	let desk = await app(appHome);
 	const machineId = await addMachine(appHome, server, desk.run);
-	write(appHome, "UPDATE thread SET priority = 2, color = '#ff8800', status = 'attention' WHERE id = ?", before.id);
+	write(appHome, "UPDATE thread SET priority = 2, color = '#ff8800', status = 'review' WHERE id = ?", before.id);
 	const after = await session(server, cwHome, "After backup");
 	const { rev: head } = await synced(appHome, machineId, server);
 
@@ -393,7 +394,7 @@ it("a restored store is read again in full: returning rows keep their desktop co
 	expect(rows.thread!.find((row) => row.id === before.id)).toMatchObject({
 		priority: 2,
 		color: "#ff8800",
-		status: "attention",
+		status: "review",
 		deleted_at: null,
 	});
 	expect(rows.session!.find((row) => row.id === after.session.id)?.deleted_at).not.toBeNull();
@@ -551,7 +552,7 @@ it("a live reply folds deltas that continue the draft, drops one that does not, 
 	);
 }, 90_000);
 
-it("thread status follows its runs: started, succeeded, user interrupt, crash sweep", async () => {
+it("thread status follows its runs: enqueued until started, working until the user moves it on, parked follow-ups enqueue it", async () => {
 	const cwHome = tempDir("status-cw");
 	const appHome = tempDir("status-app");
 	const port = await freePort();
@@ -566,36 +567,54 @@ it("thread status follows its runs: started, succeeded, user interrupt, crash sw
 		waitFor(() => (status().status === value ? status() : undefined), value).catch((error: Error) => {
 			throw new Error(`${error.message}; the thread is ${JSON.stringify(status())}`);
 		});
-	const steps: Array<Row> = [{ step: "first seen", ...status() }];
+	const run = () =>
+		query(appHome, "SELECT run_state, run_started_at, parked FROM thread WHERE id = ?", ref.threadId)[0] as {
+			run_state: string;
+			run_started_at: number | null;
+			parked: number;
+		};
+	/** Waits for a run newer than `since` to be running. */
+	const started = (since: number | null) =>
+		waitFor(() => {
+			const now = run();
+			return now.run_started_at !== since && now.run_state === "running" ? now : undefined;
+		}, "a new run");
+	const idle = () => waitFor(() => (run().run_state === "idle" ? run() : undefined), "the run to end");
+	// Not run yet: its work is still to start.
+	const steps: Array<Row> = [{ step: "first seen", ...(await reach("enqueued")) }];
 
 	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "hold" }));
 	steps.push({ step: "run started", ...(await reach("working")) });
+	// A follow-up queued behind the run is parked when the user stops it: work still to start.
+	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "Queued", delivery: "followUp" }));
 	await server.run((rpc) => rpc["thread.interrupt"](ref));
-	steps.push({ step: "user interrupt", ...(await reach("cancelled")) });
-	// Held after its first chunk, so its start and its end arrive as two rows.
+	steps.push({ step: "stopped with a follow-up parked", ...(await reach("enqueued")) });
+	// Only the user moves a thread to review.
+	await desk.run((rpc) => rpc["threads.setStatus"]({ threadId: ref.threadId, status: "review" }));
+	steps.push({ step: "user marks review", ...(await reach("review")) });
+	// New work reopens it. Held after its first chunk, so its start and its end arrive as two rows.
+	const before = run().run_started_at;
 	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "gate" }));
+	await started(before);
 	steps.push({ step: "run started again", ...(await reach("working")) });
 	for (let step = 0; step < 4; step++) server.release();
 	await server.run((rpc) => rpc["thread.wait"](ref));
-	steps.push({ step: "succeeded", ...(await reach("attention")) });
-
-	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "hold" }));
-	await reach("working");
+	await idle();
 	await synced(appHome, machineId, server);
-	const run = () =>
-		query(appHome, "SELECT run_state, run_started_at FROM thread WHERE id = ?", ref.threadId)[0] as {
-			run_state: string;
-			run_started_at: number;
-		};
+	// A run ending moves nothing: the thread stays working until the user moves it on.
+	steps.push({ step: "succeeded", ...status() });
+	expect(status().status).toBe("working");
+
+	const ended = run().run_started_at;
+	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "hold" }));
+	await started(ended);
+	await synced(appHome, machineId, server);
 	const crashed = run();
 	const crashedAt = lastSeq(appHome);
 	await stop(server.proc);
 	server = await codework(cwHome, port);
 	// The sweep ends the run as crashed and recovery resumes it at once: the row arrives with the resumed run.
-	await waitFor(() => {
-		const now = run();
-		return now.run_started_at !== crashed.run_started_at && now.run_state === "running" ? now : undefined;
-	}, "the resumed run");
+	await started(crashed.run_started_at);
 	steps.push({ step: "crash sweep and resume", ...status() });
 	const sinceCrash = notices(appHome, Contract.syncTopics.status, crashedAt);
 	expect(sinceCrash).toEqual([]);
@@ -603,11 +622,10 @@ it("thread status follows its runs: started, succeeded, user interrupt, crash sw
 
 	const moves = notices(appHome, Contract.syncTopics.status);
 	expect(moves.map((move) => [move.previous, move.status])).toEqual([
-		["settled", "working"],
-		["working", "cancelled"],
-		["cancelled", "working"],
-		["working", "attention"],
-		["attention", "working"],
+		["enqueued", "working"],
+		["working", "enqueued"],
+		["enqueued", "review"],
+		["review", "working"],
 	]);
 	await server.run((rpc) => rpc["thread.interrupt"](ref));
 

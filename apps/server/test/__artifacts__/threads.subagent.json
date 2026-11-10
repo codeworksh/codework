@@ -2,17 +2,7 @@
 	"lists": [
 		{
 			"_tag": "Status",
-			"status": "working",
-			"threads": []
-		},
-		{
-			"_tag": "Status",
-			"status": "attention",
-			"threads": []
-		},
-		{
-			"_tag": "Status",
-			"status": "settled",
+			"status": "enqueued",
 			"threads": [
 				{
 					"id": "<thread A fork>",
@@ -29,13 +19,19 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "enqueued",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -4,
 					"color": null,
 					"updatedAt": "<time>"
-				},
+				}
+			]
+		},
+		{
+			"_tag": "Status",
+			"status": "working",
+			"threads": [
 				{
 					"id": "<thread D>",
 					"sessionId": "<session D>",
@@ -51,7 +47,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -3,
@@ -73,7 +69,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -2,
@@ -95,7 +91,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -1,
@@ -117,7 +113,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": 0,
@@ -125,6 +121,16 @@
 					"updatedAt": "<time>"
 				}
 			]
+		},
+		{
+			"_tag": "Status",
+			"status": "review",
+			"threads": []
+		},
+		{
+			"_tag": "Status",
+			"status": "settled",
+			"threads": []
 		},
 		{
 			"_tag": "Status",

@@ -34,7 +34,9 @@ const elide = (value: unknown): unknown =>
 			? Object.fromEntries(
 					Object.entries(value).map(([key, item]) => [
 						key,
-						typeof item === "number" && (key === "updated" || /[a-z]At$/.test(key)) ? "<time>" : elide(item),
+						typeof item === "number" && (key === "updated" || key === "created" || /[a-z]At$/.test(key))
+							? "<time>"
+							: elide(item),
 					]),
 				)
 			: value;

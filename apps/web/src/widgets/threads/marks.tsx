@@ -1,13 +1,18 @@
-import type { Priority, ThreadStatus } from "@codeworksh/contract";
+import type { ManualStatus, Priority, ThreadStatus } from "@codeworksh/contract";
 
 export const STATUS: Record<ThreadStatus, { readonly label: string; readonly color: string }> = {
+	enqueued: { label: "Enqueued", color: "#95a2b3" },
 	working: { label: "Working", color: "#f0bf00" },
-	attention: { label: "Needs Attention", color: "#f2994a" },
+	review: { label: "Review", color: "#4cb782" },
 	settled: { label: "Settled", color: "#5e6ad2" },
 	cancelled: { label: "Cancelled", color: "#95a2b3" },
 };
-/** In the order the server lists them: what needs the user first. */
-export const STATUSES: ReadonlyArray<ThreadStatus> = ["working", "attention", "settled", "cancelled"];
+/** In the order the server lists them: Linear's workflow, unstarted to closed. */
+export const STATUSES: ReadonlyArray<ThreadStatus> = ["enqueued", "working", "review", "settled", "cancelled"];
+/** The statuses a user picks; the others follow the thread's runs. */
+export const MANUAL_STATUSES: ReadonlyArray<ManualStatus> = ["review", "settled", "cancelled"];
+export const isManual = (status: ThreadStatus): status is ManualStatus =>
+	MANUAL_STATUSES.some((manual) => manual === status);
 
 export const PRIORITY: Record<Priority, { readonly label: string }> = {
 	1: { label: "Urgent" },
@@ -34,22 +39,22 @@ export const COLORS: ReadonlyArray<{ readonly name: string; readonly hex: string
 /** A color's name, or the hex of one not in `COLORS`. */
 export const colorName = (hex: string) => COLORS.find((color) => color.hex === hex)?.name ?? hex;
 
-/** A status as Linear draws one: a ring, half full while working, filled with a mark once done. */
+/** A status as Linear draws one: an empty ring before work, filling as it goes, filled with a mark once closed. */
 export function StatusIcon({ status }: { readonly status: ThreadStatus }) {
 	const { color } = STATUS[status];
 	return (
 		<svg viewBox="0 0 14 14" className="size-3.5 shrink-0" aria-hidden>
+			{status === "enqueued" && <circle cx="7" cy="7" r="6" fill="none" stroke={color} strokeWidth="1.5" />}
 			{status === "working" && (
 				<>
 					<circle cx="7" cy="7" r="6" fill="none" stroke={color} strokeWidth="1.5" />
 					<path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill={color} />
 				</>
 			)}
-			{status === "attention" && (
+			{status === "review" && (
 				<>
 					<circle cx="7" cy="7" r="6" fill="none" stroke={color} strokeWidth="1.5" />
-					<path d="M7 4v3.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-					<circle cx="7" cy="9.75" r="0.85" fill={color} />
+					<path d="M7 3.5a3.5 3.5 0 1 1-3.5 3.5H7z" fill={color} />
 				</>
 			)}
 			{status === "settled" && (
