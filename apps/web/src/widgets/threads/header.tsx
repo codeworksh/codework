@@ -1,8 +1,9 @@
-import { ChevronRight, MoreHorizontal, GripVertical } from "@/components/vuesax";
+import { ChevronRight, MoreHorizontal, GripVertical, Palette, Pencil, Trash } from "@/components/vuesax";
 import { useAtomSet } from "@effect/atom-react";
 import type { Grouping } from "@codeworksh/contract";
 import type { DragEvent, ReactNode } from "react";
 
+import { MENU_ROW, MenuChoice } from "@/components/menu";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -12,13 +13,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { failed } from "./common";
 import { deleteGroup, updateGroup } from "./data";
-import { COLORS, colorName, Dot, PRIORITY, PriorityIcon, STATUS, StatusIcon } from "./marks";
+import { COLORS, Dot, PRIORITY, PriorityIcon, STATUS, StatusIcon } from "./marks";
 import type { Section } from "./options";
 
 /** What a section is called and how it is marked. */
 export const heading = (section: Section, groups: ReadonlyMap<string, Grouping>): { name: string; mark: ReactNode } => {
 	const list = section.list;
-	if (list === undefined) return { name: "All Threads", mark: null };
+	if (list === undefined) return { name: "Threads", mark: null };
 	if (list._tag === "Status") return { name: STATUS[list.status].label, mark: <StatusIcon status={list.status} /> };
 	if (list._tag === "Priority")
 		return { name: PRIORITY[list.priority].label, mark: <PriorityIcon priority={list.priority} /> };
@@ -126,32 +127,47 @@ export function SectionHeader({
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
 							align="end"
+							className="min-w-40"
 							// Rename opens a field that takes focus; the menu must not take it back as it closes.
 							onCloseAutoFocus={(event) => event.preventDefault()}
 						>
-							<DropdownMenuItem className="text-xs" onSelect={() => onRename(group.id)}>
+							<DropdownMenuItem className={MENU_ROW} onSelect={() => onRename(group.id)}>
+								<Pencil aria-hidden />
 								Rename
 							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<div className="flex flex-wrap gap-1 px-2 py-1" role="group" aria-label="Color">
-								{[...COLORS.map((color) => color.hex), null].map((color) => (
-									<DropdownMenuItem
-										key={color ?? "none"}
-										aria-label={color === null ? "No Color" : colorName(color)}
-										onSelect={() => void update({ payload: { groupingId: group.id, color } }).catch(failed)}
-										className="grid size-6 min-h-0 place-items-center p-0"
-									>
-										<Dot color={color} />
-									</DropdownMenuItem>
-								))}
-							</div>
+							<MenuChoice
+								label="Color"
+								mark={<Palette aria-hidden />}
+								value={group.color ?? undefined}
+								options={COLORS.map(({ name, hex }) => ({
+									value: hex,
+									label: name,
+									mark: <Dot color={hex} />,
+								}))}
+								onChange={(color) => void update({ payload: { groupingId: group.id, color } }).catch(failed)}
+								after={
+									group.color === null ? undefined : (
+										<DropdownMenuItem
+											className={MENU_ROW}
+											onSelect={() =>
+												void update({ payload: { groupingId: group.id, color: null } }).catch(failed)
+											}
+										>
+											<Dot color={null} />
+											Remove
+										</DropdownMenuItem>
+									)
+								}
+							/>
+							{/* Apart from the rest, so a delete is never one row away from a rename. */}
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								variant="destructive"
-								className="text-xs"
+								className={MENU_ROW}
 								onSelect={() => void remove({ payload: { groupingId: group.id } }).catch(failed)}
 							>
-								Delete group
+								<Trash aria-hidden />
+								Delete
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

@@ -15,7 +15,8 @@ import {
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
 import type { ReactNode } from "react";
 
-import { DisplayChoice, DisplayMenu } from "@/components/display";
+import { DisplayMenu } from "@/components/display";
+import { marked, MenuChoice } from "@/components/menu";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -138,18 +139,18 @@ export function Toolbar({
 					</DropdownMenuContent>
 				</DropdownMenu>
 				<DisplayMenu>
-					<DisplayChoice
+					<MenuChoice
 						label="Grouping"
-						icon={LayoutGrid}
+						mark={<LayoutGrid aria-hidden />}
 						value={options.group}
-						options={GROUPS}
+						options={marked(GROUPS)}
 						onChange={(group) => onChange({ group })}
 					/>
-					<DisplayChoice
+					<MenuChoice
 						label="Ordering"
-						icon={ArrowUpDown}
+						mark={<ArrowUpDown aria-hidden />}
 						value={options.order}
-						options={ORDERS}
+						options={marked(ORDERS)}
 						onChange={(order) => onChange({ order })}
 					/>
 					<DropdownMenuSeparator />

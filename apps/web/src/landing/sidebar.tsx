@@ -17,7 +17,8 @@ import { AsyncResult } from "effect/reactivity";
 import type { SidebarSession } from "@codeworksh/contract";
 import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
-import { DisplayChoice, DisplayMenu } from "@/components/display";
+import { DisplayMenu } from "@/components/display";
+import { marked, MenuChoice } from "@/components/menu";
 import {
 	Sidebar,
 	SidebarContent,
@@ -48,7 +49,7 @@ import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDispla
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
-/** A sidebar action: New, All Threads, Settings. */
+/** A sidebar action: New, Threads, Settings. */
 const NAV_ROW =
 	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -159,7 +160,7 @@ export function SessionsSidebar() {
 					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:font-medium aria-[current=page]:text-ink`}
 				>
 					<ThreadsIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
-					<span>All Threads</span>
+					<span>Threads</span>
 				</Link>
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
@@ -195,18 +196,18 @@ export function SessionsSidebar() {
 						<div className="flex h-6 items-center justify-between pr-1 pl-2">
 							<span className="text-2xs font-medium text-ink-muted">Threads</span>
 							<DisplayMenu align="start" side="right" triggerClassName="size-5 text-ink-muted">
-								<DisplayChoice
+								<MenuChoice
 									label="Grouping"
-									icon={LayoutGrid}
+									mark={<LayoutGrid aria-hidden />}
 									value={display.group}
-									options={GROUPS}
+									options={marked(GROUPS)}
 									onChange={(group) => changeDisplay({ group })}
 								/>
-								<DisplayChoice
+								<MenuChoice
 									label="Ordering"
-									icon={ArrowUpDown}
+									mark={<ArrowUpDown aria-hidden />}
 									value={display.order}
-									options={ORDERS}
+									options={marked(ORDERS)}
 									onChange={(order) => changeDisplay({ order })}
 								/>
 							</DisplayMenu>

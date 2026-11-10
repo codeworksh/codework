@@ -14,7 +14,8 @@ import {
 	type Widget,
 	type WidgetId,
 } from "webwm";
-import { useArrangedWidgets, useElementSize } from "webwm/react";
+import { useArrangedWidgets } from "webwm/react";
+import { useElementSize } from "./size";
 
 import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
 import { makeHost } from "../kernel/host";
@@ -409,117 +410,126 @@ export function Desktop({ workspace }: DesktopProps) {
 		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
 
 	const mainClass = "box-border h-full overflow-auto";
+	// Measured around the scrolling main, so a scrollbar that shows for one layout pass (frames still at
+	// their old width as the sidebar opens) never reaches the arrangement as a narrower workspace.
 	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
-	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
+	if (size.width === 0 || size.height === 0)
+		return (
+			<div className="h-full" ref={ref}>
+				<main className={mainClass} />
+			</div>
+		);
 
 	// Frames meet the workspace edges; the divider supplies its own resize hit area.
 	return (
-		<main className={mainClass} ref={ref}>
-			<div
-				ref={surfaceRef}
-				className="relative"
-				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
-			>
-				{[
-					...arrangement.placements.map((placement) => ({ ...placement, hidden: false })),
-					// Overflowed frames stay mounted, hidden, so their widgets keep running and keep state.
-					...arrangement.overflow.flatMap(({ widgets: overflowed, rect }) =>
-						overflowed.map((widget) => ({ widget, rect, collapsed: true, hidden: true })),
-					),
-				].map(({ widget, rect, collapsed, hidden }) => {
-					const instance = byId.get(widget.id);
-					if (instance === undefined) return null;
-					const { title, lead, icon } = chromeOf(instance, chrome.get(widget.id));
-					return (
-						<Frame
-							key={widget.id}
-							title={title}
-							lead={lead}
-							icon={icon}
+		<div className="h-full" ref={ref}>
+			<main className={mainClass}>
+				<div
+					ref={surfaceRef}
+					className="relative"
+					style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
+				>
+					{[
+						...arrangement.placements.map((placement) => ({ ...placement, hidden: false })),
+						// Overflowed frames stay mounted, hidden, so their widgets keep running and keep state.
+						...arrangement.overflow.flatMap(({ widgets: overflowed, rect }) =>
+							overflowed.map((widget) => ({ widget, rect, collapsed: true, hidden: true })),
+						),
+					].map(({ widget, rect, collapsed, hidden }) => {
+						const instance = byId.get(widget.id);
+						if (instance === undefined) return null;
+						const { title, lead, icon } = chromeOf(instance, chrome.get(widget.id));
+						return (
+							<Frame
+								key={widget.id}
+								title={title}
+								lead={lead}
+								icon={icon}
+								rect={rect}
+								collapsed={collapsed === true}
+								hidden={hidden}
+								focused={widget.id === focusedId}
+								pinned={instance.pinned}
+								maximized={layout === "monocle"}
+								integrated={arrangement.placements.length === 1}
+								canDrag={layout === "tile" && !instance.pinned}
+								offset={drag?.widgetId === widget.id ? drag : null}
+								animate={!resizing && !resized}
+								onFocus={() => focusWidget(widget.id)}
+								onPin={() => togglePin(instance)}
+								onMaximize={() => toggleMax(widget.id)}
+								destinations={destinations}
+								onMove={(workspaceId) => {
+									const destination = workspaces.find((candidate) => candidate.id === workspaceId);
+									if (destination !== undefined) move(widget.id, destination);
+								}}
+								onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
+								onClose={() => close(widget.id)}
+								onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
+								onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
+									setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
+								}
+								onDragEnd={({ clientX, clientY }) => {
+									const target = targetAt(clientX, clientY);
+									if (target)
+										setDesk((current) => ({
+											...current,
+											order: moveWidgetRelative(current.order, widget.id, target.widgetId, target.edge),
+										}));
+									setDrag(null);
+								}}
+								onDragCancel={() => setDrag(null)}
+							>
+								{/* Kept across a retarget: a widget whose state belongs to its address keys that state itself. */}
+								<Host instanceId={widget.id} kind={instance.kind} shellFor={stableShellFor} decorate={decorate}>
+									<WidgetBody
+										instanceId={instance.id}
+										kind={instance.kind}
+										props={instance.props}
+										address={instance.address}
+										params={instance.params ?? NO_PARAMS}
+									/>
+								</Host>
+							</Frame>
+						);
+					})}
+					{arrangement.overflow.map(({ widgets: overflowed, rect }) => (
+						<Overflow
+							key={`${rect.x}`}
 							rect={rect}
-							collapsed={collapsed === true}
-							hidden={hidden}
-							focused={widget.id === focusedId}
-							pinned={instance.pinned}
-							maximized={layout === "monocle"}
-							integrated={arrangement.placements.length === 1}
-							canDrag={layout === "tile" && !instance.pinned}
-							offset={drag?.widgetId === widget.id ? drag : null}
-							animate={!resizing && !resized}
-							onFocus={() => focusWidget(widget.id)}
-							onPin={() => togglePin(instance)}
-							onMaximize={() => toggleMax(widget.id)}
-							destinations={destinations}
-							onMove={(workspaceId) => {
-								const destination = workspaces.find((candidate) => candidate.id === workspaceId);
-								if (destination !== undefined) move(widget.id, destination);
+							hidden={overflowed.flatMap((widget) => {
+								const instance = byId.get(widget.id);
+								return instance === undefined
+									? []
+									: [{ id: widget.id, ...chromeOf(instance, chrome.get(widget.id)) }];
+							})}
+							onPick={focusWidget}
+						/>
+					))}
+					{drag?.target && (
+						<div
+							className="pointer-events-none absolute z-20 h-4 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,var(--cw-drop-shadow),transparent_70%)]"
+							style={{
+								left: drag.target.indicator.x + 12,
+								top: drag.target.indicator.y,
+								width: drag.target.indicator.w - 24,
 							}}
-							onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
-							onClose={() => close(widget.id)}
-							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
-							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
-								setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
-							}
-							onDragEnd={({ clientX, clientY }) => {
-								const target = targetAt(clientX, clientY);
-								if (target)
-									setDesk((current) => ({
-										...current,
-										order: moveWidgetRelative(current.order, widget.id, target.widgetId, target.edge),
-									}));
-								setDrag(null);
-							}}
-							onDragCancel={() => setDrag(null)}
-						>
-							{/* Kept across a retarget: a widget whose state belongs to its address keys that state itself. */}
-							<Host instanceId={widget.id} kind={instance.kind} shellFor={stableShellFor} decorate={decorate}>
-								<WidgetBody
-									instanceId={instance.id}
-									kind={instance.kind}
-									props={instance.props}
-									address={instance.address}
-									params={instance.params ?? NO_PARAMS}
-								/>
-							</Host>
-						</Frame>
-					);
-				})}
-				{arrangement.overflow.map(({ widgets: overflowed, rect }) => (
-					<Overflow
-						key={`${rect.x}`}
-						rect={rect}
-						hidden={overflowed.flatMap((widget) => {
-							const instance = byId.get(widget.id);
-							return instance === undefined
-								? []
-								: [{ id: widget.id, ...chromeOf(instance, chrome.get(widget.id)) }];
-						})}
-						onPick={focusWidget}
-					/>
-				))}
-				{drag?.target && (
-					<div
-						className="pointer-events-none absolute z-20 h-4 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,var(--cw-drop-shadow),transparent_70%)]"
-						style={{
-							left: drag.target.indicator.x + 12,
-							top: drag.target.indicator.y,
-							width: drag.target.indicator.w - 24,
-						}}
-					/>
-				)}
-				{showDivider && range && (
-					<Divider
-						left={Math.floor(bounds.w * effectiveMfact)}
-						height={arrangement.contentBounds.h}
-						mfact={effectiveMfact}
-						range={range}
-						onResizeStart={() => setResizing(true)}
-						onResize={resizeTo}
-						onResizeEnd={() => setResizing(false)}
-						onChange={setMfact}
-					/>
-				)}
-			</div>
-		</main>
+						/>
+					)}
+					{showDivider && range && (
+						<Divider
+							left={Math.floor(bounds.w * effectiveMfact)}
+							height={arrangement.contentBounds.h}
+							mfact={effectiveMfact}
+							range={range}
+							onResizeStart={() => setResizing(true)}
+							onResize={resizeTo}
+							onResizeEnd={() => setResizing(false)}
+							onChange={setMfact}
+						/>
+					)}
+				</div>
+			</main>
+		</div>
 	);
 }

@@ -39,7 +39,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 	{
 		id: "threads",
 		group: "Navigation",
-		label: "Go to All Threads",
+		label: "Go to Threads",
 		when: "Always",
 		defaultMac: "⌘⇧T",
 		defaultOther: "Ctrl+Shift+T",

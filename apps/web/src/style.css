@@ -240,15 +240,11 @@
 	backdrop-filter: blur(24px);
 	transform: translateX(0);
 	visibility: visible;
-	transition:
-		transform 200ms var(--ease-out),
-		visibility 0s;
 }
 .app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
 	left: 0;
 	transform: translateX(-100%);
 	visibility: hidden;
-	transition-delay: 0s, 200ms;
 }
 .app-shell .shell-sidebar [data-slot="sidebar-inner"] {
 	background: transparent;
@@ -258,25 +254,8 @@
 	backdrop-filter: none;
 }
 
-/* The sidebar, content edge, and title-bar tabs settle together. */
-.app-shell > div > [data-slot="sidebar"] > [data-slot="sidebar-gap"],
-.app-shell [data-slot="sidebar-navigation"] {
-	transition: width 200ms var(--ease-out);
-}
-
-.app-shell[data-resizing] [data-slot="sidebar-gap"],
-.app-shell[data-resizing] [data-slot="sidebar-navigation"],
-.app-shell[data-resizing] .shell-sidebar {
-	transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.app-shell [data-slot="sidebar-gap"],
-	.app-shell [data-slot="sidebar-navigation"],
-	.app-shell .shell-sidebar {
-		transition: none !important;
-	}
-}
+/* The sidebar opens and closes at once, from its button or its shortcut alike: it is toggled many times a
+ * day, and tweening the content edge reflows the transcript and composer on every frame. */
 
 @property --composer-height {
 	syntax: "<length>";

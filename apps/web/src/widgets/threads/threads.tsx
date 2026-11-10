@@ -64,7 +64,7 @@ export function AllThreads({ instanceId }: WidgetProps<unknown>) {
 		).values(),
 	];
 	const newGroup = () =>
-		create({ payload: { organizationId: PERSONAL_ORGANIZATION, name: "New Group" } }).then(
+		create({ payload: { organizationId: PERSONAL_ORGANIZATION, name: "Untitled Group" } }).then(
 			(group) => setRenaming(group.id),
 			failed,
 		);
@@ -326,7 +326,7 @@ function List({
 			// oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the list takes the keyboard, as Linear's does.
 			tabIndex={0}
 			role="listbox"
-			aria-label="All Threads"
+			aria-label="Threads"
 			aria-activedescendant={selected === undefined ? undefined : `thread-${selected}`}
 			onKeyDown={keyDown}
 			className="min-h-0 flex-1 overflow-auto pb-3 outline-none"
@@ -498,10 +498,11 @@ function ThreadPicker({
 				{...common}
 				placeholder="Change color…"
 				digits
-				value={thread.color ?? "none"}
+				value={thread.color ?? ""}
 				options={[
 					...COLORS.map(({ name, hex }) => ({ value: hex, label: name, mark: <Dot color={hex} /> })),
-					{ value: "none", label: "Session Color", mark: <Dot color={null} /> },
+					// An action, not a state: offered only while there is a color to remove, and never checked.
+					...(thread.color === null ? [] : [{ value: "none", label: "Remove", mark: <Dot color={null} /> }]),
 				]}
 				onPick={(value) =>
 					void set.color({ payload: { threadId, color: value === "none" ? null : value } }).catch(failed)

@@ -98,7 +98,7 @@ export const Row = memo(function Row({
 			>
 				{pick(
 					"color",
-					`Color: ${thread.color === null ? "Session Color" : colorName(thread.color)}`,
+					`Color: ${thread.color === null ? "None" : colorName(thread.color)}`,
 					"C",
 					<span
 						aria-hidden

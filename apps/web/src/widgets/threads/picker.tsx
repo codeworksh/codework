@@ -1,4 +1,4 @@
-import { Check, Plus } from "@/components/vuesax";
+import { Plus } from "@/components/vuesax";
 import { type ReactNode, useState } from "react";
 
 import {
@@ -10,7 +10,11 @@ import {
 	CommandList,
 	CommandShortcut,
 } from "@/components/ui/command";
+import { MENU_ROW, MenuCheck } from "@/components/menu";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+
+/** Rows as the menus' are: dense, 13px, one height. */
+const PICKER_ROW = `${MENU_ROW} min-h-7 rounded-[8px] py-1`;
 
 export interface Option {
 	readonly value: string;
@@ -89,7 +93,7 @@ export function Picker({
 							event.preventDefault();
 							pick(option);
 						}}
-						className="h-9 text-xs"
+						className="h-9 text-[13px]"
 					/>
 					<CommandList>
 						<CommandEmpty className="py-4 text-center text-xs text-ink-muted">No results.</CommandEmpty>
@@ -99,11 +103,11 @@ export function Picker({
 									key={option.value}
 									value={`${option.label}\u0000${option.value}`}
 									onSelect={() => pick(option)}
-									className="text-xs"
+									className={PICKER_ROW}
 								>
 									{option.mark}
 									<span className="truncate">{option.label}</span>
-									{option.value === value && <Check className="ml-auto size-3.5" aria-label="Current" />}
+									{option.value === value && <MenuCheck />}
 									{digits && index < 9 && (
 										<CommandShortcut className={option.value === value ? "ml-1.5" : undefined}>
 											{index + 1}
@@ -114,7 +118,7 @@ export function Picker({
 						</CommandGroup>
 						{creatable && (
 							<CommandGroup forceMount>
-								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className="text-xs">
+								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className={PICKER_ROW}>
 									<Plus aria-hidden />
 									<span className="truncate">
 										Create {onCreate.noun} <span className="text-ink-muted">“{name}”</span>

@@ -21,7 +21,6 @@ import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent }
 import { useNowSecond } from "../../hooks/now";
 import { useStableCallback } from "../../hooks/stable";
 import { useListedSession } from "./projects";
-import { RunMark } from "./run";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -501,13 +500,12 @@ function Conversation({
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
 		setTitle(title, projectName);
-		// While its run goes, the run's mark as the sidebar draws it, so a working frame tells apart at a
-		// glance; else the project's folder icon, as in the sessions sidebar.
-		if (phase !== "idle") setIcon(<RunMark display={phase} />);
-		else if (projectName !== undefined) setIcon(<Folder size={14} className="shrink-0 text-ink-muted" aria-hidden />);
+		// The project's folder icon, as in the sessions sidebar. The run's state shows on the workspace's tab
+		// just above, so the frame does not repeat it.
+		if (projectName !== undefined) setIcon(<Folder size={14} className="shrink-0 text-ink-muted" aria-hidden />);
 		// While focused, the workspace's tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
-	}, [title, projectName, phase, setTitle, setIcon, setTab]);
+	}, [title, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.

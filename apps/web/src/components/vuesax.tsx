@@ -69,6 +69,7 @@ export const MessageSquare = icon("community/linear/message-text");
 export const Minus = icon("community/linear/minus");
 export const MoreHorizontal = icon("community/linear/more");
 export const Palette = icon("community/linear/color-swatch");
+export const Trash = icon("community/linear/trash");
 export const Pencil = icon("community/linear/edit-2");
 export const Plus = icon("community/linear/add");
 export const RefreshCw = icon("community/linear/refresh");
