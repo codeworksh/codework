@@ -2,7 +2,7 @@
 	"steps": [
 		{
 			"step": "first seen",
-			"status": "settled",
+			"status": "enqueued",
 			"run_outcome": null,
 			"run_error": null
 		},
@@ -13,8 +13,14 @@
 			"run_error": null
 		},
 		{
-			"step": "user interrupt",
-			"status": "cancelled",
+			"step": "stopped with a follow-up parked",
+			"status": "enqueued",
+			"run_outcome": "interrupted",
+			"run_error": "{\"_tag\":\"interrupted\",\"reason\":\"user\"}"
+		},
+		{
+			"step": "user marks review",
+			"status": "review",
 			"run_outcome": "interrupted",
 			"run_error": "{\"_tag\":\"interrupted\",\"reason\":\"user\"}"
 		},
@@ -26,7 +32,7 @@
 		},
 		{
 			"step": "succeeded",
-			"status": "attention",
+			"status": "working",
 			"run_outcome": "succeeded",
 			"run_error": null
 		},
@@ -41,31 +47,25 @@
 		{
 			"threadId": "<thr 1>",
 			"status": "working",
-			"previous": "settled",
+			"previous": "enqueued",
 			"at": "<time>"
 		},
 		{
 			"threadId": "<thr 1>",
-			"status": "cancelled",
+			"status": "enqueued",
 			"previous": "working",
 			"at": "<time>"
 		},
 		{
 			"threadId": "<thr 1>",
-			"status": "working",
-			"previous": "cancelled",
-			"at": "<time>"
-		},
-		{
-			"threadId": "<thr 1>",
-			"status": "attention",
-			"previous": "working",
+			"status": "review",
+			"previous": "enqueued",
 			"at": "<time>"
 		},
 		{
 			"threadId": "<thr 1>",
 			"status": "working",
-			"previous": "attention",
+			"previous": "review",
 			"at": "<time>"
 		}
 	]

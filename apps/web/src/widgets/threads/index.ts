@@ -4,13 +4,13 @@ import { Schema } from "effect";
 import { defineWidget } from "@codeworksh/widget/view";
 import { AllThreads } from "./threads";
 
-/** What opens All Threads, from the command palette. */
+/** What opens Threads, from the command palette. */
 const threadsAddress = "codework://threads";
 
 /** Every thread of the organization as a Linear-like list; picking one opens it beside the list. */
 export const threads = defineWidget({
 	kind: "codework:threads",
-	title: "All Threads",
+	title: "Threads",
 	icon: ThreadsIcon,
 	minWidth: 360,
 	minHeight: 200,

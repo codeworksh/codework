@@ -103,26 +103,21 @@ export function Frame(props: FrameProps) {
 				<header className="flex h-pane shrink-0 items-center gap-2 border-b border-edge px-3 select-none">
 					<div
 						ref={handleRef}
-						className={`flex min-w-0 flex-1 items-center gap-2 py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
+						className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
 					>
 						{canDrag && <GripVertical className="size-3 shrink-0 text-ink-muted/40" aria-hidden />}
-						{lead !== undefined ? (
+						{icon !== undefined && <IconOf icon={icon} className="size-3.5 shrink-0 text-ink-muted" />}
+						{lead !== undefined && (
 							<>
-								<span
-									className="flex min-w-0 max-w-1/3 shrink-0 items-center gap-1.5 rounded-md border border-edge/60 bg-ink/3 px-2 py-1 text-xs text-ink-muted"
-									title={lead}
-								>
-									{icon !== undefined && <IconOf icon={icon} className="size-3.5 shrink-0" />}
-									<span className="truncate">{lead}</span>
+								<span className="max-w-1/3 shrink-0 truncate text-ui text-ink-muted" title={lead}>
+									{lead}
 								</span>
-								<ChevronRight className="size-3 shrink-0 text-ink-muted/50" aria-hidden />
+								<ChevronRight className="size-3 shrink-0 text-ink-muted/40" strokeWidth={1.75} aria-hidden />
 							</>
-						) : (
-							icon !== undefined && <IconOf icon={icon} className="size-4 shrink-0 text-ink-muted" />
 						)}
 						<Title
 							text={title}
-							className="flex-1 font-medium text-ink-muted group-data-[focused=true]/frame:text-ink"
+							className="flex-1 font-medium text-ink-muted transition-colors duration-150 ease-out group-data-[focused=true]/frame:text-ink"
 						/>
 					</div>
 					<div className="flex shrink-0 items-center gap-0.5 border-l border-edge pl-2">
@@ -189,7 +184,7 @@ function Move({
 }
 
 const actionClass =
-	"grid size-6 place-items-center rounded-md text-ink-muted/80 outline-none hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-pressed:text-ink";
+	"grid size-6 place-items-center rounded-md text-ink-muted/80 transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-95 aria-pressed:text-ink";
 
 interface ActionProps {
 	readonly icon: IconComponent;

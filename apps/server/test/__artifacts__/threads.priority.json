@@ -19,7 +19,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 1,
 					"groupingId": null,
 					"ordering": -2,
@@ -41,7 +41,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 1,
 					"groupingId": null,
 					"ordering": -1,
@@ -74,7 +74,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 3,
 					"groupingId": null,
 					"ordering": -3,
@@ -102,7 +102,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "working",
 					"priority": 4,
 					"groupingId": null,
 					"ordering": 0,
@@ -130,7 +130,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "settled",
+					"status": "enqueued",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -4,

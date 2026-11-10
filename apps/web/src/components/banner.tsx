@@ -65,7 +65,7 @@ export function ComposerNotice({
 	return (
 		<div
 			role="alert"
-			className={`flex items-center gap-2.5 border ${detached ? "rounded-xl" : "mx-3 rounded-t-xl border-b-0"} ${surface} px-3 py-2 text-xs leading-snug`}
+			className={`flex items-center gap-2.5 border ${detached ? "rounded-xl" : "mx-3 rounded-t-xl border-b-0 transition-[transform,opacity] duration-180 ease-out starting:translate-y-1 starting:opacity-0"} ${surface} px-3 py-2 text-xs leading-snug`}
 		>
 			<Icon className={`size-4 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
 			<div className="min-w-0 flex-1">
@@ -82,7 +82,7 @@ export function ComposerNotice({
 					type="button"
 					disabled={action.disabled}
 					onClick={action.onClick}
-					className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-edge px-2 py-0.5 font-medium text-ink-muted transition-colors outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 disabled:pointer-events-none disabled:opacity-60"
+					className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-edge px-2 py-0.5 font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
 				>
 					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
 					{action.label}
@@ -93,7 +93,7 @@ export function ComposerNotice({
 					type="button"
 					aria-label="Dismiss"
 					onClick={onDismiss}
-					className="-mr-1 grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-colors hover:bg-ink/10 hover:text-ink"
+					className="-mr-1 grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
 				>
 					<X className="size-3" strokeWidth={2} aria-hidden />
 				</button>
@@ -113,7 +113,7 @@ export function NoticeSlot({ notice }: { readonly notice: Notice | undefined }) 
 		<div
 			data-shown={notice !== undefined}
 			inert={notice === undefined}
-			className="absolute inset-x-0 top-full z-10 pt-2 transition-[opacity,translate] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[shown=false]:-translate-y-1 data-[shown=false]:opacity-0 data-[shown=false]:duration-150 data-[shown=false]:ease-in motion-reduce:transition-none"
+			className="absolute inset-x-0 top-full z-10 pt-2 transition-[opacity,translate] duration-200 ease-out data-[shown=false]:-translate-y-1 data-[shown=false]:opacity-0 data-[shown=false]:duration-150 data-[shown=false]:ease-out motion-reduce:transition-none"
 		>
 			<ComposerNotice {...shown} detached />
 		</div>

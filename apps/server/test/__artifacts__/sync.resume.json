@@ -8,11 +8,10 @@
 		}
 	],
 	"resumed": {
-		"items": 4,
+		"items": 3,
 		"tags": [
 			"Project",
 			"Space",
-			"Session",
 			"Thread"
 		]
 	},
@@ -20,16 +19,14 @@
 		{
 			"machineId": "<id 1>",
 			"full": false,
-			"items": 4,
+			"items": 3,
 			"project": [
 				"<id 2>"
 			],
 			"space": [
 				"<id 3>"
 			],
-			"session": [
-				"<ses 1>"
-			],
+			"session": [],
 			"thread": [
 				"<thr 1>"
 			],
@@ -69,7 +66,7 @@
 			"tokens_output": 2,
 			"tokens_cache_read": 0,
 			"tokens_cache_write": 0,
-			"status": "attention",
+			"status": "working",
 			"status_at": "<time>",
 			"priority": 0,
 			"grouping_id": null,

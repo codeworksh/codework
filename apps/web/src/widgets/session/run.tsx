@@ -14,7 +14,7 @@ export function RunMark({ display, idle = null }: { readonly display: Display; r
 			role="img"
 			aria-label={displayLabel[display]}
 			title={displayLabel[display]}
-			className={`flex shrink-0 ${display === "pending" || display === "stopping" ? "opacity-50" : ""}`}
+			className={`flex shrink-0 transition-opacity duration-150 ease-out ${display === "pending" || display === "stopping" ? "opacity-50" : ""}`}
 		>
 			<PixelLoader />
 		</span>

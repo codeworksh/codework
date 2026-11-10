@@ -2,7 +2,7 @@
 	"lists": [
 		{
 			"_tag": "Status",
-			"status": "working",
+			"status": "enqueued",
 			"threads": [
 				{
 					"id": "<thread A fork>",
@@ -19,7 +19,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "working",
+					"status": "enqueued",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": -4,
@@ -30,7 +30,35 @@
 		},
 		{
 			"_tag": "Status",
-			"status": "attention",
+			"status": "working",
+			"threads": [
+				{
+					"id": "<thread B>",
+					"sessionId": "<session B>",
+					"originKind": "main",
+					"originThreadId": null,
+					"title": "Thread B",
+					"machine": {
+						"id": "<machine>",
+						"name": "Scripted"
+					},
+					"project": {
+						"id": "<id 1>",
+						"name": "Board"
+					},
+					"runState": "idle",
+					"status": "working",
+					"priority": 0,
+					"groupingId": null,
+					"ordering": -1,
+					"color": null,
+					"updatedAt": "<time>"
+				}
+			]
+		},
+		{
+			"_tag": "Status",
+			"status": "review",
 			"threads": [
 				{
 					"id": "<thread A>",
@@ -47,7 +75,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "attention",
+					"status": "review",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": 0,
@@ -69,7 +97,7 @@
 						"name": "Board"
 					},
 					"runState": "idle",
-					"status": "attention",
+					"status": "review",
 					"priority": 0,
 					"groupingId": null,
 					"ordering": 1,
@@ -81,30 +109,7 @@
 		{
 			"_tag": "Status",
 			"status": "settled",
-			"threads": [
-				{
-					"id": "<thread B>",
-					"sessionId": "<session B>",
-					"originKind": "main",
-					"originThreadId": null,
-					"title": "Thread B",
-					"machine": {
-						"id": "<machine>",
-						"name": "Scripted"
-					},
-					"project": {
-						"id": "<id 1>",
-						"name": "Board"
-					},
-					"runState": "idle",
-					"status": "settled",
-					"priority": 0,
-					"groupingId": null,
-					"ordering": -1,
-					"color": null,
-					"updatedAt": "<time>"
-				}
-			]
+			"threads": []
 		},
 		{
 			"_tag": "Status",

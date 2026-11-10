@@ -121,7 +121,7 @@ export function Palette() {
 								onSelect={() => run(() => void navigate({ to: "/threads" }))}
 							>
 								<ThreadsIcon strokeWidth={1.75} />
-								All Threads
+								Threads
 							</CommandItem>
 							<CommandItem
 								value={GO_PROJECTS}

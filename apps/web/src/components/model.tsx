@@ -83,7 +83,7 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 
 // The composer toolbar pills share `bg-selection` and its hover.
 const trigger =
-	"group flex h-6.5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-selection px-1.5 text-2xs text-ink outline-none hover:bg-selection-hover focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selection-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-selection";
+	"group flex h-6.5 min-w-0 shrink-0 items-center gap-1 rounded-md bg-selection px-1.5 text-2xs text-ink transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-selection-hover focus-visible:ring-2 focus-visible:ring-ring enabled:active:scale-[0.97] data-[state=open]:bg-selection-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-selection";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {
@@ -212,7 +212,7 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 				)}
 				<span className={`truncate ${unavailable ? "text-ink-muted/60" : ""}`}>{label}</span>
 				<ChevronDown
-					className="size-3 shrink-0 text-ink-muted transition-transform group-data-[state=open]:rotate-180"
+					className="size-3 shrink-0 text-ink-muted transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
 					strokeWidth={1.75}
 					aria-hidden
 				/>
@@ -253,7 +253,7 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 										setQuery("");
 										search.current?.focus();
 									}}
-									className={`grid size-8 shrink-0 place-items-center rounded-md transition-colors outline-none ${selected ? "bg-selection-strong text-ink" : "text-ink-muted hover:bg-selection-subtle hover:text-ink"} ${provider.available ? "" : "opacity-50"}`}
+									className={`grid size-8 shrink-0 place-items-center rounded-md transition-[transform,background-color,color] duration-150 ease-out outline-none active:scale-95 ${selected ? "bg-selection-strong text-ink" : "text-ink-muted hover:bg-selection-subtle hover:text-ink"} ${provider.available ? "" : "opacity-50"}`}
 								>
 									<ProviderIcon id={provider.id} name={provider.name} className="size-4" large />
 								</button>
@@ -397,7 +397,7 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 				<Gauge className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
 				<span className="truncate">{choosable ? levelLabels[shown] : "Reasoning"}</span>
 				<ChevronDown
-					className="size-3 shrink-0 text-ink-muted transition-transform group-data-[state=open]:rotate-180"
+					className="size-3 shrink-0 text-ink-muted transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
 					strokeWidth={1.75}
 					aria-hidden
 				/>

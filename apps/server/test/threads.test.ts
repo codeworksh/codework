@@ -91,20 +91,20 @@ it("by status: every status list in its order, each list's threads in ordering",
 	const id = (name: string) => threads.get(name)!;
 	await desk.run((rpc) =>
 		Effect.gen(function* () {
-			// Seen after their runs, every thread starts settled.
-			yield* rpc["threads.setStatus"]({ threadId: id("A"), status: "attention" });
-			yield* rpc["threads.setStatus"]({ threadId: id("D"), status: "attention" });
+			// Seen after their runs, every run thread starts working; the fork, not run yet, enqueued.
+			yield* rpc["threads.setStatus"]({ threadId: id("A"), status: "review" });
+			yield* rpc["threads.setStatus"]({ threadId: id("D"), status: "review" });
 			yield* rpc["threads.setStatus"]({ threadId: id("C"), status: "cancelled" });
-			yield* rpc["threads.setStatus"]({ threadId: id("A fork"), status: "working" });
-			// D after A in the whole order, so the attention list reads A, D.
+			// D after A in the whole order, so the review list reads A, D.
 			yield* rpc["threads.move"]({ threadId: id("D"), to: "last" });
 		}),
 	);
 	const all = await desk.run((rpc) => read(rpc, "status"));
 	expect(names(all, label)).toEqual([
-		{ list: "working", names: ["A fork"] },
-		{ list: "attention", names: ["A", "D"] },
-		{ list: "settled", names: ["B"] },
+		{ list: "enqueued", names: ["A fork"] },
+		{ list: "working", names: ["B"] },
+		{ list: "review", names: ["A", "D"] },
+		{ list: "settled", names: [] },
 		{ list: "cancelled", names: ["C"] },
 	]);
 	// The fork has no title of its own yet: its source's.
@@ -198,9 +198,10 @@ it("subagent threads stay off All Threads", async () => {
 	]);
 	const all = await desk.run((rpc) => read(rpc, "status"));
 	expect(names(all, label)).toEqual([
-		{ list: "working", names: [] },
-		{ list: "attention", names: [] },
-		{ list: "settled", names: ["A fork", "D", "C", "B", "A"] },
+		{ list: "enqueued", names: ["A fork"] },
+		{ list: "working", names: ["D", "C", "B", "A"] },
+		{ list: "review", names: [] },
+		{ list: "settled", names: [] },
 		{ list: "cancelled", names: [] },
 	]);
 	await snapshot("subagent", normalizer([cwHome, appHome], fixed)(elide(all)));
@@ -241,9 +242,7 @@ it("All Threads' topics fire after a move, a status set and a group change, and 
 	await change("move A between D and C", "status", (rpc) =>
 		rpc["threads.move"]({ threadId: id("A"), to: { after: id("D"), before: id("C") } }),
 	);
-	await change("set B attention", "status", (rpc) =>
-		rpc["threads.setStatus"]({ threadId: id("B"), status: "attention" }),
-	);
+	await change("set B review", "status", (rpc) => rpc["threads.setStatus"]({ threadId: id("B"), status: "review" }));
 	const group = await desk.run((rpc) => rpc["groups.create"]({ organizationId: "personal", name: "Next" }));
 	await change("put C in a group", "grouping", (rpc) =>
 		rpc["threads.setGroup"]({ threadId: id("C"), groupingId: group.id }),
@@ -260,9 +259,10 @@ it("All Threads' topics fire after a move, a status set and a group change, and 
 		Contract.syncTopics.tracking,
 	]);
 	expect(steps[0]!.after).toEqual([
-		{ list: "working", names: [] },
-		{ list: "attention", names: [] },
-		{ list: "settled", names: ["A fork", "D", "A", "C", "B"] },
+		{ list: "enqueued", names: ["A fork"] },
+		{ list: "working", names: ["D", "A", "C", "B"] },
+		{ list: "review", names: [] },
+		{ list: "settled", names: [] },
 		{ list: "cancelled", names: [] },
 	]);
 	await snapshot("topics", normalizer([cwHome, appHome], [...fixed, [group.id, "<group>"]])({ steps }));

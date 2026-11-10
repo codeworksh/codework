@@ -13,6 +13,9 @@
 			"color": null,
 			"title": "New session",
 			"runState": "idle",
+			"status": "working",
+			"priority": 0,
+			"created": "<time>",
 			"updated": "<time>",
 			"path": "<home>"
 		}

@@ -1,10 +1,26 @@
-import { Check, ListFilter, Plus, SlidersHorizontal, X } from "@/components/vuesax";
+import {
+	Activity,
+	ArrowUpDown,
+	Check,
+	Clock,
+	Flag,
+	GripVertical,
+	LayoutGrid,
+	ListFilter,
+	Minus,
+	Plus,
+	TagIcon,
+	X,
+} from "@/components/vuesax";
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
 import type { ReactNode } from "react";
 
+import { DisplayMenu } from "@/components/display";
+import { marked, MenuChoice } from "@/components/menu";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
@@ -13,22 +29,27 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { MachineAvatar, PRIORITIES, PRIORITY, PriorityIcon, STATUS, STATUSES, StatusIcon } from "./marks";
 import type { Options } from "./options";
 
-const GROUPS: ReadonlyArray<{ readonly value: Options["group"]; readonly label: string }> = [
-	{ value: "status", label: "Status" },
-	{ value: "priority", label: "Priority" },
-	{ value: "grouping", label: "Group" },
-	{ value: "none", label: "No Grouping" },
+const GROUPS: ReadonlyArray<{
+	readonly value: Options["group"];
+	readonly label: string;
+	readonly icon: typeof Activity;
+}> = [
+	{ value: "status", label: "Status", icon: Activity },
+	{ value: "priority", label: "Priority", icon: Flag },
+	{ value: "grouping", label: "Group", icon: TagIcon },
+	{ value: "none", label: "No Grouping", icon: Minus },
 ];
-const ORDERS: ReadonlyArray<{ readonly value: Options["order"]; readonly label: string }> = [
-	{ value: "manual", label: "Manual" },
-	{ value: "updated", label: "Last Updated" },
-	{ value: "priority", label: "Priority" },
+const ORDERS: ReadonlyArray<{
+	readonly value: Options["order"];
+	readonly label: string;
+	readonly icon: typeof Activity;
+}> = [
+	{ value: "manual", label: "Manual", icon: GripVertical },
+	{ value: "updated", label: "Last Updated", icon: Clock },
+	{ value: "priority", label: "Priority", icon: Flag },
 ];
 
 const toggled = <A,>(values: ReadonlyArray<A>, value: A) =>
@@ -117,82 +138,33 @@ export function Toolbar({
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
-				<Popover>
-					<PopoverTrigger asChild>
-						<Button variant="ghost" size="icon-xs" aria-label="Display Options" title="Display Options">
-							<SlidersHorizontal aria-hidden />
-						</Button>
-					</PopoverTrigger>
-					<PopoverContent align="end" className="grid w-60 gap-1.5 p-3">
-						<Field label="Grouping">
-							<Select
-								value={options.group}
-								onValueChange={(group) => {
-									const next = GROUPS.find((candidate) => candidate.value === group);
-									if (next !== undefined) onChange({ group: next.value });
-								}}
-							>
-								<SelectTrigger
-									size="sm"
-									aria-label="Grouping"
-									className="w-32 gap-1 border-transparent bg-ink/5 px-2 text-xs shadow-none hover:bg-ink/8 data-[size=sm]:h-7 dark:bg-ink/5 dark:hover:bg-ink/8 [&_svg:not([class*='size-'])]:size-3.5"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{GROUPS.map((group) => (
-										<SelectItem key={group.value} value={group.value} className="text-xs">
-											{group.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<Field label="Ordering">
-							<Select
-								value={options.order}
-								onValueChange={(order) => {
-									const next = ORDERS.find((candidate) => candidate.value === order);
-									if (next !== undefined) onChange({ order: next.value });
-								}}
-							>
-								<SelectTrigger
-									size="sm"
-									aria-label="Ordering"
-									className="w-32 gap-1 border-transparent bg-ink/5 px-2 text-xs shadow-none hover:bg-ink/8 data-[size=sm]:h-7 dark:bg-ink/5 dark:hover:bg-ink/8 [&_svg:not([class*='size-'])]:size-3.5"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{ORDERS.map((order) => (
-										<SelectItem key={order.value} value={order.value} className="text-xs">
-											{order.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<Field label="Show Empty Groups">
-							<Switch
-								size="sm"
-								aria-label="Show Empty Groups"
-								checked={options.empty}
-								onCheckedChange={(empty) => onChange({ empty })}
-							/>
-						</Field>
-					</PopoverContent>
-				</Popover>
+				<DisplayMenu>
+					<MenuChoice
+						label="Grouping"
+						mark={<LayoutGrid aria-hidden />}
+						value={options.group}
+						options={marked(GROUPS)}
+						onChange={(group) => onChange({ group })}
+					/>
+					<MenuChoice
+						label="Ordering"
+						mark={<ArrowUpDown aria-hidden />}
+						value={options.order}
+						options={marked(ORDERS)}
+						onChange={(order) => onChange({ order })}
+					/>
+					<DropdownMenuSeparator />
+					<DropdownMenuCheckboxItem
+						className="py-1 text-[13px]"
+						checked={options.empty}
+						onCheckedChange={(empty) => onChange({ empty })}
+						onSelect={(event) => event.preventDefault()}
+					>
+						Show Empty Groups
+					</DropdownMenuCheckboxItem>
+				</DisplayMenu>
 			</div>
 			<Chips options={options} onChange={onChange} machines={machines} />
-		</div>
-	);
-}
-
-function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-	return (
-		<div className="flex min-h-7 items-center justify-between gap-2">
-			<span className="text-xs text-ink-secondary">{label}</span>
-			{children}
 		</div>
 	);
 }

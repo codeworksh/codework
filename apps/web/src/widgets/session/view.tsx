@@ -1,15 +1,14 @@
-import { ChevronRight, CircleDashed, X } from "@/components/vuesax";
+import { ChevronRight, CircleDashed, Folder, X } from "@/components/vuesax";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
-import { createContext, memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LegendList, type LegendListRef, type LegendListRenderItemProps } from "@legendapp/list/react";
+import { createContext, memo, type ReactNode, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/logo";
 import { ComposerNotice, type Notice } from "@/components/banner";
-import { Monogram } from "@/components/monogram";
 import { useModelName, useModelsNotice } from "@/components/model";
 import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
@@ -22,7 +21,6 @@ import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent }
 import { useNowSecond } from "../../hooks/now";
 import { useStableCallback } from "../../hooks/stable";
 import { useListedSession } from "./projects";
-import { RunMark } from "./run";
 import { type Info, Json, type ThreadRef, threadKey, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -496,21 +494,18 @@ function Conversation({
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
 	const project = state.status === "ready" ? state.info.project : listed?.project;
-	const projectId = project?.id;
 	const projectName = project?.name;
 
 	useEffect(() => {
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
 		setTitle(title, projectName);
-		// While its run goes, the run's mark as the sidebar draws it, so a working frame tells apart at a
-		// glance; else the project's badge, as in the sessions sidebar.
-		if (phase !== "idle") setIcon(<RunMark display={phase} />);
-		else if (projectId !== undefined && projectName !== undefined)
-			setIcon(<Monogram id={projectId} name={projectName} />);
+		// The project's folder icon, as in the sessions sidebar. The run's state shows on the workspace's tab
+		// just above, so the frame does not repeat it.
+		if (projectName !== undefined) setIcon(<Folder size={14} className="shrink-0 text-ink-muted" aria-hidden />);
 		// While focused, the workspace's tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
-	}, [title, projectId, projectName, phase, setTitle, setIcon, setTab]);
+	}, [title, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.
@@ -543,7 +538,7 @@ function Conversation({
 		if (root === null || element === null) return;
 		const sync = () => {
 			const height = element.getBoundingClientRect().height;
-			root.style.setProperty("--composer-height", `${height}px`);
+			root.querySelector<HTMLElement>(".session-transcript")?.style.setProperty("--composer-height", `${height}px`);
 			lastInset = Math.ceil(height);
 			setInset(lastInset);
 		};
@@ -634,7 +629,9 @@ function useSlow(loading: boolean) {
 function Loading({ slow }: { readonly slow: boolean }) {
 	return (
 		<div className="flex h-full items-center justify-center text-xs text-ink-muted">
-			{slow && "Loading messages…"}
+			{slow && (
+				<span className="transition-opacity duration-150 ease-out starting:opacity-0">Loading messages…</span>
+			)}
 		</div>
 	);
 }
@@ -705,9 +702,13 @@ function Transcript({
 			modelName={modelName}
 		/>
 	);
+	const transcriptRef = (instance: LegendListRef | null) => {
+		instance?.getScrollableNode().style.setProperty("--composer-height", `${inset}px`);
+		return ref(instance);
+	};
 	return (
 		<LegendList<Turn>
-			ref={ref}
+			ref={transcriptRef}
 			data={turns}
 			extraData={extraData}
 			keyExtractor={turnKey}
@@ -898,7 +899,7 @@ function UserMessage({ entry, onFork }: { readonly entry: HistoryEntry; readonly
 					type="button"
 					aria-expanded={expanded}
 					onClick={() => setExpanded(!expanded)}
-					className="mt-1 rounded-sm px-1 py-0.5 text-xs text-message-ink/65 hover:bg-message-ink/10 hover:text-message-ink"
+					className="mt-1 rounded-sm px-1 py-0.5 text-xs text-message-ink/65 transition-[transform,background-color,color] duration-150 ease-out hover:bg-message-ink/10 hover:text-message-ink active:scale-[0.97]"
 				>
 					{expanded ? "Show less" : "Show more"}
 				</button>
@@ -1085,29 +1086,31 @@ function WorkLog({
 	const live = ended === undefined;
 	const expandable = steps.length > 0;
 	const open = expandable && (override ?? working);
+	const [rendered, setRendered] = useState(open);
+	if (open && !rendered) setRendered(true);
 	useLivePhaseScroll(liveScroller, open, steps);
 	const label = <WorkLabel started={started} ended={ended} phase={phase} modelName={modelName} />;
 	const icon = (
 		<span className="relative flex size-3.5 shrink-0 items-center justify-center">
-			{open && expandable ? (
-				<ChevronRight className="size-3.5 rotate-90 text-ink-muted" strokeWidth={1.75} aria-hidden />
-			) : (
-				<>
-					<Logo
-						className={
-							expandable
-								? "transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0"
-								: ""
-						}
-					/>
-					{expandable && (
-						<ChevronRight
-							className="absolute size-3.5 text-ink-muted opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100"
-							strokeWidth={1.75}
-							aria-hidden
-						/>
-					)}
-				</>
+			<Logo
+				className={
+					expandable
+						? `transition-[opacity,transform] duration-150 ease-out group-hover:scale-90 group-hover:opacity-0 group-focus-visible:scale-90 group-focus-visible:opacity-0 ${
+								open ? "scale-90 opacity-0" : ""
+							}`
+						: ""
+				}
+			/>
+			{expandable && (
+				<ChevronRight
+					className={`absolute size-3.5 text-ink-muted transition-[opacity,transform] duration-150 ease-out ${
+						open
+							? "scale-100 rotate-90 opacity-100"
+							: "scale-90 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100"
+					}`}
+					strokeWidth={1.75}
+					aria-hidden
+				/>
 			)}
 		</span>
 	);
@@ -1115,7 +1118,7 @@ function WorkLog({
 		<span className="shimmer-text min-w-0 truncate text-body">{label}</span>
 	) : (
 		<span
-			className={`min-w-0 flex-1 truncate text-body text-ink-muted ${expandable ? "transition-colors duration-200 group-hover:text-ink" : ""}`}
+			className={`min-w-0 flex-1 truncate text-body text-ink-muted ${expandable ? "transition-colors duration-150 ease-out group-hover:text-ink" : ""}`}
 		>
 			{label}
 		</span>
@@ -1142,8 +1145,8 @@ function WorkLog({
 				{icon}
 				{text}
 			</button>
-			<div className="zen-phase-body" data-open={open}>
-				{open && (
+			<div className="zen-phase-body" data-open={open} inert={!open || undefined}>
+				{rendered && (
 					<div ref={setLiveScroller} className="zen-phase-live">
 						<div className="flex min-w-0 flex-col pb-1">
 							{steps.map((step, index) => (
@@ -1197,6 +1200,38 @@ const WorkRow = memo(function WorkRow({ part, reply, at, live = false }: Step & 
 	}
 });
 
+function WorkStepDetail({ open, children }: { readonly open: boolean; readonly children: ReactNode }) {
+	const [rendered, setRendered] = useState(open);
+	if (open && !rendered) setRendered(true);
+	if (!rendered) return null;
+	return (
+		<div
+			inert={!open || undefined}
+			className={`grid transition-[grid-template-rows,opacity] duration-180 ease-out ${
+				open
+					? "grid-rows-[1fr] opacity-100 starting:grid-rows-[0fr] starting:opacity-0"
+					: "grid-rows-[0fr] opacity-0"
+			}`}
+		>
+			<div className="min-h-0 min-w-0 overflow-hidden">{children}</div>
+		</div>
+	);
+}
+
+function StepChevron({ open }: { readonly open: boolean }) {
+	return (
+		<ChevronRight
+			className={`size-3.5 shrink-0 text-ink-muted transition-[transform,opacity] duration-150 ease-out ${
+				open
+					? "rotate-90 opacity-100"
+					: "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-visible:opacity-100"
+			}`}
+			strokeWidth={1.75}
+			aria-hidden
+		/>
+	);
+}
+
 function ThinkingWorkRow({
 	reply,
 	at,
@@ -1215,21 +1250,22 @@ function ThinkingWorkRow({
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
-				className="group flex min-w-0 items-center gap-1.5 py-1 text-left outline-none"
+				className="group flex w-full min-w-0 items-center gap-1.5 py-1 text-left outline-none"
 			>
 				<span
-					className={`min-w-0 flex-1 truncate text-body text-ink-muted transition-colors duration-200 group-hover:text-ink-secondary ${
+					className={`min-w-0 flex-1 truncate text-body text-ink-muted transition-colors duration-150 ease-out group-hover:text-ink-secondary ${
 						live && !open ? "zen-thinking-pulse" : ""
 					}`}
 				>
 					{open ? "Thinking" : summary}
 				</span>
+				<StepChevron open={open} />
 			</button>
-			{open && (
+			<WorkStepDetail open={open}>
 				<div className="min-w-0 pb-2">
 					<Markdown text={text} className="agent-reasoning" />
 				</div>
-			)}
+			</WorkStepDetail>
 		</div>
 	);
 }
@@ -1243,17 +1279,18 @@ function NoteWorkRow({ text }: { readonly text: string }) {
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
-				className="group flex min-w-0 items-center gap-1.5 py-1 text-left outline-none"
+				className="group flex w-full min-w-0 items-center gap-1.5 py-1 text-left outline-none"
 			>
-				<span className="min-w-0 flex-1 truncate text-body text-ink-secondary transition-colors duration-200 group-hover:text-ink">
+				<span className="min-w-0 flex-1 truncate text-body text-ink-secondary transition-colors duration-150 ease-out group-hover:text-ink">
 					{summary}
 				</span>
+				<StepChevron open={open} />
 			</button>
-			{open && (
+			<WorkStepDetail open={open}>
 				<div className="min-w-0 pb-2">
 					<Markdown text={text} />
 				</div>
-			)}
+			</WorkStepDetail>
 		</div>
 	);
 }
@@ -1284,7 +1321,7 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 						(chip ? (
 							<span
 								title={target}
-								className={`max-w-full min-w-0 truncate rounded-sm bg-muted px-1.5 py-0.5 ${
+								className={`max-w-full min-w-0 truncate rounded-sm bg-muted px-1.5 py-0.5 transition-colors duration-150 ease-out ${
 									failed ? "text-destructive" : "text-ink-secondary group-hover:bg-ink/10 group-hover:text-ink"
 								}`}
 							>
@@ -1293,7 +1330,7 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 						) : (
 							<span
 								title={target}
-								className={`min-w-0 flex-1 truncate pl-1 ${
+								className={`min-w-0 flex-1 truncate pl-1 transition-colors duration-150 ease-out ${
 									failed ? "text-destructive" : "text-ink-secondary group-hover:text-ink"
 								}`}
 							>
@@ -1310,15 +1347,9 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 				) : (
 					failed && <X className="size-3.5 shrink-0 text-destructive" strokeWidth={2} aria-hidden />
 				)}
-				<ChevronRight
-					className={`size-3.5 shrink-0 text-ink-muted transition-transform ${
-						open ? "rotate-90" : "opacity-0 group-hover:opacity-100"
-					}`}
-					strokeWidth={1.75}
-					aria-hidden
-				/>
+				<StepChevron open={open} />
 			</button>
-			{open && (
+			<WorkStepDetail open={open}>
 				<div className="flex flex-col gap-2 py-1.5 font-mono text-xs">
 					<pre className="overflow-x-auto whitespace-pre-wrap text-ink-muted">
 						{JSON.stringify(call.arguments, null, 2)}
@@ -1333,7 +1364,7 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 						</pre>
 					)}
 				</div>
-			)}
+			</WorkStepDetail>
 		</div>
 	);
 }

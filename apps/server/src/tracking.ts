@@ -8,6 +8,7 @@ import {
 	type SyncStatus,
 	type SyncTracking,
 	syncTopics,
+	type ManualStatus,
 	type ThreadStatus,
 	TrackingError,
 } from "@codeworksh/contract";
@@ -91,7 +92,7 @@ export const handlers = Effect.gen(function* () {
 			status,
 		}: {
 			readonly threadId: string;
-			readonly status: ThreadStatus;
+			readonly status: ManualStatus;
 		}) {
 			yield* transact((append) =>
 				Effect.gen(function* () {
