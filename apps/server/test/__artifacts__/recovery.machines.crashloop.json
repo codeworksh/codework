@@ -27,9 +27,8 @@
 		"session.run.failed crashloop",
 		"session.prompt.admitted steer \"next\"",
 		"session.execution.started resumed=false",
-		"session.prompt.promoted steer \"next\"",
-		"session.llm.started",
 		"session.prompt.promoted followUp \"parked by the loop\"",
+		"session.prompt.promoted steer \"next\"",
 		"session.llm.started",
 		"session.execution.succeeded"
 	],

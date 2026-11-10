@@ -456,7 +456,12 @@ function Conversation({
 	// A prompt this window sent is pending until it lands in app.db, as a message or a queued prompt.
 	const key = threadKey(thread);
 	const inFlight = usePendingPrompts(key);
-	const { landed, forget } = useSent();
+	const { landed, forget, stop } = useSent();
+	// A stop CodeWork accepted, from any window or before a reload, shows as this window's own until the run ends.
+	const stopAccepted = loaded.status === "ready" && loaded.info.stopping;
+	useEffect(() => {
+		if (stopAccepted) stop(key);
+	}, [stopAccepted, key, stop]);
 	useEffect(() => {
 		if (loaded.status !== "ready" || inFlight.size === 0) return;
 		const known = new Set([...loaded.messages, ...loaded.queued].map((item) => item.id));

@@ -138,6 +138,8 @@ export const Info = Schema.Struct({
 	updated: Schema.Number,
 	/** Where the thread's run is, as the harness stores it. */
 	runState: RunState,
+	/** The run is still going, but CodeWork has accepted a stop for it. */
+	stopping: Schema.Boolean,
 	/**
 	 * Why the last run failed: CodeWork's failure category (`sandbox-mount-error` and the like) and
 	 * its message. Absent once another run starts, or when it did not fail.

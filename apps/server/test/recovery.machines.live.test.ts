@@ -96,6 +96,7 @@ const shown = new Set([
 	"session.execution.started",
 	"session.execution.succeeded",
 	"session.execution.failed",
+	"session.execution.stopping",
 	"session.execution.interrupted",
 	"session.run.failed",
 	"session.llm.started",
@@ -312,10 +313,11 @@ describeMachines("durable runs across real machine failures", () => {
 		await idle(ids);
 		await record("next prompt");
 		const ran = (await lifecycle(ids)).filter((line) => line.startsWith("session.prompt.promoted"));
+		// The parked follow-up and the new steer go in together, in the order they were sent.
 		expect(ran).toEqual([
 			'session.prompt.promoted steer "hold"',
-			'session.prompt.promoted steer "next"',
 			'session.prompt.promoted followUp "after the stop"',
+			'session.prompt.promoted steer "next"',
 		]);
 		await snapshot("stop", { log: await lifecycle(ids), steps });
 	}, 300_000);
@@ -356,7 +358,8 @@ describeMachines("durable runs across real machine failures", () => {
 		await record("next prompt");
 		expect(steps.at(-1)).toMatchObject({ restarts: 0, outcome: "succeeded" });
 		const log = await lifecycle(ids);
-		expect(count(await events(ids), "session.llm.started")).toBe(Control.RESTART_LIMIT + 2);
+		// One request per run that died, then one for the parked follow-up and the next prompt together.
+		expect(count(await events(ids), "session.llm.started")).toBe(Control.RESTART_LIMIT + 1);
 		await snapshot("crashloop", { log, steps });
 	}, 900_000);
 

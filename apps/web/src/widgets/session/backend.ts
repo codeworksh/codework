@@ -1,6 +1,6 @@
 import { readTopics, SyncChanged, syncTopics } from "@codeworksh/contract";
 import { Bus, Codework, defineBackend, handle, type LineThread, Sync } from "@codeworksh/widget/backend";
-import { LiveDelta, QueuedPrompt, UNTITLED } from "@codeworksh/widget/codework";
+import { LiveDelta, QueuedPrompt, stopping, UNTITLED } from "@codeworksh/widget/codework";
 import type { Event } from "@codeworksh/widget/event";
 import { Deferred, Effect, Fiber, Option, Result, Schema, Stream } from "effect";
 
@@ -43,6 +43,7 @@ const toInfo = (thread: LineThread): Info => {
 		title: thread.title ?? UNTITLED,
 		updated: thread.updatedAt,
 		runState: thread.runState,
+		stopping: stopping(thread),
 		project: thread.project,
 		...(thread.hostDir === undefined ? {} : { hostDir: thread.hostDir }),
 		...(thread.thinkingLevel === undefined ? {} : { thinkingLevel: thread.thinkingLevel }),
