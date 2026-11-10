@@ -963,9 +963,10 @@ export const layer = Layer.effect(
 		/*
 		 * Over a `thread` row: its run sleeps in retry backoff, its attempt set and no draft open (the failed
 		 * attempt's draft was aborted before the sleep). A crash there is no restart: a receive count, as SQS
-		 * keeps one per message, counts only deliveries being worked on, and a sleeping one is not; its
-		 * carried attempt bounds it instead. The moment between setting the attempt and opening its draft
-		 * reads as asleep too, bounded the same way.
+		 * keeps one per message, counts only deliveries being worked on, and a sleeping one is not. The
+		 * resume counts the attempt it slept for as failed, so the retry budget bounds a host that keeps dying
+		 * there. The moment between setting the attempt and opening its draft reads as asleep too, bounded
+		 * the same way.
 		 */
 		const asleepOf = sql`(thread.attempt IS NOT NULL AND NOT EXISTS (
 			SELECT 1 FROM entry WHERE entry.thread_id = thread.id AND entry.state = 'draft'
