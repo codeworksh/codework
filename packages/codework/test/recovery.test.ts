@@ -842,6 +842,8 @@ describe("recovery after the host is killed", () => {
 		).toEqual([{ type: "session.execution.interrupted", reason: "user" }]);
 		expect(count(reopened, "session.execution.started")).toBe(1);
 		expect(fake.requests).toHaveLength(1);
+		// What a remote client reads to tell a queue that waits from one about to run.
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(true);
 
 		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
 		await logged(second.url, ids, "session.execution.succeeded");
@@ -852,6 +854,7 @@ describe("recovery after the host is killed", () => {
 				.filter((message) => message.role === "user")
 				.map((message) => message.text),
 		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Next."]);
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(false);
 		const events = await log(second.url, ids);
 		await expect(
 			artifact({

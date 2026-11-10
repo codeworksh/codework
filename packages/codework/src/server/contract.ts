@@ -143,6 +143,8 @@ const ThreadFields = {
 	runStateAt: optional(Schema.Finite),
 	/** Absent before the first run. */
 	lastRun: optional(ThreadRun),
+	/** Whether it holds queued prompts that wait for its next prompt instead of running by themselves. */
+	parked: Schema.Boolean,
 	/** Automatic restarts of the current run. */
 	restarts: Schema.Int,
 	/** The 1-based provider request in flight; absent when none is. */

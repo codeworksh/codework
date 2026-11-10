@@ -240,6 +240,11 @@ export interface Interface {
 	readonly setAttempt: (threadId: ThreadSchema.ID, attempt: number | null) => Effect.Effect<void>;
 	/** Whether a pending prompt of the thread is past its head: woken since its last unanswered end. */
 	readonly runnable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	/**
+	 * Whether the thread holds queued prompts that wait for its next prompt: idle, nothing owed a run, and a
+	 * prompt pending. Derived from the positions, never stored.
+	 */
+	readonly parked: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/** Whether the thread is among {@link unfinished}: still owed a resume, say not stopped since. */
 	readonly resumable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/**
@@ -1020,6 +1025,13 @@ export const layer = Layer.effect(
 			}, Effect.orDie);
 		const runnable = holds("Thread.runnable", runnableOf);
 		const resumable = holds("Thread.resumable", unfinishedOf);
+		const parked = holds(
+			"Thread.parked",
+			sql`(thread.run_state = 'idle' AND NOT ${unfinishedOf} AND EXISTS (
+				SELECT 1 FROM inbox
+				WHERE inbox.thread_id = thread.id AND inbox.promoted_seq IS NULL AND inbox.cancelled_seq IS NULL
+			))`,
+		);
 
 		const findUnfinished = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -1159,6 +1171,7 @@ export const layer = Layer.effect(
 			setAttempt,
 			runnable,
 			resumable,
+			parked,
 			unfinished,
 			projectRun,
 			open,

@@ -85,6 +85,7 @@ const toThreadSummary = (info: Session.ThreadSummary): ThreadSummary => ({
 	runState: info.runState,
 	...(info.runStateAt === undefined ? {} : { runStateAt: info.runStateAt }),
 	...(info.lastRun === undefined ? {} : { lastRun: info.lastRun }),
+	parked: info.parked,
 	restarts: info.restarts,
 	...(info.attempt === undefined ? {} : { attempt: info.attempt }),
 	createdSeq: info.createdSeq,

@@ -74,6 +74,7 @@
 			"by": "session.prompt.admitted",
 			"writes": [
 				"inbox E1 insert",
+				"thread T1 update",
 				"thread T1 update"
 			]
 		},
