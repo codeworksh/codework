@@ -453,8 +453,6 @@ const watched = Control.layer.pipe(
 			RunnerExecution.Service.of({
 				active: Effect.succeed(new Set()),
 				resume: () => Effect.void,
-				recover: () => Effect.void,
-				abandon: () => Effect.void,
 				wake: (threadId) => Effect.sync(() => wakes.push(threadId)),
 				interrupt: () => Effect.succeed(false),
 				awaitIdle: () => Effect.void,

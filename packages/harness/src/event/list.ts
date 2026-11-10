@@ -350,6 +350,18 @@ export const ExecutionFailed = EventSchema.define({
 });
 export type ExecutionFailed = typeof ExecutionFailed.Type;
 
+/**
+ * A user stop accepted for the run that is open, recorded before anything is interrupted: the run's
+ * terminal follows once its cleanup settles, and a host that dies in between still ends it as the
+ * user's stop rather than resuming it as a crash.
+ */
+export const ExecutionStopping = EventSchema.define({
+	type: "session.execution.stopping",
+	...durableOptions,
+	schema: baseOptions,
+});
+export type ExecutionStopping = typeof ExecutionStopping.Type;
+
 export const ExecutionInterrupted = EventSchema.define({
 	type: "session.execution.interrupted",
 	...durableOptions,
@@ -455,6 +467,7 @@ export const Definitions = EventSchema.inventory(
 	ExecutionStarted,
 	ExecutionSucceeded,
 	ExecutionFailed,
+	ExecutionStopping,
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
@@ -498,6 +511,7 @@ export const DurableDefinitions = EventSchema.inventory(
 	ExecutionStarted,
 	ExecutionSucceeded,
 	ExecutionFailed,
+	ExecutionStopping,
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,

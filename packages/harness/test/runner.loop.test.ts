@@ -1343,8 +1343,60 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
-	// Recovery chose the session, then the user ran and stopped it: the stop ended the run, and the
-	// recovered run must find nothing to resume rather than force another turn.
+	// Whatever wakes a cut-off thread first resumes it: a prompt that gets there before recovery does must
+	// not make the restart go uncounted, or a host dying in that run is never bounded by the limit.
+	it(
+		"counts the restart when a prompt reaches a cut-off thread before recovery does",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const events = yield* Event.Service;
+			const { threadId } = yield* seedSession();
+			const resumed: Array<boolean> = [];
+			yield* events.listen((event) =>
+				Schema.is(EventList.ExecutionStarted)(event)
+					? Effect.sync(() => {
+							resumed.push(event.data.resumed);
+						})
+					: Effect.void,
+			);
+			yield* crashedMidReply(threadId, "A");
+			const atStart = yield* atEachStart(threadId);
+
+			yield* send(threadId, "B");
+			yield* settle(threadId);
+			yield* control.resumeUnfinished;
+
+			expect(atStart).toEqual([{ unfinished: true, restarts: 1 }]);
+			expect(resumed).toEqual([true]);
+			expect(contexts.map(texts)).toEqual([["A", "B"]]);
+		}),
+	);
+
+	it(
+		"ends a run at the restart limit when a prompt reaches it before recovery does",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const sql = yield* SqlClient.SqlClient;
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			yield* crashedMidReply(threadId, "A");
+			yield* sql`UPDATE thread SET restarts = ${Control.RESTART_LIMIT - 1}, rev = (SELECT rev FROM store) WHERE id = ${threadId}`;
+
+			yield* send(threadId, "B");
+			yield* settle(threadId);
+
+			// The cut-off run ends as a crashloop, and the prompt that woke it is parked with its queue.
+			expect(contexts).toEqual([]);
+			expect(Option.getOrThrow(yield* threads.get(threadId)).runError).toMatchObject(
+				Option.some({ _tag: "runFailed", reason: "crashloop" }),
+			);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
+	// The user stopped the cut-off run before anything resumed it: the stop ended the run, and a wake
+	// must find nothing to resume rather than force another turn.
 	it(
 		"runs nothing when a session recovery chose was stopped before its run began",
 		Effect.gen(function* () {
@@ -1360,7 +1412,8 @@ describe("runner loop — resume after restart", () => {
 				reason: "user",
 			});
 
-			yield* execution.recover(threadId);
+			yield* execution.wake(threadId);
+			yield* settle(threadId);
 
 			expect(contexts).toEqual([]);
 			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
@@ -1585,6 +1638,41 @@ describe("runner loop — resume after restart", () => {
 
 			expect(contexts).toEqual([]);
 			expect(seen).toEqual(["interrupted", "interrupted"]);
+			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
+		}),
+	);
+
+	// A shutdown that reaches a run the user already asked to stop must not end it as a shutdown, or the
+	// next start resumes what the user stopped.
+	it(
+		"ends a run asked to stop as stopped when a shutdown interrupts it",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const threads = yield* Thread.Service;
+			const { threadId } = yield* seedSession();
+			const base = { sessionId: yield* sessionOf(threadId), threadId };
+			const streaming = yield* hanging;
+			script.push("hang");
+			yield* send(threadId, "A");
+			yield* streaming;
+			yield* events.publish(EventList.ExecutionStopping, { ...base, timestamp: yield* DateTime.now });
+
+			// A shutdown end published against the stop's record rolls back.
+			const lost = yield* Effect.exit(
+				events.publish(EventList.ExecutionInterrupted, {
+					...base,
+					timestamp: yield* DateTime.now,
+					reason: "shutdown",
+				}),
+			);
+			expect(Exit.isFailure(lost)).toBe(true);
+			yield* execution.interrupt(threadId, "shutdown", { awaitSettlement: true });
+
+			expect(Option.getOrThrow(yield* threads.get(threadId)).runError).toEqual(
+				Option.some({ _tag: "interrupted", reason: "user" }),
+			);
 			expect(yield* stateOf(threadId)).toEqual({ unfinished: false, restarts: 0 });
 		}),
 	);
