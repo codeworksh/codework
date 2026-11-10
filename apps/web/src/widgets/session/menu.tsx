@@ -1,9 +1,10 @@
 import type { Priority } from "@codeworksh/contract";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { MENU_ROW, MenuChoice } from "@/components/menu";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { MessageSquare, Settings } from "@/components/vuesax";
 import { failed } from "../threads/common";
 import { setColor, setGroup, setPriority, setStatus, threadsAtom } from "../threads/data";
 import {
@@ -26,8 +27,42 @@ import { threadRef } from "./address";
  */
 export const menuThreads = threadsAtom("status");
 
-/** A session frame's thread rows: its status, priority, group and color, each showing the current one. */
-export function ThreadMenu({ address }: { readonly address: string | undefined }) {
+/** The session frames showing their project's settings in place of their thread, by instance id. */
+const settingsAtom = Atom.make<ReadonlyArray<string>>([]).pipe(Atom.keepAlive);
+
+/** Whether a session frame shows its project's settings, and the switch between them and its thread. */
+export function useSettings(instanceId: string) {
+	const [frames, setFrames] = useAtom(settingsAtom);
+	const set = (shown: boolean) =>
+		setFrames((current) => [...current.filter((id) => id !== instanceId), ...(shown ? [instanceId] : [])]);
+	return [frames.includes(instanceId), set] as const;
+}
+
+/** A session frame's menu rows: its thread's, then its project's settings below a divider. */
+export function ThreadMenu({
+	address,
+	instanceId,
+}: {
+	readonly address: string | undefined;
+	readonly instanceId: string;
+}) {
+	const [settings, setSettings] = useSettings(instanceId);
+	return (
+		<>
+			<ThreadRows address={address} />
+			<DropdownMenuSeparator />
+			<DropdownMenuItem className={MENU_ROW} onSelect={() => setSettings(!settings)}>
+				<span className="grid size-[15px] shrink-0 place-items-center">
+					{settings ? <MessageSquare aria-hidden /> : <Settings aria-hidden />}
+				</span>
+				{settings ? "Back to Thread" : "Settings"}
+			</DropdownMenuItem>
+		</>
+	);
+}
+
+/** The thread's status, priority, group and color, each showing the current one. */
+function ThreadRows({ address }: { readonly address: string | undefined }) {
 	const ref = threadRef(address);
 	const result = useAtomValue(menuThreads);
 	const status = useAtomSet(setStatus, { mode: "promise" });

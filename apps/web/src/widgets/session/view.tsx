@@ -14,9 +14,10 @@ import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
-import { menuThreads } from "./menu";
+import { menuThreads, useSettings } from "./menu";
 import { Message } from "./message";
 import { Queue } from "./queue";
+import { ProjectSettings } from "./settings";
 import { type Handoff, handoffs } from "./handoff";
 import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
 import { useNowSecond } from "../../hooks/now";
@@ -47,8 +48,17 @@ export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const [shown, setShown] = useState<{ readonly key: string; readonly previous?: string }>({ key });
 	if (shown.key !== key) setShown({ key, previous: shown.key });
 	useAtomMount(menuThreads);
+	const [settings, setSettings] = useSettings(instanceId);
 	if (thread === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
-	return <Conversation key={key} thread={thread} instanceId={instanceId} previous={shown.previous} />;
+	// The thread stays mounted under its project's settings, so it comes back as it was left.
+	return (
+		<>
+			<div hidden={settings} className="h-full">
+				<Conversation key={key} thread={thread} instanceId={instanceId} previous={shown.previous} />
+			</div>
+			{settings && <ProjectSettings onBack={() => setSettings(false)} />}
+		</>
+	);
 }
 
 type State =
@@ -498,7 +508,13 @@ function Conversation({
 	const project = state.status === "ready" ? state.info.project : listed?.project;
 	const projectName = project?.name;
 
+	const [settings] = useSettings(instanceId);
 	useEffect(() => {
+		if (settings) {
+			setTitle("Settings", projectName);
+			setTab(projectName === undefined ? "Settings" : `${projectName} / Settings`);
+			return;
+		}
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
 		setTitle(title, projectName);
@@ -507,7 +523,7 @@ function Conversation({
 		if (projectName !== undefined) setIcon(<Folder size={14} className="shrink-0 text-ink-muted" aria-hidden />);
 		// While focused, the workspace's tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
-	}, [title, projectName, setTitle, setIcon, setTab]);
+	}, [settings, title, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.

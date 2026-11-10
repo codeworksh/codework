@@ -466,7 +466,11 @@ export function Desktop({ workspace }: DesktopProps) {
 									if (destination !== undefined) move(widget.id, destination);
 								}}
 								onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
-								menu={instance.kind === session.kind ? <ThreadMenu address={instance.address} /> : undefined}
+								menu={
+									instance.kind === session.kind ? (
+										<ThreadMenu address={instance.address} instanceId={widget.id} />
+									) : undefined
+								}
 								onClose={() => close(widget.id)}
 								onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 								onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
