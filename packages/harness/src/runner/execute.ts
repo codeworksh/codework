@@ -56,6 +56,7 @@ export const layer = Layer.effect(
 		// The session a thread belongs to, for the lifecycle events its log carries. Read every time, not
 		// cached: the events are durable, and one for a session deleted since would recreate its log.
 		const isThreadNotFound = Schema.is(Thread.ThreadNotFoundError);
+		const isRunStopping = Schema.is(Thread.RunStoppingError);
 		const sessionOf = (threadId: ThreadId) =>
 			threads.get(threadId).pipe(Effect.map(Option.map((thread) => SessionSchema.ID.make(thread.sessionId))));
 		const publishLifecycle = (
@@ -68,45 +69,49 @@ export const layer = Layer.effect(
 		) =>
 			Effect.gen(function* () {
 				const sessionId = yield* sessionOf(threadId);
-				if (Option.isNone(sessionId)) return;
-				yield* publish({ sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now }).pipe(
+				if (Option.isNone(sessionId)) return false;
+				return yield* publish({ sessionId: sessionId.value, threadId, timestamp: yield* DateTime.now }).pipe(
+					Effect.as(true),
 					// Deleted between the read and the commit: the projector rolled the event back.
-					Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.void : Effect.die(defect))),
+					Effect.catchDefect((defect) => (isThreadNotFound(defect) ? Effect.succeed(false) : Effect.die(defect))),
 				);
 			});
 
-		// Threads being recovered: their run is announced as resumed.
-		const recovering = new Set<ThreadId>();
-		// Recovered threads whose run is ended instead of resumed, with the message it ends with.
-		const abandoning = new Map<ThreadId, string>();
-		// Threads whose current drain opened a run with `execution.started`.
-		const opened = new Set<ThreadId>();
-
 		const coordinator = yield* RunCoordinator.make<ThreadId, Runner.RunError, SessionSchema.InterruptReason>({
-			// A drain that failed or was interrupted ends the busy period, and the run it opened ends here unless
-			// it already published its own terminal: the stored run state says which, so a run ends exactly once.
+			// A drain that failed or was interrupted ends the busy period, and the run it left open ends here: one
+			// that published its own terminal is idle by now, so a run ends exactly once.
 			settled: (threadId, exit, reason) =>
 				reportLifecycle(
 					threadId,
 					Effect.gen(function* () {
-						const ran = opened.delete(threadId);
 						if (Exit.isSuccess(exit)) return;
 						const interrupted = Cause.hasInterruptsOnly(exit.cause);
 						const thread = yield* threads.get(threadId);
 						if (Option.isNone(thread)) return;
+						const open = thread.value.runState !== "idle";
+						// The stop a run was asked for is on its row, and outlasts whatever interrupted it since.
+						const stop = interrupted && (reason === "user" || Thread.stopping(thread.value));
 						// With no run open, before it opened or after it ended, a user stop is recorded only when
 						// something would otherwise still run, now or on the next start.
-						const open = ran && thread.value.runState !== "idle";
-						const stop = interrupted && reason === "user";
 						if (!open && !(stop && (yield* threads.resumable(threadId)))) return;
-						yield* publishLifecycle(threadId, (base) =>
-							interrupted
-								? // Nobody named a reason, so the process took the decision itself.
-									events.publish(EventList.ExecutionInterrupted, { ...base, reason: reason ?? "shutdown" })
-								: events.publish(EventList.ExecutionFailed, {
-										...base,
-										error: SessionFailure.fromCause(Cause.squash(exit.cause)),
-									}),
+						const interruptedAs = (as: SessionSchema.InterruptReason) =>
+							publishLifecycle(threadId, (base) =>
+								events.publish(EventList.ExecutionInterrupted, { ...base, reason: as }),
+							);
+						if (!interrupted) {
+							return yield* publishLifecycle(threadId, (base) =>
+								events.publish(EventList.ExecutionFailed, {
+									...base,
+									error: SessionFailure.fromCause(Cause.squash(exit.cause)),
+								}),
+							);
+						}
+						// Nobody named a reason, so the process took the decision itself. A stop recorded since the
+						// read above rolls that end back: the run then ends as the user's.
+						yield* interruptedAs(stop ? "user" : (reason ?? "shutdown")).pipe(
+							Effect.catchDefect((defect) =>
+								isRunStopping(defect) ? interruptedAs("user") : Effect.die(defect),
+							),
 						);
 					}),
 				),
@@ -114,6 +119,11 @@ export const layer = Layer.effect(
 			// lost lifecycle publish) is drained again rather than left waiting for a bell.
 			drain: (threadId: ThreadId, force: boolean): Effect.Effect<void, Runner.RunError> =>
 				drainOnce(threadId, force).pipe(
+					Effect.tapCause((cause) =>
+						Cause.hasDies(cause)
+							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ threadId }))
+							: Effect.void,
+					),
 					Effect.tap(() =>
 						Effect.gen(function* () {
 							if (yield* threads.runnable(threadId)) yield* coordinator.wake(threadId);
@@ -122,52 +132,62 @@ export const layer = Layer.effect(
 				),
 		});
 
-		// One run per drain that runs, opened before it promotes anything: a process dying anywhere in it
-		// leaves an open run, which the next server start sweeps as a crash and resumes.
+		/*
+		 * One run per drain that runs, opened before it promotes anything: a process dying anywhere in it
+		 * leaves an open run, which the next server start sweeps as a crash. What to do is read from the
+		 * thread, never from what woke the drain: a run the host cut off is resumed, or ended at the restart
+		 * limit, by whichever drain gets to it first.
+		 */
 		const drainOnce = Effect.fnUntraced(function* (threadId: ThreadId, force: boolean) {
-			opened.delete(threadId);
 			const thread = yield* threads.get(threadId);
 			// Deleted with its session after something woke it: nothing is left to run.
 			if (Option.isNone(thread)) return;
 			const sessionId = thread.value.sessionId;
 			// Read before `execution.started` clears it.
+			const cut = Option.exists(
+				thread.value.runError,
+				(error) => error._tag === "interrupted" && error.reason !== "user",
+			);
 			const shutdown = Option.exists(
 				thread.value.runError,
 				(error) => error._tag === "interrupted" && error.reason === "shutdown",
 			);
-			const recovered = recovering.delete(threadId);
-			// A recovery claimed the thread before its drain: a stop since then must stand.
-			if (recovered && !(yield* threads.resumable(threadId))) return;
+			// Counted before resuming, so a crash inside the resumed run is counted too. None: a stop since
+			// the read ended the run, and stands.
+			const restarts =
+				cut && thread.value.runState === "idle" ? yield* threads.claimRestart(threadId) : Option.none();
+			const recovered = Option.isSome(restarts);
 			// The doorbell is only a hint: an unforced drain runs only for a prompt woken past the head.
-			if (!force && !(yield* threads.runnable(threadId))) return;
-			// Whole or not at all: a stop lands either before the run opened or on an open run.
-			yield* Effect.uninterruptible(
-				Effect.sync(() => opened.add(threadId)).pipe(
-					Effect.andThen(
-						reportLifecycle(
-							threadId,
-							publishLifecycle(threadId, (base) =>
-								events.publish(EventList.ExecutionStarted, { ...base, resumed: recovered }),
-							),
-						),
-					),
+			if (!recovered && !force && !(yield* threads.runnable(threadId))) return;
+			// Whole or not at all: a stop lands either before the run opened or on an open run. A run that
+			// cannot be opened does not run.
+			const started = yield* Effect.uninterruptible(
+				publishLifecycle(threadId, (base) =>
+					events.publish(EventList.ExecutionStarted, { ...base, resumed: recovered }),
 				),
 			);
-			// `ended`: the run published its own terminal, `session.run.failed`. A stop arriving meanwhile
-			// waits for the success to land, so `settled` finds the run ended.
+			if (!started) return;
+			// Every terminal a run that returned gets is published here, joined to its last step: a stop or a
+			// shutdown lands on the open run or after its end, never between the two.
 			const close = (outcome: Runner.Outcome) =>
-				outcome === "ended"
-					? Effect.void
-					: Effect.uninterruptible(
-							reportLifecycle(
-								threadId,
-								publishLifecycle(threadId, (base) => events.publish(EventList.ExecutionSucceeded, base)),
-							),
-						);
-			// Only the drain the abandon itself started: one it joined is a live run, which must stand.
-			const abandoned = recovered && force ? abandoning.get(threadId) : undefined;
-			if (abandoned !== undefined)
-				return yield* runner.abandon({ threadId, message: abandoned }).pipe(Effect.flatMap(close));
+				reportLifecycle(
+					threadId,
+					publishLifecycle(threadId, (base) =>
+						outcome === "drained"
+							? events.publish(EventList.ExecutionSucceeded, base)
+							: events.publish(EventList.RunFailed, { ...base, ...outcome }),
+					),
+				);
+			const ending = <E, R>(run: Effect.Effect<Runner.Outcome, E, R>) =>
+				Effect.uninterruptibleMask((restore) => restore(run).pipe(Effect.flatMap(close)));
+			if (recovered && restarts.value >= RunnerExecution.RESTART_LIMIT) {
+				return yield* ending(
+					runner.abandon({
+						threadId,
+						message: `The run was interrupted ${restarts.value} times in a row; it is not resumed again`,
+					}),
+				);
+			}
 			// The thread's placement, else the session's space and directory. A placement names its
 			// space in a document no FK guards, so a space gone since is typed: `relink --thread`
 			// is the repair.
@@ -209,46 +229,23 @@ export const layer = Layer.effect(
 
 				// The thread's MCP servers stay open while its drain runs, and idle out after.
 				yield* mcp.lease({ sessionId, threadId });
-				return yield* runner
-					.run({ threadId, force, recovered, shutdown })
-					.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)), Effect.flatMap(close));
+				return yield* ending(
+					runner
+						.run({ threadId, force: force || recovered, recovered, shutdown })
+						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext))),
+				);
 			});
 
-			return yield* scopedRun.pipe(
-				Effect.scoped,
-				Effect.tapCause((cause) =>
-					Cause.hasDies(cause)
-						? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ threadId }))
-						: Effect.void,
-				),
-			);
+			return yield* scopedRun.pipe(Effect.scoped);
 		});
 
 		const interrupt: RunnerExecution.Interface["interrupt"] = (threadId, reason, options) =>
 			coordinator.interrupt(threadId, reason, options);
 
-		// Under the thread's execution like any run, so a prompt that wakes it meanwhile cannot heal
-		// the same draft.
-		const recover = (threadId: ThreadId, abandon?: string) =>
-			Effect.suspend(() => {
-				recovering.add(threadId);
-				if (abandon !== undefined) abandoning.set(threadId, abandon);
-				return coordinator.run(threadId);
-			}).pipe(
-				Effect.ensuring(
-					Effect.sync(() => {
-						recovering.delete(threadId);
-						abandoning.delete(threadId);
-					}),
-				),
-			);
-
 		return RunnerExecution.Service.of({
 			active: coordinator.active,
 			interrupt,
 			resume: coordinator.run,
-			recover: (threadId) => recover(threadId),
-			abandon: recover,
 			wake: coordinator.wake,
 			awaitIdle: coordinator.awaitIdle,
 		});

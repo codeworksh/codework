@@ -165,6 +165,9 @@ export const layer = Layer.effectDiscard(
 		yield* events.project(EventList.ExecutionStarted, ({ data }) =>
 			threads.projectRun(data.threadId, data.timestamp, { _tag: "started" }),
 		);
+		yield* events.project(EventList.ExecutionStopping, ({ data }) =>
+			threads.projectRun(data.threadId, data.timestamp, { _tag: "stopping" }),
+		);
 		// A run's end settles the thread at the event's own seq: an unanswered end moves its head.
 		const ended = (
 			event: { readonly type: string; readonly durable?: { readonly seq: number } },

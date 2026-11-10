@@ -172,6 +172,7 @@ const migrations = {
 				foundation TEXT,
 				placement_space_id TEXT,
 				placement_dir TEXT,
+				parked INTEGER NOT NULL DEFAULT 0,
 				restarts INTEGER NOT NULL DEFAULT 0,
 				attempt INTEGER,
 				run_state TEXT NOT NULL DEFAULT 'idle',

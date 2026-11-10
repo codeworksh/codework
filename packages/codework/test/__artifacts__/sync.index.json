@@ -20,6 +20,7 @@
 				"cacheWrite": 0
 			},
 			"runState": "idle",
+			"parked": false,
 			"restarts": 0,
 			"createdSeq": 1,
 			"createdAt": "<time>",
@@ -58,6 +59,7 @@
 					"endedAt": "<time>",
 					"outcome": "succeeded"
 				},
+				"parked": false,
 				"restarts": 0,
 				"createdSeq": 1,
 				"createdAt": "<time>",
@@ -102,6 +104,7 @@
 					"cacheWrite": 0
 				},
 				"runState": "idle",
+				"parked": false,
 				"restarts": 0,
 				"createdSeq": 11,
 				"createdAt": "<time>",

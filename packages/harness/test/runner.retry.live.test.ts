@@ -22,6 +22,9 @@ const flushed = (res: ServerResponse, chunk: Uint8Array) =>
  * client, and every later request is forwarded whole. The harness, AI SDK and aikit see genuine
  * HTTP failures. Each request's arrival time and body are recorded.
  */
+/** A streamed field holding text: the provider's delta, content, reasoning or thinking. */
+const content = /"(delta|content|reasoning_content|reasoning|text|thinking)":\s*"[^"]/;
+
 const proxy = async (upstream: string) => {
 	const requests: Array<{ readonly at: number; body: Buffer }> = [];
 	const forward = async (req: IncomingMessage, res: ServerResponse, body: Buffer, cut: boolean) => {
@@ -47,10 +50,10 @@ const proxy = async (upstream: string) => {
 			return res.end();
 		}
 		/*
-		 * A dropped connection mid-stream. Forward exactly through the first SSE event naming a
-		 * `…delta…` (every provider's content events do), then cut: one network chunk can carry the
-		 * whole short response, so cutting at a chunk boundary could deliver it complete. The pause
-		 * lets the client parse the flushed event before the socket goes.
+		 * A dropped connection mid-stream. Forward exactly through the first SSE event whose delta
+		 * carries content (a chat-completions stream opens with a role-only delta), then cut: one
+		 * network chunk can carry the whole short response, so cutting at a chunk boundary could
+		 * deliver it complete. The pause lets the client parse the flushed event before the socket goes.
 		 */
 		const decoder = new TextDecoder();
 		let pending = "";
@@ -60,7 +63,7 @@ const proxy = async (upstream: string) => {
 			pending = events.pop() ?? "";
 			for (const event of events) {
 				await flushed(res, new TextEncoder().encode(`${event}\n\n`));
-				if (!event.includes("delta")) continue;
+				if (!event.includes("delta") || !content.test(event)) continue;
 				await new Promise((resolve) => setTimeout(resolve, 100));
 				return res.socket?.destroy();
 			}
@@ -178,10 +181,11 @@ describe.each(cases)("loop retry against live $name", (live) => {
 
 					const assistants = path.filter((hydrated) => hydrated.entry.type === "assistant");
 					expect(assistants.map((hydrated) => hydrated.entry.state)).toEqual(["aborted", "aborted", "committed"]);
+					// Attempt 1 failed before any byte of a response; attempt 2 failed mid-stream, and keeps
+					// what streamed on its aborted entry.
 					expect(assistants[0]!.parts).toEqual([]);
-					expect(assistants[1]!.parts).toEqual([]);
-					// Attempt 1 failed before any byte of a response; attempt 2 failed mid-stream.
 					expect(fragments.get(assistants[0]!.entry.id) ?? 0).toBe(0);
+					expect(assistants[1]!.parts.length).toBeGreaterThan(0);
 					expect(fragments.get(assistants[1]!.entry.id) ?? 0).toBeGreaterThan(0);
 					const answer = assistants[2]!.parts
 						.filter((part) => part.type === "text")

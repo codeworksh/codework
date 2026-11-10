@@ -160,7 +160,10 @@ export const RunError = Schema.Union([
 ]);
 export type RunError = typeof RunError.Type;
 
-/** The last run of a thread; `error` is set unless it succeeded or is still going. */
+/**
+ * The last run of a thread; `error` is set unless it succeeded. While the run is still going it is
+ * set only to the user's stop that run was asked for, until its end lands.
+ */
 export const ThreadRun = Schema.Struct({
 	/** Epoch milliseconds. */
 	startedAt: Schema.Finite,
@@ -169,6 +172,12 @@ export const ThreadRun = Schema.Struct({
 	error: Schema.optionalKey(RunError),
 });
 export type ThreadRun = typeof ThreadRun.Type;
+
+/** Whether the thread's open run was asked to stop by the user: `session.execution.stopping` landed, its end not yet. */
+export const stopping = (thread: { readonly runState: RunState; readonly lastRun?: ThreadRun }) =>
+	thread.runState !== "idle" &&
+	thread.lastRun?.error?._tag === "interrupted" &&
+	thread.lastRun.error.reason === "user";
 
 const ThreadFields = {
 	id: Schema.String,
@@ -189,6 +198,8 @@ const ThreadFields = {
 	runStateAt: Schema.optionalKey(Schema.Finite),
 	/** Absent before the first run. */
 	lastRun: Schema.optionalKey(ThreadRun),
+	/** Whether it holds queued prompts that wait for its next prompt instead of running by themselves. */
+	parked: Schema.Boolean,
 	/** Automatic restarts of the current run. */
 	restarts: Schema.Int,
 	/** The 1-based provider request in flight; absent when none is. */

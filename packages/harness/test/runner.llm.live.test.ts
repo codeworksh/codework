@@ -104,7 +104,8 @@ describe.each(LIVE)("runner LLM — live $name", (live) => {
 			expect(JSON.parse(path[0]!.entry.data)).toMatchObject({ stopReason: "stop" });
 			expect(path[0]!.parts.some((part) => part.type === "thinking")).toBe(true);
 			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${sessionId} ORDER BY seq`;
-			expect(durable.map((row) => row.type)).toEqual([
+			// Between the two, only the streamed progress the draft is rebuilt from.
+			expect(durable.map((row) => row.type).filter((type) => type !== "session.llm.progress.1")).toEqual([
 				"session.created.1",
 				"session.llm.started.1",
 				"session.llm.ended.1",

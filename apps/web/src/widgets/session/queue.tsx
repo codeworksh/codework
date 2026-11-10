@@ -32,12 +32,15 @@ export const Queue = memo(function Queue({
 	thread,
 	queued,
 	running,
+	parked,
 	onError,
 	onRestore,
 }: {
 	readonly thread: ThreadRef;
 	readonly queued: readonly QueuedPrompt[];
 	readonly running: boolean;
+	/** Left waiting by a stop or a failure: they run with the next message, not by themselves. */
+	readonly parked: boolean;
 	readonly onError: (message: string | undefined) => void;
 	/** Puts a withdrawn prompt's text back in the composer. */
 	readonly onRestore: (text: string) => void;
@@ -100,7 +103,14 @@ export const Queue = memo(function Queue({
 	const many = queued.length > 4;
 	return (
 		<div className="mx-2 rounded-t-lg border border-b-0 border-ink/10 bg-(--cw-composer) px-2.5 py-0.5 text-ui leading-snug text-ink-muted backdrop-blur-xl">
-			{queued.length > 3 && <p className="py-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
+			{parked ? (
+				<p className="py-1 tabular-nums">
+					<span className="font-medium">{queued.length > 3 ? `${queued.length} parked` : "Parked"}</span>
+					<span> · Runs with your next message</span>
+				</p>
+			) : (
+				queued.length > 3 && <p className="py-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>
+			)}
 			<ol
 				aria-label="Queued messages"
 				className={`flex flex-col ${many ? "max-h-[97px] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]" : ""}`}

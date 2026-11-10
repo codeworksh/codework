@@ -48,12 +48,16 @@
 		},
 		{
 			"seq": 9,
+			"type": "session.execution.stopping"
+		},
+		{
+			"seq": 10,
 			"type": "session.prompt.admitted",
 			"delivery": "steer",
 			"text": "Sent while stopping."
 		},
 		{
-			"seq": 10,
+			"seq": 11,
 			"type": "session.tool.settled",
 			"part": {
 				"tool": "bash",
@@ -62,49 +66,49 @@
 			}
 		},
 		{
-			"seq": 11,
+			"seq": 12,
 			"type": "session.turn.ended"
 		},
 		{
-			"seq": 12,
+			"seq": 13,
 			"type": "session.execution.interrupted",
 			"reason": "user"
 		},
 		{
-			"seq": 13,
+			"seq": 14,
 			"type": "session.prompt.admitted",
 			"delivery": "steer",
 			"text": "Next."
 		},
 		{
-			"seq": 14,
+			"seq": 15,
 			"type": "session.execution.started",
 			"resumed": false
 		},
 		{
-			"seq": 15,
+			"seq": 16,
 			"type": "session.prompt.promoted",
 			"delivery": "followUp",
 			"text": "Queued before the stop."
 		},
 		{
-			"seq": 16,
+			"seq": 17,
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Sent while stopping."
 		},
 		{
-			"seq": 17,
+			"seq": 18,
 			"type": "session.prompt.promoted",
 			"delivery": "steer",
 			"text": "Next."
 		},
 		{
-			"seq": 18,
+			"seq": 19,
 			"type": "session.llm.started"
 		},
 		{
-			"seq": 19,
+			"seq": 20,
 			"type": "session.llm.ended",
 			"reason": "stop",
 			"parts": [
@@ -114,18 +118,18 @@
 			]
 		},
 		{
-			"seq": 20,
+			"seq": 21,
 			"type": "session.turn.ended"
 		},
 		{
-			"seq": 21,
+			"seq": 22,
 			"type": "session.execution.succeeded"
 		}
 	],
 	"steps": [
 		{
 			"step": "stopped",
-			"head": 12,
+			"head": 13,
 			"restarts": 0,
 			"prompts": [
 				{
@@ -145,15 +149,15 @@
 				{
 					"text": "Sent while stopping.",
 					"delivery": "steer",
-					"admittedSeq": 9,
-					"tail": 9,
+					"admittedSeq": 10,
+					"tail": 10,
 					"promotedSeq": null
 				}
 			]
 		},
 		{
 			"step": "reopened",
-			"head": 12,
+			"head": 13,
 			"restarts": 0,
 			"prompts": [
 				{
@@ -173,15 +177,15 @@
 				{
 					"text": "Sent while stopping.",
 					"delivery": "steer",
-					"admittedSeq": 9,
-					"tail": 9,
+					"admittedSeq": 10,
+					"tail": 10,
 					"promotedSeq": null
 				}
 			]
 		},
 		{
 			"step": "next prompt",
-			"head": 12,
+			"head": 13,
 			"restarts": 0,
 			"prompts": [
 				{
@@ -196,21 +200,21 @@
 					"delivery": "followUp",
 					"admittedSeq": 8,
 					"tail": 8,
-					"promotedSeq": 15
+					"promotedSeq": 16
 				},
 				{
 					"text": "Sent while stopping.",
 					"delivery": "steer",
-					"admittedSeq": 9,
-					"tail": 9,
-					"promotedSeq": 16
+					"admittedSeq": 10,
+					"tail": 10,
+					"promotedSeq": 17
 				},
 				{
 					"text": "Next.",
 					"delivery": "steer",
-					"admittedSeq": 13,
-					"tail": 13,
-					"promotedSeq": 17
+					"admittedSeq": 14,
+					"tail": 14,
+					"promotedSeq": 18
 				}
 			]
 		}

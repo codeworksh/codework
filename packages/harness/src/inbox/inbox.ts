@@ -344,6 +344,12 @@ export const make = Effect.gen(function* () {
 			);
 	});
 
+	// A thread's `parked` is derived from what is pending, so a change to it carries the thread's revision
+	// forward: a client that follows by revision reads the thread again.
+	const followed = Effect.fnUntraced(function* (threadId: string) {
+		yield* sql`UPDATE thread SET rev = ${yield* store.rev} WHERE id = ${threadId}`;
+	});
+
 	const projectAdmitted = Effect.fn("Inbox.projectAdmitted")(
 		function* (input: ProjectAdmittedInput) {
 			// Safe to read first here: the commit transaction already opened with the
@@ -364,7 +370,7 @@ export const make = Effect.gen(function* () {
 				createdAt: VariantSchema.Override(input.timeCreated),
 				rev: yield* store.rev,
 			});
-			if (stored.length > 0) return;
+			if (stored.length > 0) return yield* followed(input.threadId);
 			const revived = yield* reviveRow({
 				id: input.id,
 				threadId: input.threadId,
@@ -375,6 +381,7 @@ export const make = Effect.gen(function* () {
 				rev: yield* store.rev,
 			});
 			if (revived.length === 0) return yield* Effect.die(new LifecycleConflict({ id: input.id }));
+			yield* followed(input.threadId);
 		},
 		store.write,
 		Effect.orDie,
@@ -432,7 +439,7 @@ export const make = Effect.gen(function* () {
 	const projectCancelled = Effect.fn("Inbox.projectCancelled")(
 		function* (input: ProjectCancelledInput) {
 			const updated = yield* cancelRow({ ...input, rev: yield* store.rev });
-			if (updated.length > 0) return;
+			if (updated.length > 0) return yield* followed(input.threadId);
 			// Nothing moved: this exact cancel being replayed, or the row was promoted or cancelled first.
 			const stored = yield* find(input.id);
 			if (Option.isSome(stored) && stored.value.cancelledSeq === input.cancelledSeq) return;
@@ -452,7 +459,7 @@ export const make = Effect.gen(function* () {
 				tail: input.delivery === "steer" ? input.seq : null,
 				rev: yield* store.rev,
 			});
-			if (updated.length > 0) return;
+			if (updated.length > 0) return yield* followed(input.threadId);
 			// Promoted or cancelled first: the update lost, and its event rolls back.
 			return yield* Effect.die(new LifecycleConflict({ id: input.id }));
 		},

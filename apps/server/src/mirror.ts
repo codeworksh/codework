@@ -98,6 +98,7 @@ const threadCore = (thread: Codework.ThreadSummary) => {
 		foundation: thread.foundation ?? null,
 		placementSpaceId: thread.placement?.spaceId ?? null,
 		placementDir: thread.placement?.directory ?? null,
+		parked: thread.parked ? 1 : 0,
 		restarts: thread.restarts,
 		attempt: thread.attempt ?? null,
 		runState: thread.runState,

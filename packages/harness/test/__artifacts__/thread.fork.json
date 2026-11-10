@@ -30,8 +30,9 @@
 		"21 session.execution.started.1 T1",
 		"22 session.prompt.promoted.1 T1",
 		"23 session.llm.started.1 T1",
-		"24 session.llm.failed.1 T1",
-		"25 session.execution.interrupted.1 T1"
+		"24 session.execution.stopping.1 T1",
+		"25 session.llm.failed.1 T1",
+		"26 session.execution.interrupted.1 T1"
 	],
 	"threads": [
 		{
@@ -66,7 +67,7 @@
 		"E4 T1 user seq=12 committed=12 committed",
 		"E5 T1 assistant seq=13 committed=15 committed",
 		"E6 T1 user seq=22 committed=22 committed",
-		"E7 T1 assistant seq=23 committed=24 aborted"
+		"E7 T1 assistant seq=23 committed=25 aborted"
 	],
 	"documents": [
 		{

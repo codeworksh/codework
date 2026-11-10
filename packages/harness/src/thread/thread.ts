@@ -20,6 +20,11 @@ import { EventList } from "../event/list.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { ThreadSchema } from "./schema.ts";
 
+/** A host interruption landed on a run the user had asked to stop; see `projectRun`. */
+export class RunStoppingError extends Schema.TaggedError<RunStoppingError>()("RunStoppingError", {
+	threadId: Schema.String,
+}) {}
+
 export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>()("ThreadNotFoundError", {
 	threadId: Schema.String,
 }) {
@@ -146,6 +151,8 @@ export interface InsertThread {
 export type RunChange =
 	| { readonly _tag: "started" }
 	| { readonly _tag: "running" }
+	/** A user stop accepted for the open run: kept on the row until the run's terminal lands. */
+	| { readonly _tag: "stopping" }
 	| {
 			readonly _tag: "ended";
 			readonly outcome: ThreadSchema.RunOutcome;
@@ -153,6 +160,11 @@ export type RunChange =
 			/** The ending event's seq. */
 			readonly seq: number;
 	  };
+
+/** Whether the row's open run was asked to stop by the user; see `session.execution.stopping`. */
+export const stopping = (row: Pick<ThreadRow, "runState" | "runError">) =>
+	row.runState !== "idle" &&
+	Option.exists(row.runError, (error) => error._tag === "interrupted" && error.reason === "user");
 
 // Entry row + its part rows, zipped. Message decode happens above this layer.
 export interface HydratedEntry {
@@ -217,9 +229,9 @@ export interface Interface {
 	/** Names an untitled thread. Returns whether the title changed. */
 	readonly retitle: (threadId: ThreadSchema.ID, title: string) => Effect.Effect<boolean>;
 	/**
-	 * Claims a thread's unfinished run for recovery, counting a restart when the sweep found its host
+	 * Claims the run the host cut off for recovery, counting a restart when the sweep found its host
 	 * dead in it, unless the run slept in retry backoff (a shutdown is not counted either). The new count,
-	 * or none when nothing is unfinished any more, say because the user stopped it since.
+	 * or none when no run is cut off any more, say because the user stopped it since.
 	 */
 	readonly claimRestart: (threadId: ThreadSchema.ID) => Effect.Effect<Option.Option<number>>;
 	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
@@ -228,10 +240,13 @@ export interface Interface {
 	readonly setAttempt: (threadId: ThreadSchema.ID, attempt: number | null) => Effect.Effect<void>;
 	/** Whether a pending prompt of the thread is past its head: woken since its last unanswered end. */
 	readonly runnable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
+	/**
+	 * Whether the thread holds queued prompts that wait for its next prompt: idle, nothing owed a run, and a
+	 * prompt pending. Derived from the positions, never stored.
+	 */
+	readonly parked: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/** Whether the thread is among {@link unfinished}: still owed a resume, say not stopped since. */
 	readonly resumable: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
-	/** Whether the thread's last run was cut off by the host, a crash or a shutdown: a run to resume. */
-	readonly cutOff: (threadId: ThreadSchema.ID) => Effect.Effect<boolean>;
 	/**
 	 * Threads with a run left to resume, oldest first: their last run was interrupted by a crash or a
 	 * shutdown, or a pending prompt is runnable. Read after the startup sweep has closed open runs.
@@ -978,7 +993,7 @@ export const layer = Layer.effect(
 				UPDATE thread
 				SET restarts = restarts + (CASE WHEN ${interruptedOf(["crash"])} AND NOT ${asleepOf} THEN 1 ELSE 0 END),
 					rev = ${yield* store.rev}
-				WHERE id = ${threadId} AND ${unfinishedOf}
+				WHERE id = ${threadId} AND ${interruptedOf(["crash", "shutdown"])}
 				RETURNING restarts
 			`;
 				return Option.fromUndefinedOr(rows[0]?.restarts);
@@ -1010,7 +1025,13 @@ export const layer = Layer.effect(
 			}, Effect.orDie);
 		const runnable = holds("Thread.runnable", runnableOf);
 		const resumable = holds("Thread.resumable", unfinishedOf);
-		const cutOff = holds("Thread.cutOff", interruptedOf(["crash", "shutdown"]));
+		const parked = holds(
+			"Thread.parked",
+			sql`(thread.run_state = 'idle' AND NOT ${unfinishedOf} AND EXISTS (
+				SELECT 1 FROM inbox
+				WHERE inbox.thread_id = thread.id AND inbox.promoted_seq IS NULL AND inbox.cancelled_seq IS NULL
+			))`,
+		);
 
 		const findUnfinished = SqlSchema.findAll({
 			Request: Schema.Void,
@@ -1028,6 +1049,16 @@ export const layer = Layer.effect(
 		) {
 			const time = DateTime.toEpochMillis(at);
 			const rev = yield* store.rev;
+			if (change._tag === "stopping") {
+				// Only an open run is asked to stop: one that ended meanwhile keeps the error it ended with.
+				const stop = yield* encodeRunError({ _tag: "interrupted", reason: "user" });
+				const rows = yield* sql`
+					UPDATE thread SET run_error = CASE WHEN run_state <> 'idle' THEN ${stop} ELSE run_error END, rev = ${yield* store.rev}
+					WHERE id = ${threadId}
+					RETURNING id
+				`;
+				return rows.length > 0 ? undefined : yield* Effect.die(new ThreadNotFoundError({ threadId }));
+			}
 			const state: ThreadSchema.RunState =
 				change._tag === "started" ? "starting" : change._tag === "running" ? "running" : "idle";
 			// SET reads the old row, so `run_state_at` moves only when the state does.
@@ -1067,6 +1098,15 @@ export const layer = Layer.effect(
 			// A run the host cut off resumes, a clean shutdown's too: it keeps its count for the resume to claim and
 			// its attempt, so a restart does not hand a failing request a fresh retry budget.
 			const cutOff = interrupted === "crash" || interrupted === "shutdown";
+			// A run asked to stop ends as stopped: a host interruption that lost the race to the stop's record
+			// rolls back, for its publisher to end the run as the user's.
+			if (cutOff) {
+				const asked = yield* sql`
+					SELECT 1 FROM thread
+					WHERE id = ${threadId} AND run_state <> 'idle' AND json_extract(run_error, '$.reason') = 'user'
+				`;
+				if (asked.length > 0) return yield* Effect.die(new RunStoppingError({ threadId }));
+			}
 			const restarts = cutOff ? sql`restarts` : sql`0`;
 			const attempt = cutOff ? sql`attempt` : sql`NULL`;
 			yield* found(
@@ -1131,7 +1171,7 @@ export const layer = Layer.effect(
 			setAttempt,
 			runnable,
 			resumable,
-			cutOff,
+			parked,
 			unfinished,
 			projectRun,
 			open,

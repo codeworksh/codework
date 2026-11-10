@@ -272,6 +272,17 @@ it("a fork's line pages through inherited entries by keyset, takes its ancestor'
 	expect(queued.thread.title).toBe("gate");
 	expect(queued.inbox.map((prompt) => [prompt.text, prompt.delivery])).toEqual([["Queued", "followUp"]]);
 	expect(queued.entries.map((entry) => entry.id)).toEqual(newest.entries.map((entry) => entry.id));
+	expect(queued.thread.parked).toBe(false);
+
+	// A stop leaves the follow-up waiting for the next prompt: the thread reads parked, the prompt still queued.
+	await server.run((rpc) => rpc["thread.interrupt"](ref));
+	await waitFor(
+		() => (query(appHome, "SELECT parked FROM thread WHERE id = ?", fork.id)[0]?.parked === 1 ? true : undefined),
+		"the parked thread",
+	);
+	const parked = await line({ limit: 0 });
+	expect(parked.thread).toMatchObject({ runState: "idle", parked: true });
+	expect(parked.inbox.map((prompt) => prompt.text)).toEqual(["Queued"]);
 
 	const { storeId } = await synced(appHome, machineId, server);
 	await snapshot(
@@ -287,6 +298,7 @@ it("a fork's line pages through inherited entries by keyset, takes its ancestor'
 				budgeted: { entries: budgeted.entries.map((entry) => entry.id), more: budgeted.more },
 				paged: { ...paged, below: brief(below) },
 				queued: brief(queued),
+				stopped: { thread: parked.thread, inbox: parked.inbox },
 			}),
 		),
 	);

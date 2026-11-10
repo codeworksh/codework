@@ -270,26 +270,10 @@ export const layer = (options: Options = {}) =>
 				yield* Effect.sleep(Duration.millis(delayMs));
 			});
 
-			/**
-			 * Ends a run that is not resumed. Its terminal parks the queue: a prompt woken before it waits for
-			 * the next one.
-			 */
-			const endRun = Effect.fn("Loop.endRun")(function* (
-				sessionId: SessionSchema.ID,
-				threadId: ThreadSchema.ID,
-				reason: EventList.RunFailed["data"]["reason"],
-				message: string,
-			) {
-				yield* Effect.uninterruptible(
-					events.publish(EventList.RunFailed, {
-						timestamp: yield* DateTime.now,
-						sessionId,
-						threadId,
-						reason,
-						message,
-					}),
-				);
-				return "ended" as const;
+			/** A run that is not resumed: its execution records the end, which parks the queue. */
+			const failed = (reason: ThreadSchema.RunFailedReason, message: string): Runner.Outcome => ({
+				reason,
+				message,
 			});
 
 			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
@@ -667,7 +651,7 @@ export const layer = (options: Options = {}) =>
 					if (carried?.failed !== undefined) {
 						const delayMs = Retry.delay(start.retry, carried.retries, hostStopped(start, carried.failed));
 						if (delayMs === undefined) {
-							return yield* endRun(start.sessionId, input.threadId, "interrupted", carried.failed);
+							return failed("interrupted", carried.failed);
 						}
 						yield* scheduleRetry(start, carried.retries, delayMs, carried.failed);
 					}
@@ -696,9 +680,7 @@ export const layer = (options: Options = {}) =>
 						// Queued steers and follow-ups start the next run.
 						if (decision === "end") return "drained" as const;
 						if (truncations >= TRUNCATION_LIMIT) {
-							return yield* endRun(
-								snapshot.sessionId,
-								input.threadId,
+							return failed(
 								"truncated",
 								`The response hit the output token limit with tool calls ${truncations} times in a row; the run is ended`,
 							);
@@ -732,12 +714,7 @@ export const layer = (options: Options = {}) =>
 				const thread = yield* threads.get(input.threadId);
 				if (Option.isNone(thread)) return "drained" as const;
 				yield* healDraft(input.threadId, Option.isSome(thread.value.attempt) ? input.message : undefined);
-				return yield* endRun(
-					SessionSchema.ID.make(thread.value.sessionId),
-					input.threadId,
-					"crashloop",
-					input.message,
-				);
+				return failed("crashloop", input.message);
 			});
 
 			return Runner.Service.of({ run, abandon });

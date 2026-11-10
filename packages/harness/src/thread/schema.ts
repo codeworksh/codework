@@ -38,7 +38,10 @@ export type RunOutcome = typeof RunOutcome.Type;
 export const RunFailedReason = Schema.Literals(["crashloop", "interrupted", "truncated"]);
 export type RunFailedReason = typeof RunFailedReason.Type;
 
-/** Why the last run did not succeed; stored as `thread.run_error` JSON. */
+/**
+ * Why the last run did not succeed; stored as `thread.run_error` JSON. On a run still open it holds the
+ * user stop that run was asked for, until its terminal lands.
+ */
 export const RunError = Schema.Union([
 	Schema.TaggedStruct("failed", { error: SessionFailure.Error }),
 	Schema.TaggedStruct("runFailed", { reason: RunFailedReason, message: Schema.String }),

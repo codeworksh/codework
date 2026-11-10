@@ -804,6 +804,67 @@ describe("recovery after the host is killed", () => {
 		).toMatchFileSnapshot("./__artifacts__/recovery.stop.json");
 	}, 90_000);
 
+	it("a host killed while a stop winds down keeps the stop: the run is not resumed, its queue parked", async () => {
+		const marker = join(realpathSync(mkdtempSync(join(tmpdir(), "codework-recovery-marker-"))), "ran");
+		onTestFinished(() => rmSync(join(marker, ".."), { recursive: true, force: true }));
+		const fake = await streaming((_body, response, index) => {
+			if (index > 0) return answer(response, `Answer ${index}.`);
+			// Ignores SIGTERM, so the stop is still winding down when the host is killed.
+			response.send(
+				toolCalls([{ name: "bash", arguments: { command: `trap '' TERM; echo ran > ${marker}; sleep 20` } }]),
+			);
+			response.finish("tool_calls");
+		});
+		const { home, start } = setup(fake.url, retry);
+
+		const first = await start();
+		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const ids = { sessionId: created.session.id, threadId: created.id };
+		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
+		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
+
+		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
+		await until("the tool to run", () => existsSync(marker));
+		await call(first.url, (rpc) =>
+			rpc["thread.prompt"]({ ...ids, text: "Queued before the stop.", delivery: "followUp" }),
+		);
+		expect(await call(first.url, (rpc) => rpc["thread.interrupt"](ids))).toEqual({ interrupted: true });
+		// The stop was accepted, and its run has not ended yet.
+		expect(count(await log(first.url, ids), "session.execution.interrupted")).toBe(0);
+		await first.kill();
+
+		const second = await start();
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("reopened");
+		const reopened = await log(second.url, ids);
+		expect(
+			reopened.filter((event) => event.type === "session.execution.interrupted").map((event) => summary(event)),
+		).toEqual([{ type: "session.execution.interrupted", reason: "user" }]);
+		expect(count(reopened, "session.execution.started")).toBe(1);
+		expect(fake.requests).toHaveLength(1);
+		// What a remote client reads to tell a queue that waits from one about to run.
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(true);
+
+		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second.url, ids, "session.execution.succeeded");
+		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		record("next prompt");
+		expect(
+			sent(fake.requests[1]!)
+				.filter((message) => message.role === "user")
+				.map((message) => message.text),
+		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Next."]);
+		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(false);
+		const events = await log(second.url, ids);
+		await expect(
+			artifact({
+				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
+				steps,
+				requests: fake.requests.map(sent),
+			}),
+		).toMatchFileSnapshot("./__artifacts__/recovery.stop-killed.json");
+	}, 90_000);
+
 	it("a parked prompt moved to steer runs now and is resumed after a kill; resending it changes nothing", async () => {
 		const cut = gate();
 		const resend = gate();

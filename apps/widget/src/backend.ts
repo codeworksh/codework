@@ -81,6 +81,8 @@ export const LineThread = Schema.Struct({
 	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 	runState: RunState,
 	lastRun: Schema.optionalKey(ThreadRun),
+	/** Its queued prompts wait for its next prompt instead of running by themselves. */
+	parked: Schema.Boolean,
 	/** Epoch milliseconds. */
 	updatedAt: Schema.Finite,
 	directory: Schema.String,
