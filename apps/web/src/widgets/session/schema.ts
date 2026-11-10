@@ -140,6 +140,8 @@ export const Info = Schema.Struct({
 	runState: RunState,
 	/** The run is still going, but CodeWork has accepted a stop for it. */
 	stopping: Schema.Boolean,
+	/** Its queued prompts wait for the next message instead of running by themselves. */
+	parked: Schema.Boolean,
 	/**
 	 * Why the last run failed: CodeWork's failure category (`sandbox-mount-error` and the like) and
 	 * its message. Absent once another run starts, or when it did not fail.

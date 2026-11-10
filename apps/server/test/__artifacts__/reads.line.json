@@ -6,6 +6,7 @@
 			"machineId": "<id 1>",
 			"title": "Fork prompt",
 			"runState": "idle",
+			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
@@ -58,6 +59,7 @@
 			"machineId": "<id 1>",
 			"title": "Fork prompt",
 			"runState": "idle",
+			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
@@ -110,6 +112,7 @@
 			"machineId": "<id 1>",
 			"title": "Fork prompt",
 			"runState": "idle",
+			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
@@ -159,6 +162,7 @@
 				"machineId": "<id 1>",
 				"title": "Fork prompt",
 				"runState": "idle",
+				"parked": false,
 				"updatedAt": "<time>",
 				"directory": "<home>",
 				"project": {
@@ -215,6 +219,7 @@
 			"lastRun": {
 				"startedAt": "<time>"
 			},
+			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
@@ -267,5 +272,39 @@
 		],
 		"more": true,
 		"floor": "<seq 0>"
+	},
+	"stopped": {
+		"thread": {
+			"id": "<thr 1>",
+			"sessionId": "<ses 1>",
+			"machineId": "<id 1>",
+			"title": "gate",
+			"runState": "idle",
+			"lastRun": {
+				"startedAt": "<time>",
+				"endedAt": "<time>",
+				"outcome": "interrupted",
+				"error": {
+					"_tag": "interrupted",
+					"reason": "user"
+				}
+			},
+			"parked": true,
+			"updatedAt": "<time>",
+			"directory": "<home>",
+			"project": {
+				"id": "<id 2>",
+				"name": "Line"
+			}
+		},
+		"inbox": [
+			{
+				"id": "<id 6>",
+				"delivery": "followUp",
+				"text": "Queued",
+				"admittedSeq": 30,
+				"createdAt": "<time>"
+			}
+		]
 	}
 }

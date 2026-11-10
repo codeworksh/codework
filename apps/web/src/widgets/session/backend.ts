@@ -44,6 +44,7 @@ const toInfo = (thread: LineThread): Info => {
 		updated: thread.updatedAt,
 		runState: thread.runState,
 		stopping: stopping(thread),
+		parked: thread.parked,
 		project: thread.project,
 		...(thread.hostDir === undefined ? {} : { hostDir: thread.hostDir }),
 		...(thread.thinkingLevel === undefined ? {} : { thinkingLevel: thread.thinkingLevel }),

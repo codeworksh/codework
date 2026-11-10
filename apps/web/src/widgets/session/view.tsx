@@ -598,6 +598,7 @@ function Conversation({
 						thread={thread}
 						queued={view.queued}
 						running={running}
+						parked={view.info.parked}
 						onError={setSendError}
 						onRestore={restore}
 					/>
