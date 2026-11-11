@@ -1209,15 +1209,30 @@ function WorkLog({
 	);
 }
 
+/**
+ * The first paragraph with text, code fences blanked: fences are blanked one at a time and only
+ * until that paragraph ends, so a long streaming block isn't scanned whole on every delta.
+ */
+function firstParagraph(text: string) {
+	const separator = /\n\s*\n/g;
+	let body = "";
+	for (let at = 0; ;) {
+		const open = text.indexOf("```", at);
+		body += open === -1 ? text.slice(at) : `${text.slice(at, open)} `;
+		const start = body.search(/\S/);
+		separator.lastIndex = Math.max(start, 0);
+		const end = start === -1 ? undefined : separator.exec(body)?.index;
+		if (end !== undefined) return body.slice(start, end).trim();
+		// An unclosed fence runs to the end.
+		const close = open === -1 ? -1 : text.indexOf("```", open + 3);
+		if (close === -1) return body.trim();
+		at = close + 3;
+	}
+}
+
 /** First paragraph of a folded block, stripped to one plain line. */
 function proseSummary(text: string) {
-	const body = text.replace(/```[\s\S]*?(?:```|$)/g, " ");
-	const paragraph =
-		body
-			.split(/\n\s*\n/)
-			.map((part) => part.trim())
-			.find(Boolean) ?? "";
-	return paragraph
+	return firstParagraph(text)
 		.replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
 		.replace(/`([^`]*)`/g, "$1")
 		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
