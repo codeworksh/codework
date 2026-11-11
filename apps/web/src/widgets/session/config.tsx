@@ -55,7 +55,7 @@ const record = (value: unknown): Readonly<Record<string, unknown>> =>
 	Predicate.isObject(value) && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
 /** A section heading as Linear sets one, a step quieter: medium weight, in line with its rows' text. */
-export function Heading({ children }: { readonly children: string }) {
+function Heading({ children }: { readonly children: string }) {
 	return <h2 className="px-4 text-[14px]/5 font-medium text-ink">{children}</h2>;
 }
 
