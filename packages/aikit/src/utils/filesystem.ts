@@ -15,7 +15,7 @@ function isEnoent(error: unknown): error is { code: "ENOENT" } {
 	);
 }
 
-export async function write(path: string, content: string | Buffer | Uint8Array, mode?: number): Promise<void> {
+async function write(path: string, content: string | Buffer | Uint8Array, mode?: number): Promise<void> {
 	try {
 		if (mode) {
 			await writeFile(path, content, { mode });
@@ -34,10 +34,6 @@ export async function write(path: string, content: string | Buffer | Uint8Array,
 		}
 		throw error;
 	}
-}
-
-export async function writeJson(path: string, data: unknown, mode?: number): Promise<void> {
-	return write(path, JSON.stringify(data, null, 2), mode);
 }
 
 /**

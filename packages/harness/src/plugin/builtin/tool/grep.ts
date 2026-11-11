@@ -2,9 +2,9 @@ import { Effect, Layer, Schema } from "effect";
 import type { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { quote, quoteArgv } from "../../../sandbox/shell/shell.ts";
-import { Binary } from "../../../tool/binary.ts";
-import { Output } from "../../../tool/output.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as Binary from "../../../tool/binary.ts";
+import * as Output from "../../../tool/output.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import {
 	DEFAULT_MAX_BYTES,
@@ -55,7 +55,7 @@ class GrepFailed extends Schema.TaggedError<GrepFailed>()("GrepFailed", { messag
 
 const DEFAULT_LIMIT = 100;
 
-export const grepDef = Tool.define({
+const grepDef = Tool.define({
 	name: "grep",
 	label: "grep",
 	description: `Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} matches or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.`,
@@ -167,7 +167,7 @@ const contextBlock = (fs: SandboxFileSystem.Interface, match: Match, context: nu
 		return { lines: block, truncated };
 	});
 
-export const grepHandler: Tool.Handler<
+const grepHandler: Tool.Handler<
 	typeof GrepParams,
 	typeof GrepSuccess,
 	typeof GrepFailed,

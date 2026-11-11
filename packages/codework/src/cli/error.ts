@@ -9,7 +9,7 @@ import {
 } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
-import { Client } from "../server/client.ts";
+import * as Client from "../server/client.ts";
 import { writeError } from "./output.ts";
 
 /** Bad flag or argument combinations the parser cannot express on its own. */

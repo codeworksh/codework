@@ -1,7 +1,7 @@
 import { Control, Harness, Sandbox } from "@codeworksh/harness/effect";
 import { Effect, Logger, Stdio } from "effect";
-import { Agent } from "./agent.ts";
-import { Handlers } from "./handlers.ts";
+import * as Agent from "./agent.ts";
+import * as Handlers from "./handlers.ts";
 
 // Sessions and managed sandboxes outlive any single request; the connection's end is what stops them.
 const shutdown = Effect.gen(function* () {
@@ -42,5 +42,3 @@ export const serve = (options: Harness.Options) =>
 		const handlers = yield* Handlers.make;
 		yield* Agent.serve(yield* Stdio.Stdio, handlers);
 	}).pipe(Effect.scoped, Effect.provide(Harness.layer(options)), Effect.provideService(Logger.LogToStderr, true));
-
-export * as Server from "./server.ts";

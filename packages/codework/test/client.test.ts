@@ -1,8 +1,9 @@
 import { EventList, EventSchema, PromptSchema, Session } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Exit, Queue, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Client } from "../src/server/client.ts";
-import { Envelope, type EventEnvelope } from "../src/server/envelope.ts";
+import * as Client from "../src/server/client.ts";
+import * as Envelope from "../src/server/envelope.ts";
+import { type EventEnvelope } from "../src/server/envelope.ts";
 
 /*
  * Notifications of one thread may arrive out of log order: a prompt's admission is published by the

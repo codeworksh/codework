@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { quote } from "../src/sandbox/shell/shell.ts";
 import { conformanceSpec, interruptWitness } from "./fixtures/conformance.spec.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";

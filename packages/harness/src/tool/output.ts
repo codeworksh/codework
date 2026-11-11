@@ -189,5 +189,3 @@ export const cleanup = (file: string, keep: boolean) =>
 
 /** Remove an output file that {@link cleanup} kept. */
 export const remove = (file: string) => `rm -f -- ${quote(file)}`;
-
-export * as Output from "./output.ts";

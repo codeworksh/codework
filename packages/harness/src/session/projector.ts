@@ -29,18 +29,18 @@
 
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer, Option, Schema } from "effect";
-import { ContextCodec } from "../context/codec.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { Document } from "../document/document.ts";
-import { Inbox } from "../inbox/inbox.ts";
+import * as ContextCodec from "../context/codec.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as Document from "../document/document.ts";
+import * as Inbox from "../inbox/inbox.ts";
 import { TOOL_SEARCH_NAME, ToolSearchDetails } from "../plugin/builtin/tool/toolsearch.ts";
-import { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
-import { PromptSchema } from "./prompt/schema.ts";
-import type { SessionMessageSchema } from "./message/schema.ts";
-import { SessionSchema } from "./schema.ts";
-import { Session } from "./session.ts";
+import * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
+import * as PromptSchema from "./prompt/schema.ts";
+import type * as SessionMessageSchema from "./message/schema.ts";
+import * as SessionSchema from "./schema.ts";
+import * as Session from "./session.ts";
 
 const decodeLoaded = Schema.decodeUnknownOption(ToolSearchDetails);
 const encodeSystemData = Schema.encodeEffect(SessionSchema.SystemData);
@@ -330,5 +330,3 @@ export const layer = Layer.effectDiscard(
 		);
 	}),
 );
-
-export * as SessionProjector from "./projector.ts";

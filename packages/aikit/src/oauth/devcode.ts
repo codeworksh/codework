@@ -32,7 +32,7 @@ export type DeviceCodePollOptions<T> = {
 	signal?: AbortSignal | undefined;
 };
 
-export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
 			reject(new Error(CANCEL_MESSAGE));

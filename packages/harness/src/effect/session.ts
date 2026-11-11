@@ -2,26 +2,26 @@ import type { Model } from "@codeworksh/aikit";
 import { DateTime, Effect, Option, Stream } from "effect";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
-import { EventList } from "../event/list.ts";
+import * as EventList from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
-import { Location } from "../location/location.ts";
+import * as Location from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import type { ProjectSchema } from "../project/schema.ts";
 import { AbsolutePath } from "../schema.ts";
-import { SessionMessageSchema } from "../session/message/schema.ts";
+import * as SessionMessageSchema from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
-import { PromptSchema } from "../session/prompt/schema.ts";
+import * as PromptSchema from "../session/prompt/schema.ts";
 import * as SessionRuntime from "../session/runtime.ts";
 import type { ThreadRow } from "../db/schema.sql.ts";
-import { Document } from "../document/document.ts";
-import { DocumentSchema } from "../document/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { Session as SessionStore } from "../session/session.ts";
-import { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
-import { State } from "../state/state.ts";
+import * as Document from "../document/document.ts";
+import * as DocumentSchema from "../document/schema.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as SessionStore from "../session/session.ts";
+import * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
+import * as State from "../state/state.ts";
 import { rooted } from "../util/path.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
 
@@ -625,5 +625,3 @@ export const configuration = Effect.fn("Session.configuration")(function* (threa
 });
 
 export { AbsolutePath, SessionMessageSchema, SessionSchema, ThreadSchema };
-
-export * as Session from "./session.ts";

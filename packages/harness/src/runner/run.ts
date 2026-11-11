@@ -5,17 +5,17 @@
 
 import { Context, Effect, Schema } from "effect";
 import type { ContextDecodeError, ContextEncodeError } from "../context/errors.ts";
-import { Location } from "../location/location.ts";
+import * as Location from "../location/location.ts";
 import type { SandboxMountError } from "../sandbox/errors.ts";
 import { SandboxFileSystem } from "../sandbox/fs/filesystem.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { optional } from "../schema.ts";
-import type { Settings } from "../settings/settings.ts";
+import type * as Settings from "../settings/settings.ts";
 import type { SessionLinkedSpaceNotFoundError, SessionNotFoundError } from "../session/session.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
 import type { ThreadNotFoundError } from "../thread/thread.ts";
-import type { State } from "../state/state.ts";
+import type * as State from "../state/state.ts";
 
 export class SandboxDirectoryNotFoundError extends Schema.TaggedError<SandboxDirectoryNotFoundError>()(
 	"Runner.SandboxDirectoryNotFoundError",
@@ -209,5 +209,3 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/runner/run/Service") {}
-
-export * as Runner from "./run.ts";

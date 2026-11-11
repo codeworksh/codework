@@ -1,9 +1,9 @@
 import { Effect, Option } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
+import * as Database from "../src/db/db.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { SandboxStore } from "../src/sandbox/store.ts";
+import * as SandboxStore from "../src/sandbox/store.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // A plain database, exactly as Project and Session compose it. Nothing is

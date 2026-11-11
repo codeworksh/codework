@@ -2,8 +2,8 @@ import { Effect, Layer, Schema } from "effect";
 import type { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { quoteArgv } from "../../../sandbox/shell/shell.ts";
-import { Binary } from "../../../tool/binary.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as Binary from "../../../tool/binary.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../../../tool/truncate.ts";
 import { posix } from "../../../util/posix.ts";
@@ -36,7 +36,7 @@ class FindFailed extends Schema.TaggedError<FindFailed>()("FindFailed", { messag
 const DEFAULT_LIMIT = 1000;
 const FD_ERROR = "[fd error]:";
 
-export const findDef = Tool.define({
+const findDef = Tool.define({
 	name: "find",
 	label: "find",
 	description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
@@ -66,7 +66,7 @@ const insideGitRepo = (fs: SandboxFileSystem.Interface, searchPath: string) =>
 		}
 	});
 
-export const findHandler: Tool.Handler<
+const findHandler: Tool.Handler<
 	typeof FindParams,
 	typeof FindSuccess,
 	typeof FindFailed,

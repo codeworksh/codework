@@ -5,7 +5,7 @@ import type { Bash, IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { load } from "../../util/unpacked.ts";
 import { posix } from "../../util/posix.ts";
-import { Local } from "../fs/vfs.ts";
+import * as Local from "../fs/vfs.ts";
 import { SandboxIO } from "../io.ts";
 import type { LocalPrimitives } from "../sandbox.ts";
 import {
@@ -21,7 +21,7 @@ import {
 // The shared exec contract lives in `shell.ts`; re-export the pieces this
 // module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
 // consumers keep working.
-export { Shell, ShellError };
+export { Shell };
 export type { ExecResult, ISandboxExe as Interface };
 
 // just-bash's IFileSystem implemented on top of the sandbox's vfs, so shell
@@ -322,7 +322,7 @@ export const transport = <E, RIn>(
 // VFS and catastrophic over the host: `walkRoot` would enumerate the entire
 // machine, synchronously, on the first glob. A caller that has to name the
 // directory cannot fall into that by omission.
-export const layer = <E, RIn>(
+const layer = <E, RIn>(
 	inner: Layer.Layer<LocalPrimitives, E, RIn>,
 	cwd: string,
 ): Layer.Layer<Shell | LocalPrimitives, E, RIn> =>
@@ -338,5 +338,3 @@ export const services = <E, RIn>(
 	identity: SandboxIO.Identity,
 ): Layer.Layer<SandboxIO.Provides | LocalPrimitives, E, RIn> =>
 	Layer.provideMerge(SandboxIO.mount(identity), Layer.provideMerge(Local.layer, layer(inner, identity.cwd)));
-
-export * as EnvBash from "./justbash.ts";

@@ -36,5 +36,3 @@ export const make = (provider: Interface, options?: Options): SandboxFileSystem.
 		scanLines: (path, scanOptions) => provider.scanLines(resolve(path), scanOptions),
 	};
 };
-
-export const withProvider = make;

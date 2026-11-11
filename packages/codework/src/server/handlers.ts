@@ -21,8 +21,8 @@ import {
 	ThreadStore,
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
+import * as Contract from "./contract.ts";
 import {
-	Contract,
 	type HistoryEntry,
 	type IndexItem,
 	type LogSynced,
@@ -35,14 +35,15 @@ import {
 	type ThreadItem,
 	type ThreadSummary,
 } from "./contract.ts";
-import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
-import { Clones } from "./clones.ts";
-import { EventFeed } from "./feed.ts";
-import { Host } from "./host.ts";
-import { Identity } from "./identity.ts";
-import { OAuth } from "./oauth.ts";
-import { MessagePart } from "./part.ts";
-import { Rows } from "./rows.ts";
+import * as Envelope from "./envelope.ts";
+import { type EncodingError, type EventEnvelope } from "./envelope.ts";
+import * as Clones from "./clones.ts";
+import * as EventFeed from "./feed.ts";
+import * as Host from "./host.ts";
+import * as Identity from "./identity.ts";
+import * as OAuth from "./oauth.ts";
+import * as MessagePart from "./part.ts";
+import * as Rows from "./rows.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -579,5 +580,3 @@ export const layer = Contract.Api.toLayer(
 		});
 	}),
 );
-
-export * as Handlers from "./handlers.ts";

@@ -281,7 +281,7 @@ export type Runner = (input: {
 	readonly from: string;
 }) => Effect.Effect<Tree, InstallError>;
 
-export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache, from }) {
+const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache, from }) {
 	const flat = yield* options(from, cache);
 	const { Arborist } = yield* Effect.promise(() => import("@npmcli/arborist"));
 	const settings = {
@@ -433,5 +433,3 @@ export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, cac
 
 /** A `file:` URL for an entrypoint, which is what the module loader takes. */
 export const url = (entrypoint: string): string => pathToFileURL(entrypoint).href;
-
-export * as PluginNpm from "./npm.ts";

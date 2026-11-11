@@ -32,7 +32,7 @@ export const log = (logDir: string) => `${logDir}/server.log`;
 
 const decode = Schema.decodeUnknownEffect(infoJson);
 
-export const write = Effect.fn("ServerRegistration.write")(function* (path: string, info: Info) {
+const write = Effect.fn("ServerRegistration.write")(function* (path: string, info: Info) {
 	const fs = yield* FileSystem.FileSystem;
 	const paths = yield* Path.Path;
 	yield* fs.makeDirectory(paths.dirname(path), { recursive: true });
@@ -100,5 +100,3 @@ export const command = (): ReadonlyArray<string> => {
 	const runtime = import.meta.url.endsWith(".ts") ? process.execArgv : [];
 	return [process.execPath, ...runtime, entry];
 };
-
-export * as Registration from "./registration.ts";

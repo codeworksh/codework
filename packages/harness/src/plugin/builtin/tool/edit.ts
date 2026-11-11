@@ -1,8 +1,8 @@
 import { Effect, Layer, Schema } from "effect";
 import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { EditDiff } from "../../../tool/diff.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as EditDiff from "../../../tool/diff.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { define } from "../../plugin.ts";
 
@@ -49,7 +49,7 @@ const isSingleEdit = (value: unknown): value is typeof ReplaceEdit.Type => {
  * edit object, and a top-level `oldText`/`newText` pair. Works on a copy; the
  * call's arguments stay unchanged.
  */
-export const prepareEditArguments = (input: unknown): unknown => {
+const prepareEditArguments = (input: unknown): unknown => {
 	if (!input || typeof input !== "object" || Array.isArray(input)) return input;
 	const args: Record<string, unknown> = { ...input };
 	if (typeof args.edits === "string") {
@@ -69,7 +69,7 @@ export const prepareEditArguments = (input: unknown): unknown => {
 	return { ...rest, edits };
 };
 
-export const editDef = Tool.define({
+const editDef = Tool.define({
 	name: "edit",
 	label: "edit",
 	description:
@@ -105,7 +105,7 @@ const accessFailure = (path: string) => (error: SandboxFileSystem.FileSystemErro
 	return fail(`Could not edit file: ${path}. Error code: ${typeof code === "string" ? code : "unknown"}.`);
 };
 
-export const editHandler: Tool.Handler<
+const editHandler: Tool.Handler<
 	typeof EditParams,
 	typeof EditSuccess,
 	typeof EditFailed,

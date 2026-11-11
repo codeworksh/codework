@@ -16,20 +16,20 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import { Document } from "../document/document.ts";
-import { DocumentSchema } from "../document/schema.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
+import * as Store from "../db/store.ts";
+import * as Document from "../document/document.ts";
+import * as DocumentSchema from "../document/schema.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
-import { Space } from "../space/space.ts";
-import { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
+import * as Space from "../space/space.ts";
+import * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
 import { posix } from "../util/posix.ts";
-import { Slug } from "../util/slug.ts";
-import { SessionSchema } from "./schema.ts";
+import * as Slug from "../util/slug.ts";
+import * as SessionSchema from "./schema.ts";
 
 export {
 	entryStates,
@@ -487,5 +487,3 @@ export const layer = Layer.effect(
 
 /** The session store with the thread and document stores it is built on. */
 export const storeLayer = layer.pipe(Layer.provideMerge(Thread.layer), Layer.provideMerge(Document.layer));
-
-export * as Session from "./session.ts";

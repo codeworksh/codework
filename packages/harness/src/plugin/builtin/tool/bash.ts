@@ -1,7 +1,7 @@
 import { Duration, Effect, Fiber, Layer, Option, Ref, Schema, Stream } from "effect";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { Accumulator, type OutputSnapshot } from "../../../tool/accumulator.ts";
-import { Output } from "../../../tool/output.ts";
+import * as Output from "../../../tool/output.ts";
 import { ToolProgress } from "../../../tool/progress.ts";
 import { fromSandboxShell, type IToolShell, ToolShell } from "../../../tool/shell.ts";
 import * as Tool from "../../../tool/tool.ts";
@@ -77,7 +77,7 @@ const withStatus = (failure: BashFailureError): string => {
 	return failure.output ? `${failure.output.replace(/\n$/, "")}\n\n${status}` : status;
 };
 
-export const bashDef = Tool.define({
+const bashDef = Tool.define({
 	name: "bash",
 	label: "bash",
 	promptSnippet: "Execute bash commands (ls, grep, find, etc.).",
@@ -284,7 +284,7 @@ const runStreaming = (
 		return { exitCode: code, ...presented } satisfies typeof BashSuccess.Type;
 	});
 
-export const bashHandler: Tool.Handler<
+const bashHandler: Tool.Handler<
 	typeof BashParams,
 	typeof BashSuccess,
 	typeof BashFailure,

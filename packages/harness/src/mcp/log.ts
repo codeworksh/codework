@@ -14,7 +14,7 @@ const formatData = (data: unknown): string => {
 };
 
 /** One `notifications/message` from `server` as a log line; continuation lines are indented. */
-export const format = (server: string, params: LoggingMessageNotificationParams, now: DateTime.Utc): string => {
+const format = (server: string, params: LoggingMessageNotificationParams, now: DateTime.Utc): string => {
 	const logger = params.logger ? ` ${params.logger}:` : "";
 	const text = formatData(params.data).replace(/\r?\n/g, "\n    ");
 	return `${DateTime.formatIso(now)} [${server}] ${params.level}${logger} ${text}\n`;
@@ -53,5 +53,3 @@ export const make = Effect.fn("McpLog.make")(function* (path: string) {
 
 	return { path, write };
 });
-
-export * as McpLog from "./log.ts";

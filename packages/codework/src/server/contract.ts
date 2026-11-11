@@ -41,7 +41,7 @@ export const SandboxInfo = Schema.Struct({
 export type SandboxInfo = typeof SandboxInfo.Type;
 
 /** One logical codebase, whatever env it is checked out in. */
-export const ProjectInfo = Schema.Struct({
+const ProjectInfo = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	status: Schema.Literals(["active", "archived"]),
@@ -52,7 +52,7 @@ export const ProjectInfo = Schema.Struct({
 export type ProjectInfo = typeof ProjectInfo.Type;
 
 /** One directory of a project in one env; sessions attach to it. */
-export const SpaceInfo = Schema.Struct({
+const SpaceInfo = Schema.Struct({
 	id: Schema.String,
 	projectId: Schema.String,
 	location: Session.AbsolutePath,
@@ -89,7 +89,7 @@ export const SessionInfo = Schema.Struct({
 export type SessionInfo = typeof SessionInfo.Type;
 
 /** `cut` is the committed seq of `entryId`: the inherited line ends there. */
-export const ThreadOrigin = Schema.Union([
+const ThreadOrigin = Schema.Union([
 	Schema.Struct({ kind: Schema.Literal("main") }),
 	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String, cut: Schema.Int }),
 	Schema.Struct({
@@ -103,7 +103,7 @@ export const ThreadOrigin = Schema.Union([
 ]);
 
 /** Billed usage of a thread's own entries; what it inherits through a fork point counts for its source. */
-export const ThreadUsage = Schema.Struct({
+const ThreadUsage = Schema.Struct({
 	/** Total cost in US dollars, from the catalog's prices. */
 	cost: Schema.Finite,
 	input: Schema.Int,
@@ -114,7 +114,7 @@ export const ThreadUsage = Schema.Struct({
 export type ThreadUsage = typeof ThreadUsage.Type;
 
 /** The last run of a thread; `error` is set unless it succeeded or is still going. */
-export const ThreadRun = Schema.Struct({
+const ThreadRun = Schema.Struct({
 	/** Epoch milliseconds. */
 	startedAt: Schema.Finite,
 	endedAt: optional(Schema.Finite),
@@ -265,10 +265,10 @@ export const RuntimeConfig = Schema.Struct({
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
-export const SandboxRef = Sandbox.Selection;
+const SandboxRef = Sandbox.Selection;
 
 /** A model to choose, by the catalog's id and display name, with the thinking levels it supports. */
-export const ModelOption = Schema.Struct({
+const ModelOption = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	/** In ascending order; `["off"]` for a model that does not reason. */
@@ -276,7 +276,7 @@ export const ModelOption = Schema.Struct({
 });
 
 /** A provider this server can call, with the models a session may use from it. */
-export const ModelProvider = Schema.Struct({
+const ModelProvider = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	models: Schema.Array(ModelOption),
@@ -284,7 +284,7 @@ export const ModelProvider = Schema.Struct({
 export type ModelProvider = typeof ModelProvider.Type;
 
 /** A project's name as a client sets it: trimmed, never empty. */
-export const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
+const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
 	message: Schema.String,
@@ -346,7 +346,7 @@ export type Repository = typeof Repository.Type;
 export const CloneStage = Schema.Literals(["connecting", "counting", "receiving", "resolving", "checkout"]);
 export type CloneStage = typeof CloneStage.Type;
 
-export const ClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
+const ClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
 export type ClonePhase = typeof ClonePhase.Type;
 
 /** A tracked clone; `path` (the absolute destination) is its id. */
@@ -398,7 +398,7 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 /** One of a thread's MCP servers as that thread sees it. */
-export const McpStatus = Schema.Struct({
+const McpStatus = Schema.Struct({
 	server: Schema.String,
 	state: EventList.McpState,
 	error: optional(Schema.String),
@@ -907,5 +907,3 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 );
-
-export * as Contract from "./contract.ts";

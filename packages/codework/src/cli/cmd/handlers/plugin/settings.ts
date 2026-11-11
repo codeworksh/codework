@@ -1,7 +1,7 @@
 import { Global, Plugin, Settings } from "@codeworksh/harness/effect";
 import { Effect, FileSystem, Option, Path } from "effect";
 import { InvalidInputError } from "../../../error.ts";
-import { Jsonc } from "../../../jsonc.ts";
+import * as Jsonc from "../../../jsonc.ts";
 
 /**
  * Reading and rewriting the `plugins` array of one settings file, through {@link Jsonc}: a plugin

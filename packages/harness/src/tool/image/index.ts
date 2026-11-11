@@ -59,5 +59,3 @@ export const inline = Effect.fn("Image.inline")(function* (bytes: Uint8Array, mi
 	if (note !== undefined) hints.push(note);
 	return { ok: true, data: resized.data, mimeType: resized.mimeType, hints } satisfies Inline;
 });
-
-export * as Image from "./index.ts";

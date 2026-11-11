@@ -81,5 +81,3 @@ export const agent: Definition = {
 	history: "rewindable",
 	fork: "asOf",
 };
-
-export * as DocumentSchema from "./schema.ts";

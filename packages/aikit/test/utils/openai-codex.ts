@@ -54,7 +54,7 @@ export function openAICodexModels(): Record<string, Model.Info> {
 	return catalog["openai-codex"] ?? {};
 }
 
-export function openAICodexSSEBody(events: Array<Record<string, unknown>>): string {
+function openAICodexSSEBody(events: Array<Record<string, unknown>>): string {
 	return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
 }
 

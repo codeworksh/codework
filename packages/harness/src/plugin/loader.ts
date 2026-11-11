@@ -12,7 +12,7 @@ import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./
 import * as Store from "./store.ts";
 
 /** `vendor.domain.context`, exactly three segments — a fourth would shadow a package name. */
-export const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
+const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
 const Id = Schema.String.check(Schema.isPattern(idPattern));
 const Definition = Schema.Struct({
 	id: Id,
@@ -46,7 +46,7 @@ const detail = (cause: unknown): string =>
 	cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause);
 
 /** A reference that does not name anything loadable. */
-export const sourceFailure = (origin: Origin, cause: unknown) =>
+const sourceFailure = (origin: Origin, cause: unknown) =>
 	Schema.is(SourceError)(cause)
 		? cause
 		: new SourceError({
@@ -75,7 +75,7 @@ const codeOf = (cause: unknown): string | undefined =>
  * installed plugin can reach it -- a local path lives outside `node_modules`, where Node strips
  * types happily, which is what keeps the single-file dev workflow working.
  */
-export const importFailure = (origin: Origin, cause: unknown) =>
+const importFailure = (origin: Origin, cause: unknown) =>
 	new LoadError({
 		reason:
 			codeOf(cause) === "ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING"
@@ -363,5 +363,3 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
  */
 export const canonical = (reference: string, hostDir: string): Effect.Effect<string, SourceError> =>
 	Effect.map(parse(reference, hostDir), canonicalOf);
-
-export * as PluginLoader from "./loader.ts";

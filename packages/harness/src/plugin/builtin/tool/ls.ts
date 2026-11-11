@@ -1,6 +1,6 @@
 import { Effect, Layer, Schema } from "effect";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../../../tool/truncate.ts";
 import { posix } from "../../../util/posix.ts";
@@ -26,7 +26,7 @@ class LsFailed extends Schema.TaggedError<LsFailed>()("LsFailed", { message: Sch
 
 const DEFAULT_LIMIT = 500;
 
-export const lsDef = Tool.define({
+const lsDef = Tool.define({
 	name: "ls",
 	label: "ls",
 	description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
@@ -42,7 +42,7 @@ export const lsDef = Tool.define({
 
 const fail = (message: string) => Effect.fail(new LsFailed({ message }));
 
-export const lsHandler: Tool.Handler<
+const lsHandler: Tool.Handler<
 	typeof LsParams,
 	typeof LsSuccess,
 	typeof LsFailed,

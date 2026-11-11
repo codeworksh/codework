@@ -5,12 +5,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
 import { inspect } from "../src/plugin/loader.ts";
 import { probe } from "../src/plugin/npm.ts";
 import { type Fetchable, parse } from "../src/plugin/source.ts";
-import type { LLM } from "../src/runner/llm.ts";
+import type * as LLM from "../src/runner/llm.ts";
 import { toolTurn } from "./fixtures/llm.ts";
 import { pendingCall } from "./tools.fixture.ts";
 

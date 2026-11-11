@@ -1,5 +1,5 @@
-export { SandboxDriver } from "./sandbox/public/driver.ts";
-export { SandboxIO } from "./sandbox/public/io.ts";
+export * as SandboxDriver from "./sandbox/public/driver.ts";
+export * as SandboxIO from "./sandbox/public/io.ts";
 export { SandboxInstance } from "./sandbox/instance.ts";
 export * as SandboxProvider from "./sandbox/provider.ts";
 export { SandboxResource } from "./sandbox/resource.ts";

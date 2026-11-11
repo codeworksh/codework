@@ -66,5 +66,3 @@ export const terminate = (
 		);
 		yield* signalGroup(handle, "SIGKILL");
 	});
-
-export * as Process from "./process.ts";

@@ -1,35 +1,31 @@
 import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
-import { Database } from "../db/db.ts";
-import { SandboxController } from "./control.ts";
+import * as Database from "../db/db.ts";
+import * as SandboxController from "./control.ts";
 import { SandboxDriver } from "./driver.ts";
-import { SandboxDriverRegistry } from "./registry.ts";
-import { MemorySandboxDriver } from "./drivers/memory.ts";
-import { SqldbSandboxDriver } from "./drivers/sqldb.ts";
-import { EnvNodeJSDefault } from "./fs/nodejs.ts";
-import { Local } from "./fs/vfs.ts";
+import * as SandboxDriverRegistry from "./registry.ts";
+import * as MemorySandboxDriver from "./drivers/memory.ts";
+import * as SqldbSandboxDriver from "./drivers/sqldb.ts";
+import * as EnvNodeJSDefault from "./fs/nodejs.ts";
+import * as Local from "./fs/vfs.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
-import { HostExe } from "./shell/host.ts";
+import * as HostExe from "./shell/host.ts";
 import { AbsolutePath } from "../schema.ts";
 
 // re-export from sandbox
-export { SandboxController } from "./control.ts";
-export { SandboxDriver } from "./driver.ts";
+export * as SandboxController from "./control.ts";
 export * as DaytonaSandboxDriver from "../sandboxes/daytona/index.ts";
-export { MemorySandboxDriver } from "./drivers/memory.ts";
-export { SqldbSandboxDriver } from "./drivers/sqldb.ts";
+export * as MemorySandboxDriver from "./drivers/memory.ts";
+export * as SqldbSandboxDriver from "./drivers/sqldb.ts";
 export * as VercelSandboxDriver from "../sandboxes/vercel/index.ts";
-export { SandboxError } from "./errors.ts";
-export { EnvInMemory } from "./fs/inmemory.ts";
-export { EnvNodeJSDefault } from "./fs/nodejs.ts";
-export { EnvSqldb } from "./fs/sqldb.ts";
-export { SandboxInstance } from "./instance.ts";
+export * as EnvInMemory from "./fs/inmemory.ts";
+export * as EnvNodeJSDefault from "./fs/nodejs.ts";
+export * as EnvSqldb from "./fs/sqldb.ts";
 export { SandboxIO } from "./io.ts";
-export { SandboxResource } from "./resource.ts";
-export { HostExe } from "./shell/host.ts";
-export { EnvBash } from "./shell/justbash.ts";
-export { Process } from "./utils/process.ts";
+export * as HostExe from "./shell/host.ts";
+export * as EnvBash from "./shell/justbash.ts";
+export * as Process from "./utils/process.ts";
 
 /**
  * What every sandbox provides, wherever it runs: a filesystem, a way to execute
@@ -142,5 +138,3 @@ export const sqldb = (options?: {
 		),
 	).pipe(Layer.provide(controllerLayer(sqldb.driver)), Layer.orDie);
 };
-
-export * as Sandbox from "./sandbox.ts";

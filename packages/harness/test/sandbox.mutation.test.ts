@@ -2,10 +2,10 @@ import { Deferred, Effect, Fiber, Layer } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { EnvNodeJSDefault } from "../src/sandbox/fs/nodejs.ts";
-import { Local } from "../src/sandbox/fs/vfs.ts";
+import * as EnvNodeJSDefault from "../src/sandbox/fs/nodejs.ts";
+import * as Local from "../src/sandbox/fs/vfs.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { HostExe } from "../src/sandbox/shell/host.ts";
+import * as HostExe from "../src/sandbox/shell/host.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 /**

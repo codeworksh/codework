@@ -31,5 +31,3 @@ export const write = (path: string, source: string, at: ReadonlyArray<string>, v
  */
 export const locked = <A, E, R>(path: string, edit: Effect.Effect<A, E, R>) =>
 	SettingsFile.locked(path, () => new InvalidInputError({ message: `timed out waiting to edit ${path}` }), edit);
-
-export * as Jsonc from "./jsonc.ts";

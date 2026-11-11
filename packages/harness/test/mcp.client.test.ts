@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import type { LoggingMessageNotificationParams, AuthProvider } from "@modelcontextprotocol/client";
 import { Deferred, Effect, Exit, Fiber, Option, Ref, Scope } from "effect";
 import { describe, expect, onTestFinished, vi } from "vite-plus/test";
-import { McpClient } from "../src/mcp/client.ts";
-import { McpContent } from "../src/mcp/content.ts";
-import { McpLog } from "../src/mcp/log.ts";
-import { McpOutput } from "../src/mcp/output.ts";
-import { Process } from "../src/sandbox/utils/process.ts";
+import * as McpClient from "../src/mcp/client.ts";
+import * as McpContent from "../src/mcp/content.ts";
+import * as McpLog from "../src/mcp/log.ts";
+import * as McpOutput from "../src/mcp/output.ts";
+import * as Process from "../src/sandbox/utils/process.ts";
 import { listen, raw, sdk } from "./fixtures/mcp/http.ts";
 import { testEffect } from "./utils/effect.ts";
 

@@ -7,27 +7,27 @@
 
 import { type Message, Transcript } from "@codeworksh/aikit";
 import { Cause, DateTime, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
-import type { ContextAssembly } from "../context/assemble.ts";
-import { ContextCodec } from "../context/codec.ts";
-import { Context } from "../context/context.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { Inbox } from "../inbox/inbox.ts";
-import { McpSection } from "../mcp/section.ts";
-import { SessionMessageSchema } from "../session/message/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
-import { State } from "../state/state.ts";
-import { Telemetry } from "../telemetry/telemetry.ts";
+import type * as ContextAssembly from "../context/assemble.ts";
+import * as ContextCodec from "../context/codec.ts";
+import * as Context from "../context/context.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as Inbox from "../inbox/inbox.ts";
+import * as McpSection from "../mcp/section.ts";
+import * as SessionMessageSchema from "../session/message/schema.ts";
+import * as SessionSchema from "../session/schema.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
+import * as State from "../state/state.ts";
+import * as Telemetry from "../telemetry/telemetry.ts";
 import { errorMessage } from "../util/error.ts";
-import { Hash } from "../util/hash.ts";
-import { LLMEventPublisher } from "./event.ts";
-import { Hooks } from "./hooks.ts";
-import { LLM } from "./llm.ts";
-import { RunnerPart } from "./part.ts";
-import { Retry } from "./retry.ts";
-import { Runner } from "./run.ts";
+import * as Hash from "../util/hash.ts";
+import * as LLMEventPublisher from "./event.ts";
+import * as Hooks from "./hooks.ts";
+import * as LLM from "./llm.ts";
+import * as RunnerPart from "./part.ts";
+import * as Retry from "./retry.ts";
+import * as Runner from "./run.ts";
 
 export type Promotion = Inbox.Boundary | undefined;
 
@@ -720,5 +720,3 @@ export const layer = (options: Options = {}) =>
 			return Runner.Service.of({ run, abandon });
 		}),
 	);
-
-export * as Loop from "./loop.ts";

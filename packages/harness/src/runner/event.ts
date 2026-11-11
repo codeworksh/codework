@@ -23,14 +23,14 @@
 
 import type { Event as AikitEvent, Message } from "@codeworksh/aikit";
 import { DateTime, Duration, Effect, Fiber, Option, Schema } from "effect";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
 import { EventSchema } from "../event/schema.ts";
-import { SessionMessageSchema } from "../session/message/schema.ts";
-import type { SessionSchema } from "../session/schema.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { RunnerPart } from "./part.ts";
-import { Runner } from "./run.ts";
+import * as SessionMessageSchema from "../session/message/schema.ts";
+import type * as SessionSchema from "../session/schema.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as RunnerPart from "./part.ts";
+import * as Runner from "./run.ts";
 
 type Part = Message.AssistantMessage["parts"][number];
 
@@ -377,5 +377,3 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 		terminal,
 	} satisfies Publisher;
 });
-
-export * as LLMEventPublisher from "./event.ts";

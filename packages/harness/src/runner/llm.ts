@@ -10,16 +10,16 @@
 import { stream as aikitStream, llm, type Event as AikitEvent, type Message, type Model } from "@codeworksh/aikit";
 import * as AikitFailure from "@codeworksh/aikit/failure";
 import { Cause, Data, Duration, Effect, Exit, Fiber, Schema, Scope, Stream } from "effect";
-import { ModelCatalog } from "../model/catalog.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
+import * as ModelCatalog from "../model/catalog.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
 import { merge } from "../settings/merge.ts";
 import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
 import { type Block, type DeclaredModel, keyName } from "../settings/schema.ts";
-import type { State } from "../state/state.ts";
-import { Telemetry } from "../telemetry/telemetry.ts";
-import { Attribution } from "./attribution.ts";
-import { LLMEventPublisher } from "./event.ts";
-import { Runner } from "./run.ts";
+import type * as State from "../state/state.ts";
+import * as Telemetry from "../telemetry/telemetry.ts";
+import * as Attribution from "./attribution.ts";
+import * as LLMEventPublisher from "./event.ts";
+import * as Runner from "./run.ts";
 
 export interface Input {
 	/** Also the provider session and prompt-cache key: fresh per thread, never inherited. */
@@ -345,5 +345,3 @@ export const make = (openStream: Open): Request => {
 };
 
 export const run = make(open);
-
-export * as LLM from "./llm.ts";

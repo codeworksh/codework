@@ -93,5 +93,3 @@ export const layer = (options: { readonly version: string; readonly command: str
 		Layer.catchCause(() => Layer.empty),
 	);
 };
-
-export * as Otel from "./otel.ts";

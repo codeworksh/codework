@@ -2,8 +2,9 @@ import { Effect, Layer } from "effect";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Global } from "../src/global.ts";
-import { Settings, parse } from "../src/settings/settings.ts";
+import * as Global from "../src/global.ts";
+import * as Settings from "../src/settings/settings.ts";
+import { parse } from "../src/settings/settings.ts";
 
 import { withSettings } from "./fixtures/settings.ts";
 

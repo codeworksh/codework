@@ -4,9 +4,9 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import type { SessionSchema } from "../session/schema.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { Runner } from "./run.ts";
+import type * as SessionSchema from "../session/schema.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as Runner from "./run.ts";
 
 /**
  * Times in a row a run may be cut off by a dying process before it ends (`session.run.failed`,
@@ -50,5 +50,3 @@ export const noopLayer = Layer.succeed(
 		awaitIdle: () => Effect.void,
 	}),
 );
-
-export * as RunnerExecution from "./execution.ts";

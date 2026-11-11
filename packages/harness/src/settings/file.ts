@@ -14,9 +14,9 @@
 import { Effect, Schema } from "effect";
 import { applyEdits, modify } from "jsonc-parser";
 import { fileSystem, hostPath } from "../host.ts";
-import { McpConfig } from "../mcp/config.ts";
+import * as McpConfig from "../mcp/config.ts";
 import { lock } from "../plugin/lock.ts";
-import { Hash } from "../util/hash.ts";
+import * as Hash from "../util/hash.ts";
 import * as Jsonc from "../util/jsonc.ts";
 import { parse as decode, SettingsError, type Target } from "./settings.ts";
 
@@ -140,5 +140,3 @@ export const set = Effect.fn("SettingsFile.set")(function* (
 		}),
 	);
 });
-
-export * as SettingsFile from "./file.ts";

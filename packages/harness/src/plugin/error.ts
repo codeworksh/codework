@@ -128,5 +128,3 @@ export const declaredIn = <E extends Any>(error: E, file: string): E => {
 	}
 	return error;
 };
-
-export * as PluginError from "./error.ts";

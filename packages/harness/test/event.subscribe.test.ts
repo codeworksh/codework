@@ -1,11 +1,11 @@
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { Event } from "../src/event/event.ts";
-import { EventList } from "../src/event/list.ts";
-import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { SessionSchema } from "../src/session/schema.ts";
-import { ThreadSchema } from "../src/thread/schema.ts";
+import * as Database from "../src/db/db.ts";
+import * as Event from "../src/event/event.ts";
+import * as EventList from "../src/event/list.ts";
+import * as SessionMessageSchema from "../src/session/message/schema.ts";
+import * as SessionSchema from "../src/session/schema.ts";
+import * as ThreadSchema from "../src/thread/schema.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const { live: it } = testEffect(Layer.provideMerge(Event.layer, Database.layer(":memory:")));

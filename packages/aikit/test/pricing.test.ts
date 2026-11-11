@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Pricing } from "../src/llm/pricing.ts";
+import * as Pricing from "../src/llm/pricing.ts";
 import { makeGeneratedModel, makeModel } from "./utils/fixtures.ts";
 
 const openai = makeGeneratedModel("gpt-5.6", "@ai-sdk/openai");

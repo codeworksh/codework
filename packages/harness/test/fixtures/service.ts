@@ -1,9 +1,9 @@
 import { Effect, Layer } from "effect";
 import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem.ts";
-import { Local } from "../../src/sandbox/fs/vfs.ts";
-import { HostExe } from "../../src/sandbox/shell/host.ts";
+import * as Local from "../../src/sandbox/fs/vfs.ts";
+import * as HostExe from "../../src/sandbox/shell/host.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
-import type { Sandbox } from "../../src/sandbox/sandbox.ts";
+import type * as Sandbox from "../../src/sandbox/sandbox.ts";
 
 export interface SandboxEnv<E = never> {
 	/** The raw local primitives; `withService` builds the filesystem over them. */

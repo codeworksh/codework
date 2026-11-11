@@ -21,7 +21,7 @@ import { parseResponsesSSEStream } from "./sse.ts";
 import { appendGrammarInputJsonDelta, prepareResponsesTools, type GrammarInputBuffer } from "./tools.ts";
 import { convertResponsesUsage, mapResponsesFinishReason, type ResponsesUsage } from "./usage.ts";
 
-export const PROMPT_CACHE_KEY_MAX_LENGTH = 64;
+const PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
 // The Responses API rejects max_output_tokens below 16.
 const MIN_OUTPUT_TOKENS = 16;

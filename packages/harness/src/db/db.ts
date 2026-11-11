@@ -1,11 +1,11 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Config, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/sql";
-import { Global } from "../global.ts";
+import * as Global from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
 import { migrations, OutdatedError, verify } from "./migrations.ts";
-import { Store } from "./store.ts";
+import * as Store from "./store.ts";
 
 export { SqlClient, SqlSchema } from "effect/sql";
 export { OutdatedError };
@@ -70,5 +70,3 @@ export const path = Effect.fn("Database.path")(function* (data?: string) {
 });
 
 export const defaultLayer = Layer.unwrap(path().pipe(Effect.map(layer)));
-
-export * as Database from "./db.ts";

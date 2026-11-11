@@ -38,8 +38,8 @@
  */
 
 import { Context, Effect, Layer, Option, Predicate, Result, Schema, SchemaIssue } from "effect";
-import { Global } from "../global.ts";
-import { McpConfig } from "../mcp/config.ts";
+import * as Global from "../global.ts";
+import * as McpConfig from "../mcp/config.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import * as Jsonc from "../util/jsonc.ts";
@@ -368,4 +368,3 @@ export const layer = (options: Omit<Options, "hostDir"> = {}) =>
 	);
 
 export { defaults } from "./schema.ts";
-export * as Settings from "./settings.ts";

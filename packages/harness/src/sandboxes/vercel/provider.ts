@@ -180,7 +180,7 @@ interface Stats {
 	readonly isSymbolicLink: () => boolean;
 }
 
-export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
+const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 	const mtime = stats.mtime;
 
 	// omit size/mtime the stat could not report — never fabricate
@@ -471,7 +471,7 @@ const identityLayer = (options: Options) =>
  * sandbox's native remote shell. It intentionally does not provide VFS: remote
  * filesystems have no synchronous filesystem surface.
  */
-export const layer = (
+export const services = (
 	options: Options = {},
 ): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, VercelError> => {
 	const mounted = { ...options, cwd: SandboxIO.resolveMountCwd(DEFAULT_CWD, options.cwd) };
@@ -480,5 +480,3 @@ export const layer = (
 		resourceLayer,
 	).pipe(Layer.provide(remote(mounted)));
 };
-
-export const services = layer;

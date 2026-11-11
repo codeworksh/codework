@@ -1,9 +1,8 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { Git } from "../git/git.ts";
+import * as Git from "../git/git.ts";
 import { RepoSchema } from "../repo/schema.ts";
-import { SandboxFs } from "../sandbox/fs/util.ts";
+import * as SandboxFs from "../sandbox/fs/util.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Sandbox } from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
 
 export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Worktree.WorktreeError", {
@@ -86,10 +85,3 @@ export const layer = Layer.effect(
 		return Service.of({ list, add, remove });
 	}),
 );
-
-export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
-	layer.pipe(Layer.provide(Git.layer), Layer.provide(sandbox));
-
-export const defaultLayer = (rootPath: string) => layerWith(Sandbox.defaultLayer(rootPath));
-
-export * as Worktree from "./worktree.ts";

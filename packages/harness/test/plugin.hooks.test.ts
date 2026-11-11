@@ -5,9 +5,9 @@ import { make } from "../src/tool/executor.ts";
 import { ToolProgress } from "../src/tool/progress.ts";
 import * as Tool from "../src/tool/tool.ts";
 import type { ToolAddOptions, ToolAfter } from "../src/plugin/tool/schema.ts";
-import { SessionSchema } from "../src/session/schema.ts";
-import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { ThreadSchema } from "../src/thread/schema.ts";
+import * as SessionSchema from "../src/session/schema.ts";
+import * as SessionMessageSchema from "../src/session/message/schema.ts";
+import * as ThreadSchema from "../src/thread/schema.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import { it } from "./utils/effect.ts";
 

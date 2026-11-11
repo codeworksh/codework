@@ -43,7 +43,7 @@ const row = (label: string, value: string) => `${label.padEnd(9)}${value}\n`;
 
 const formatCost = (cost: number): string => `$${cost.toFixed(cost > 0 && cost < 0.01 ? 6 : 4)}`;
 
-export const divider = (label: string, columns = 72): string => {
+const divider = (label: string, columns = 72): string => {
 	const width = Math.min(100, Math.max(32, columns));
 	const start = `── ${label} `;
 	return `${start}${"─".repeat(Math.max(2, width - start.length))}\n`;

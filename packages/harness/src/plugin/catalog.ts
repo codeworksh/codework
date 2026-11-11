@@ -3,7 +3,7 @@ import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
 import { type Plugin, rank, whenDeferred } from "./plugin.ts";
-import { PluginSource } from "./source.ts";
+import * as PluginSource from "./source.ts";
 
 /**
  * How a `plugins` entry is spelled. Declared in `@codeworksh/plugin`, because the shapes are what
@@ -82,13 +82,6 @@ export interface Origin {
 	 */
 	readonly file?: string;
 }
-
-const emptyPool: Pool = {
-	plugins: new Map(),
-	aliases: new Map(),
-	versions: new Map(),
-	origins: new Map(),
-};
 
 /**
  * The **load pass**: store lookup and ESM import, never the network.
@@ -426,5 +419,3 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 	const pool = yield* load(references, options);
 	return (yield* select(references, pool)).selection;
 });
-
-export { emptyPool };

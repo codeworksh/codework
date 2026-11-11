@@ -12,7 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect } from "vite-plus/test";
 import { Contract } from "@codeworksh/contract";
-import { Client } from "../../../../packages/codework/src/server/client.ts";
+import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 const appEntry = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
 const fixture = fileURLToPath(new URL("./codework.ts", import.meta.url));

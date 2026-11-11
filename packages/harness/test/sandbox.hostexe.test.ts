@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { realpath } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 

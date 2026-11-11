@@ -15,7 +15,7 @@
 import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { McpServer, McpSettings } from "@codeworksh/plugin/settings";
 import { Effect, Predicate, Result } from "effect";
-import { Global } from "../global.ts";
+import * as Global from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import * as Jsonc from "../util/jsonc.ts";
 
@@ -237,5 +237,3 @@ export const check = Effect.fn("Mcp.checkConfig")(function* (input: {
 	apply(input.path, input.source, input.scope, state);
 	return state.errors as ReadonlyArray<string>;
 });
-
-export * as McpConfig from "./config.ts";

@@ -2,12 +2,12 @@ import { Effect } from "effect";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { ContextCodec } from "../src/context/codec.ts";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
+import * as ContextCodec from "../src/context/codec.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
 import { define, Section } from "../src/plugin/index.ts";
-import { SessionRuntime } from "../src/session/runtime.ts";
-import type { State } from "../src/state/state.ts";
+import * as SessionRuntime from "../src/session/runtime.ts";
+import type * as State from "../src/state/state.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import "./utils/live.ts";
 

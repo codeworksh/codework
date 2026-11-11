@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { SessionFailure } from "../session/failure.ts";
-import { SessionSchema } from "../session/schema.ts";
+import * as SessionFailure from "../session/failure.ts";
+import * as SessionSchema from "../session/schema.ts";
 
 // Thread identity lives in `@codeworksh/plugin`, next to the session's: it is on every plugin
 // context and every tool call.
@@ -68,5 +68,3 @@ export const titleFrom = (text: string): string | undefined => {
 	const space = cut.lastIndexOf(" ");
 	return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
 };
-
-export * as ThreadSchema from "./schema.ts";

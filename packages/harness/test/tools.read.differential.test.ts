@@ -1,10 +1,10 @@
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { readTool } from "../src/plugin/builtin/tool/read.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { Local } from "../src/sandbox/fs/vfs.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
+import * as Local from "../src/sandbox/fs/vfs.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { HostExe } from "../src/sandbox/shell/host.ts";
+import * as HostExe from "../src/sandbox/shell/host.ts";
 import * as Executor from "../src/tool/executor.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { DEFAULT_MAX_BYTES, formatSize, truncateHead } from "../src/tool/truncate.ts";

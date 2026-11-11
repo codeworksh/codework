@@ -3,9 +3,9 @@ import { Effect, Exit, Fiber } from "effect";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
-import { Mcp } from "../src/mcp/mcp.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
+import * as Mcp from "../src/mcp/mcp.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import {
 	alive,

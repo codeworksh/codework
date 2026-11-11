@@ -1,7 +1,7 @@
 import type { McpRegistry, ServerConfig, ServerPatch } from "@codeworksh/plugin/plugin/mcp";
 import type { McpServer } from "@codeworksh/plugin/settings";
 import { Predicate } from "effect";
-import { McpConfig } from "../../mcp/config.ts";
+import * as McpConfig from "../../mcp/config.ts";
 
 const PATCH_KEYS: ReadonlyArray<string> = ["enabled", "exposure", "toolExposure", "timeout", "description"];
 

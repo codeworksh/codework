@@ -5,7 +5,7 @@ import { posix } from "../../util/posix.ts";
 import { SandboxDriver } from "../driver.ts";
 import { providerError } from "../errors.ts";
 import { SandboxInstance } from "../instance.ts";
-import { EnvSqldb } from "../fs/sqldb.ts";
+import * as EnvSqldb from "../fs/sqldb.ts";
 import { transport, transportLayer } from "../virtual.ts";
 import { AbsolutePath } from "../../schema.ts";
 
@@ -190,5 +190,3 @@ export const make = () => {
 
 	return { driver };
 };
-
-export * as SqldbSandboxDriver from "./sqldb.ts";

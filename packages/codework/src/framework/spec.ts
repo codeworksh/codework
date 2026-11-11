@@ -67,5 +67,3 @@ export function make<
 		) as ChildrenOf<Commands>,
 	};
 }
-
-export * as Spec from "./spec.ts";

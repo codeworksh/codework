@@ -7,7 +7,7 @@ import type { CliError } from "effect/cli";
 import pkg from "../package.json" with { type: "json" };
 import { Cmd } from "./cli/cmd/cmd.ts";
 import type { CommandError } from "./cli/error.ts";
-import { Runtime } from "./framework/runtime.ts";
+import * as Runtime from "./framework/runtime.ts";
 
 const Handlers = Runtime.handlers(Cmd, {
 	auth: {

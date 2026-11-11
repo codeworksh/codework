@@ -33,13 +33,13 @@ import type { HttpServer, OAuthConfig } from "@codeworksh/plugin/plugin/mcp";
 import { Cause, Clock, Data, Duration, Effect, Exit, References, Schema } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { crypto as hostCrypto, fileSystem, hostPath } from "../host.ts";
-import { Hash } from "../util/hash.ts";
-import { Lock } from "../util/lock.ts";
-import { McpCallback } from "./callback.ts";
-import { McpClient } from "./client.ts";
+import * as Hash from "../util/hash.ts";
+import * as Lock from "../util/lock.ts";
+import * as McpCallback from "./callback.ts";
+import * as McpClient from "./client.ts";
 import { namespace } from "./config.ts";
 import { NeedsAuthError, OAuthError } from "./error.ts";
-import { McpValue } from "./value.ts";
+import * as McpValue from "./value.ts";
 
 const FILENAME = "mcpauth.json";
 /** How the client presents itself when it registers: authorization servers show these on consent. */
@@ -715,5 +715,3 @@ export const signOut = Effect.fn("McpOAuth.signOut")(function* (store: Store, se
 	if (existed) yield* store.update(server.name, id, () => undefined);
 	return existed;
 });
-
-export * as McpOAuth from "./oauth.ts";

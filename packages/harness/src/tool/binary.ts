@@ -269,5 +269,3 @@ export const withCommand = <A extends { readonly exitCode: number }, E, R>(
 			if (available.get(key) === deferred) available.delete(key);
 		}
 	});
-
-export * as Binary from "./binary.ts";

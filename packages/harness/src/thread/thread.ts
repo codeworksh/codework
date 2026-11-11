@@ -11,14 +11,14 @@ import {
 	ThreadRow,
 	type ToolStatus,
 } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
+import * as Store from "../db/store.ts";
 import { NonNegativeInt } from "../schema.ts";
-import { Document } from "../document/document.ts";
-import { DocumentSchema } from "../document/schema.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { ThreadSchema } from "./schema.ts";
+import * as Document from "../document/document.ts";
+import * as DocumentSchema from "../document/schema.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as ThreadSchema from "./schema.ts";
 
 /** A host interruption landed on a run the user had asked to stop; see `projectRun`. */
 export class RunStoppingError extends Schema.TaggedError<RunStoppingError>()("RunStoppingError", {
@@ -1179,5 +1179,3 @@ export const layer = Layer.effect(
 		});
 	}),
 );
-
-export * as Thread from "./thread.ts";

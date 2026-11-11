@@ -4,7 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Client } from "../../../../packages/codework/src/server/client.ts";
+import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 const scripts = fileURLToPath(new URL(".", import.meta.url));
 /** The checkout under test: each machine overlays its sources from here through the Mac mount. */

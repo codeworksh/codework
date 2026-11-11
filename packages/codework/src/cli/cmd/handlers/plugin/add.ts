@@ -1,6 +1,6 @@
 import { Global, Plugin } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";

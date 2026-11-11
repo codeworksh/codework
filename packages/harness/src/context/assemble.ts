@@ -1,8 +1,8 @@
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import type { Thread } from "../thread/thread.ts";
+import * as SessionSchema from "../session/schema.ts";
+import type * as Thread from "../thread/thread.ts";
 import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
@@ -184,5 +184,3 @@ export const assembleLine = Effect.fn("Context.assembleLine")(function* (
 		...(lastAssistant === undefined ? {} : { lastAssistant }),
 	};
 });
-
-export * as ContextAssembly from "./assemble.ts";

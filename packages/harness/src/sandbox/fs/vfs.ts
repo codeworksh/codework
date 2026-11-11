@@ -149,5 +149,3 @@ export const layer = Layer.effect(
 		return SandboxFileSystem.fromProvider(make(yield* Vfs));
 	}),
 );
-
-export * as Local from "./vfs.ts";

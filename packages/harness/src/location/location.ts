@@ -1,11 +1,11 @@
 import { Effect, Layer } from "effect";
-import { Git } from "../git/git.ts";
-import { Project } from "../project/project.ts";
-import { Repo } from "../repo/repo.ts";
+import * as Git from "../git/git.ts";
+import * as Project from "../project/project.ts";
+import * as Repo from "../repo/repo.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { AbsolutePath } from "../schema.ts";
-import { Space } from "../space/space.ts";
-import { Worktree } from "../worktree/worktree.ts";
+import * as Space from "../space/space.ts";
+import * as Worktree from "../worktree/worktree.ts";
 import { Info, Service } from "@codeworksh/plugin/location";
 
 /**
@@ -55,5 +55,3 @@ export const layerMounted = (options?: Project.ResolveOptions) =>
 			),
 		),
 	);
-
-export * as Location from "./location.ts";

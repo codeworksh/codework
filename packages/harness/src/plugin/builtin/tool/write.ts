@@ -1,7 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { define } from "../../plugin.ts";
 
@@ -18,7 +18,7 @@ const WriteParams = Schema.Struct({
 
 class WriteFailed extends Schema.TaggedError<WriteFailed>()("WriteFailed", { message: Schema.String }) {}
 
-export const writeDef = Tool.define({
+const writeDef = Tool.define({
 	name: "write",
 	label: "write",
 	description:
@@ -42,7 +42,7 @@ const fsFailure = (path: string) => (error: SandboxFileSystem.FileSystemError) =
 		}),
 	);
 
-export const writeHandler: Tool.Handler<
+const writeHandler: Tool.Handler<
 	typeof WriteParams,
 	typeof writeDef.success,
 	typeof WriteFailed,

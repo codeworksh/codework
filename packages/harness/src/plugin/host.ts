@@ -1,6 +1,6 @@
 import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import { Cause, Effect, Schema } from "effect";
-import type { Mcp } from "../mcp/mcp.ts";
+import type * as Mcp from "../mcp/mcp.ts";
 import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
 import type { Selection } from "../tool/registry.ts";

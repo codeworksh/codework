@@ -67,8 +67,4 @@ const build = (input: Partial<Interface>) =>
 
 export const layer = Layer.effect(Service, build({}));
 
-export const defaultLayer = layer;
-
 export const layerWith = (input: Partial<Interface>) => Layer.effect(Service, build(input));
-
-export * as Global from "./global.ts";

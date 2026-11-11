@@ -60,7 +60,7 @@ function perMillion(value: string | undefined, fallback: number): number {
  * Prompt-length overrides become request-wide tiers; a rate a tier does not list keeps the base
  * price. Time-of-day overrides are skipped: the cost model cannot express them.
  */
-export function cost(pricing: Pricing | undefined): Model.Info["cost"] {
+function cost(pricing: Pricing | undefined): Model.Info["cost"] {
 	const base = {
 		input: perMillion(pricing?.prompt, 0),
 		output: perMillion(pricing?.completion, 0),
@@ -93,7 +93,7 @@ export function cost(pricing: Pricing | undefined): Model.Info["cost"] {
  * `supported_efforts` uses models.dev's effort vocabulary. Off maps to `none` unless reasoning is
  * mandatory; a mandatory model without listed efforts can only refuse off.
  */
-export function thinkingLevels(reasoning: Entry["reasoning"]): Model.ThinkingLevelMap | undefined {
+function thinkingLevels(reasoning: Entry["reasoning"]): Model.ThinkingLevelMap | undefined {
 	if (!reasoning) return undefined;
 	const map = Model.effortThinkingLevels(reasoning.supported_efforts ?? []);
 	if (!map) return reasoning.mandatory === true ? { off: null } : undefined;
@@ -104,7 +104,7 @@ export function thinkingLevels(reasoning: Entry["reasoning"]): Model.ThinkingLev
  * The catalog entry for one listed model, or undefined for one an agent cannot use: no tool
  * calling, or a `:batch` variant, whose asynchronous pricing an interactive turn never gets.
  */
-export function toModel(entry: Entry): Model.Info | undefined {
+function toModel(entry: Entry): Model.Info | undefined {
 	if (!entry.supported_parameters?.includes("tools") || entry.id.endsWith(":batch")) return undefined;
 	const thinkingLevelMap = thinkingLevels(entry.reasoning);
 	return {
@@ -178,5 +178,3 @@ export async function personalize(
 	}
 	return Object.keys(personal).length > 0 ? personal : models;
 }
-
-export * as OpenRouter from "./openrouter.ts";

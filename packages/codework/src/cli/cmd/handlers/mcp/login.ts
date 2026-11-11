@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import { openBrowser } from "@codeworksh/aikit/oauth/interactive";
 import { McpOAuth } from "@codeworksh/harness/effect";
 import { Duration, Effect, Logger } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
 import { OAuthError, reportFailure } from "../../../error.ts";
 import { writeError, writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";

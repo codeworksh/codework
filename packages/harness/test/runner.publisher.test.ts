@@ -1,13 +1,13 @@
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Layer } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { Event } from "../src/event/event.ts";
-import { LLMEventPublisher } from "../src/runner/event.ts";
+import * as Database from "../src/db/db.ts";
+import * as Event from "../src/event/event.ts";
+import * as LLMEventPublisher from "../src/runner/event.ts";
 import { seedSpace } from "./fixtures/space.ts";
-import { SessionLive } from "../src/session/live.ts";
-import { Session } from "../src/session/session.ts";
-import { Thread } from "../src/thread/thread.ts";
+import * as SessionLive from "../src/session/live.ts";
+import * as Session from "../src/session/session.ts";
+import * as Thread from "../src/thread/thread.ts";
 import { testEffect } from "./utils/effect.ts";
 
 /**

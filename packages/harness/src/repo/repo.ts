@@ -1,10 +1,10 @@
 import { Context, Effect, Layer } from "effect";
-import { Git } from "../git/git.ts";
-import { SandboxFs } from "../sandbox/fs/util.ts";
+import * as Git from "../git/git.ts";
+import * as SandboxFs from "../sandbox/fs/util.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Sandbox } from "../sandbox/sandbox.ts";
+import * as Sandbox from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
-import { Hash } from "../util/hash.ts";
+import * as Hash from "../util/hash.ts";
 import { posix as path } from "../util/posix.ts";
 import { RepoSchema } from "./schema.ts";
 
@@ -115,9 +115,7 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
+const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(Layer.provide(Git.layer), Layer.provide(sandbox));
 
 export const defaultLayer = (rootPath: string) => layerWith(Sandbox.defaultLayer(rootPath));
-
-export * as Repo from "./repo.ts";

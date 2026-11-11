@@ -2,8 +2,8 @@ import { EventList, type EventSchema, optional, Session } from "@codeworksh/harn
 import { NodeSocket } from "@effect/platform-node";
 import { Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
-import { Contract } from "./contract.ts";
-import { Envelope } from "./envelope.ts";
+import * as Contract from "./contract.ts";
+import * as Envelope from "./envelope.ts";
 
 export const make = RpcClient.make(Contract.Api);
 export type Client = Effect.Success<typeof make>;
@@ -142,5 +142,3 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 		message: "Event stream ended before the prompt finished; its output was not rendered",
 	});
 });
-
-export * as Client from "./client.ts";

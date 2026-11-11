@@ -5,16 +5,16 @@ import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { AbsolutePath, NonNegativeInt } from "../schema.ts";
 import { Prompt } from "../session/prompt/schema.ts";
-import { DocumentSchema } from "../document/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { ThreadSchema } from "../thread/schema.ts";
+import * as DocumentSchema from "../document/schema.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as ThreadSchema from "../thread/schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
 
 // DateTime fields encoded as millisecond integers; filled with the current
 // time on insert (createdAt) and on every insert/update (updatedAt).
-export const Timestamps = {
+const Timestamps = {
 	createdAt: Model.DateTimeInsertFromNumber,
 	updatedAt: Model.DateTimeUpdateFromNumber,
 };
@@ -48,20 +48,13 @@ export type PartType = (typeof partTypes)[number];
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
 
-export const inboxKinds = ["prompt"] as const;
+const inboxKinds = ["prompt"] as const;
 export type InboxKind = (typeof inboxKinds)[number];
 
-export const inputDeliveries = ["steer", "followUp"] as const;
+const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
 
 const EventData = Schema.Record(Schema.String, Schema.Unknown);
-
-// Head of one aggregate's log (aggregate = session), and who holds it.
-export class SequenceRow extends Model.Class<SequenceRow>("SequenceRow")({
-	aggregateId: Schema.String,
-	seq: Schema.Natural,
-	ownerId: Model.FieldOption(Schema.String),
-}) {}
 
 // Event with contigous sequence
 export class EventRow extends Model.Class<EventRow>("EventRow")({

@@ -21,8 +21,8 @@ import {
 } from "@codeworksh/aikit/oauth/summary";
 import { Global } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
-import { Client } from "../../../../server/client.ts";
-import type { Contract } from "../../../../server/contract.ts";
+import * as Client from "../../../../server/client.ts";
+import type * as Contract from "../../../../server/contract.ts";
 import { InvalidInputError, OAuthError } from "../../../error.ts";
 import { Cmd } from "../../cmd.ts";
 

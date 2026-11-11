@@ -1,14 +1,14 @@
 import { Model } from "@codeworksh/aikit";
 import { Schema } from "effect";
 import { Argument, Flag } from "effect/cli";
-import { Spec } from "../../framework/spec.ts";
+import * as Spec from "../../framework/spec.ts";
 
 /**
  * The full command surface of the `codework` CLI. Declarations only -- each
  * command's behaviour lives in `./handlers`, wired up in `src/index.ts`.
  */
 
-export const thinkingLevels = Object.values(Model.ThinkingLevelEnum);
+const thinkingLevels = Object.values(Model.ThinkingLevelEnum);
 
 /**
  * Every `auth` subcommand answers the same three questions: which provider,

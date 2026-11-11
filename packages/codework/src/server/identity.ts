@@ -19,5 +19,3 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export const current: Interface = { pid: process.pid, version: pkg.version };
 
 export const layer = Layer.succeed(Service, Service.of(current));
-
-export * as Identity from "./identity.ts";

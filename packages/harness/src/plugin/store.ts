@@ -34,13 +34,13 @@ import { Effect, Option, Schema } from "effect";
 import { Hex } from "effect/encoding";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
 import { InstallError, LoadError, StoreError } from "./error.ts";
-import { PluginIndex } from "./index.store.ts";
+import * as PluginIndex from "./index.store.ts";
 import { lock } from "./lock.ts";
 import { download, type Fetched, registry, type Runner, url } from "./npm.ts";
 import { canonical, type Fetchable, type Target } from "./source.ts";
 
 /** Facts about the *package*, and nothing about the plugin inside it. */
-export const Marker = Schema.Struct({
+const Marker = Schema.Struct({
 	spec: Schema.String,
 	name: Schema.String,
 	version: Schema.optional(Schema.String),
@@ -480,36 +480,4 @@ export const update = Effect.fn("PluginStore.update")(function* <A>(
 			} as const);
 });
 
-/**
- * Drop a store entry entirely.
- *
- * Nothing in the CLI calls this: `plugin remove` deletes a settings entry and leaves the bytes
- * alone, so removing a plugin today and adding it back tomorrow costs nothing.
- */
-export const remove = Effect.fn("PluginStore.remove")(function* (target: Fetchable, cache: string, from: string) {
-	const { key, directory } = yield* entryDir(target, cache, from);
-	const existed = yield* fs.exists(directory).pipe(Effect.orElseSucceed(() => false));
-	yield* fs.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore);
-	yield* PluginIndex.drop(root(cache), key);
-	return existed;
-});
-
-/** Every entry on disk, for `plugin list`. Scans, because the truth is the markers. */
-export const all = Effect.fn("PluginStore.all")(function* (cache: string) {
-	const base = root(cache);
-	const slugs = yield* fs.readDirectory(base).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
-	const found: Entry[] = [];
-	for (const slug of slugs) {
-		const digests = yield* fs
-			.readDirectory(path.join(base, slug))
-			.pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
-		for (const key of digests) {
-			const entry = yield* active(path.join(base, slug, key), key);
-			if (entry !== undefined) found.push(entry);
-		}
-	}
-	return found as ReadonlyArray<Entry>;
-});
-
-export * as PluginStore from "./store.ts";
 export type { Target };

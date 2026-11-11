@@ -74,5 +74,3 @@ export const create = Effect.fnUntraced(function* (id: string) {
 	const sector = yield* Random.choice(SECTORS);
 	return `${prefix}-${hardware}-${connector}-${sector}-${id.slice(-8)}`;
 });
-
-export * as Slug from "./slug.ts";

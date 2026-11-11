@@ -13,7 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Filesystem from "../utils/filesystem.ts";
 import * as Model from "./model.ts";
-import { OpenRouter } from "./openrouter.ts";
+import * as OpenRouter from "./openrouter.ts";
 
 const DEFAULT_URL = "https://catalog.codework.sh/v1/models.json";
 /** The downloaded bytes, kept beside the catalog for the next conditional request. */

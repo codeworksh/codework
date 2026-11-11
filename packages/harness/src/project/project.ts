@@ -1,22 +1,22 @@
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
-import { Database } from "../db/db.ts";
+import * as Database from "../db/db.ts";
 import { ProjectRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import { Git } from "../git/git.ts";
+import * as Store from "../db/store.ts";
+import * as Git from "../git/git.ts";
 import { DirectoryNotFoundError, NotDirectoryError, type Error as LocationError } from "../location/error.ts";
-import { Repo } from "../repo/repo.ts";
+import * as Repo from "../repo/repo.ts";
 import type { RepoSchema } from "../repo/schema.ts";
-import { SandboxFs } from "../sandbox/fs/util.ts";
+import * as SandboxFs from "../sandbox/fs/util.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Sandbox } from "../sandbox/sandbox.ts";
+import * as Sandbox from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
-import { Space } from "../space/space.ts";
-import { Hash } from "../util/hash.ts";
+import * as Space from "../space/space.ts";
+import * as Hash from "../util/hash.ts";
 import { posix as path } from "../util/posix.ts";
-import { Worktree } from "../worktree/worktree.ts";
+import * as Worktree from "../worktree/worktree.ts";
 import { ProjectSchema } from "./schema.ts";
 
 /** Deterministic, env-local id for a directory without a portable identity. Never written to a marker. */
@@ -291,5 +291,3 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	);
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));
-
-export * as Project from "./project.ts";

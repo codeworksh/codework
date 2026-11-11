@@ -10,9 +10,9 @@ import {
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
 import pkg from "../../package.json" with { type: "json" };
-import { Agent } from "./agent.ts";
-import { Config } from "./config.ts";
-import { Feed } from "./feed.ts";
+import * as Agent from "./agent.ts";
+import * as Config from "./config.ts";
+import * as Feed from "./feed.ts";
 
 const PAGE_SIZE = 50;
 
@@ -304,5 +304,3 @@ export const make = Effect.gen(function* () {
 		};
 	};
 });
-
-export * as Handlers from "./handlers.ts";

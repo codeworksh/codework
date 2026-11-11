@@ -26,5 +26,3 @@ export const withAttribution = (model: Model.Info): Model.Info => {
 	const headers = defaults(model);
 	return headers === undefined ? model : { ...model, headers: { ...headers, ...model.headers } };
 };
-
-export * as Attribution from "./attribution.ts";

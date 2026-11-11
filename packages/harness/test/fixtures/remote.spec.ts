@@ -2,19 +2,19 @@ import { Effect, Layer, Option } from "effect";
 import { Buffer } from "node:buffer";
 import { posix as path } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Database } from "../../src/db/db.ts";
-import { Event } from "../../src/event/event.ts";
-import { Git } from "../../src/git/git.ts";
-import { Location } from "../../src/location/location.ts";
+import * as Database from "../../src/db/db.ts";
+import * as Event from "../../src/event/event.ts";
+import * as Git from "../../src/git/git.ts";
+import * as Location from "../../src/location/location.ts";
 import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem.ts";
 import type { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
-import { Sandbox } from "../../src/sandbox/sandbox.ts";
+import * as Sandbox from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
-import { SandboxStore } from "../../src/sandbox/store.ts";
-import { SessionLive } from "../../src/session/live.ts";
-import { Session } from "../../src/session/session.ts";
-import { Hash } from "../../src/util/hash.ts";
+import * as SandboxStore from "../../src/sandbox/store.ts";
+import * as SessionLive from "../../src/session/live.ts";
+import * as Session from "../../src/session/session.ts";
+import * as Hash from "../../src/util/hash.ts";
 
 type Run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>) => Promise<A>;
 /**

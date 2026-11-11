@@ -1,14 +1,14 @@
 import type { Message } from "@codeworksh/aikit";
 import type { CallToolResult, ContentBlock } from "@modelcontextprotocol/client";
 import { Effect } from "effect";
-import { Image } from "../tool/image/index.ts";
+import * as Image from "../tool/image/index.ts";
 import { formatSize, truncateMiddle } from "../tool/truncate.ts";
 import type { OutputError } from "./error.ts";
 
 export type Content = Message.TextContent | Message.ImageContent;
 
 /** Model-facing text of an MCP result beyond this is cut in the middle, and saved in full. */
-export const MAX_BYTES = 20 * 1024;
+const MAX_BYTES = 20 * 1024;
 
 /** The tool that reads what a resource link names. */
 export const READ_RESOURCE_TOOL = "read_mcp_resource";
@@ -147,5 +147,3 @@ export const fromResult = Effect.fnUntraced(function* (
 	}
 	return yield* limit(content, options);
 });
-
-export * as McpContent from "./content.ts";

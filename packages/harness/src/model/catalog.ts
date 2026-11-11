@@ -18,9 +18,9 @@ import {
 import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
-import { Runner } from "../runner/run.ts";
+import * as Runner from "../runner/run.ts";
 import { type DeclaredModel, keyName } from "../settings/schema.ts";
-import { Settings } from "../settings/settings.ts";
+import * as Settings from "../settings/settings.ts";
 
 export const filename = "models.gen.json";
 
@@ -333,5 +333,3 @@ export const available = Effect.fn("ModelCatalog.available")(function* (
 	}
 	return usable;
 });
-
-export * as ModelCatalog from "./catalog.ts";

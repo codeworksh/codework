@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { withService } from "./fixtures/service.ts";
 
 describe("Sandbox.EnvInMemoryFS", () => {

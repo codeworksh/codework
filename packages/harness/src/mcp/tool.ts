@@ -9,9 +9,9 @@ import type { CallToolResult, Tool as McpTool } from "@modelcontextprotocol/clie
 import { Effect, Schema } from "effect";
 import { ToolProgress } from "../tool/progress.ts";
 import * as Tool from "../tool/tool.ts";
-import { Hash } from "../util/hash.ts";
-import { McpContent } from "./content.ts";
-import type { McpError } from "./error.ts";
+import * as Hash from "../util/hash.ts";
+import * as McpContent from "./content.ts";
+import type * as McpError from "./error.ts";
 import type { Progress } from "./client.ts";
 
 /** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */
@@ -23,7 +23,7 @@ const MAX_NAME_LENGTH = 64;
  * instead: sanitizing can map two tools to one name (`a-b` and `a_b`). A server can also offer a tool
  * already named like that hash, so the hash grows until the name is free.
  */
-export const name = (server: string, tool: string, taken: (candidate: string) => boolean = () => false) => {
+const name = (server: string, tool: string, taken: (candidate: string) => boolean = () => false) => {
 	const plain = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
 	if (plain.length <= MAX_NAME_LENGTH && !taken(plain)) return plain;
 	const hash = Hash.sha256(`${server}\0${tool}`);
@@ -213,5 +213,3 @@ export const make = (input: {
 			}),
 	});
 };
-
-export * as McpTool from "./tool.ts";

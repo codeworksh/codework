@@ -101,7 +101,7 @@ function retryAfterHeader(message: string | undefined): Record<string, string> {
  * ChatGPT plan exhaustion is rewritten; transient 429s retain backend detail.
  * `label` names the backend, e.g. "OpenAI Codex".
  */
-export function responsesErrorMessage(label: string, body: string, statusText?: string): string {
+function responsesErrorMessage(label: string, body: string, statusText?: string): string {
 	let message = body || statusText || `${label} request failed`;
 	const payload = parseErrorPayload(body);
 	const error = payload?.error;

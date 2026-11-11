@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { expandTilde, Git } from "@codeworksh/harness/effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, type PlatformError, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { Contract } from "./contract.ts";
+import * as Contract from "./contract.ts";
 
 export interface Status {
 	readonly ready: boolean;
@@ -49,7 +49,7 @@ const describe = (error: PlatformError.PlatformError, target: string) =>
 			: error.message;
 
 /** The folder `host.create` claims for a project name: a slug that is never empty or a reserved Windows name. */
-export const folderName = (name: string) => {
+const folderName = (name: string) => {
 	const slug = name
 		.normalize("NFKD")
 		.replace(/[̀-ͯ]/g, "")
@@ -90,7 +90,7 @@ const SEGMENT = /^[A-Za-z0-9_.-]+$/;
 const isGitHubHost = (host: string) => host === "github.com" || host.includes("github");
 
 /** `owner/name`, `host/owner/name`, an http(s) URL, or a bare `name`; undefined for anything else. */
-export const parseRepository = (selector: string): Selector | undefined => {
+const parseRepository = (selector: string): Selector | undefined => {
 	// Like gh, a clone URL's `.git` comes off the path, before any trailing slash.
 	const segments = (value: string) =>
 		value
@@ -119,7 +119,7 @@ export const parseRepository = (selector: string): Selector | undefined => {
  * A remote URL safe to show: an http(s) URL loses its user and password, which may be a token
  * (`https://x-access-token:...@github.com/...`). SSH and local forms carry none and pass as they are.
  */
-export const shownRemote = (url: string) => {
+const shownRemote = (url: string) => {
 	if (!/^https?:\/\//i.test(url)) return url;
 	const parsed = URL.parse(url);
 	if (parsed === null) return url;
@@ -305,5 +305,3 @@ const make = Effect.gen(function* () {
 
 // Git runs on the host; every call names its own directory, so the mount root is never read.
 export const layer = Layer.effect(Service, make).pipe(Layer.provide(Git.defaultLayer("/")));
-
-export * as Host from "./host.ts";

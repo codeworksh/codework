@@ -2,13 +2,13 @@ import { DateTime, Effect, Option, Schema } from "effect";
 import { VariantSchema } from "effect/schema";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { InboxRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { SessionMessageSchema } from "../session/message/schema.ts";
+import * as Store from "../db/store.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as SessionMessageSchema from "../session/message/schema.ts";
 import { Delivery, Prompt } from "../session/prompt/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { ThreadSchema } from "../thread/schema.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as ThreadSchema from "../thread/schema.ts";
 import { DateTimeUtcFromMillis } from "../schema.ts";
 import { Admitted } from "./schema.ts";
 
@@ -605,5 +605,3 @@ export const make = Effect.gen(function* () {
 		promote,
 	} satisfies Interface;
 });
-
-export * as Inbox from "./inbox.ts";

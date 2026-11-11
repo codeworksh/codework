@@ -5,7 +5,7 @@
  * is not declared.
  */
 
-import { ToolSearch } from "../tool/search.ts";
+import * as ToolSearch from "../tool/search.ts";
 import { namespace } from "./config.ts";
 
 export const name = "mcpservers";
@@ -53,5 +53,3 @@ export const render = (servers: ReadonlyArray<Listing>): string | undefined => {
 	});
 	return [INTRO, ...lines, ...omitted(listed.length - kept)].join("\n");
 };
-
-export * as McpSection from "./section.ts";

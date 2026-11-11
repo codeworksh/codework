@@ -23,7 +23,7 @@ export interface Resized {
 }
 
 // 4.5MB of base64 leaves headroom below Anthropic's 5MB image limit.
-export const defaults: ResizeOptions = {
+const defaults: ResizeOptions = {
 	maxWidth: 2000,
 	maxHeight: 2000,
 	maxBytes: 4.5 * 1024 * 1024,

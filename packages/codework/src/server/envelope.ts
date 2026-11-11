@@ -22,7 +22,7 @@ export const ofThread =
 	(event: { readonly data: unknown }): boolean =>
 		Predicate.hasProperty(event.data, "threadId") && event.data.threadId === threadId;
 
-export class UnknownEventTypeError extends Schema.TaggedError<UnknownEventTypeError>()("UnknownEventTypeError", {
+class UnknownEventTypeError extends Schema.TaggedError<UnknownEventTypeError>()("UnknownEventTypeError", {
 	type: Schema.String,
 }) {}
 
@@ -75,5 +75,3 @@ export const decode = Effect.fn("Envelope.decode")(function* (envelope: EventEnv
 		data,
 	} as EventSchema.Payload;
 });
-
-export * as Envelope from "./envelope.ts";

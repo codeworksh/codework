@@ -1,6 +1,6 @@
 import { Duration, Effect, Exit, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { Process } from "../utils/process.ts";
+import * as Process from "../utils/process.ts";
 import { type ExecChunk, type ExecResult, Shell, ShellError, type ShellOptions } from "./shell.ts";
 
 /**
@@ -120,5 +120,3 @@ export const layer = (options: Options = {}): Layer.Layer<Shell, never, ChildPro
 			return Shell.of({ exec, execArgv, stream });
 		}),
 	);
-
-export * as HostExe from "./host.ts";

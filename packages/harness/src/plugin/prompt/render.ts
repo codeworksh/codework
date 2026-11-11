@@ -1,8 +1,8 @@
 // Bodies are never escaped: a plugin may nest its own tags inside an entry.
 
 import * as Section from "@codeworksh/plugin/plugin/section";
-import { McpSection } from "../../mcp/section.ts";
-import { ToolSearch } from "../../tool/search.ts";
+import * as McpSection from "../../mcp/section.ts";
+import * as ToolSearch from "../../tool/search.ts";
 import type { AnyToolDef } from "../../tool/tool.ts";
 import { fallback, type Snapshot, type Written } from "./registry.ts";
 

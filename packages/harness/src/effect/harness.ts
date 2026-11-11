@@ -1,34 +1,34 @@
 import { type Duration, Effect, Layer, Option, Ref } from "effect";
-import { Context } from "../context/context.ts";
-import { Control } from "../control.ts";
-import { Database } from "../db/db.ts";
-import { Event } from "../event/event.ts";
-import { EventRegistry } from "../event/registry.ts";
-import { Global } from "../global.ts";
+import * as Context from "../context/context.ts";
+import * as Control from "../control.ts";
+import * as Database from "../db/db.ts";
+import * as Event from "../event/event.ts";
+import * as EventRegistry from "../event/registry.ts";
+import * as Global from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
-import { ModelCatalog } from "../model/catalog.ts";
+import * as ModelCatalog from "../model/catalog.ts";
 import { builtins } from "../plugin/builtin.ts";
 import { follow, load, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { anchor } from "../plugin/loader.ts";
-import { PluginSource } from "../plugin/source.ts";
-import { PluginStore } from "../plugin/store.ts";
-import { RunnerExecute } from "../runner/execute.ts";
-import { Mcp } from "../mcp/mcp.ts";
-import { LLM } from "../runner/llm.ts";
-import { Hooks } from "../runner/hooks.ts";
-import { Loop } from "../runner/loop.ts";
-import { SandboxController } from "../sandbox/control.ts";
+import * as PluginSource from "../plugin/source.ts";
+import * as PluginStore from "../plugin/store.ts";
+import * as RunnerExecute from "../runner/execute.ts";
+import * as Mcp from "../mcp/mcp.ts";
+import * as LLM from "../runner/llm.ts";
+import * as Hooks from "../runner/hooks.ts";
+import * as Loop from "../runner/loop.ts";
+import * as SandboxController from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
-import { MemorySandboxDriver } from "../sandbox/drivers/memory.ts";
-import { SqldbSandboxDriver } from "../sandbox/drivers/sqldb.ts";
-import { SandboxDriverLoader } from "../sandbox/loader.ts";
-import { SandboxDriverRegistry } from "../sandbox/registry.ts";
-import { Process } from "../sandbox/utils/process.ts";
-import { SessionLive } from "../session/live.ts";
-import { SessionRuntime } from "../session/runtime.ts";
+import * as MemorySandboxDriver from "../sandbox/drivers/memory.ts";
+import * as SqldbSandboxDriver from "../sandbox/drivers/sqldb.ts";
+import * as SandboxDriverLoader from "../sandbox/loader.ts";
+import * as SandboxDriverRegistry from "../sandbox/registry.ts";
+import * as Process from "../sandbox/utils/process.ts";
+import * as SessionLive from "../session/live.ts";
+import * as SessionRuntime from "../session/runtime.ts";
 import type { Info as SettingsInfo } from "../settings/schema.ts";
-import { Settings } from "../settings/settings.ts";
-import { State } from "../state/state.ts";
+import * as Settings from "../settings/settings.ts";
+import * as State from "../state/state.ts";
 import { expandTilde } from "../util/home.ts";
 
 export interface Options {
@@ -277,5 +277,3 @@ export const layer = (options: Options = {}) =>
 			);
 		}),
 	);
-
-export * as Harness from "./harness.ts";

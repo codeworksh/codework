@@ -19,7 +19,7 @@ import {
 import { summarizeGitHubCopilot, summarizeOpenAICodex } from "@codeworksh/aikit/oauth/summary";
 import { Global } from "@codeworksh/harness/effect";
 import { Context, Effect, Layer } from "effect";
-import { Contract } from "./contract.ts";
+import * as Contract from "./contract.ts";
 
 interface Interface {
 	readonly save: (credentials: Contract.OAuthCredentials) => Effect.Effect<Contract.OAuthInfo, Contract.OAuthError>;
@@ -39,8 +39,8 @@ const message = (cause: unknown): string =>
  * Re-exported so the server, the CLI and aikit all describe a login the same
  * way; `Contract.OAuthInfo` is the wire shape of {@link OAuthSummary}.
  */
-export const codexInfo = summarizeOpenAICodex;
-export const copilotInfo = summarizeGitHubCopilot;
+const codexInfo = summarizeOpenAICodex;
+const copilotInfo = summarizeGitHubCopilot;
 
 export const layer = (options: { readonly home?: string | undefined } = {}) =>
 	Layer.effect(
@@ -94,5 +94,3 @@ export const layer = (options: { readonly home?: string | undefined } = {}) =>
 			});
 		}),
 	);
-
-export * as OAuth from "./oauth.ts";

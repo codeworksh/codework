@@ -101,5 +101,3 @@ export const layer = Layer.effect(
 		return Service.of({ write, rev, head, wake });
 	}),
 );
-
-export * as Store from "./store.ts";

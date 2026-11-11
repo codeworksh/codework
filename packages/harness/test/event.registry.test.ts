@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { EventList } from "../src/event/list.ts";
-import { EventRegistry } from "../src/event/registry.ts";
+import * as EventList from "../src/event/list.ts";
+import * as EventRegistry from "../src/event/registry.ts";
 import { EventSchema } from "../src/event/schema.ts";
 import { define as definePlugin, type Plugin } from "../src/plugin/plugin.ts";
 

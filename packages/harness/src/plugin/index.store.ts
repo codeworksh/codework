@@ -114,12 +114,3 @@ export const patch = Effect.fn("PluginIndex.patch")(function* (root: string, dig
 	entries.set(digest, { ...existing, ...fields });
 	yield* write(root, entries).pipe(Effect.ignore);
 });
-
-/** Forget one entry, for a store entry that has been removed. */
-export const drop = Effect.fn("PluginIndex.drop")(function* (root: string, digest: string) {
-	const entries = yield* read(root);
-	if (!entries.delete(digest)) return;
-	yield* write(root, entries).pipe(Effect.ignore);
-});
-
-export * as PluginIndex from "./index.store.ts";

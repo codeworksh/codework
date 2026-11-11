@@ -15,8 +15,8 @@ import { Contract as Desktop } from "../../../apps/contract/src/contract.ts";
 import { Codework as Mirror } from "../../../apps/widget/src/codework.ts";
 import { Json, threadKey, topics, type ThreadRef } from "../../../apps/web/src/widgets/session/schema.ts";
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
-import { Client } from "../src/server/client.ts";
-import { Server } from "../src/server/server.ts";
+import * as Client from "../src/server/client.ts";
+import * as Server from "../src/server/server.ts";
 
 const protocol = (url: string) =>
 	RpcClient.layerProtocolSocket().pipe(

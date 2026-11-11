@@ -103,5 +103,3 @@ export const fromCause = (cause: unknown): Error => {
 	}
 	return { type: category(tag), message: message(cause) };
 };
-
-export * as SessionFailure from "./failure.ts";

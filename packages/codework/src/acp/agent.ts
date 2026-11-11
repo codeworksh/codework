@@ -93,5 +93,3 @@ export const serve = Effect.fn("ACP.serve")(function* (
 	yield* Effect.addFinalizer(() => Effect.sync(() => connection.close()));
 	yield* Effect.promise(() => connection.closed);
 });
-
-export * as Agent from "./agent.ts";

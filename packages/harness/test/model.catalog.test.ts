@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
-import { ModelCatalog } from "../src/model/catalog.ts";
+import * as ModelCatalog from "../src/model/catalog.ts";
 import { it } from "./utils/effect.ts";
 
 describe("ModelCatalog", () => {

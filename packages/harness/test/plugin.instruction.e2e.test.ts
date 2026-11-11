@@ -1,4 +1,4 @@
-import { Sandbox } from "../src/effect/sandbox.ts";
+import * as Sandbox from "../src/effect/sandbox.ts";
 import * as DaytonaDriver from "../src/sandboxes/daytona/index.ts";
 import * as VercelDriver from "../src/sandboxes/vercel/index.ts";
 import { relinkScenario, repositoryScenario, scenario } from "./fixtures/instruction.spec.ts";

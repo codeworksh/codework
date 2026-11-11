@@ -11,7 +11,3 @@ export class ContextEncodeError extends Schema.TaggedError<ContextEncodeError>()
 	role: Schema.String,
 	reason: Schema.String,
 }) {}
-
-export class ContextInvariantError extends Schema.TaggedError<ContextInvariantError>()("ContextInvariantError", {
-	reason: Schema.String,
-}) {}

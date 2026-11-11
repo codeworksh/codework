@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveMaxOutputTokens } from "../src/llm/stream.ts";
-import { Thinking } from "../src/llm/thinking.ts";
+import * as Thinking from "../src/llm/thinking.ts";
 import * as Message from "../src/message/message.ts";
 import { makeGeneratedModel, makeModel, makeUsage } from "./utils/fixtures.ts";
 

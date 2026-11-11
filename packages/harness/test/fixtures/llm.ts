@@ -1,6 +1,6 @@
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Effect } from "effect";
-import { LLM } from "../../src/runner/llm.ts";
+import * as LLM from "../../src/runner/llm.ts";
 
 export const assistant = (
 	input: LLM.Input,

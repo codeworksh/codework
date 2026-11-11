@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Ref } from "effect";
-import type { SessionSchema } from "./schema.ts";
-import type { State } from "../state/state.ts";
+import type * as SessionSchema from "./schema.ts";
+import type * as State from "../state/state.ts";
 
 /**
  * Per-session configuration, held in process.
@@ -52,5 +52,3 @@ export const layer = Layer.effect(
 		return Service.of({ get, set, update, remove });
 	}),
 );
-
-export * as SessionRuntime from "./runtime.ts";

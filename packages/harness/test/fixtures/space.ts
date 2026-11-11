@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import { SqlClient } from "effect/sql";
-import { Store } from "../../src/db/store.ts";
+import * as Store from "../../src/db/store.ts";
 import { ProjectSchema } from "../../src/project/schema.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { AbsolutePath } from "../../src/schema.ts";
 import type { SpaceSchema } from "../../src/space/schema.ts";
-import { Space } from "../../src/space/space.ts";
+import * as Space from "../../src/space/space.ts";
 
 export interface SeedSpaceOptions {
 	readonly location?: string;

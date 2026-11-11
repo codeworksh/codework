@@ -9,8 +9,8 @@
 
 import { Context, Effect, Layer } from "effect";
 import type { Admitted } from "../inbox/schema.ts";
-import type { State } from "../state/state.ts";
-import type { LLM } from "./llm.ts";
+import type * as State from "../state/state.ts";
+import type * as LLM from "./llm.ts";
 
 /** A committed turn. */
 export interface Completed {
@@ -61,5 +61,3 @@ export const layer = Layer.succeed(
 		finishTurn: () => Effect.undefined,
 	}),
 );
-
-export * as Hooks from "./hooks.ts";

@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { SandboxController } from "../sandbox/control.ts";
+import * as SandboxController from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
 import {
 	SandboxDriverNotRegisteredError,
@@ -7,8 +7,9 @@ import {
 	SandboxNotFoundError,
 } from "../sandbox/errors.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
-import { SandboxDriverLoader } from "../sandbox/loader.ts";
-import { SandboxDriverRegistry, type DriverInfo } from "../sandbox/registry.ts";
+import * as SandboxDriverLoader from "../sandbox/loader.ts";
+import * as SandboxDriverRegistry from "../sandbox/registry.ts";
+import { type DriverInfo } from "../sandbox/registry.ts";
 
 import { optional } from "../schema.ts";
 
@@ -149,5 +150,3 @@ export const destroy = Effect.fn("Sandbox.destroy")(function* (id: SandboxInstan
 });
 
 export { SandboxInstance };
-
-export * as Sandbox from "./sandbox.ts";

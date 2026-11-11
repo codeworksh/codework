@@ -5,8 +5,8 @@
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { validateAikitMessage, validateAikitUserMessage } from "../schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import type { Thread } from "../thread/thread.ts";
+import * as SessionSchema from "../session/schema.ts";
+import type * as Thread from "../thread/thread.ts";
 import { ContextDecodeError, ContextEncodeError } from "./errors.ts";
 
 export interface EncodedMessage {
@@ -71,7 +71,7 @@ const validateDecoded = (
 		),
 	);
 
-export const validateUserMessage = (
+const validateUserMessage = (
 	value: unknown,
 	entryId: string,
 	type: string,
@@ -219,7 +219,7 @@ export const systemMessage = <T>(
 
 const decodeSystemData = Schema.decodeUnknownEffect(SessionSchema.SystemData);
 
-export const decodeSystemMessage = Effect.fn("Context.decodeSystemMessage")(function* (
+const decodeSystemMessage = Effect.fn("Context.decodeSystemMessage")(function* (
 	hydrated: Thread.HydratedEntry,
 ): Effect.fn.Return<Message.SystemMessage, ContextDecodeError> {
 	const { entry } = hydrated;
@@ -279,5 +279,3 @@ export const decodeMessage = Effect.fn("Context.decodeMessage")(function* (
 	}
 	return message;
 });
-
-export * as ContextCodec from "./codec.ts";

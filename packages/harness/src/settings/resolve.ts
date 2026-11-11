@@ -20,7 +20,7 @@
  */
 
 import { Model } from "@codeworksh/aikit";
-import type { State } from "../state/state.ts";
+import type * as State from "../state/state.ts";
 import { merge } from "./merge.ts";
 import { requestFields, type Block, type Info } from "./schema.ts";
 
@@ -93,7 +93,7 @@ export function resolveRequest(block: Block, model: Model.Info): State.RequestOp
  * outrank a matched block, which outranks the file's top level. The thinking level is the
  * requested one; State clamps it to the model once the catalog lookup is in hand.
  */
-export const resolveControls = (settings: Info, block: Block, runtime: State.Options) => ({
+const resolveControls = (settings: Info, block: Block, runtime: State.Options) => ({
 	thinkingLevel: runtime.thinkingLevel ?? block.thinkingLevel ?? settings.model.thinkingLevel,
 	toolExecution: runtime.toolExecution ?? block.toolExecution ?? settings.model.toolExecution,
 });

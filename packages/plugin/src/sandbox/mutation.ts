@@ -103,5 +103,3 @@ export const make = (instance: SandboxInstance.ID, cwd: string, fs: FileSystem):
 			);
 		}),
 });
-
-export * as SandboxMutation from "./mutation.ts";
