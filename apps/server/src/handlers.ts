@@ -2,7 +2,14 @@ import { Effect, Stream } from "effect";
 import { SqlClient } from "effect/sql";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
-import { type CliAction, Contract, ModelsError, type ServerAdd, type ServerUpdate } from "@codeworksh/contract";
+import {
+	type CliAction,
+	Contract,
+	ModelsError,
+	ProjectError,
+	type ServerAdd,
+	type ServerUpdate,
+} from "@codeworksh/contract";
 import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Health } from "./health.ts";
@@ -57,6 +64,15 @@ export const layer = Contract.Api.toLayer(
 			// Creating runs git init and a first commit, well past the default 5 seconds.
 			"host.create": Effect.fn("host.create")(function* ({ name }) {
 				return yield* callHost((client) => client("host.create", { name }), { timeout: "60 seconds" });
+			}),
+			"projects.rename": Effect.fn("projects.rename")(function* ({ projectId, name }) {
+				return yield* callHost((client) =>
+					client("project.rename", { projectId, name }).pipe(
+						Effect.catchTag("ProjectNotFoundError", () =>
+							Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
+						),
+					),
+				);
 			}),
 			"host.add": Effect.fn("host.add")(function* ({ path }) {
 				return yield* callHost((client) => client("host.add", { path }));

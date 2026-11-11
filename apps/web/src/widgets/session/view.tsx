@@ -56,7 +56,7 @@ export function Session({ address, instanceId }: WidgetProps<unknown>) {
 			<div hidden={settings} className="h-full">
 				<Conversation key={key} thread={thread} instanceId={instanceId} previous={shown.previous} />
 			</div>
-			{settings && <ProjectSettings onBack={() => setSettings(false)} />}
+			{settings && <ProjectSettings sessionId={thread.sessionId} onBack={() => setSettings(false)} />}
 		</>
 	);
 }
@@ -505,7 +505,8 @@ function Conversation({
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(thread.sessionId);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
-	const project = state.status === "ready" ? state.info.project : listed?.project;
+	// The list follows a rename; the loaded thread keeps the name it was opened with.
+	const project = listed?.project ?? (state.status === "ready" ? state.info.project : undefined);
 	const projectName = project?.name;
 
 	const [settings] = useSettings(instanceId);

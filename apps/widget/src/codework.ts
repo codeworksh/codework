@@ -373,6 +373,10 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
+export class ProjectNotFoundError extends Schema.TaggedError<ProjectNotFoundError>()("ProjectNotFoundError", {
+	projectId: Schema.String,
+}) {}
+
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
 }) {}
@@ -521,6 +525,12 @@ export const Api = RpcGroup.make(
 		/** The session's main thread. */
 		success: ThreadInfo,
 		error: CreateError,
+	}),
+	/** Renames a project. Trimmed, non-empty. */
+	Rpc.make("project.rename", {
+		payload: { projectId: Schema.String, name: Schema.String },
+		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		error: ProjectNotFoundError,
 	}),
 	/** The models a session anchored at `hostDir` can use; without it, only the user's settings apply. */
 	Rpc.make("model.list", {

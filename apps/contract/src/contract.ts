@@ -82,6 +82,11 @@ export class HostError extends Schema.TaggedError<HostError>()("Server.HostError
 	message: Schema.String,
 }) {}
 
+/** A project operation that failed, such as renaming one the server no longer has. */
+export class ProjectError extends Schema.TaggedError<ProjectError>()("Server.ProjectError", {
+	message: Schema.String,
+}) {}
+
 export { Clone, ClonePhase, CloneStage, Folder, Repository };
 
 /** The models could not be listed: a settings file or the model catalog, at `path`, is broken. */
@@ -476,6 +481,12 @@ export const Api = RpcGroup.make(
 		payload: { name: Schema.String },
 		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** Renames a project on the CodeWork server; the sidebar follows once the change syncs back. */
+	Rpc.make("projects.rename", {
+		payload: { projectId: Schema.String, name: Schema.Trimmed.check(Schema.isNonEmpty()) },
+		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
 	}),
 	/** An existing folder as an absolute path; a missing one is created. */
 	Rpc.make("host.add", {
