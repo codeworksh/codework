@@ -8,7 +8,7 @@ import { LegendList, type LegendListRef, type LegendListRenderItemProps } from "
 import { createContext, memo, type ReactNode, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Logo } from "@/components/logo";
-import { ComposerNotice, type Notice } from "@/components/banner";
+import { NoticeLine, noticeSurface, type Notice } from "@/components/banner";
 import { useModelName, useModelsNotice } from "@/components/model";
 import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
@@ -16,7 +16,7 @@ import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
 import { menuThreads, useSettings } from "./menu";
 import { Message } from "./message";
-import { Queue } from "./queue";
+import { Queue, trayCard } from "./queue";
 import { ProjectSettings } from "./settings";
 import { type Handoff, handoffs } from "./handoff";
 import { type Display, displayLabel, usePendingPrompts, useRunDisplay, useSent } from "./display";
@@ -106,8 +106,14 @@ function remember(key: string, state: Ready) {
 	}
 }
 
+/** A notice as the conversation shows it, dismissible when it reports an event rather than a state. */
+type Shown = Notice & { readonly onDismiss?: () => void };
+
 /** How long a load runs before it says so, so a quick one never flashes a status line. */
 const LOADING_AFTER_MS = 300;
+
+/** Server messages start lowercase, as a CLI prints them; a notice reads them as sentences. */
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** What a failed run reads as: in the reader's words, never CodeWork's internal ids. */
 const noticeOf = (kind: string, message: string): Notice => {
@@ -119,8 +125,10 @@ const noticeOf = (kind: string, message: string): Notice => {
 				description: "This session can't be picked up again. Start a new session to keep going.",
 				tone: "expired",
 			};
+		case "no-model-error":
+			return { title: "No Model", description: "Configure a provider, or set a model in settings.", tone: "error" };
 		default:
-			return { title: "Something went wrong", description: message, tone: "error" };
+			return { title: "Something Went Wrong", description: sentence(message), tone: "error" };
 	}
 };
 
@@ -536,14 +544,30 @@ function Conversation({
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
-			? { title: "Not sent", description: sendError, tone: "error" }
+			? { title: "Not Sent", description: sendError, tone: "error" }
 			: forkError !== undefined
-				? { title: "Not forked", description: forkError, tone: "error" }
-				: state.status === "ready" && state.info.failure !== undefined
+				? { title: "Not Forked", description: forkError, tone: "error" }
+				: // A failed reply already says why where it failed; the notice is for a run that failed before replying.
+					state.status === "ready" &&
+					  state.info.failure !== undefined &&
+					  state.messages.at(-1)?.error !== state.info.failure.message
 					? noticeOf(state.info.failure.kind, state.info.failure.message)
 					: undefined;
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
+	// Above the composer, under any queued prompts.
+	const latest: Shown | undefined =
+		models ??
+		(shown
+			? {
+					...notice,
+					onDismiss: () => {
+						setDismissed(notice);
+						setSendError(undefined);
+						setForkError(undefined);
+					},
+				}
+			: undefined);
 
 	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
@@ -592,20 +616,6 @@ function Conversation({
 				ref={composer}
 				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 *:pointer-events-auto`}
 			>
-				{models !== undefined ? (
-					<ComposerNotice {...models} />
-				) : (
-					shown && (
-						<ComposerNotice
-							{...notice}
-							onDismiss={() => {
-								setDismissed(notice);
-								setSendError(undefined);
-								setForkError(undefined);
-							}}
-						/>
-					)
-				)}
 				{/* Idle too: prompts left waiting by a stop or a failure run with the next message, so they stay in view. */}
 				{view.queued.length > 0 && (
 					<Queue
@@ -613,9 +623,18 @@ function Conversation({
 						queued={view.queued}
 						running={running}
 						parked={view.info.parked}
+						behind={latest !== undefined}
 						onError={setSendError}
 						onRestore={restore}
 					/>
+				)}
+				{/* The front card of the stack, queued prompts behind it: what went wrong sits nearest what you type next. */}
+				{latest !== undefined && (
+					<div
+						className={`${trayCard} ${noticeSurface(latest.tone)} relative mx-2 flex min-h-8 items-center rounded-t-lg py-1.5`}
+					>
+						<NoticeLine {...latest} />
+					</div>
 				)}
 				<SessionComposer
 					thread={thread}
