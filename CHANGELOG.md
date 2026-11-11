@@ -8,14 +8,35 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- `ModelCatalog.selected(settings, hostDir)` in `@codeworksh/harness/effect`: the model a session runs when nothing at runtime names one.
+- `Runner.NoModelError`, reported as `no-model-error`: a run that has no model, because settings name none and no provider is configured. The CLI prints it with a hint.
+- Queued steers and follow-ups stack above the desktop composer as cards: the newest in front, up to three edges behind, opening into one list on hover or focus without moving the conversation. Parked prompts show a pulsing dot, the lane (Steer or Follow Up) trails each row, and a row is edited in place (Enter saves, Esc cancels).
+- A notice about the session (No Model, Something Went Wrong, Not Sent, Not Forked, a broken settings file) is the front card of that stack, tinted by its tone, with queued prompts behind it.
+
 ### Changed
 
+- With no model in settings, a session runs the first preferred model a configured provider has, else that provider's first model, in place of `openai/gpt-5.6-luna`. With no provider configured either, the run fails with `no-model-error`.
+- `model.list` leaves out `default` when there is no model to run; otherwise `default` is the model a session would run, picked the same way.
+- ACP refuses a new session when there is no model to run.
+- The GitHub Copilot missing-key message ends with "or authenticate with GitHub Copilot".
+- Desktop notice titles are title case, and a failed reply's error no longer repeats as a notice.
 - `vp run knip:check` reports unused exports in `packages/aikit`, `packages/codework`, `packages/harness` and `packages/plugin` as well as the apps. Modules other than a package's entry points no longer re-export themselves as a namespace (`export * as X from "./x.ts"`); their importers use `import * as X`, so knip sees which members are used.
 
 ### Removed
 
 - Internal exports nothing imported, across aikit, codework, harness and plugin. Those also unused inside their own module are deleted, among them harness's `PluginStore.remove` and `PluginStore.all`, the `ToolRegistry` service and its layer, `Space.layerWith`, `Worktree.layerWith` and `Worktree.defaultLayer`. Package entry points are unchanged except as below.
 - `@codeworksh/harness/effect`: `Global.defaultLayer`, a duplicate of `Global.layer`.
+
+### Fixed
+
+- In the desktop composer, a prompt typed while another was still sending was cleared when that send landed, and could not be sent until it did.
+
+### Breaking Changes
+
+- `@codeworksh/plugin`: `Settings.defaults.model` names no model, and `Settings.Info.model.provider` and `.id` are optional.
+- `@codeworksh/harness/effect`: `State.layer` requires `ModelCatalog.Credentials`.
 
 ## [@codeworksh/desktop@0.4.0] - 2026-11-06
 
