@@ -3,7 +3,7 @@ import { createAssistantMessageEventStream, type Message } from "@codeworksh/aik
 import { Effect, Layer, Queue, Stream } from "effect";
 import { Session } from "@codeworksh/harness/effect";
 import { HttpServer } from "effect/http";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
@@ -12,11 +12,13 @@ import { assistant, immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import * as Client from "../src/server/client.ts";
 import type { IndexItem, ThreadItem } from "../src/server/contract.ts";
 import * as Server from "../src/server/server.ts";
+import { testModel } from "./utils/model.ts";
 
 type Synced = Extract<IndexItem, { _tag: "Synced" }>;
 
 it("index.sync sends the index, resumes from a revision, and follows configure, rename and delete", async () => {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-index-")));
+	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
 			const listener = yield* HttpServer.HttpServer;
@@ -141,6 +143,7 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 
 it("updatedAt moves a thread with any change to it or below it, and its session with its own row or a new thread", async () => {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-updated-")));
+	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
 			const listener = yield* HttpServer.HttpServer;
@@ -303,6 +306,7 @@ type ThreadSynced = Extract<ThreadItem, { _tag: "Synced" }>;
 
 it("thread.sync opens a fork's line within a budget, resumes from a revision, and streams live deltas", async () => {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-thread-")));
+	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	let release = () => {};
 	const held = new Promise<void>((resolve) => {
 		release = resolve;
@@ -489,6 +493,7 @@ it("thread.sync opens a fork's line within a budget, resumes from a revision, an
 
 it("thread.page reads a fork's line below thread.sync's floor, page by page, within a budget", async () => {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "codework-sync-page-")));
+	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
 			const listener = yield* HttpServer.HttpServer;

@@ -14,12 +14,13 @@ import { defaults } from "../src/settings/schema.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { assistant } from "./fixtures/llm.ts";
+import { testModel } from "./fixtures/model.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
 const file = (dir: string, thinkingLevel: string) =>
 	writeFile(
 		join(dir, "settings.jsonc"),
-		JSON.stringify({ model: { thinkingLevel, options: { headers: { revision: thinkingLevel } } } }),
+		JSON.stringify({ model: { ...testModel, thinkingLevel, options: { headers: { revision: thinkingLevel } } } }),
 	);
 
 const terminal = (input: LLM.Input, index: number, tool = false) => {
@@ -137,7 +138,11 @@ describe("settings at turn boundaries", () => {
 				writeFile(
 					join(custom, "settings.jsonc"),
 					JSON.stringify({
-						model: { toolExecution: "sequential", providerOptions: { openai: { "*": { toolExecution } } } },
+						model: {
+							...testModel,
+							toolExecution: "sequential",
+							providerOptions: { openai: { "*": { toolExecution } } },
+						},
 					}),
 				);
 			await configure("parallel");
@@ -304,7 +309,7 @@ describe("settings at turn boundaries", () => {
 					yield* Effect.promise(() =>
 						writeFile(
 							join(custom, "settings.jsonc"),
-							JSON.stringify({ model: { options: { timeoutMs: "wrong" } } }),
+							JSON.stringify({ model: { ...testModel, options: { timeoutMs: "wrong" } } }),
 						),
 					);
 					yield* handle.run("second");
@@ -472,7 +477,8 @@ describe("settings at turn boundaries", () => {
 
 	it("tracks a settings file edited forward and reverted across successive runs", () =>
 		withSettings(async ({ root, custom }) => {
-			const write = (model: object) => writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model }));
+			const write = (model: object) =>
+				writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { ...testModel, ...model } }));
 			// A carries a header and a retry count that B does not mention at all.
 			const A = { thinkingLevel: "low", options: { maxRetries: 7, headers: { only: "a" } } };
 			const B = { thinkingLevel: "high", options: { headers: { shared: "b" } } };

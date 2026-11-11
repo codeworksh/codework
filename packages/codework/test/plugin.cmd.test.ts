@@ -20,6 +20,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import { NAME, npmrc, withRegistry } from "../../harness/test/fixtures/registry.ts";
+import { testModel } from "./utils/model.ts";
 
 // The runtime half of an E2E boots the harness in-process, which reads the workspace catalog.
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -119,7 +120,7 @@ const exchanges = async (
 		Effect.gen(function* () {
 			const sessions = new Map<string, Effect.Success<ReturnType<typeof Session.create>>>();
 			for (const hostDir of hostDirs) {
-				const session = sessions.get(hostDir) ?? (yield* Session.create({ hostDir }));
+				const session = sessions.get(hostDir) ?? (yield* Session.create({ hostDir, model: testModel }));
 				sessions.set(hostDir, session);
 				yield* session.main.prompt({ text: "go", delivery: "followUp" });
 				yield* session.main.resume();

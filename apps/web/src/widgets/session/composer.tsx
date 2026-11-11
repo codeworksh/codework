@@ -62,7 +62,8 @@ export const SessionComposer = memo(function SessionComposer({
 	const kv = useKv();
 	const [text, setText] = useState("");
 	const [loaded, setLoaded] = useState(false);
-	const [pending, setPending] = useState(false);
+	// Prompts on their way: the same text twice is a double press, a different one is a new prompt.
+	const [sending, setSending] = useState<ReadonlySet<string>>(() => new Set());
 	// Picks not yet reflected in the session's info; the info wins once it carries them.
 	const [picked, setPicked] = useState<{ model?: ModelRef; thinkingLevel?: ThinkingLevel }>({});
 	const model = picked.model ?? info.model;
@@ -113,7 +114,7 @@ export const SessionComposer = memo(function SessionComposer({
 
 	const send = async (submit: Submit) => {
 		const prompt = text.trim();
-		if (prompt === "" || pending) return;
+		if (prompt === "" || sending.has(prompt)) return;
 		const delivery = deliveryFor(running, submit);
 		const messageId = crypto.randomUUID();
 		// An idle send shows in the conversation at once, so it moves out of the composer with it; a
@@ -123,15 +124,20 @@ export const SessionComposer = memo(function SessionComposer({
 			onSending({ id: messageId, text: prompt, createdAt: Date.now() });
 			setText("");
 		}
-		setPending(true);
+		setSending((current) => new Set(current).add(prompt));
 		inFlight.prompt(key, messageId);
 		const sent = await ask(
 			topics.prompt,
 			encodePrompt({ ...thread, messageId, text: prompt, ...(delivery === undefined ? {} : { delivery }) }),
 		);
-		setPending(false);
+		setSending((current) => {
+			const next = new Set(current);
+			next.delete(prompt);
+			return next;
+		});
 		if (sent) {
-			if (!immediate) setText("");
+			// Only what was sent leaves: anything typed while it was on its way stays.
+			if (!immediate) setText((current) => (current.trim() === prompt ? "" : current));
 			return;
 		}
 		// Refused: never pending again.
@@ -184,7 +190,7 @@ export const SessionComposer = memo(function SessionComposer({
 					)}
 					<ComposerSubmit
 						label={running ? "Steer" : "Reply"}
-						disabled={empty || pending}
+						disabled={empty || sending.has(text.trim())}
 						title={running ? "Steer now; Mod+Enter queues a follow-up" : "Reply (Enter)"}
 					/>
 				</>

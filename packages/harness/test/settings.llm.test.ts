@@ -303,6 +303,7 @@ describe("settings at the LLM boundary", () => {
 					},
 				},
 			}),
+			{ provider: "lmstudio", id: "qwen/qwen3-coder-30b" },
 		);
 		const events = await Effect.runPromise(
 			LLM.open(

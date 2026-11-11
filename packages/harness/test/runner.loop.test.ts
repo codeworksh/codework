@@ -40,6 +40,7 @@ import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 import * as Mcp from "../src/mcp/mcp.ts";
 import * as Process from "../src/sandbox/utils/process.ts";
+import { named, credentials } from "./fixtures/model.ts";
 
 const runtime = (
 	options: {
@@ -76,13 +77,14 @@ const runtime = (
 				pooled(options.plugins ?? plugins),
 			),
 		),
+		Layer.provideMerge(credentials),
 		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Layer.succeed(Settings.Service, {
 				load: () =>
 					Effect.suspend(() => options.beforeSettings?.run ?? Effect.void).pipe(
-						Effect.as(options.settings ?? Settings.defaults),
+						Effect.as(options.settings ?? named),
 					),
 				locate: () => Effect.die("unused"),
 			}),
@@ -628,9 +630,7 @@ describe("runner loop — provider failure", () => {
 				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.ProviderError");
 				if (Option.isSome(failure) && failure.value._tag === "Runner.ProviderError") {
 					expect(failure.value.reason._tag).toBe("Runner.ProviderAuthenticationError");
-					expect(failure.value.message).toBe(
-						`${Settings.defaults.model.provider}/${Settings.defaults.model.id}: provider failed`,
-					);
+					expect(failure.value.message).toBe(`${named.model.provider}/${named.model.id}: provider failed`);
 				}
 			}
 
@@ -716,8 +716,8 @@ const scripted = (
 };
 
 const settings = (retry: Partial<Info["retry"]>): Info => ({
-	...Settings.defaults,
-	retry: { ...Settings.defaults.retry, ...retry },
+	...named,
+	retry: { ...named.retry, ...retry },
 });
 
 describe("runner loop — retry", () => {

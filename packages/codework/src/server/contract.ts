@@ -560,23 +560,26 @@ export const Api = RpcGroup.make(
 	}),
 	/**
 	 * The models a session anchored at `hostDir` can use: providers this server holds credentials
-	 * for, in the catalog plus that project's settings, and the model settings pick when a session
-	 * names none. Without `hostDir`, only the user's settings apply. Credentials are checked for
-	 * presence, not validity.
+	 * for, in the catalog plus that project's settings, and the model a session runs when it names
+	 * none: the one settings name, else one picked from those providers. `default` is absent when
+	 * neither gives one. Without `hostDir`, only the user's settings apply. Credentials are checked
+	 * for presence, not validity.
 	 */
 	Rpc.make("model.list", {
 		payload: { hostDir: optional(Session.AbsolutePath) },
 		success: Schema.Struct({
 			providers: Schema.Array(ModelProvider),
-			default: Schema.Struct({
-				provider: Schema.String,
-				id: Schema.String,
-				/** As settings name it; a run clamps it to what the model supports. */
-				thinkingLevel: Schema.Enum(Model.ThinkingLevelEnum),
-				/** Display names from the catalog, present even when its provider is not listed. */
-				name: optional(Schema.String),
-				providerName: optional(Schema.String),
-			}),
+			default: optional(
+				Schema.Struct({
+					provider: Schema.String,
+					id: Schema.String,
+					/** As settings name it; a run clamps it to what the model supports. */
+					thinkingLevel: Schema.Enum(Model.ThinkingLevelEnum),
+					/** Display names from the catalog, present even when its provider is not listed. */
+					name: optional(Schema.String),
+					providerName: optional(Schema.String),
+				}),
+			),
 		}),
 		error: Schema.Union([Settings.SettingsError, Runner.ModelCatalogError]),
 	}),

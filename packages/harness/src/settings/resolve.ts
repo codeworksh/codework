@@ -98,11 +98,12 @@ const resolveControls = (settings: Info, block: Block, runtime: State.Options) =
 	toolExecution: runtime.toolExecution ?? block.toolExecution ?? settings.model.toolExecution,
 });
 
-/** Pure configuration composition. Domain selections need not exist in the catalog. */
-export function compose(settings: Info, options: State.Options = {}, session: State.Options = {}) {
-	const runtime = merge(options, session);
-	const provider = runtime.provider ?? settings.model.provider;
-	const model = runtime.model ?? settings.model.id;
-	const block = collect(settings, provider, model);
-	return { provider, model, ...resolveControls(settings, block, runtime), block, runtime };
+/** Pure configuration composition for the chosen model. Domain selections need not exist in the catalog. */
+export function compose(
+	settings: Info,
+	chosen: { readonly provider: string; readonly id: string },
+	runtime: State.Options = {},
+) {
+	const block = collect(settings, chosen.provider, chosen.id);
+	return { provider: chosen.provider, model: chosen.id, ...resolveControls(settings, block, runtime), block, runtime };
 }

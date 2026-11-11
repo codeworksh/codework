@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { streaming, toolCalls } from "./fixtures/cli.ts";
+import { testModel } from "./utils/model.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -250,6 +251,7 @@ describe("codework acp", () => {
 
 	it("answers the protocol surface over stdio", () => {
 		const { home, project } = workspace();
+		writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 		return run(
 			withAgent(home, (acp) =>
 				Effect.gen(function* () {

@@ -9,6 +9,7 @@ import * as Session from "../src/effect/session.ts";
 import * as LLM from "../src/runner/llm.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
+import { testModel } from "./fixtures/model.ts";
 
 /**
  * A session's settings come from the host directory the session was given, and from nothing else.
@@ -43,7 +44,10 @@ const withProjects = async (
 			// The user layer. `home` is `--home`, so its settings file sits at the top level.
 			// Every level written here is one the built-in default ("high") is not, so an
 			// assertion names the file that was read rather than agreeing with the fallback.
-			writeFile(join(dirs.home, "settings.jsonc"), JSON.stringify({ model: { thinkingLevel: "off" } })),
+			writeFile(
+				join(dirs.home, "settings.jsonc"),
+				JSON.stringify({ model: { ...testModel, thinkingLevel: "off" } }),
+			),
 			level(dirs.alpha, "low"),
 			level(dirs.beta, "medium"),
 			level(dirs.outer, "max"),

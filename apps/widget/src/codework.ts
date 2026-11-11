@@ -333,17 +333,22 @@ export const ModelProvider = Schema.Struct({
 });
 export type ModelProvider = typeof ModelProvider.Type;
 
-/** What `model.list` answers: the usable providers, and the model settings pick when none is chosen. */
+/**
+ * What `model.list` answers: the usable providers, and the model a session runs when none is chosen,
+ * absent when settings name none and no provider is configured.
+ */
 export const ModelList = Schema.Struct({
 	providers: Schema.Array(ModelProvider),
-	default: Schema.Struct({
-		provider: Schema.String,
-		id: Schema.String,
-		thinkingLevel: ThinkingLevel,
-		/** Display names from the catalog, present even when its provider is not listed. */
-		name: Schema.optionalKey(Schema.String),
-		providerName: Schema.optionalKey(Schema.String),
-	}),
+	default: Schema.optionalKey(
+		Schema.Struct({
+			provider: Schema.String,
+			id: Schema.String,
+			thinkingLevel: ThinkingLevel,
+			/** Display names from the catalog, present even when its provider is not listed. */
+			name: Schema.optionalKey(Schema.String),
+			providerName: Schema.optionalKey(Schema.String),
+		}),
+	),
 });
 export type ModelList = typeof ModelList.Type;
 

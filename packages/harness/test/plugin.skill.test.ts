@@ -25,6 +25,7 @@ import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { scenario } from "./fixtures/skill.spec.ts";
 import { pendingCall } from "./tools.fixture.ts";
+import { testModel } from "./fixtures/model.ts";
 
 const exec = promisify(execFile);
 const git = (cwd: string, ...args: string[]) =>
@@ -418,7 +419,7 @@ describe("codework.prompt.skill", () => {
 			);
 			await write(
 				join(root, "home", "settings.jsonc"),
-				JSON.stringify({ plugins: [{ plugin: "codework.prompt.skill", enabled: false }] }),
+				JSON.stringify({ model: testModel, plugins: [{ plugin: "codework.prompt.skill", enabled: false }] }),
 			);
 
 			const text = await prompt({ root, directory: dir, hostCwd: root });

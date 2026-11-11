@@ -289,10 +289,13 @@ export const layer = Contract.Api.toLayer(
 				const filter = hostDir === undefined ? {} : { hostDir };
 				const settings = yield* Settings.Service;
 				const loaded = yield* settings.load(hostDir);
-				const { model } = loaded;
 				const providers = yield* ModelCatalog.available(filter);
+				const chosen = yield* ModelCatalog.selected(loaded, hostDir);
 				// Named from the whole catalog, so a default without credentials still reads as itself.
-				const entry = (yield* ModelCatalog.effective(loaded.models))[model.provider]?.[model.id];
+				const entry =
+					chosen === undefined
+						? undefined
+						: (yield* ModelCatalog.effective(loaded.models))[chosen.provider]?.[chosen.id];
 				return {
 					providers: providers.flatMap((provider) => {
 						const models = Object.values(provider.models);
@@ -311,12 +314,15 @@ export const layer = Contract.Api.toLayer(
 									},
 								];
 					}),
-					default: {
-						provider: model.provider,
-						id: model.id,
-						thinkingLevel: model.thinkingLevel,
-						...(entry === undefined ? {} : { name: entry.name, providerName: entry.provider.name }),
-					},
+					...(chosen === undefined
+						? {}
+						: {
+								default: {
+									...chosen,
+									thinkingLevel: loaded.model.thinkingLevel,
+									...(entry === undefined ? {} : { name: entry.name, providerName: entry.provider.name }),
+								},
+							}),
 				};
 			}),
 			"project.remote": Effect.fnUntraced(function* ({ projectId }) {

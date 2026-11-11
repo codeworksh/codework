@@ -236,9 +236,8 @@ export interface Info {
 	 * in this order, so for one `provider.id` + `id` the last entry wins.
 	 */
 	readonly models: ReadonlyArray<DeclaredModel>;
+	/** Without `provider` and `id`, a session runs a model picked from the logged-in providers. */
 	readonly model: typeof Model.Type & {
-		readonly provider: string;
-		readonly id: string;
 		readonly thinkingLevel: AikitModel.ThinkingLevel;
 		readonly toolExecution: ToolExecution;
 	};
@@ -252,8 +251,6 @@ export const defaults: Info = {
 	declared: [],
 	models: [],
 	model: {
-		provider: "openai",
-		id: "gpt-5.6-luna",
 		thinkingLevel: "medium",
 		toolExecution: "sequential",
 		options: { timeoutMs: 3_600_000, idleTimeoutMs: 300_000, maxRetries: 0 },

@@ -23,8 +23,9 @@ import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
 import type { Plugin } from "../plugin/plugin.ts";
 import * as Mcp from "../mcp/mcp.ts";
+import * as ModelCatalog from "../model/catalog.ts";
 import * as LLM from "../runner/llm.ts";
-import type * as Runner from "../runner/run.ts";
+import * as Runner from "../runner/run.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import * as Document from "../document/document.ts";
 import * as SessionRuntime from "../session/runtime.ts";
@@ -175,7 +176,11 @@ export interface Interface {
 		threadId: ThreadSchema.ID,
 	) => Effect.Effect<
 		Configuration,
-		Settings.SettingsError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
+		| Settings.SettingsError
+		| Runner.ModelCatalogError
+		| Runner.ModelNotFoundError
+		| Runner.NoModelError
+		| Runner.ProviderError
 	>;
 	/**
 	 * Capture runtime state for one request. Called inside a thread drain,
@@ -189,6 +194,7 @@ export interface Interface {
 		| Settings.SettingsError
 		| Runner.ModelCatalogError
 		| Runner.ModelNotFoundError
+		| Runner.NoModelError
 		| Runner.ProviderError,
 		SandboxIO.Provides | Location.Service
 	>;
@@ -261,6 +267,7 @@ export const layer = (
 			const events = makeEvents(eventService);
 			const global = yield* Global.Service;
 			const mcp = yield* Mcp.Service;
+			const credentials = yield* ModelCatalog.Credentials;
 			/*
 			 * One load pass at a time, for the whole process.
 			 *
@@ -368,7 +375,16 @@ export const layer = (
 				// Not wrapped: a file the user can fix is more useful to a client as a settings
 				// failure carrying its path and key than as an anonymous snapshot failure.
 				const loadedSettings = yield* settings.load(hostDir);
-				const composed = compose(loadedSettings, options, sessionOptions);
+				const bound = merge(options, sessionOptions);
+				const selection =
+					bound.provider !== undefined && bound.model !== undefined
+						? { provider: bound.provider, id: bound.model }
+						: yield* ModelCatalog.selected(loadedSettings, hostDir).pipe(
+								Effect.provideService(ModelCatalog.Credentials, credentials),
+								Effect.provideService(Settings.Service, settings),
+							);
+				if (selection === undefined) return yield* new Runner.NoModelError();
+				const composed = compose(loadedSettings, selection, bound);
 				const resolvedModel = yield* LLM.resolve({
 					provider: composed.provider,
 					model: composed.model,

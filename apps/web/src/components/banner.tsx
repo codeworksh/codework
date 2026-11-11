@@ -44,34 +44,32 @@ const tones: Record<Notice["tone"], { readonly icon: IconComponent; readonly tex
 		},
 	};
 
+/** The tone's tint and border, for a notice set on a surface of its own. */
+export const noticeSurface = (tone: Notice["tone"]) => tones[tone].surface;
+
 /**
- * A notice tucked behind the composer's top edge, as its tray is tucked under the bottom one: subtle
- * and attached to what it is about. Dismissible when `onDismiss` is given; a notice about a state
+ * A notice as a card of its own. Dismissible when `onDismiss` is given; a notice about a state
  * clears itself instead. The description is clamped to two lines, whole on hover.
  */
-export function ComposerNotice({
+function NoticeCard({
 	title,
 	description,
 	tone,
 	actions = [],
 	onDismiss,
-	detached = false,
-}: Notice & {
-	readonly onDismiss?: () => void;
-	/** A card of its own rather than tucked behind the composer's top edge. */
-	readonly detached?: boolean;
-}) {
+}: Notice & { readonly onDismiss?: () => void }) {
 	const { icon: Icon, text, surface } = tones[tone];
 	return (
 		<div
 			role="alert"
-			className={`flex items-center gap-2.5 border ${detached ? "rounded-xl" : "mx-3 rounded-t-xl border-b-0 transition-[transform,opacity] duration-180 ease-out starting:translate-y-1 starting:opacity-0"} ${surface} px-3 py-2 text-xs leading-snug`}
+			className={`flex items-start gap-2 rounded-xl border ${surface} px-3 py-2 transition-[transform,opacity] duration-180 ease-out starting:translate-y-1 starting:opacity-0`}
 		>
-			<Icon className={`size-4 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
+			{/* Centered on the title's line, so a two-line description does not pull it down. */}
+			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
 			<div className="min-w-0 flex-1">
-				<p className="font-medium text-ink">{title}</p>
+				<p className="text-ui font-medium text-ink">{title}</p>
 				{description !== undefined && (
-					<p title={description} className="mt-0.5 line-clamp-2 text-ink-muted">
+					<p title={description} className="mt-0.5 line-clamp-2 text-xs leading-snug text-ink-muted">
 						{description}
 					</p>
 				)}
@@ -82,7 +80,7 @@ export function ComposerNotice({
 					type="button"
 					disabled={action.disabled}
 					onClick={action.onClick}
-					className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-edge px-2 py-0.5 font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
+					className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-md border border-edge px-2 py-0.5 text-xs font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
 				>
 					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
 					{action.label}
@@ -94,6 +92,54 @@ export function ComposerNotice({
 					aria-label="Dismiss"
 					onClick={onDismiss}
 					className="-mr-1 grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
+				>
+					<X className="size-3" strokeWidth={2} aria-hidden />
+				</button>
+			)}
+		</div>
+	);
+}
+
+/**
+ * A notice as a line of the conversation, where a reply would be: the tone's icon, the title, and
+ * the fact after it, with no box around them. Its dismiss and actions show on hover.
+ */
+export function NoticeLine({
+	title,
+	description,
+	tone,
+	actions = [],
+	onDismiss,
+}: Notice & { readonly onDismiss?: () => void }) {
+	const { icon: Icon, text } = tones[tone];
+	return (
+		<div
+			role="alert"
+			className="group flex max-w-full items-start gap-2 text-ui transition-[opacity,translate] duration-180 ease-out starting:translate-y-1 starting:opacity-0"
+		>
+			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
+			<p className="min-w-0 text-ink-muted">
+				<span className="font-medium text-ink">{title}</span>
+				{description !== undefined && <span> · {description}</span>}
+			</p>
+			{actions.map((action) => (
+				<button
+					key={action.label}
+					type="button"
+					disabled={action.disabled}
+					onClick={action.onClick}
+					className="inline-flex shrink-0 items-center gap-1 rounded-md px-1 text-xs font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
+				>
+					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
+					{action.label}
+				</button>
+			))}
+			{onDismiss !== undefined && (
+				<button
+					type="button"
+					aria-label="Dismiss"
+					onClick={onDismiss}
+					className="grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color,opacity] duration-150 ease-out hover:bg-ink/10 hover:text-ink focus-visible:opacity-100 active:scale-95 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
 				>
 					<X className="size-3" strokeWidth={2} aria-hidden />
 				</button>
@@ -115,7 +161,7 @@ export function NoticeSlot({ notice }: { readonly notice: Notice | undefined }) 
 			inert={notice === undefined}
 			className="absolute inset-x-0 top-full z-10 pt-2 transition-[opacity,translate] duration-200 ease-out data-[shown=false]:-translate-y-1 data-[shown=false]:opacity-0 data-[shown=false]:duration-150 data-[shown=false]:ease-out motion-reduce:transition-none"
 		>
-			<ComposerNotice {...shown} detached />
+			<NoticeCard {...shown} />
 		</div>
 	);
 }

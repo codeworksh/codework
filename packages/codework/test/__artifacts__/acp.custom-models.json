@@ -22,12 +22,11 @@
 		}
 	},
 	"userOnly": {
-		"current": "openai/gpt-5.6-luna",
+		"current": "openrouter/moonshotai/kimi-k2.7-code",
 		"thinking": "medium",
 		"providers": [
 			"gateway",
 			"ollama",
-			"openai",
 			"openrouter"
 		],
 		"haiku": "OpenRouter: User Haiku"

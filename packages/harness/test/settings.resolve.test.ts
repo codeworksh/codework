@@ -69,7 +69,7 @@ describe("settings resolution", () => {
 			extras: { organization: "org" },
 		});
 		expect(base.model.options?.providerArray).toEqual(["one", "two"]);
-		expect(merge(defaults, patch).model.provider).toBe("openai");
+		expect(merge(configured({ model: { provider: "openai" } }), patch).model.provider).toBe("openai");
 	});
 
 	it("routes harness controls separately and matches the runtime selection before resolving", () => {
@@ -91,7 +91,7 @@ describe("settings resolution", () => {
 				},
 			},
 		});
-		const result = compose(settings, {}, { provider: "lmstudio", model: "qwen/model" });
+		const result = compose(settings, { provider: "lmstudio", id: "qwen/model" });
 		expect(result).toMatchObject({
 			thinkingLevel: "off",
 			toolExecution: "parallel",
@@ -109,11 +109,11 @@ describe("settings resolution", () => {
 		expect(resolveOverrides(result.block)).toEqual({ contextWindow: 1234 });
 		expect(request).not.toHaveProperty("contextWindow");
 		expect(request).not.toHaveProperty("thinkingLevel");
-		expect(compose(settings).thinkingLevel).toBe("low");
+		expect(compose(settings, { provider: "openai", id: "gpt-5.6-luna" }).thinkingLevel).toBe("low");
 		expect(
-			compose(settings, { thinkingLevel: "medium" }, { provider: "lmstudio", thinkingLevel: "high" }).thinkingLevel,
+			compose(settings, { provider: "lmstudio", id: "qwen/model" }, { thinkingLevel: "high" }).thinkingLevel,
 		).toBe("high");
-		expect(compose(settings, { provider: "unknown", model: "missing" })).toMatchObject({
+		expect(compose(settings, { provider: "unknown", id: "missing" })).toMatchObject({
 			provider: "unknown",
 			model: "missing",
 		});

@@ -10,6 +10,7 @@ import * as Session from "../../src/effect/session.ts";
 import * as SandboxController from "../../src/sandbox/control.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import { immediateOpen } from "./llm.ts";
+import { testModel } from "./model.ts";
 
 const skills = (text: string) => /<skills>\n[\s\S]*?\n<\/skills>/.exec(text)?.[0];
 
@@ -35,6 +36,7 @@ const withHost = async (use: (host: Host) => Promise<void>) => {
 		await fs.writeFile(file, text);
 	};
 	try {
+		await write(path.join(root, "home", "settings.jsonc"), JSON.stringify({ model: testModel }));
 		await write(
 			path.join(root, "home", ".codework", "skills", "home-skill", "SKILL.md"),
 			"---\nname: home-skill\ndescription: Home: never shown.\n---\n",

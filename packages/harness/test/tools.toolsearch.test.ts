@@ -37,6 +37,7 @@ import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 import * as Mcp from "../src/mcp/mcp.ts";
 import * as Process from "../src/sandbox/utils/process.ts";
+import { named, credentials } from "./fixtures/model.ts";
 
 /**
  * `toolsearch` end to end, against a scripted model: what a search loads, how the next request
@@ -197,11 +198,12 @@ const layer = (tools: Plugin) => {
 			),
 		),
 		Layer.provideMerge(State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild)),
+		Layer.provideMerge(credentials),
 		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Layer.succeed(Settings.Service, {
-				load: () => Effect.succeed(Settings.defaults),
+				load: () => Effect.succeed(named),
 				locate: () => Effect.die("unused"),
 			}),
 		),
