@@ -11,6 +11,7 @@ import * as Git from "../../src/git/git.ts";
 import * as SandboxController from "../../src/sandbox/control.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import { immediateOpen } from "./llm.ts";
+import { testModel } from "./model.ts";
 
 const context = (text: string) => /<project_context>\n[\s\S]*?\n<\/project_context>/.exec(text)?.[0];
 
@@ -37,6 +38,7 @@ const withHost = async (use: (host: Host) => Promise<void>) => {
 	};
 	try {
 		await write(path.join(root, "home", "AGENTS.md"), "Home: never shown.\n");
+		await write(path.join(root, "home", "settings.jsonc"), JSON.stringify({ model: testModel }));
 		await write(path.join(root, "cwd", "AGENTS.md"), "Host cwd: never shown.\n");
 		await write(path.join(root, "anchor", "AGENTS.md"), "Host dir: never shown.\n");
 		await write(path.join(root, "anchor", ".codework", "settings.jsonc"), "{}");

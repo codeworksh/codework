@@ -6,6 +6,7 @@ import * as Global from "../src/global.ts";
 import * as Settings from "../src/settings/settings.ts";
 import { parse } from "../src/settings/settings.ts";
 
+import { named } from "./fixtures/model.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
 describe("host settings loader", () => {
@@ -104,6 +105,7 @@ describe("host settings loader", () => {
 
 	it("fails on a layer it cannot read", () =>
 		withSettings(async ({ root, local, global, custom }) => {
+			await unlink(join(global, "settings.jsonc"));
 			await mkdir(join(global, "settings.jsonc"));
 			await writeFile(join(local, "settings.jsonc"), JSON.stringify({ model: { thinkingLevel: "max" } }));
 			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { options: { maxRetries: 4 } } }));
@@ -165,7 +167,7 @@ describe("host settings loader", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const settings = yield* Settings.Service;
-					expect(yield* settings.load(root)).toEqual(Settings.defaults);
+					expect(yield* settings.load(root)).toEqual(named);
 					// Replaced by the override, so never part of the result.
 					yield* Effect.promise(() => write(global, { options: { timeoutMs: 100, headers: { global: "yes" } } }));
 					yield* Effect.promise(() => write(local, { options: { timeoutMs: 200, headers: { local: "yes" } } }));

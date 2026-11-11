@@ -160,6 +160,12 @@ export class ModelNotFoundError extends Schema.TaggedError<ModelNotFoundError>()
 	}
 }
 
+export class NoModelError extends Schema.TaggedError<NoModelError>()("Runner.NoModelError", {}) {
+	override get message(): string {
+		return "no model available: no model is set in settings and no provider is configured";
+	}
+}
+
 export class LLMStreamError extends Schema.TaggedError<LLMStreamError>()("Runner.LLMStreamError", {
 	threadId: Schema.String,
 	reason: Schema.String,
@@ -172,6 +178,7 @@ export class LLMStreamError extends Schema.TaggedError<LLMStreamError>()("Runner
 export type RunError =
 	| ModelCatalogError
 	| ModelNotFoundError
+	| NoModelError
 	| ProviderError
 	| LLMStreamError
 	| ContextDecodeError

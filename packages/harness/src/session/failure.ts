@@ -54,6 +54,8 @@ const category = (tag: string): string => {
 			return "model-catalog-error";
 		case "Runner.ModelNotFoundError":
 			return "model-not-found-error";
+		case "Runner.NoModelError":
+			return "no-model-error";
 		case "Runner.LLMStreamError":
 			return "llm-stream-error";
 		case "ContextDecodeError":

@@ -18,6 +18,7 @@ import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
+import { testModel } from "./fixtures/model.ts";
 
 /**
  * Third-party plugins as they exist in production: TypeScript modules loaded by
@@ -75,7 +76,10 @@ describe("third-party plugins", () => {
 			// Settings entries land after the built-ins, so this tool's entry is written after the
 			// prompt plugin's. Domain order decides setup order, so the tool still registers first
 			// and the prompt that indexes tools sees it — which is the whole point of `kind`.
-			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
+			await writeFile(
+				join(custom, "settings.jsonc"),
+				JSON.stringify({ model: testModel, plugins: [pluginPath("tool/acme-echo")] }),
+			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
 			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "read", "write", "edit", "acme_echo"]);
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
@@ -86,7 +90,7 @@ describe("third-party plugins", () => {
 			// The broken plugin would fail preparation if settings still contributed.
 			await writeFile(
 				join(custom, "settings.jsonc"),
-				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
+				JSON.stringify({ model: testModel, plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom, plugins: [] });
 			expect(contexts[0]?.tools ?? []).toEqual([]);
@@ -99,7 +103,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root, custom }) => {
 			await writeFile(
 				join(custom, "settings.jsonc"),
-				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
+				JSON.stringify({ model: testModel, plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
 			let calls = 0;
 			await expect(
@@ -359,6 +363,7 @@ describe("opt-in built-ins", () => {
 			await writeFile(
 				join(custom, "settings.jsonc"),
 				JSON.stringify({
+					model: testModel,
 					plugins: [
 						{ plugin: "codework.tool.grep", enabled: true },
 						{ plugin: "codework.tool.ls", enabled: true },

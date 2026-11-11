@@ -14,6 +14,7 @@ import * as State from "../src/state/state.ts";
 import { define } from "../src/plugin/plugin.ts";
 import type { Fetchable } from "../src/plugin/source.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
+import { testModel } from "./fixtures/model.ts";
 
 /*
  * The split: loading a module costs a store lookup and an ESM import, so it happens at boot and at
@@ -50,6 +51,7 @@ const withProject = async (body: (dirs: { root: string; project: string }) => Pr
 	const project = join(root, "project");
 	await mkdir(join(project, ".codework"), { recursive: true });
 	await mkdir(join(root, "home"), { recursive: true });
+	await writeFile(join(root, "home", "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		await body({ root, project });
 	} finally {
@@ -304,7 +306,7 @@ describe("boot", () => {
 			// boot, never a fetch.
 			await writeFile(
 				join(root, "home", "settings.jsonc"),
-				JSON.stringify({ plugins: ["@acme/never-published-anywhere"] }),
+				JSON.stringify({ model: testModel, plugins: ["@acme/never-published-anywhere"] }),
 			);
 
 			const failure = await Effect.runPromise(
@@ -646,7 +648,10 @@ describe("reload", () => {
 						// layer, which is the only layer `reload` reads.
 						const broken = join(project, "broken.mjs");
 						yield* Effect.promise(() =>
-							writeFile(join(root, "home", "settings.jsonc"), JSON.stringify({ plugins: [broken] })),
+							writeFile(
+								join(root, "home", "settings.jsonc"),
+								JSON.stringify({ model: testModel, plugins: [broken] }),
+							),
 						);
 						yield* Effect.promise(() => writeFile(broken, "export default { nope: true };"));
 						yield* state.reload;

@@ -35,6 +35,7 @@ const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelCatalogRefreshError = Schema.is(ModelCatalog.RefreshError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
+const isNoModelError = Schema.is(Runner.NoModelError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
@@ -295,6 +296,14 @@ export const renderError = (error: unknown): string => {
 			[
 				`error[model-not-found-error]: ${error.message}`,
 				"hint: check the provider/model IDs in models.gen.json or regenerate the catalog",
+			].join("\n") + "\n"
+		);
+	}
+	if (isNoModelError(error)) {
+		return (
+			[
+				`error[no-model-error]: ${error.message}`,
+				"hint: set a provider API key, run `codework auth login`, or set model.provider and model.id in settings",
 			].join("\n") + "\n"
 		);
 	}

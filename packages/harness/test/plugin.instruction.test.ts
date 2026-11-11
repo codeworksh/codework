@@ -19,6 +19,7 @@ import * as Space from "../src/space/space.ts";
 import { scenario } from "./fixtures/instruction.spec.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
+import { testModel } from "./fixtures/model.ts";
 
 const exec = promisify(execFile);
 const git = (cwd: string, ...args: string[]) =>
@@ -227,7 +228,7 @@ describe("codework.prompt.instruction", () => {
 			await write(join(root, "repo", "AGENTS.md"), "Repo.\n");
 			await write(
 				join(root, "home", "settings.jsonc"),
-				JSON.stringify({ plugins: [{ plugin: "codework.prompt.instruction", enabled: false }] }),
+				JSON.stringify({ model: testModel, plugins: [{ plugin: "codework.prompt.instruction", enabled: false }] }),
 			);
 			const text = await prompt({ root, directory: join(root, "repo"), hostCwd: root });
 			expect(text).toContain("<cwd>");

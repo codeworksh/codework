@@ -5,7 +5,7 @@ import { HttpServer } from "effect/http";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -17,6 +17,7 @@ import { Json, threadKey, topics, type ThreadRef } from "../../../apps/web/src/w
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import * as Client from "../src/server/client.ts";
 import * as Server from "../src/server/server.ts";
+import { testModel } from "./utils/model.ts";
 
 const protocol = (url: string) =>
 	RpcClient.layerProtocolSocket().pipe(
@@ -27,6 +28,7 @@ const protocol = (url: string) =>
 
 it("desktop keeps fork history, configuration and prompts separate from main", async () => {
 	const home = mkdtempSync(join(tmpdir(), "codework-desktop-threads-"));
+	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
 			const listener = yield* HttpServer.HttpServer;

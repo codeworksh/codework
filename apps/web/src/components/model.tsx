@@ -101,12 +101,14 @@ export function useModelName(hostDir: string | undefined, value: ModelRef | unde
 	if (list !== undefined) {
 		const found = lookup(list.providers, current);
 		if (found !== undefined) return found.model.name;
+		const fallback = list.default;
 		if (
-			current.provider === list.default.provider &&
-			current.id === list.default.id &&
-			list.default.name !== undefined
+			fallback !== undefined &&
+			current.provider === fallback.provider &&
+			current.id === fallback.id &&
+			fallback.name !== undefined
 		) {
-			return list.default.name;
+			return fallback.name;
 		}
 	}
 	return current.id;
@@ -145,15 +147,16 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	// in view, unavailable, so the model a session gets by default never silently drops out of sight.
 	const usable = list?.providers.map((provider) => ({ ...provider, available: true })) ?? [];
 	// With nothing to call, there is no model to keep in view either.
+	const fallback = list?.default;
 	const providers: ReadonlyArray<ModelProvider & { readonly available: boolean }> =
-		list === undefined || usable.length === 0 || lookup(usable, list.default) !== undefined
+		fallback === undefined || usable.length === 0 || lookup(usable, fallback) !== undefined
 			? usable
 			: [
-					...usable.filter((provider) => provider.id !== list.default.provider),
+					...usable.filter((provider) => provider.id !== fallback.provider),
 					{
-						id: list.default.provider,
-						name: list.default.providerName ?? list.default.provider,
-						models: [{ id: list.default.id, name: list.default.name ?? list.default.id, thinkingLevels: [] }],
+						id: fallback.provider,
+						name: fallback.providerName ?? fallback.provider,
+						models: [{ id: fallback.id, name: fallback.name ?? fallback.id, thinkingLevels: [] }],
 						available: false,
 					},
 				];
@@ -373,7 +376,8 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 	const levels =
 		list === undefined || current === undefined ? [] : (lookup(list.providers, current)?.model.thinkingLevels ?? []);
 	const picked = useRef<HTMLDivElement>(null);
-	const shown = list === undefined ? undefined : clamp(value ?? list.default.thinkingLevel, levels);
+	const level = value ?? list?.default?.thinkingLevel;
+	const shown = level === undefined ? undefined : clamp(level, levels);
 	const choosable = shown !== undefined && levels.some((level) => level !== "off");
 
 	return (

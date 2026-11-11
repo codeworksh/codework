@@ -19,7 +19,7 @@ import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/ai
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
 import * as Runner from "../runner/run.ts";
-import { type DeclaredModel, keyName } from "../settings/schema.ts";
+import { type DeclaredModel, type Info, keyName } from "../settings/schema.ts";
 import * as Settings from "../settings/settings.ts";
 
 export const filename = "models.gen.json";
@@ -333,3 +333,52 @@ export const available = Effect.fn("ModelCatalog.available")(function* (
 	}
 	return usable;
 });
+
+/** The model each provider starts on, tried in this order when settings name none. */
+const preferred: ReadonlyArray<readonly [provider: string, id: string]> = [
+	["anthropic", "claude-opus-5-5"],
+	["openai", "gpt-6.1-sol"],
+	["openai-codex", "gpt-6.1-sol"],
+	["nvidia", "nvidia/nemotron-3.5-super-vl-120b-a12b"],
+	["deepseek", "deepseek-v4-pro"],
+	["google", "gemini-4-argon"],
+	["google-vertex", "gemini-4-argon"],
+	["github-copilot", "gpt-6.1-sol"],
+	["openrouter", "moonshotai/kimi-k2.7-code"],
+	["xai", "grok-4.7"],
+	["zai", "glm-5.3"],
+	["minimax", "MiniMax-M3"],
+	["minimax-cn", "MiniMax-M3"],
+	["moonshotai", "kimi-k2.7-code"],
+	["moonshotai-cn", "kimi-k2.7-code"],
+	["huggingface", "moonshotai/Kimi-K2.7-Code"],
+	["baseten", "zai-org/GLM-5.3"],
+	["opencode", "kimi-k2.7-code"],
+	["opencode-go", "kimi-k3.1-pro"],
+	["meta", "muse-spark-1.3"],
+	["cloudflare-workers-ai", "@cf/moonshotai/kimi-k2.7-code"],
+	["xiaomi", "mimo-v2.6-pro"],
+	["xiaomi-token-plan-cn", "mimo-v2.6-pro"],
+	["xiaomi-token-plan-ams", "mimo-v2.6-pro"],
+	["xiaomi-token-plan-sgp", "mimo-v2.6-pro"],
+];
+
+/**
+ * The model a session runs when nothing at runtime names one: the one settings name, else the first
+ * {@link preferred} model a logged-in provider has, else that provider list's first model. Undefined
+ * when settings name none and no provider is logged in.
+ */
+export const selected = Effect.fn("ModelCatalog.selected")(function* (settings: Info, hostDir?: string) {
+	const { provider, id } = settings.model;
+	if (provider !== undefined && id !== undefined) return { provider, id };
+	const usable = yield* available(hostDir === undefined ? {} : { hostDir });
+	const match = preferred.find(([name, model]) => usable.some((one) => one.id === name && model in one.models));
+	if (match !== undefined) return { provider: match[0], id: match[1] };
+	for (const one of usable) {
+		const [first] = Object.keys(one.models);
+		if (first !== undefined) return { provider: one.id, id: first };
+	}
+	return undefined;
+});
+
+export * as ModelCatalog from "./catalog.ts";

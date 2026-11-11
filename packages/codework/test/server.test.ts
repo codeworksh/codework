@@ -563,7 +563,7 @@ describe("server", () => {
 			);
 	}, 60_000);
 
-	it("model.list lists credentialed providers and the settings default, per project", () => {
+	it("model.list lists credentialed providers and the default model, per project", () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-models-")));
 		homes.push(root);
 		const project = join(root, "project");
@@ -621,12 +621,14 @@ describe("server", () => {
 					message: invalid.message.replaceAll(root, "<root>"),
 				},
 			};
-			expect(artifact.user.default).toMatchObject({
-				provider: "openai",
-				id: "gpt-5.6-luna",
+			// No model in settings: the logged-in provider's preferred model.
+			expect(artifact.user.default).toEqual({
+				provider: "anthropic",
+				id: "claude-opus-5-5",
 				thinkingLevel: "medium",
+				name: "Claude Opus 5.5",
+				providerName: "Anthropic",
 			});
-			expect(artifact.user.default.providerName).toBe("OpenAI");
 			expect(artifact.user.providers).toContain("anthropic");
 			expect(artifact.user.providers).not.toContain("local");
 			expect(artifact.project.local).toEqual({

@@ -8,10 +8,9 @@
 		"thinking": "low"
 	},
 	"withoutProjectSettings": {
-		"current": "openai/gpt-5.6-luna",
+		"current": "github-copilot/gpt-6.1-sol",
 		"providers": [
 			"github-copilot",
-			"openai",
 			"openrouter"
 		],
 		"thinking": "medium"

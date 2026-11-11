@@ -40,6 +40,7 @@ import { pooled } from "./fixtures/pool.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
+import { named, credentials } from "./fixtures/model.ts";
 
 // The first request calls `echo`, every one after replies: one turn settles a tool call.
 let requests = 0;
@@ -104,11 +105,12 @@ const layer = () => {
 			),
 		),
 		Layer.provideMerge(State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild)),
+		Layer.provideMerge(credentials),
 		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Layer.succeed(Settings.Service, {
-				load: () => Effect.succeed(Settings.defaults),
+				load: () => Effect.succeed(named),
 				locate: () => Effect.die("unused"),
 			}),
 		),
