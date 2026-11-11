@@ -493,6 +493,12 @@ export const Api = RpcGroup.make(
 		/** `HostError` when `hostDir` is a clone still running, failed or cancelled. */
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors, HostError]),
 	}),
+	/** The `origin` URL of a project's main checkout on the host, credentials taken out; null when there is none. */
+	Rpc.make("project.remote", {
+		payload: { projectId: Schema.String },
+		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
+		error: Project.ProjectNotFoundError,
+	}),
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),

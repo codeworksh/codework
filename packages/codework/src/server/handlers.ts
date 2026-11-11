@@ -308,6 +308,11 @@ export const layer = Contract.Api.toLayer(
 					},
 				};
 			}),
+			"project.remote": Effect.fnUntraced(function* ({ projectId }) {
+				const checkout = yield* Project.mainCheckout(projectId);
+				const url = checkout === undefined ? undefined : yield* host.remote(checkout);
+				return { url: url ?? null };
+			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });
 				return { id: renamed.id, name: renamed.name };

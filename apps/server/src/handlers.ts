@@ -52,6 +52,7 @@ export const layer = Contract.Api.toLayer(
 			...tracking,
 
 			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"projects.spaces": (input) => Reads.spaces(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
@@ -64,6 +65,15 @@ export const layer = Contract.Api.toLayer(
 			// Creating runs git init and a first commit, well past the default 5 seconds.
 			"host.create": Effect.fn("host.create")(function* ({ name }) {
 				return yield* callHost((client) => client("host.create", { name }), { timeout: "60 seconds" });
+			}),
+			"projects.remote": Effect.fn("projects.remote")(function* ({ projectId }) {
+				return yield* callHost((client) =>
+					client("project.remote", { projectId }).pipe(
+						Effect.catchTag("ProjectNotFoundError", () =>
+							Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
+						),
+					),
+				);
 			}),
 			"projects.rename": Effect.fn("projects.rename")(function* ({ projectId, name }) {
 				return yield* callHost((client) =>

@@ -1,14 +1,16 @@
-import type { SidebarProject } from "@codeworksh/contract";
+import type { ProjectSpace, SidebarProject } from "@codeworksh/contract";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
-import { ArrowLeft, Folder } from "@/components/vuesax";
+import { ArrowLeft, Check, Copy, Folder, FolderGit2 } from "@/components/vuesax";
 import { Server } from "../../kernel/rpc";
 import { failed } from "../threads/common";
-import { projectsAtom } from "./projects";
+import { projectsAtom, spacesAtom } from "./projects";
 
 const renameProject = Server.mutation("projects.rename");
+const remoteOf = (projectId: string) => Server.query("projects.remote", { projectId });
 
 /** A session's project settings in place of its thread; Esc or the back row returns to the thread. */
 export function ProjectSettings({ sessionId, onBack }: { readonly sessionId: string; readonly onBack: () => void }) {
@@ -41,15 +43,46 @@ export function ProjectSettings({ sessionId, onBack }: { readonly sessionId: str
 				}}
 				className="min-h-0 flex-1 overflow-y-auto outline-none"
 			>
-				<div className="mx-auto flex w-full max-w-conversation flex-col gap-6 px-5 py-6 text-ui sm:px-8">
-					{project !== undefined && <Banner project={project} />}
+				<div className="mx-auto flex w-full max-w-conversation flex-col gap-8 px-5 py-6 text-ui sm:px-8">
+					{project !== undefined && <Page project={project} />}
 				</div>
 			</div>
 		</div>
 	);
 }
 
-/** The project as a tile, its name as the page's title and where it lives. The name is a field: type, then Enter or leave it. */
+interface View {
+	readonly project: SidebarProject;
+	readonly main: ProjectSpace | undefined;
+	/** Null when the project has no remote, or it could not be read. */
+	readonly url: string | null;
+}
+
+/**
+ * The page for `project`, drawn once its directories and remote are both in. Until then the page last
+ * drawn stays, whole: switching threads never shows one project's banner over a section still loading.
+ */
+function Page({ project }: { readonly project: SidebarProject }) {
+	const spaces = useAtomValue(spacesAtom(`${project.machine.id}/${project.id}`));
+	const remote = useAtomValue(remoteOf(project.id));
+	const settled = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
+		AsyncResult.isSuccess(result) || AsyncResult.isFailure(result);
+	const main = AsyncResult.isSuccess(spaces) ? spaces.value.find((space) => space.kind === "primary") : undefined;
+	const url = AsyncResult.isSuccess(remote) ? remote.value.url : null;
+	const ready = settled(spaces) && settled(remote);
+	const [view, setView] = useState<View>();
+	if (ready && (view?.project !== project || view.main !== main || view.url !== url)) setView({ project, main, url });
+	if (view === undefined) return null;
+	return (
+		<>
+			{/* Keyed, so a name typed for one project never carries into the next. */}
+			<Banner key={view.project.id} project={view.project} />
+			{view.main !== undefined && <Repository main={view.main} url={view.url} />}
+		</>
+	);
+}
+
+/** The project as a tile, its name as the page's title and its folder. The name is a field: type, then Enter or leave it. */
 function Banner({ project }: { readonly project: SidebarProject }) {
 	const rename = useAtomSet(renameProject, { mode: "promise" });
 	// What is typed, until it is saved or put back.
@@ -90,17 +123,85 @@ function Banner({ project }: { readonly project: SidebarProject }) {
 							event.currentTarget.blur();
 						}
 					}}
-					className="-mx-1.5 h-8 w-full min-w-0 truncate rounded-md bg-transparent px-1.5 text-[22px]/8 font-semibold tracking-tight outline-none transition-colors duration-150 ease-out hover:bg-ink/4 focus:bg-ink/4"
+					className="-mx-1.5 h-8 w-full min-w-0 truncate rounded-md bg-transparent px-1.5 text-[22px]/8 font-medium tracking-[-0.01em] outline-none transition-colors duration-150 ease-out hover:bg-ink/4 focus:bg-ink/4"
 				/>
-				<div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
-					{/* From its end: the last parts tell projects apart, not the home directory. */}
-					<span title={project.path} className="min-w-0 truncate [direction:rtl]">
-						<bdi>{project.path}</bdi>
-					</span>
-					<span aria-hidden>·</span>
-					<span className="shrink-0">{project.machine.name}</span>
-				</div>
+				{/* From its end: the last parts tell projects apart, not the home directory. */}
+				<span title={project.path} className="min-w-0 truncate text-left text-xs text-ink-muted [direction:rtl]">
+					<bdi>{project.path}</bdi>
+				</span>
 			</div>
 		</header>
 	);
 }
+
+/** A section heading as Linear sets one, a step quieter: medium weight, in line with its rows' text. */
+function Heading({ children }: { readonly children: string }) {
+	return <h2 className="px-4 text-[14px]/5 font-medium text-ink">{children}</h2>;
+}
+
+/** The project's repository: the URL it was cloned from, then its main checkout. */
+function Repository({ main, url }: { readonly main: ProjectSpace; readonly url: string | null }) {
+	return (
+		<section className="flex flex-col gap-3">
+			<Heading>Repositories</Heading>
+			<div className="@container flex flex-col divide-y divide-edge/60 rounded-[10px] border border-edge/60">
+				<div className="flex flex-col items-start gap-3 p-4 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:gap-4">
+					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+						<span className="font-medium">Remote URL</span>
+						<span className="text-xs text-ink-muted">Where this repository was cloned from</span>
+					</div>
+					{url === null ? (
+						<span className="text-xs text-ink-muted">No remote</span>
+					) : (
+						// Text to read and copy, not a field: nothing here suggests it can be changed.
+						<div className="flex max-w-full min-w-0 items-center gap-1 @min-[560px]:max-w-[60%]">
+							<span title={url} className="min-w-0 truncate font-mono text-xs text-ink-muted select-all">
+								{url}
+							</span>
+							<CopyButton text={url} />
+						</div>
+					)}
+				</div>
+				<div title={main.location} className="flex items-center gap-3 p-4">
+					<FolderGit2 size={15} className="shrink-0 text-ink-muted" aria-hidden />
+					<div className="flex min-w-0 flex-1 flex-col">
+						<span className="truncate font-medium">{nameOf(main.location)}</span>
+						{/* From its end: the last parts tell checkouts apart. */}
+						<span className="min-w-0 truncate text-left text-xs text-ink-muted [direction:rtl]">
+							<bdi>{main.location}</bdi>
+						</span>
+					</div>
+					<span className="shrink-0 text-xs text-ink-muted">Main</span>
+				</div>
+			</div>
+		</section>
+	);
+}
+
+/** Copies `text`, then shows a check for a moment so the copy is seen to have happened. */
+function CopyButton({ text }: { readonly text: string }) {
+	const [copied, setCopied] = useState(false);
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 1500);
+		return () => clearTimeout(timer);
+	}, [copied]);
+	return (
+		<button
+			type="button"
+			aria-label={copied ? "Copied" : "Copy remote URL"}
+			title={copied ? "Copied" : "Copy"}
+			onClick={() => {
+				void navigator.clipboard.writeText(text).then(
+					() => setCopied(true),
+					() => toast.error("Not copied"),
+				);
+			}}
+			className="grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
+		>
+			{copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+		</button>
+	);
+}
+
+const nameOf = (location: string) => location.split("/").filter(Boolean).at(-1) ?? location;

@@ -42,5 +42,12 @@
 			"rename": "rejected"
 		}
 	},
-	"sessionsCreatedByInvalid": 0
+	"sessionsCreatedByInvalid": 0,
+	"remote": {
+		"repo": "https://github.com/org/named-upstream",
+		"tokened": "https://github.com/org/tokened",
+		"folder": null,
+		"memory": null,
+		"missing": "ProjectNotFoundError"
+	}
 }

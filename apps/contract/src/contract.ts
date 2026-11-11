@@ -77,6 +77,17 @@ export const SidebarProject = Schema.Struct({
 });
 export type SidebarProject = typeof SidebarProject.Type;
 
+/** One of a project's directories: its main checkout, a worktree, a copy or a plain folder. */
+export const ProjectSpace = Schema.Struct({
+	id: Schema.String,
+	location: Schema.String,
+	kind: SpaceInfo.fields.kind,
+	/** The sandbox it is in; null for the host. */
+	env: Schema.NullOr(Schema.String),
+	status: SpaceInfo.fields.status,
+});
+export type ProjectSpace = typeof ProjectSpace.Type;
+
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
@@ -444,6 +455,11 @@ export const Api = RpcGroup.make(
 	 * An organization's active projects, newest activity first, each with its sessions that are not
 	 * deleted: on the default machine only, or on every machine. Read from app.db alone.
 	 */
+	/** A project's directories, its main checkout first; read from app.db alone. */
+	Rpc.make("projects.spaces", {
+		payload: { machineId: Schema.String, projectId: Schema.String },
+		success: Schema.Array(ProjectSpace),
+	}),
 	Rpc.make("sidebar.list", {
 		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },
 		success: Schema.Array(SidebarProject),
@@ -481,6 +497,12 @@ export const Api = RpcGroup.make(
 		payload: { name: Schema.String },
 		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** The `origin` URL of a project's main checkout, credentials taken out; null when it has none. */
+	Rpc.make("projects.remote", {
+		payload: { projectId: Schema.String },
+		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
+		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
 	}),
 	/** Renames a project on the CodeWork server; the sidebar follows once the change syncs back. */
 	Rpc.make("projects.rename", {

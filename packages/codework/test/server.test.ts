@@ -500,6 +500,26 @@ describe("server", () => {
 			const after = (yield* rpc["thread.list"]({})).length;
 			expect(after).toBe(before);
 
+			// 7. The origin URL of the main checkout on the host: credentials never leave the server.
+			const tokened = yield* Effect.promise(async () => {
+				const path = await repo(dir("tokened"), "tokened");
+				await git(path, "remote", "set-url", "origin", "https://x-access-token:secret@github.com/org/tokened");
+				return path;
+			});
+			const tokenedSession = yield* rpc["session.create"]({ directory: tokened });
+			const remoteOf = (sessionId: Session.SessionSchema.ID) =>
+				projectOf(sessionId).pipe(
+					Effect.flatMap((project) => rpc["project.remote"]({ projectId: project?.id ?? "" })),
+					Effect.map(({ url }) => url),
+				);
+			const remote = {
+				repo: yield* remoteOf(repoNamed.session.id),
+				tokened: yield* remoteOf(tokenedSession.session.id),
+				folder: yield* remoteOf(folderNamed.session.id),
+				memory: yield* remoteOf(memoryNamed.session.id),
+				missing: (yield* rpc["project.remote"]({ projectId: "prj_missing" }).pipe(Effect.flip))._tag,
+			};
+
 			const artifact = {
 				memory: { named: yield* nameOf(memoryNamed.session.id), unnamed: yield* nameOf(memoryUnnamed.session.id) },
 				folder: { named: yield* nameOf(folderNamed.session.id), unnamed: yield* nameOf(folderUnnamed.session.id) },
@@ -517,6 +537,7 @@ describe("server", () => {
 				},
 				invalid,
 				sessionsCreatedByInvalid: after - before,
+				remote,
 			};
 			expect(artifact.memory).toEqual({ named: "In Memory", unnamed: "" });
 			expect(artifact.folder).toEqual({ named: "Plain", unnamed: "plain-unnamed" });
@@ -525,6 +546,13 @@ describe("server", () => {
 			expect(artifact.rename).toMatchObject({ first: "C", second: "C", result: { sameId: true, name: "C" } });
 			for (const outcome of Object.values(invalid))
 				expect(outcome).toEqual({ create: "rejected", rename: "rejected" });
+			expect(artifact.remote).toEqual({
+				repo: "https://github.com/org/named-upstream",
+				tokened: "https://github.com/org/tokened",
+				folder: null,
+				memory: null,
+				missing: "ProjectNotFoundError",
+			});
 			return artifact;
 		})
 			.pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise)

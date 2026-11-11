@@ -526,6 +526,12 @@ export const Api = RpcGroup.make(
 		success: ThreadInfo,
 		error: CreateError,
 	}),
+	/** The `origin` URL of a project's main checkout on the host, credentials taken out; null when there is none. */
+	Rpc.make("project.remote", {
+		payload: { projectId: Schema.String },
+		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
+		error: ProjectNotFoundError,
+	}),
 	/** Renames a project. Trimmed, non-empty. */
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: Schema.String },

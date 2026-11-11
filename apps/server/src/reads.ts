@@ -9,6 +9,7 @@ import {
 	type LineRequest,
 	LineThread,
 	type Priority,
+	type ProjectSpace,
 	type SidebarProject,
 	type SidebarSession,
 	SyncError,
@@ -427,5 +428,21 @@ export const line = Effect.fn("Reads.line")(function* (request: LineRequest) {
 		} satisfies ThreadLine;
 	}).pipe(Effect.orDie);
 });
+
+/** A project's directories, its main checkout first, then by folder. */
+export const spaces = Effect.fn("Reads.spaces")(function* ({
+	machineId,
+	projectId,
+}: {
+	readonly machineId: string;
+	readonly projectId: string;
+}) {
+	const sql = yield* SqlClient.SqlClient;
+	return yield* sql<ProjectSpace>`
+		SELECT id, location, kind, env, status FROM space
+		WHERE machine_id = ${machineId} AND project_id = ${projectId}
+		ORDER BY kind <> 'primary', location
+	`;
+}, Effect.orDie);
 
 export * as Reads from "./reads.ts";

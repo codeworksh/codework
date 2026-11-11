@@ -97,6 +97,28 @@ export const projectsAtom = Server.runtime
 	)
 	.pipe(Atom.keepAlive);
 
+/** A project's directories, by `<machine id>/<project id>`: read when subscribed, and again after their sync changes. */
+export const spacesAtom = Atom.family((key: string) => {
+	const [machineId = "", projectId = ""] = key.split("/");
+	return Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: [syncTopics.changed] }).pipe(
+						Stream.filter(
+							(item) =>
+								"_tag" in item ||
+								Option.exists(decodeChanged(item.payload), (notice) => notice.space.length > 0),
+						),
+						Stream.debounce("50 millis"),
+						Stream.mapEffect(() => client("projects.spaces", { machineId, projectId })),
+					),
+				),
+			),
+		).pipe(Stream.retry(Schedule.spaced("1 second"))),
+	);
+});
+
 /** Each session's main thread's run state, as synced. */
 const mainRunStatesAtom = Atom.make((get) => {
 	const result = get(projectsAtom);

@@ -260,6 +260,21 @@ export const rename = Effect.fn("Project.rename")(function* (input: {
 	});
 });
 
+/**
+ * A project's main checkout on the host, if it has an active one. Needs only the database; a
+ * checkout inside a sandbox has no host path to run git in.
+ */
+export const mainCheckout = Effect.fn("Project.mainCheckout")(function* (projectId: string) {
+	const sql = yield* SqlClient.SqlClient;
+	const found = yield* sql<{ id: string }>`SELECT id FROM project WHERE id = ${projectId}`.pipe(Effect.orDie);
+	if (found.length === 0) return yield* new ProjectNotFoundError({ projectId });
+	const rows = yield* sql<{ location: string }>`
+		SELECT location FROM space
+		WHERE project_id = ${projectId} AND env IS NULL AND kind = 'primary' AND status = 'active'
+	`.pipe(Effect.orDie);
+	return rows[0]?.location;
+});
+
 /** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(

@@ -26,6 +26,8 @@ interface Interface {
 	) => Effect.Effect<{ readonly path: string; readonly commitError?: string }, Contract.HostError>;
 	readonly status: () => Effect.Effect<Status>;
 	readonly lookup: (repository: string) => Effect.Effect<Contract.Repository, Contract.HostError>;
+	/** The `origin` URL of the checkout at `directory`, with any credentials taken out; none without one. */
+	readonly remote: (directory: string) => Effect.Effect<string | undefined>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/cli/server/host/Service") {}
@@ -111,6 +113,19 @@ export const parseRepository = (selector: string): Selector | undefined => {
 	if (parts.length === 2) return named("github.com", first, second);
 	const host = first?.toLowerCase();
 	return parts.length === 3 && host !== undefined && isGitHubHost(host) ? named(host, second, third) : undefined;
+};
+
+/**
+ * A remote URL safe to show: an http(s) URL loses its user and password, which may be a token
+ * (`https://x-access-token:...@github.com/...`). SSH and local forms carry none and pass as they are.
+ */
+export const shownRemote = (url: string) => {
+	if (!/^https?:\/\//i.test(url)) return url;
+	const parsed = URL.parse(url);
+	if (parsed === null) return url;
+	parsed.username = "";
+	parsed.password = "";
+	return parsed.toString();
 };
 
 const decodeRepository = Schema.decodeUnknownEffect(
@@ -280,7 +295,12 @@ const make = Effect.gen(function* () {
 		return { nameWithOwner: found.full_name, url: found.html_url, sshUrl: found.ssh_url };
 	});
 
-	return Service.of({ info, browse, add, create, status, lookup });
+	const remote = Effect.fn("Host.remote")(function* (directory: string) {
+		const url = yield* git.remote(directory);
+		return url === undefined ? undefined : shownRemote(url);
+	});
+
+	return Service.of({ info, browse, add, create, status, lookup, remote });
 });
 
 // Git runs on the host; every call names its own directory, so the mount root is never read.
