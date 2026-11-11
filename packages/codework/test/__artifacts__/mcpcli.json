@@ -171,7 +171,7 @@
 		"stderr": ""
 	},
 	"files": {
-		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t},\n\t\t\"partial\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"E2E_SKIPPED\": \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
-		"project": "{\n\t\"mcpServers\": {\n\t\t// Hide one tool of the user server here.\n\t\t\"echo\": { \"toolExposure\": { \"echo\": \"hidden\" } }\n\t}\n}\n"
+		"user": "{\n\t// Servers for every project.\n\t\"$schema\": \"https://example.com/mcp.json\",\n\t\"mcpServers\": {\n\t\t\"echo\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"GREETING\": \"hi\"\n\t\t\t}\n\t\t},\n\t\t\"partial\": {\n\t\t\t\"command\": \"<node>\",\n\t\t\t\"args\": [\n\t\t\t\t\"<echo>\"\n\t\t\t],\n\t\t\t\"env\": {\n\t\t\t\t\"E2E_SKIPPED\": \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n",
+		"project": "{\n\t\"mcpServers\": {\n\t\t// Hide one tool of the user server here.\n\t\t\"echo\": {\n\t\t\t\"toolExposure\": {\n\t\t\t\t\"echo\": \"hidden\"\n\t\t\t}\n\t\t}\n\t}\n}\n"
 	}
 }
