@@ -657,6 +657,149 @@ describe("server", () => {
 			);
 	});
 
+	it("settings.read, settings.write and settings.set edit a project's and the user's files", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-settings-")));
+		homes.push(root);
+		const app = join(root, "app");
+		mkdirSync(app);
+		const fileOf = (path: string) => readFileSync(path, "utf8");
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({ directory: app });
+			const projectId = created.session.project?.id ?? "";
+			const memory = yield* rpc["session.create"]({ sandbox: { driver: "memory" } });
+			const failure = <A, E extends { readonly _tag: string; readonly message: string }, R>(
+				effect: Effect.Effect<A, E, R>,
+			) =>
+				effect.pipe(
+					Effect.flip,
+					Effect.map((error) => ({ _tag: error._tag, message: error.message })),
+				);
+
+			// 1. A project with no `.codework/` yet: its file is named, empty, and absent.
+			const empty = yield* rpc["settings.read"]({ projectId, file: "settings" });
+
+			// 2. The editor's whole-file save keeps the text as written, comments included.
+			const written = `// Team defaults.\n{\n\t"model": { "provider": "anthropic", "id": "claude-sonnet-5" }, // pinned\n}\n`;
+			const saved = yield* rpc["settings.write"]({
+				projectId,
+				file: "settings",
+				source: written,
+				version: empty.version,
+			});
+			const afterWrite = fileOf(empty.path);
+
+			// 3. One value set in place: the comments and the other keys stay.
+			yield* rpc["settings.set"]({ projectId, file: "settings", at: ["retry", "maxRetries"], value: 5 });
+			const afterSet = fileOf(empty.path);
+			const removed = yield* rpc["settings.set"]({ projectId, file: "settings", at: ["retry"] });
+			const afterRemove = fileOf(empty.path);
+
+			// 4. Sessions in the project read the result.
+			const models = yield* rpc["model.list"]({ hostDir: Session.AbsolutePath.make(app) });
+
+			// 5. Refusals leave the file alone: a stale version, and values the runtime would reject.
+			const stale = yield* failure(
+				rpc["settings.write"]({ projectId, file: "settings", source: "{}", version: saved.version }),
+			);
+			const invalidWrite = yield* failure(
+				rpc["settings.write"]({ projectId, file: "settings", source: "{ not json", version: removed.version }),
+			);
+			const invalidSet = yield* failure(
+				rpc["settings.set"]({ projectId, file: "settings", at: ["retry", "maxRetries"], value: -1 }),
+			);
+			const afterRefusals = fileOf(empty.path);
+
+			// 6. A broken file is read with what is wrong, so the editor can show it and fix it.
+			writeFileSync(empty.path, `{ "retry": { "maxRetries": "many" } }\n`);
+			const broken = yield* rpc["settings.read"]({ projectId, file: "settings" });
+			const fixed = yield* rpc["settings.write"]({
+				projectId,
+				file: "settings",
+				source: afterRemove,
+				version: broken.version,
+			});
+
+			// 7. mcp.json: a user server, turned off in the project by an override.
+			const userMcp = yield* rpc["settings.read"]({ file: "mcp" });
+			yield* rpc["settings.set"]({
+				file: "mcp",
+				at: ["mcpServers", "echo"],
+				value: { command: "node", args: ["echo.mjs"] },
+			});
+			yield* rpc["settings.set"]({ projectId, file: "mcp", at: ["mcpServers", "echo", "enabled"], value: false });
+			const projectMcp = yield* rpc["settings.read"]({ projectId, file: "mcp" });
+			const orphan = yield* failure(
+				rpc["settings.set"]({ projectId, file: "mcp", at: ["mcpServers", "ghost", "enabled"], value: false }),
+			);
+			const borrowed = yield* failure(
+				rpc["settings.set"]({
+					projectId,
+					file: "mcp",
+					at: ["mcpServers", "remote"],
+					value: { url: "https://mcp.example.com", auth: { provider: "anthropic" } },
+				}),
+			);
+
+			// 8. The user's settings file, and projects without a file of their own.
+			const userSettings = yield* rpc["settings.read"]({ file: "settings" });
+			const missing = yield* failure(rpc["settings.read"]({ projectId: "prj_missing", file: "settings" }));
+			const noCheckout = yield* failure(
+				rpc["settings.read"]({ projectId: memory.session.project?.id ?? "", file: "settings" }),
+			);
+
+			const home = join(userSettings.path, "..");
+			const normal = (value: unknown): unknown =>
+				JSON.parse(JSON.stringify(value).replaceAll(root, "<root>").replaceAll(home, "<home>"));
+			const artifact = normal({
+				empty: { path: empty.path, source: empty.source, exists: empty.exists, inherited: empty.inherited },
+				afterWrite,
+				afterSet,
+				afterRemove,
+				default: models.default,
+				refusals: { stale, invalidWrite, invalidSet, unchanged: afterRefusals === afterRemove },
+				broken: { error: broken.error, fixed: fixed.version === removed.version },
+				mcp: {
+					user: { path: userMcp.path, file: fileOf(userMcp.path) },
+					project: { path: projectMcp.path, source: projectMcp.source, error: projectMcp.error ?? null },
+					orphan,
+					borrowed,
+				},
+				user: { path: userSettings.path, exists: userSettings.exists, inherited: userSettings.inherited },
+				inheritedByMcp: projectMcp.inherited ?? null,
+				missing,
+				noCheckout,
+			});
+			expect(empty).toMatchObject({ path: join(app, ".codework", "settings.jsonc"), source: "", exists: false });
+			// The project's file falls back to the user's settings over the defaults.
+			expect(empty.inherited?.retry.maxRetries).toBe(3);
+			expect(projectMcp.inherited).toBeUndefined();
+			expect(afterWrite).toBe(written);
+			expect(afterSet).toContain("// pinned");
+			expect(afterSet).toContain('"maxRetries": 5');
+			expect(afterRemove).not.toContain("retry");
+			expect(models.default).toMatchObject({ provider: "anthropic", id: "claude-sonnet-5" });
+			expect(stale._tag).toBe("SettingsConflictError");
+			expect(invalidWrite._tag).toBe("SettingsError");
+			expect(invalidSet._tag).toBe("SettingsError");
+			expect(afterRefusals).toBe(afterRemove);
+			expect(broken.error).toContain("retry.maxRetries");
+			expect(projectMcp.error).toBeUndefined();
+			expect(orphan._tag).toBe("SettingsError");
+			expect(borrowed._tag).toBe("SettingsError");
+			expect(missing._tag).toBe("ProjectNotFoundError");
+			expect(noCheckout._tag).toBe("ProjectCheckoutError");
+			return artifact;
+		})
+			.pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.settings.json",
+				),
+			);
+	});
+
 	it("thread.message reports an unknown prompt as absent", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);

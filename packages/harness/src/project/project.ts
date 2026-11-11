@@ -235,6 +235,11 @@ export class ProjectNotFoundError extends Schema.TaggedError<ProjectNotFoundErro
 	projectId: Schema.String,
 }) {}
 
+/** The project has no main checkout on this host, so no host file of its own. */
+export class ProjectCheckoutError extends Schema.TaggedError<ProjectCheckoutError>()("ProjectCheckoutError", {
+	projectId: Schema.String,
+}) {}
+
 /** Renames a project. Needs only the database, not a mount: a name is the same in every env. */
 export const rename = Effect.fn("Project.rename")(function* (input: {
 	readonly projectId: string;
@@ -261,7 +266,8 @@ export const rename = Effect.fn("Project.rename")(function* (input: {
 });
 
 /**
- * A project's main checkout on the host, if it has an active one. Needs only the database; a
+ * A project's main checkout on the host, if it has an active one: its repository's main worktree,
+ * or the folder of a project that is not a repository. Needs only the database; a
  * checkout inside a sandbox has no host path to run git in.
  */
 export const mainCheckout = Effect.fn("Project.mainCheckout")(function* (projectId: string) {
@@ -270,7 +276,7 @@ export const mainCheckout = Effect.fn("Project.mainCheckout")(function* (project
 	if (found.length === 0) return yield* new ProjectNotFoundError({ projectId });
 	const rows = yield* sql<{ location: string }>`
 		SELECT location FROM space
-		WHERE project_id = ${projectId} AND env IS NULL AND kind = 'primary' AND status = 'active'
+		WHERE project_id = ${projectId} AND env IS NULL AND kind IN ('primary', 'plain') AND status = 'active'
 	`.pipe(Effect.orDie);
 	return rows[0]?.location;
 });

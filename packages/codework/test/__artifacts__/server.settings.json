@@ -1,0 +1,82 @@
+{
+	"empty": {
+		"path": "<root>/app/.codework/settings.jsonc",
+		"source": "",
+		"exists": false,
+		"inherited": {
+			"retry": {
+				"maxRetries": 3,
+				"baseDelayMs": 2000,
+				"maxDelayMs": 60000
+			}
+		}
+	},
+	"afterWrite": "// Team defaults.\n{\n\t\"model\": { \"provider\": \"anthropic\", \"id\": \"claude-sonnet-5\" }, // pinned\n}\n",
+	"afterSet": "// Team defaults.\n{\n\t\"model\": {\n\t\t\"provider\": \"anthropic\",\n\t\t\"id\": \"claude-sonnet-5\"\n\t},\n\t\"retry\": {\n\t\t\"maxRetries\": 5\n\t}, // pinned\n}\n",
+	"afterRemove": "// Team defaults.\n{\n\t\"model\": {\n\t\t\"provider\": \"anthropic\",\n\t\t\"id\": \"claude-sonnet-5\"\n\t}, // pinned\n}\n",
+	"default": {
+		"provider": "anthropic",
+		"id": "claude-sonnet-5",
+		"thinkingLevel": "medium",
+		"name": "Claude Sonnet 5",
+		"providerName": "Anthropic"
+	},
+	"refusals": {
+		"stale": {
+			"_tag": "SettingsConflictError",
+			"message": "<root>/app/.codework/settings.jsonc changed since it was read"
+		},
+		"invalidWrite": {
+			"_tag": "SettingsError",
+			"message": "<root>/app/.codework/settings.jsonc: parse: InvalidSymbol at 1:3"
+		},
+		"invalidSet": {
+			"_tag": "SettingsError",
+			"message": "<root>/app/.codework/settings.jsonc: decode: retry.maxRetries: Expected a value greater than or equal to 0"
+		},
+		"unchanged": true
+	},
+	"broken": {
+		"error": "retry.maxRetries: Expected number | undefined",
+		"fixed": true
+	},
+	"mcp": {
+		"user": {
+			"path": "<home>/mcp.json",
+			"file": "{\n\t\"mcpServers\": {\n\t\t\"echo\": {\n\t\t\t\"command\": \"node\",\n\t\t\t\"args\": [\n\t\t\t\t\"echo.mjs\"\n\t\t\t]\n\t\t}\n\t}\n}\n"
+		},
+		"project": {
+			"path": "<root>/app/.codework/mcp.json",
+			"source": "{\n\t\"mcpServers\": {\n\t\t\"echo\": {\n\t\t\t\"enabled\": false\n\t\t}\n\t}\n}\n",
+			"error": null
+		},
+		"orphan": {
+			"_tag": "SettingsError",
+			"message": "<root>/app/.codework/mcp.json: decode: server \"ghost\" needs \"command\" or \"url\", or a user server to override"
+		},
+		"borrowed": {
+			"_tag": "SettingsError",
+			"message": "<root>/app/.codework/mcp.json: decode: server \"remote\": auth is only allowed in the user mcp.json"
+		}
+	},
+	"user": {
+		"path": "<home>/settings.jsonc",
+		"exists": false,
+		"inherited": {
+			"retry": {
+				"maxRetries": 3,
+				"baseDelayMs": 2000,
+				"maxDelayMs": 60000
+			}
+		}
+	},
+	"inheritedByMcp": null,
+	"missing": {
+		"_tag": "ProjectNotFoundError",
+		"message": ""
+	},
+	"noCheckout": {
+		"_tag": "ProjectCheckoutError",
+		"message": ""
+	}
+}

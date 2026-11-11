@@ -199,7 +199,12 @@ const layer = (tools: Plugin) => {
 		Layer.provideMerge(State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild)),
 		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
-		Layer.provideMerge(Layer.succeed(Settings.Service, { load: () => Effect.succeed(Settings.defaults) })),
+		Layer.provideMerge(
+			Layer.succeed(Settings.Service, {
+				load: () => Effect.succeed(Settings.defaults),
+				locate: () => Effect.die("unused"),
+			}),
+		),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),

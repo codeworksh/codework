@@ -14,6 +14,7 @@ import {
 	Session,
 	SessionStore,
 	Settings,
+	SettingsFile,
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
@@ -413,6 +414,17 @@ export type McpStatus = typeof McpStatus.Type;
 
 const McpErrors = Schema.Union([ThreadErrors, McpError.UnknownServerError]);
 
+const SettingsFileRef = { projectId: optional(Schema.String), file: Schema.Literals(["settings", "mcp"]) };
+/** The settings a project's `settings.jsonc` falls back to, as the page shows them. */
+const Inherited = Schema.Struct({
+	retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
+});
+const SettingsFileErrors = Schema.Union([
+	Settings.SettingsError,
+	Project.ProjectNotFoundError,
+	Project.ProjectCheckoutError,
+]);
+
 export const Api = RpcGroup.make(
 	/**
 	 * The server's own identity: the process and build a client is talking to.
@@ -503,6 +515,48 @@ export const Api = RpcGroup.make(
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
 		error: Project.ProjectNotFoundError,
+	}),
+	/**
+	 * A settings file as written: the project's when `projectId` is given -- the one sessions in its
+	 * main checkout read -- otherwise the user's. `version` is what `settings.write` is held to;
+	 * `error` is what the runtime would reject in the file as it stands.
+	 */
+	Rpc.make("settings.read", {
+		payload: SettingsFileRef,
+		success: Schema.Struct({
+			path: Schema.String,
+			source: Schema.String,
+			exists: Schema.Boolean,
+			version: Schema.String,
+			/** The file's JSONC as a value; absent when it does not parse. */
+			value: optional(Schema.Unknown),
+			error: optional(Schema.String),
+			/**
+			 * For `settings.jsonc`: what applies where this file sets nothing -- the user's settings over the
+			 * defaults for a project's file, the defaults for the user's. Absent when a lower file is broken.
+			 */
+			inherited: optional(Inherited),
+		}),
+		error: SettingsFileErrors,
+	}),
+	/** The whole file, written only when it is still at `version` and the runtime would accept it. */
+	Rpc.make("settings.write", {
+		payload: { ...SettingsFileRef, source: Schema.String, version: Schema.String },
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union([SettingsFileErrors, SettingsFile.SettingsConflictError]),
+	}),
+	/**
+	 * One value at `at` set in place, keeping the rest of the file as written; no `value` removes it.
+	 * Refused when the result would not be accepted.
+	 */
+	Rpc.make("settings.set", {
+		payload: {
+			...SettingsFileRef,
+			at: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Int])),
+			value: optional(Schema.Unknown),
+		},
+		success: Schema.Struct({ version: Schema.String }),
+		error: SettingsFileErrors,
 	}),
 	/**
 	 * The models a session anchored at `hostDir` can use: providers this server holds credentials

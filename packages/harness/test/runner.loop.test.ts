@@ -84,6 +84,7 @@ const runtime = (
 					Effect.suspend(() => options.beforeSettings?.run ?? Effect.void).pipe(
 						Effect.as(options.settings ?? Settings.defaults),
 					),
+				locate: () => Effect.die("unused"),
 			}),
 		),
 		Layer.provideMerge(sandbox),
