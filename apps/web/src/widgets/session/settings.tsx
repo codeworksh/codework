@@ -4,9 +4,10 @@ import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ArrowLeft, Check, Copy, Folder, FolderGit2 } from "@/components/vuesax";
+import { ArrowLeft, Check, Copy, Folder } from "@/components/vuesax";
 import { Server } from "../../kernel/rpc";
 import { failed } from "../threads/common";
+import { Files, General, Mcp, Row, Section, Tag, useTilde } from "./config";
 import { projectsAtom, spacesAtom } from "./projects";
 
 const renameProject = Server.mutation("projects.rename");
@@ -43,7 +44,7 @@ export function ProjectSettings({ sessionId, onBack }: { readonly sessionId: str
 				}}
 				className="min-h-0 flex-1 overflow-y-auto outline-none"
 			>
-				<div className="mx-auto flex w-full max-w-conversation flex-col gap-8 px-5 py-6 text-ui sm:px-8">
+				<div className="mx-auto flex w-full max-w-conversation flex-col gap-10 px-5 py-8 text-ui sm:px-8">
 					{project !== undefined && <Page project={project} />}
 				</div>
 			</div>
@@ -67,7 +68,10 @@ function Page({ project }: { readonly project: SidebarProject }) {
 	const remote = useAtomValue(remoteOf(project.id));
 	const settled = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
 		AsyncResult.isSuccess(result) || AsyncResult.isFailure(result);
-	const main = AsyncResult.isSuccess(spaces) ? spaces.value.find((space) => space.kind === "primary") : undefined;
+	// A repository's main worktree, or the folder of a project that is not one.
+	const main = AsyncResult.isSuccess(spaces)
+		? spaces.value.find((space) => space.kind === "primary" || space.kind === "plain")
+		: undefined;
 	const url = AsyncResult.isSuccess(remote) ? remote.value.url : null;
 	const ready = settled(spaces) && settled(remote);
 	const [view, setView] = useState<View>();
@@ -77,12 +81,19 @@ function Page({ project }: { readonly project: SidebarProject }) {
 		<>
 			{/* Keyed, so a name typed for one project never carries into the next. */}
 			<Banner key={view.project.id} project={view.project} />
-			{view.main !== undefined && <Repository main={view.main} url={view.url} />}
+			{view.main !== undefined && (
+				<>
+					<Repository main={view.main} url={view.url} />
+					<General projectId={view.project.id} hostDir={view.main.location} />
+					<Mcp projectId={view.project.id} />
+					<Files projectId={view.project.id} hostDir={view.main.location} />
+				</>
+			)}
 		</>
 	);
 }
 
-/** The project as a tile, its name as the page's title and its folder. The name is a field: type, then Enter or leave it. */
+/** The project as a tile and its name as the page's title. The name is a field: type, then Enter or leave it. */
 function Banner({ project }: { readonly project: SidebarProject }) {
 	const rename = useAtomSet(renameProject, { mode: "promise" });
 	// What is typed, until it is saved or put back.
@@ -106,7 +117,7 @@ function Banner({ project }: { readonly project: SidebarProject }) {
 			<span className="grid size-10 shrink-0 place-items-center rounded-lg border border-edge/60 bg-ink/4 text-ink-muted">
 				<Folder size={18} aria-hidden />
 			</span>
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1">
 				<input
 					aria-label="Project name"
 					value={draft ?? name}
@@ -125,56 +136,40 @@ function Banner({ project }: { readonly project: SidebarProject }) {
 					}}
 					className="-mx-1.5 h-8 w-full min-w-0 truncate rounded-md bg-transparent px-1.5 text-[22px]/8 font-medium tracking-[-0.01em] outline-none transition-colors duration-150 ease-out hover:bg-ink/4 focus:bg-ink/4"
 				/>
-				{/* From its end: the last parts tell projects apart, not the home directory. */}
-				<span title={project.path} className="min-w-0 truncate text-left text-xs text-ink-muted [direction:rtl]">
-					<bdi>{project.path}</bdi>
-				</span>
 			</div>
 		</header>
 	);
 }
 
-/** A section heading as Linear sets one, a step quieter: medium weight, in line with its rows' text. */
-function Heading({ children }: { readonly children: string }) {
-	return <h2 className="px-4 text-[14px]/5 font-medium text-ink">{children}</h2>;
-}
-
-/** The project's repository: the URL it was cloned from, then its main checkout. */
+/** The project's repository: the URL it was cloned from, then the folder on this host. */
 function Repository({ main, url }: { readonly main: ProjectSpace; readonly url: string | null }) {
+	const shorten = useTilde();
 	return (
-		<section className="flex flex-col gap-3">
-			<Heading>Repositories</Heading>
-			<div className="@container flex flex-col divide-y divide-edge/60 rounded-[10px] border border-edge/60">
-				<div className="flex flex-col items-start gap-3 p-4 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:gap-4">
-					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-						<span className="font-medium">Remote URL</span>
-						<span className="text-xs text-ink-muted">Where this repository was cloned from</span>
-					</div>
-					{url === null ? (
-						<span className="text-xs text-ink-muted">No remote</span>
-					) : (
-						// Text to read and copy, not a field: nothing here suggests it can be changed.
-						<div className="flex max-w-full min-w-0 items-center gap-1 @min-[560px]:max-w-[60%]">
-							<span title={url} className="min-w-0 truncate font-mono text-xs text-ink-muted select-all">
-								{url}
-							</span>
-							<CopyButton text={url} />
-						</div>
-					)}
-				</div>
-				<div title={main.location} className="flex items-center gap-3 p-4">
-					<FolderGit2 size={15} className="shrink-0 text-ink-muted" aria-hidden />
-					<div className="flex min-w-0 flex-1 flex-col">
-						<span className="truncate font-medium">{nameOf(main.location)}</span>
-						{/* From its end: the last parts tell checkouts apart. */}
-						<span className="min-w-0 truncate text-left text-xs text-ink-muted [direction:rtl]">
-							<bdi>{main.location}</bdi>
+		<Section title="Repository">
+			<Row title="Remote URL">
+				{url === null ? (
+					<span className="text-xs text-ink-muted">None</span>
+				) : (
+					// Text to read and copy, not a field: nothing here suggests it can be changed.
+					<div className="flex max-w-[60%] min-w-0 items-center gap-1">
+						<span title={url} className="min-w-0 truncate font-mono text-xs text-ink-muted select-all">
+							{url}
 						</span>
+						<CopyButton text={url} />
 					</div>
-					<span className="shrink-0 text-xs text-ink-muted">Main</span>
-				</div>
-			</div>
-		</section>
+				)}
+			</Row>
+			<Row
+				title={
+					<>
+						Host directory
+						{main.kind === "primary" && <Tag>main</Tag>}
+					</>
+				}
+				path
+				description={<bdi title={main.location}>{shorten(main.location)}</bdi>}
+			/>
+		</Section>
 	);
 }
 
@@ -203,5 +198,3 @@ function CopyButton({ text }: { readonly text: string }) {
 		</button>
 	);
 }
-
-const nameOf = (location: string) => location.split("/").filter(Boolean).at(-1) ?? location;

@@ -353,6 +353,16 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 	detail: Schema.String,
 }) {}
 
+/** A settings file changed since it was read. */
+export class SettingsConflictError extends Schema.TaggedError<SettingsConflictError>()("SettingsConflictError", {
+	path: Schema.String,
+}) {}
+
+/** The project has no main checkout on the server's host. */
+export class ProjectCheckoutError extends Schema.TaggedError<ProjectCheckoutError>()("ProjectCheckoutError", {
+	projectId: Schema.String,
+}) {}
+
 /** The model catalog is unreadable or invalid. */
 export class ModelCatalogError extends Schema.TaggedError<ModelCatalogError>()("Runner.ModelCatalogError", {
 	path: Schema.String,
@@ -459,6 +469,17 @@ export class ForkError extends Schema.TaggedError<ForkError>()("ForkError", {
 	reason: Schema.String,
 }) {}
 
+/** A settings file: `settings.jsonc` or `mcp.json`, the project's with `projectId`, else the user's. */
+const SettingsFileRef = {
+	projectId: Schema.optionalKey(Schema.String),
+	file: Schema.Literals(["settings", "mcp"]),
+};
+/** The settings a project's `settings.jsonc` falls back to, as the page shows them. */
+const Inherited = Schema.Struct({
+	retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
+});
+const SettingsFileErrors = Schema.Union([SettingsError, ProjectNotFoundError, ProjectCheckoutError]);
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
@@ -537,6 +558,41 @@ export const Api = RpcGroup.make(
 		payload: { projectId: Schema.String, name: Schema.String },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
 		error: ProjectNotFoundError,
+	}),
+	/** A settings file as written: the project's with `projectId`, else the user's; `error` is what the runtime would reject. */
+	Rpc.make("settings.read", {
+		payload: SettingsFileRef,
+		success: Schema.Struct({
+			path: Schema.String,
+			source: Schema.String,
+			exists: Schema.Boolean,
+			version: Schema.String,
+			/** The file's JSONC as a value; absent when it does not parse. */
+			value: Schema.optionalKey(Schema.Unknown),
+			error: Schema.optionalKey(Schema.String),
+			/**
+			 * For `settings.jsonc`: what applies where this file sets nothing -- the user's settings over the
+			 * defaults for a project's file, the defaults for the user's. Absent when a lower file is broken.
+			 */
+			inherited: Schema.optionalKey(Inherited),
+		}),
+		error: SettingsFileErrors,
+	}),
+	/** The whole file, written only when it is still at `version` and the runtime would accept it. */
+	Rpc.make("settings.write", {
+		payload: { ...SettingsFileRef, source: Schema.String, version: Schema.String },
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union([SettingsFileErrors, SettingsConflictError]),
+	}),
+	/** One value at `at` set in place; no `value` removes it. */
+	Rpc.make("settings.set", {
+		payload: {
+			...SettingsFileRef,
+			at: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Int])),
+			value: Schema.optionalKey(Schema.Unknown),
+		},
+		success: Schema.Struct({ version: Schema.String }),
+		error: SettingsFileErrors,
 	}),
 	/** The models a session anchored at `hostDir` can use; without it, only the user's settings apply. */
 	Rpc.make("model.list", {

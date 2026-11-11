@@ -107,6 +107,44 @@ export class ModelsError extends Schema.TaggedError<ModelsError>()("Server.Model
 	message: Schema.String,
 }) {}
 
+/** A settings file the runtime would reject, at `path`; nothing was written. */
+export class SettingsError extends Schema.TaggedError<SettingsError>()("Server.SettingsError", {
+	path: Schema.String,
+	message: Schema.String,
+}) {}
+
+/** A settings file changed since it was read; nothing was written. */
+export class SettingsConflict extends Schema.TaggedError<SettingsConflict>()("Server.SettingsConflict", {
+	path: Schema.String,
+}) {}
+
+/** `settings.jsonc` or `mcp.json`: the project's with `projectId`, else the user's. */
+export const SettingsFileRef = {
+	projectId: Schema.optionalKey(Schema.String),
+	file: Schema.Literals(["settings", "mcp"]),
+};
+
+/** A settings file as written. `version` is what a write is held to; `error` is what the runtime would reject. */
+export const SettingsFile = Schema.Struct({
+	path: Schema.String,
+	source: Schema.String,
+	exists: Schema.Boolean,
+	version: Schema.String,
+	/** The file's JSONC as a value; absent when it does not parse. */
+	value: Schema.optionalKey(Schema.Unknown),
+	error: Schema.optionalKey(Schema.String),
+	/** For `settings.jsonc`: what applies where this file sets nothing. */
+	inherited: Schema.optionalKey(
+		Schema.Struct({
+			retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
+		}),
+	),
+});
+export type SettingsFile = typeof SettingsFile.Type;
+
+/** Every settings call's: only a write can conflict, but one set keeps the app server's mapping single. */
+const SettingsErrors = [CodeworkUnavailable, HostError, ProjectError, SettingsError, SettingsConflict] as const;
+
 export const Layout = Schema.Literals(["tile", "monocle"]);
 export type Layout = typeof Layout.Type;
 
@@ -503,6 +541,28 @@ export const Api = RpcGroup.make(
 		payload: { projectId: Schema.String },
 		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
+	}),
+	/** A settings file on the CodeWork server, as written. */
+	Rpc.make("settings.read", {
+		payload: SettingsFileRef,
+		success: SettingsFile,
+		error: Schema.Union(SettingsErrors),
+	}),
+	/** The whole file, written only when it is still at `version` and the runtime would accept it. */
+	Rpc.make("settings.write", {
+		payload: { ...SettingsFileRef, source: Schema.String, version: Schema.String },
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union(SettingsErrors),
+	}),
+	/** One value at `at` set in place, the rest of the file kept as written; no `value` removes it. */
+	Rpc.make("settings.set", {
+		payload: {
+			...SettingsFileRef,
+			at: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Int])),
+			value: Schema.optionalKey(Schema.Unknown),
+		},
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union(SettingsErrors),
 	}),
 	/** Renames a project on the CodeWork server; the sidebar follows once the change syncs back. */
 	Rpc.make("projects.rename", {
