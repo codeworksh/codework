@@ -23,7 +23,7 @@ async function resolveToken(apiKey: GitHubCopilotApiKey | undefined): Promise<st
 	const fromEnv = typeof process === "undefined" ? undefined : process.env[API_KEY_ENV];
 	if (fromEnv) return fromEnv;
 	throw new LoadAPIKeyError({
-		message: `GitHub Copilot API key is missing. Set ${API_KEY_ENV}, pass an apiKey, or authenticate with \`aikit auth --github-copilot\`.`,
+		message: `GitHub Copilot API key is missing. Set ${API_KEY_ENV}, pass an apiKey, or authenticate with GitHub Copilot.`,
 	});
 }
 
