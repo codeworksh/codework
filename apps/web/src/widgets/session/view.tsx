@@ -4,8 +4,18 @@ import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCa
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { LegendList, type LegendListRef, type LegendListRenderItemProps } from "@legendapp/list/react";
-import { createContext, memo, type ReactNode, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
+import {
+	createContext,
+	type CSSProperties,
+	memo,
+	type ReactNode,
+	use,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 
 import { Logo } from "@/components/logo";
 import { NoticeLine, noticeSurface, type Notice } from "@/components/banner";
@@ -569,19 +579,16 @@ function Conversation({
 				}
 			: undefined);
 
-	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
 	// The last composer's height, so a conversation opens at its end with the composer already
 	// counted and the list does not scroll again once it is measured.
 	const [inset, setInset] = useState(lastInset);
 	// Before paint, so the first frame is laid out with the composer's height.
 	useLayoutEffect(() => {
-		const root = surface.current;
 		const element = composer.current;
-		if (root === null || element === null) return;
+		if (element === null) return;
 		const sync = () => {
 			const height = element.getBoundingClientRect().height;
-			root.querySelector<HTMLElement>(".session-transcript")?.style.setProperty("--composer-height", `${height}px`);
 			lastInset = Math.ceil(height);
 			setInset(lastInset);
 		};
@@ -599,7 +606,7 @@ function Conversation({
 	if (view.status === "failed") return <p className="p-3 text-ink-muted">{view.message}</p>;
 	const running = isRunning(view);
 	return (
-		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
+		<div inert={stand !== undefined} className="relative flex h-full flex-col">
 			<StreamedContext value={message}>
 				<ForkContext value={forkAt}>
 					<Transcript
@@ -740,13 +747,10 @@ function Transcript({
 			modelName={modelName}
 		/>
 	);
-	const transcriptRef = (instance: LegendListRef | null) => {
-		instance?.getScrollableNode().style.setProperty("--composer-height", `${inset}px`);
-		return ref(instance);
-	};
 	return (
 		<LegendList<Turn>
-			ref={transcriptRef}
+			ref={ref}
+			style={{ "--composer-height": `${inset}px` } as CSSProperties}
 			data={turns}
 			extraData={extraData}
 			keyExtractor={turnKey}
