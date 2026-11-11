@@ -139,6 +139,12 @@ export const SettingsFile = Schema.Struct({
 			retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
 		}),
 	),
+	/** For `mcp.json`: the servers as sessions use them, user and project merged. */
+	servers: Schema.optionalKey(
+		Schema.Array(
+			Schema.Struct({ name: Schema.String, from: Schema.Literals(["user", "project"]), enabled: Schema.Boolean }),
+		),
+	),
 });
 export type SettingsFile = typeof SettingsFile.Type;
 

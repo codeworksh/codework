@@ -157,6 +157,8 @@ export interface Target {
 	readonly scope: "user" | "project";
 	/** The user layer's directory, which a project `mcp.json` is checked against. */
 	readonly userDir: string;
+	/** For a project file: the folder holding its `.codework`, where sessions read the project layer. */
+	readonly root?: string;
 }
 
 /**
@@ -171,18 +173,30 @@ export const locate = Effect.fn("Settings.locate")(function* (input: {
 	readonly kind: Target["kind"];
 }) {
 	const userDir = input.userConfigDir ?? input.home;
-	const directory =
-		input.hostDir === undefined
-			? userDir
-			: hostPath.join((yield* projectRoot(input.hostDir, input.home)) ?? input.hostDir, Global.appConfigDir);
-	const scope: Target["scope"] = input.hostDir === undefined ? "user" : "project";
+	const root =
+		input.hostDir === undefined ? undefined : ((yield* projectRoot(input.hostDir, input.home)) ?? input.hostDir);
+	const directory = root === undefined ? userDir : hostPath.join(root, Global.appConfigDir);
+	const scope: Target["scope"] = root === undefined ? "user" : "project";
+	const placed = root === undefined ? {} : { root };
 	if (input.kind === "mcp")
-		return { path: hostPath.join(directory, "mcp.json"), kind: input.kind, scope, userDir } satisfies Target;
+		return {
+			path: hostPath.join(directory, "mcp.json"),
+			kind: input.kind,
+			scope,
+			userDir,
+			...placed,
+		} satisfies Target;
 	const candidates = settingsIn(directory);
 	const existing = yield* Effect.findFirst(candidates, (path) =>
 		fileSystem.exists(path).pipe(Effect.orElseSucceed(() => false)),
 	);
-	return { path: Option.getOrElse(existing, () => candidates[0]!), kind: input.kind, scope, userDir } satisfies Target;
+	return {
+		path: Option.getOrElse(existing, () => candidates[0]!),
+		kind: input.kind,
+		scope,
+		userDir,
+		...placed,
+	} satisfies Target;
 });
 
 export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {

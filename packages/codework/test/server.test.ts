@@ -764,7 +764,12 @@ describe("server", () => {
 				broken: { error: broken.error, fixed: fixed.version === removed.version },
 				mcp: {
 					user: { path: userMcp.path, file: fileOf(userMcp.path) },
-					project: { path: projectMcp.path, source: projectMcp.source, error: projectMcp.error ?? null },
+					project: {
+						path: projectMcp.path,
+						source: projectMcp.source,
+						error: projectMcp.error ?? null,
+						servers: projectMcp.servers,
+					},
 					orphan,
 					borrowed,
 				},
@@ -788,6 +793,8 @@ describe("server", () => {
 			expect(afterRefusals).toBe(afterRemove);
 			expect(broken.error).toContain("retry.maxRetries");
 			expect(projectMcp.error).toBeUndefined();
+			// The user server, as sessions merge it: defined by the user, off through the project override.
+			expect(projectMcp.servers).toEqual([{ name: "echo", from: "user", enabled: false }]);
 			expect(orphan._tag).toBe("SettingsError");
 			expect(borrowed._tag).toBe("SettingsError");
 			expect(missing._tag).toBe("ProjectNotFoundError");

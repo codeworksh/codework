@@ -580,6 +580,16 @@ export const Api = RpcGroup.make(
 			 * defaults for a project's file, the defaults for the user's. Absent when a lower file is broken.
 			 */
 			inherited: Schema.optionalKey(Inherited),
+			/** For `mcp.json`: the servers as sessions use them, user and project merged. */
+			servers: Schema.optionalKey(
+				Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						from: Schema.Literals(["user", "project"]),
+						enabled: Schema.Boolean,
+					}),
+				),
+			),
 		}),
 		error: SettingsFileErrors,
 	}),

@@ -6,6 +6,7 @@ import {
 	EventRegistry,
 	EventSchema,
 	Mcp,
+	McpConfig,
 	ModelCatalog,
 	Project,
 	PromptSchema,
@@ -346,6 +347,14 @@ export const layer = Contract.Api.toLayer(
 						: projectId === undefined
 							? Option.some(Settings.defaults)
 							: yield* settings.load(undefined).pipe(Effect.option);
+				// The servers as sessions merge them, so a list drawn from this never disagrees with a run.
+				const merged =
+					file !== "mcp"
+						? undefined
+						: yield* McpConfig.load({
+								userDir: target.userDir,
+								...(target.root === undefined ? {} : { root: target.root }),
+							});
 				return {
 					path: target.path,
 					source: current.source,
@@ -354,6 +363,18 @@ export const layer = Contract.Api.toLayer(
 					...("value" in parsed ? { value: parsed.value } : {}),
 					...(Option.isSome(problem) ? { error: problem.value.detail } : {}),
 					...(Option.isSome(below) ? { inherited: { retry: below.value.retry } } : {}),
+					...(merged === undefined
+						? {}
+						: {
+								servers: merged.servers.map((server) => ({
+									name: server.name,
+									from:
+										server.file === target.path && target.scope === "project"
+											? ("project" as const)
+											: ("user" as const),
+									enabled: server.config.enabled !== false,
+								})),
+							}),
 				};
 			}),
 			"settings.write": Effect.fnUntraced(function* ({ projectId, file, source, version }) {
