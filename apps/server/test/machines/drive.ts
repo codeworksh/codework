@@ -2,7 +2,7 @@
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
 import { readFileSync } from "node:fs";
-import { Client } from "../../../../packages/codework/src/server/client.ts";
+import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 /*
  * `node --conditions=development drive.ts < calls.json`: runs `[[method, payload], ...]` in order

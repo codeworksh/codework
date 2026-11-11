@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option } from "effect";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
 import { assembleLine, type Snapshot } from "./assemble.ts";
 import type { ContextDecodeError } from "./errors.ts";
 
@@ -28,5 +28,3 @@ export const layer = Layer.effect(
 export * from "./assemble.ts";
 export * from "./codec.ts";
 export * from "./errors.ts";
-
-export * as Context from "./context.ts";

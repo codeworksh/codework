@@ -29,7 +29,7 @@ export function DisplayMenu({
 					<SlidersHorizontal aria-hidden />
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align={align} side={side} className="min-w-40">
+			<DropdownMenuContent align={align} side={side} className="min-w-44">
 				{children}
 			</DropdownMenuContent>
 		</DropdownMenu>

@@ -1,8 +1,8 @@
 import { Cause, Effect } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
-import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
+import * as SandboxDriverRegistry from "../src/sandbox/registry.ts";
+import * as FakeSandboxDriver from "../src/sandbox/drivers/fake.ts";
 import { makeRedactor, providerError, providerErrorCause } from "../src/sandbox/errors.ts";
 import { sanitizeProviderError as sanitizeVercelProviderError } from "../src/sandboxes/vercel/provider.ts";
 import { it as effectTests, testEffect } from "./utils/effect.ts";

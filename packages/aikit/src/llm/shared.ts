@@ -3,16 +3,16 @@ import type * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
 import { estimateContextTokens } from "../utils/estimate.ts";
 
-export const CacheRetention = Type.Union([Type.Literal("none"), Type.Literal("short"), Type.Literal("long")]);
+const CacheRetention = Type.Union([Type.Literal("none"), Type.Literal("short"), Type.Literal("long")]);
 export type CacheRetention = Static<typeof CacheRetention>;
 
-export const GenerationOptions = Type.Object({
+const GenerationOptions = Type.Object({
 	maxTokens: Type.Optional(Type.Number()),
 	temperature: Type.Optional(Type.Number()),
 	cacheRetention: Type.Optional(CacheRetention),
 });
 
-export const HelperOptions = Type.Object({
+const HelperOptions = Type.Object({
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 	sessionId: Type.Optional(Type.String()),
 	apiKey: Type.Optional(Type.String()),
@@ -95,7 +95,7 @@ export const MIN_ANSWER_TOKENS = 1024;
  * "medium" setting into wildly different budgets across models, and a budget is
  * a property of how hard the task is, not of how large the model's ceiling is.
  */
-export const DEFAULT_THINKING_BUDGETS = {
+const DEFAULT_THINKING_BUDGETS = {
 	minimal: 1024,
 	low: 2048,
 	medium: 8192,

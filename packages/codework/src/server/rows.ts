@@ -51,5 +51,3 @@ export const follow = <A, R>(
 	page: Pages<A, R>,
 	synced: (head: Store.Head) => A,
 ): Stream.Stream<A, never, R | Store.Service> => watch((head) => range(after, head, page, synced), page, synced);
-
-export * as Rows from "./rows.ts";

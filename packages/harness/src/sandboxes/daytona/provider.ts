@@ -96,7 +96,7 @@ const dateFrom = (value: string | undefined) => {
 	return Option.getOrUndefined(DateTime.make(value).pipe(Option.map(DateTime.toDateUtc)));
 };
 
-export const createSandbox = (daytona: Daytona, options: Options) => {
+const createSandbox = (daytona: Daytona, options: Options) => {
 	const base = {
 		language: options.language ?? "typescript",
 		...(options.envVars === undefined ? {} : { envVars: options.envVars }),
@@ -136,7 +136,7 @@ const remote = (options: Options) =>
 		}),
 	);
 
-export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
+const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
 	const symlink = info.mode === undefined ? undefined : info.mode.startsWith("l");
 	const mtime = dateFrom(info.modifiedAt ?? info.modTime);
 
@@ -354,10 +354,10 @@ const identityLayer = (options: Options) =>
  * the sandbox's native remote shell. It intentionally does not provide VFS:
  * remote filesystems have no synchronous filesystem surface.
  */
-export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, DaytonaError> =>
+export const services = (
+	options: Options = {},
+): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, DaytonaError> =>
 	Layer.mergeAll(
 		SandboxIO.withMutation(Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options))),
 		resourceLayer,
 	).pipe(Layer.provide(remote(options)));
-
-export const services = layer;

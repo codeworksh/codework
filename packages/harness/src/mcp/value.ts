@@ -155,5 +155,3 @@ export const resolveAll = Effect.fnUntraced(function* (
 	for (const [key, value] of Object.entries(values)) resolved[key] = yield* resolve(value, kind, `${what} "${key}"`);
 	return resolved;
 });
-
-export * as McpValue from "./value.ts";

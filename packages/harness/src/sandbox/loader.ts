@@ -32,7 +32,7 @@ const splitPackage = (specifier: string): { readonly name: string; readonly key:
 	return { name: parts[0]!, key: parts.length === 1 ? "." : `./${parts.slice(1).join("/")}` };
 };
 
-export const isPackageSpecifier = (specifier: string): boolean =>
+const isPackageSpecifier = (specifier: string): boolean =>
 	!specifier.startsWith(".") &&
 	!specifier.startsWith("/") &&
 	!specifier.startsWith("file:") &&
@@ -170,5 +170,3 @@ export const loadAll = (
 	options: Options,
 ): Effect.Effect<ReadonlyArray<SandboxDriver.Registration>, SandboxDriverLoadError> =>
 	Effect.forEach(entries, (entry) => load(entry, options));
-
-export * as SandboxDriverLoader from "./loader.ts";

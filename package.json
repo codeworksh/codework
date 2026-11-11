@@ -20,7 +20,7 @@
 		"dev:www": "vp run --filter @codeworksh/www dev",
 		"knip": "knip",
 		"knip:check": "vp run knip:check:all",
-		"knip:check:exports": "knip --exports --no-config-hints --workspace apps/web --workspace apps/desktop --workspace apps/contract --workspace apps/widget",
+		"knip:check:exports": "knip --exports --no-config-hints --workspace apps/web --workspace apps/desktop --workspace apps/contract --workspace apps/widget --workspace packages/aikit --workspace packages/codework --workspace packages/harness --workspace packages/plugin",
 		"knip:check:files": "knip --include files,dependencies --no-config-hints",
 		"lint": "vp lint",
 		"prepare": "node scripts/clean-tsgo-backups.mjs && effect-tsgo patch --typescript --oxlint",

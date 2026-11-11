@@ -46,11 +46,11 @@ export const ModelCatalogLoadError = NamedError.create(
 );
 export type ModelCatalogLoadError = InstanceType<typeof ModelCatalogLoadError>;
 
-export function projectRoot(): string {
+function projectRoot(): string {
 	return process.cwd();
 }
 
-export const filename = "models.gen.json";
+const filename = "models.gen.json";
 
 let configured: string | undefined;
 
@@ -71,7 +71,7 @@ export function path(): string {
  * The catalog bundled with aikit for OpenAI, Anthropic and OpenRouter (`aikit modelgen --baseline`),
  * so a first run works before any catalog was generated.
  */
-export const baseline: GeneratedCatalog = bundled;
+const baseline: GeneratedCatalog = bundled;
 
 /**
  * The catalog at `catalogPath` over the {@link baseline}: a provider the file lists replaces the

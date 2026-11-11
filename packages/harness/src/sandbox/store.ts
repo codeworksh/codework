@@ -123,5 +123,3 @@ export const make = Effect.gen(function* () {
 
 	return { find, list, register, transition } satisfies Interface;
 });
-
-export * as SandboxStore from "./store.ts";

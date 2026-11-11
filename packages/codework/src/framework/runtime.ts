@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import { Command } from "effect/cli";
 import type { CommandError } from "../cli/error.ts";
-import { Otel } from "./otel.ts";
-import { Spec } from "./spec.ts";
+import * as Otel from "./otel.ts";
+import * as Spec from "./spec.ts";
 
 /**
  * Binds handlers to a {@link Spec} tree. Handlers are loaded through dynamic
@@ -101,5 +101,3 @@ function provide(
 		),
 	) as ProvidedCommand;
 }
-
-export * as Runtime from "./runtime.ts";

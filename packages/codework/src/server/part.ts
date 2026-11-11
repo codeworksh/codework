@@ -6,13 +6,13 @@ import { Schema } from "effect";
  * `details` are left out, so decoding a stored part drops them.
  */
 
-export const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
-export const ImageContent = Schema.Struct({
+const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
+const ImageContent = Schema.Struct({
 	type: Schema.Literal("image"),
 	data: Schema.String,
 	mimeType: Schema.String,
 });
-export const ThinkingContent = Schema.Struct({
+const ThinkingContent = Schema.Struct({
 	type: Schema.Literal("thinking"),
 	thinking: Schema.String,
 	/** The provider withheld the reasoning; `thinking` is then empty. */
@@ -20,14 +20,14 @@ export const ThinkingContent = Schema.Struct({
 });
 
 /** aikit's ToolStatusEnum. */
-export const ToolStatus = Schema.Literals(["pending", "running", "completed", "error", "skipped", "aborted"]);
+const ToolStatus = Schema.Literals(["pending", "running", "completed", "error", "skipped", "aborted"]);
 
-export const ToolResult = Schema.Struct({
+const ToolResult = Schema.Struct({
 	content: Schema.Array(Schema.Union([TextContent, ImageContent])),
 	isError: Schema.Boolean,
 });
 
-export const ToolCall = Schema.Struct({
+const ToolCall = Schema.Struct({
 	type: Schema.Literal("toolCall"),
 	callID: Schema.String,
 	name: Schema.String,
@@ -45,5 +45,3 @@ export type Part = typeof Part.Type;
 
 /** A stored part row's JSON, or none when it is not a part a client renders. */
 export const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Part));
-
-export * as MessagePart from "./part.ts";

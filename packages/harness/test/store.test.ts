@@ -4,36 +4,36 @@ import { createAssistantMessageEventStream } from "@codeworksh/aikit";
 import { Cause, DateTime, Effect, Exit, Layer, PubSub, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { Context } from "../src/context/context.ts";
-import { Control } from "../src/control.ts";
-import { Database } from "../src/db/db.ts";
-import { Store } from "../src/db/store.ts";
-import { Document } from "../src/document/document.ts";
-import { Event } from "../src/event/event.ts";
-import { EventList } from "../src/event/list.ts";
-import { EventRegistry } from "../src/event/registry.ts";
-import { Global } from "../src/global.ts";
+import * as Context from "../src/context/context.ts";
+import * as Control from "../src/control.ts";
+import * as Database from "../src/db/db.ts";
+import * as Store from "../src/db/store.ts";
+import * as Document from "../src/document/document.ts";
+import * as Event from "../src/event/event.ts";
+import * as EventList from "../src/event/list.ts";
+import * as EventRegistry from "../src/event/registry.ts";
+import * as Global from "../src/global.ts";
 import { builtins } from "../src/plugin/builtin.ts";
 import type { Plugin } from "../src/plugin/plugin.ts";
-import { RunnerExecute } from "../src/runner/execute.ts";
-import { Hooks } from "../src/runner/hooks.ts";
-import { LLM } from "../src/runner/llm.ts";
-import { Loop } from "../src/runner/loop.ts";
-import { Project } from "../src/project/project.ts";
-import { SandboxController } from "../src/sandbox/control.ts";
+import * as RunnerExecute from "../src/runner/execute.ts";
+import * as Hooks from "../src/runner/hooks.ts";
+import * as LLM from "../src/runner/llm.ts";
+import * as Loop from "../src/runner/loop.ts";
+import * as Project from "../src/project/project.ts";
+import * as SandboxController from "../src/sandbox/control.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { Process } from "../src/sandbox/utils/process.ts";
-import { Mcp } from "../src/mcp/mcp.ts";
-import { PromptSchema } from "../src/session/prompt/schema.ts";
-import { SessionProjector } from "../src/session/projector.ts";
-import { SessionRuntime } from "../src/session/runtime.ts";
-import { SessionSchema } from "../src/session/schema.ts";
-import { Session } from "../src/session/session.ts";
-import { Settings } from "../src/settings/settings.ts";
-import { State } from "../src/state/state.ts";
-import { ThreadSchema } from "../src/thread/schema.ts";
-import { Thread } from "../src/thread/thread.ts";
+import * as SandboxDriverRegistry from "../src/sandbox/registry.ts";
+import * as Process from "../src/sandbox/utils/process.ts";
+import * as Mcp from "../src/mcp/mcp.ts";
+import * as PromptSchema from "../src/session/prompt/schema.ts";
+import * as SessionProjector from "../src/session/projector.ts";
+import * as SessionRuntime from "../src/session/runtime.ts";
+import * as SessionSchema from "../src/session/schema.ts";
+import * as Session from "../src/session/session.ts";
+import * as Settings from "../src/settings/settings.ts";
+import * as State from "../src/state/state.ts";
+import * as ThreadSchema from "../src/thread/schema.ts";
+import * as Thread from "../src/thread/thread.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { pooled } from "./fixtures/pool.ts";
@@ -106,7 +106,12 @@ const layer = () => {
 		Layer.provideMerge(State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild)),
 		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
-		Layer.provideMerge(Layer.succeed(Settings.Service, { load: () => Effect.succeed(Settings.defaults) })),
+		Layer.provideMerge(
+			Layer.succeed(Settings.Service, {
+				load: () => Effect.succeed(Settings.defaults),
+				locate: () => Effect.die("unused"),
+			}),
+		),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),

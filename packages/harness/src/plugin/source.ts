@@ -51,7 +51,7 @@ const isCommit = (committish: string | null | undefined): boolean =>
  * reading `ls`. It is never an identity: two remotes can slug alike, and the digest is what
  * separates them.
  */
-export const slug = (spec: string): string => {
+const slug = (spec: string): string => {
 	const withoutCommittish = spec.split("#")[0] ?? spec;
 	const decoded = (() => {
 		try {
@@ -160,5 +160,3 @@ export const canonical = (target: Target): string => {
 			return target.spec;
 	}
 };
-
-export * as PluginSource from "./source.ts";

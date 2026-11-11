@@ -2,13 +2,13 @@ import type { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { Event } from "../src/event/event.ts";
-import { EventList } from "../src/event/list.ts";
+import * as Database from "../src/db/db.ts";
+import * as Event from "../src/event/event.ts";
+import * as EventList from "../src/event/list.ts";
 import { seedSpace } from "./fixtures/space.ts";
-import { SessionLive } from "../src/session/live.ts";
-import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { Session } from "../src/session/session.ts";
+import * as SessionLive from "../src/session/live.ts";
+import * as SessionMessageSchema from "../src/session/message/schema.ts";
+import * as Session from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
 /**

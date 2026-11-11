@@ -2,10 +2,10 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 import { DocumentRevisionRow, DocumentRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import type { SessionSchema } from "../session/schema.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { DocumentSchema } from "./schema.ts";
+import * as Store from "../db/store.ts";
+import type * as SessionSchema from "../session/schema.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as DocumentSchema from "./schema.ts";
 
 type Value = DocumentRevisionRow["value"];
 
@@ -184,5 +184,3 @@ export const layer = Layer.effect(
 		return Service.of({ create, find, ofThread, current, asOf, write, agent, agentAsOf, configure });
 	}),
 );
-
-export * as Document from "./document.ts";

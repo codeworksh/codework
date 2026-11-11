@@ -7,12 +7,10 @@
  */
 
 import { Duration } from "effect";
-import { Lock } from "../util/lock.ts";
+import * as Lock from "../util/lock.ts";
 
 const TIMEOUT = Duration.minutes(2);
 
 /** Claims `directory` for the surrounding scope; `onTimeout` names the failure. */
 export const lock = <E>(directory: string, onTimeout: () => E) =>
 	Lock.acquire(directory, { stale: TIMEOUT, wait: TIMEOUT }, onTimeout);
-
-export * as PluginLock from "./lock.ts";

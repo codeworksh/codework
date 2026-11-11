@@ -1,8 +1,9 @@
 import { Event, EventRegistry, EventSchema } from "@codeworksh/harness/effect";
 import { Cause, Context, Effect, Layer, Queue, Scope, Stream } from "effect";
-import { EncodingError, type EventEnvelope, Envelope } from "./envelope.ts";
+import * as Envelope from "./envelope.ts";
+import { EncodingError, type EventEnvelope } from "./envelope.ts";
 
-export const SubscriberCapacity = 4096;
+const SubscriberCapacity = 4096;
 
 export type Error = Event.SubscriptionOverflowError | EncodingError;
 
@@ -86,5 +87,3 @@ export const layer = Layer.effect(
 		return yield* make(events.listen, { registry: registered.get });
 	}),
 );
-
-export * as EventFeed from "./feed.ts";

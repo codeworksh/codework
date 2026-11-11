@@ -14,29 +14,29 @@
 
 import { Model, type Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { EventRegistry } from "../event/registry.ts";
-import { Location } from "../location/location.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as EventRegistry from "../event/registry.ts";
+import * as Location from "../location/location.ts";
 import { select, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
 import type { Plugin } from "../plugin/plugin.ts";
-import { Mcp } from "../mcp/mcp.ts";
-import { LLM } from "../runner/llm.ts";
-import type { Runner } from "../runner/run.ts";
+import * as Mcp from "../mcp/mcp.ts";
+import * as LLM from "../runner/llm.ts";
+import type * as Runner from "../runner/run.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Document } from "../document/document.ts";
-import { SessionRuntime } from "../session/runtime.ts";
+import * as Document from "../document/document.ts";
+import * as SessionRuntime from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
-import { Session as SessionStore } from "../session/session.ts";
-import type { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
-import { Global } from "../global.ts";
+import * as SessionStore from "../session/session.ts";
+import type * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
+import * as Global from "../global.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block, Info, RetryPolicy } from "../settings/schema.ts";
-import { Settings } from "../settings/settings.ts";
+import * as Settings from "../settings/settings.ts";
 import type { Rendered } from "../plugin/prompt/render.ts";
 import type { Resolved } from "../tool/registry.ts";
 
@@ -542,5 +542,3 @@ export const layer = (
 		}),
 	);
 };
-
-export * as State from "./state.ts";

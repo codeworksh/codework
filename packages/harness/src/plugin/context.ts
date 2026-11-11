@@ -1,6 +1,6 @@
 import type { Events } from "@codeworksh/plugin/plugin";
 import { Effect } from "effect";
-import { EventList } from "../event/list.ts";
+import * as EventList from "../event/list.ts";
 
 /**
  * The plugin context contract lives in `@codeworksh/plugin`; what stays here is the harness's

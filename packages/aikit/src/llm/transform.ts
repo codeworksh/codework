@@ -12,7 +12,7 @@ import {
 import type { LanguageModelV3FunctionTool, SharedV3ProviderOptions } from "@ai-sdk/provider";
 import * as Message from "../message/message.ts";
 import * as Transcript from "../message/transcript.ts";
-import { Pricing } from "./pricing.ts";
+import * as Pricing from "./pricing.ts";
 import * as Model from "../model/model.ts";
 import { resolveToolGrammar, type ResponsesToolChange } from "../providers/responses/tools.ts";
 import { shortHash } from "../utils/hash.ts";
@@ -221,7 +221,7 @@ export function normalizeOpenAICodexToolCallId(
  * OpenRouter upstreams take a foreign tool call ID verbatim, so a Codex
  * `call|item` ID keeps only its unique call half.
  */
-export function normalizeForeignToolCallId(id: string): string {
+function normalizeForeignToolCallId(id: string): string {
 	if (/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return id;
 	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
 }
@@ -474,7 +474,7 @@ function assistantMessages(
  * set top-level. A request limited to some tools (`activeTools`) takes them top-level too,
  * since only that list is filtered.
  */
-export function transcriptToolSupport(
+function transcriptToolSupport(
 	model: Model.Info,
 	method: Model.APIMethodEnum | undefined,
 	restricted = false,
@@ -489,7 +489,7 @@ export function transcriptToolSupport(
  * AI SDK's OpenAI Responses and Anthropic Messages adapters keep them where they stand; Chat
  * Completions takes the current prompt as the leading system prompt.
  */
-export function supportsMidConvoSystemMessages(model: Model.Info, method: Model.APIMethodEnum | undefined): boolean {
+function supportsMidConvoSystemMessages(model: Model.Info, method: Model.APIMethodEnum | undefined): boolean {
 	if (model.compat?.supportsMidConvoSystemMessages !== true) return false;
 	return isOwnResponses(model, method) || !isChatCompletions(model, resolveMethod(model, method));
 }

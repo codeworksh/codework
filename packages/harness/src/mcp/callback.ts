@@ -103,5 +103,3 @@ export const listen = Effect.fn("McpCallback.listen")(function* (settings: Setti
 			}),
 	} satisfies Callback;
 });
-
-export * as McpCallback from "./callback.ts";

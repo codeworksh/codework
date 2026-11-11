@@ -1,8 +1,18 @@
-import { Effect, Stream } from "effect";
+import type * as Mirror from "@codeworksh/widget/codework";
+import { Effect, Predicate, Stream } from "effect";
 import { SqlClient } from "effect/sql";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
-import { type CliAction, Contract, ModelsError, type ServerAdd, type ServerUpdate } from "@codeworksh/contract";
+import {
+	type CliAction,
+	Contract,
+	ModelsError,
+	ProjectError,
+	type ServerAdd,
+	SettingsConflict,
+	SettingsError,
+	type ServerUpdate,
+} from "@codeworksh/contract";
 import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Health } from "./health.ts";
@@ -12,6 +22,34 @@ import { Servers } from "./servers.ts";
 import { Sync } from "./sync.ts";
 import { Tracking } from "./tracking.ts";
 import { Workspaces } from "./workspaces.ts";
+
+type SettingsRefusal =
+	| Mirror.SettingsError
+	| Mirror.SettingsConflictError
+	| Mirror.ProjectNotFoundError
+	| Mirror.ProjectCheckoutError;
+
+const refusals: ReadonlyArray<string> = [
+	"SettingsError",
+	"SettingsConflictError",
+	"ProjectNotFoundError",
+	"ProjectCheckoutError",
+];
+const isRefusal = (error: unknown): error is SettingsRefusal =>
+	Predicate.hasProperty(error, "_tag") && refusals.includes(error._tag as string);
+
+const refusal = (error: SettingsRefusal) => {
+	switch (error._tag) {
+		case "SettingsError":
+			return new SettingsError({ path: error.path, message: error.detail });
+		case "SettingsConflictError":
+			return new SettingsConflict({ path: error.path });
+		case "ProjectNotFoundError":
+			return new ProjectError({ message: "This project is no longer on its server." });
+		case "ProjectCheckoutError":
+			return new ProjectError({ message: "This project has no folder on its server." });
+	}
+};
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
@@ -31,6 +69,18 @@ export const layer = Contract.Api.toLayer(
 			Codework.callHost(use, options).pipe(
 				Effect.tapError((error) => (error._tag === "Server.CodeworkUnavailable" ? health.poke : Effect.void)),
 			);
+		/** A settings call: the server's refusals reach the app with their reason; anything else is an unreachable server. */
+		const settingsCall = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0]) =>
+			call((client) =>
+				use(client).pipe(
+					Effect.map((value) => ({ value })),
+					Effect.catch((error) =>
+						isRefusal(error) ? Effect.succeed({ failed: refusal(error) }) : Effect.fail(error),
+					),
+				),
+			).pipe(
+				Effect.flatMap((reply) => ("failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.value))),
+			);
 		// A changed default reconnects the app; the status read after waits for it to reach the server.
 		const changingDefault = <A, E, R>(change: Effect.Effect<A, E, R>) =>
 			Effect.gen(function* () {
@@ -45,6 +95,7 @@ export const layer = Contract.Api.toLayer(
 			...tracking,
 
 			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"projects.spaces": (input) => Reads.spaces(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
@@ -57,6 +108,27 @@ export const layer = Contract.Api.toLayer(
 			// Creating runs git init and a first commit, well past the default 5 seconds.
 			"host.create": Effect.fn("host.create")(function* ({ name }) {
 				return yield* callHost((client) => client("host.create", { name }), { timeout: "60 seconds" });
+			}),
+			"projects.remote": Effect.fn("projects.remote")(function* ({ projectId }) {
+				return yield* callHost((client) =>
+					client("project.remote", { projectId }).pipe(
+						Effect.catchTag("ProjectNotFoundError", () =>
+							Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
+						),
+					),
+				);
+			}),
+			"settings.read": (input) => settingsCall((client) => client("settings.read", input)),
+			"settings.write": (input) => settingsCall((client) => client("settings.write", input)),
+			"settings.set": (input) => settingsCall((client) => client("settings.set", input)),
+			"projects.rename": Effect.fn("projects.rename")(function* ({ projectId, name }) {
+				return yield* callHost((client) =>
+					client("project.rename", { projectId, name }).pipe(
+						Effect.catchTag("ProjectNotFoundError", () =>
+							Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
+						),
+					),
+				);
 			}),
 			"host.add": Effect.fn("host.add")(function* ({ path }) {
 				return yield* callHost((client) => client("host.add", { path }));

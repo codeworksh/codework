@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { comparableGrep, normalize, runAll, VARIANCE } from "./fixtures/search.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";

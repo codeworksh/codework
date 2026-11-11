@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { ToolOffer } from "../../../tool/offer.ts";
-import { ToolSearch } from "../../../tool/search.ts";
+import * as ToolSearch from "../../../tool/search.ts";
 import * as Tool from "../../../tool/tool.ts";
 import type { Builtin } from "../../plugin.ts";
 
@@ -29,11 +29,11 @@ export type ToolSearchDetails = typeof ToolSearchDetails.Type;
 
 const ToolSearchSuccess = Schema.Struct({ text: Schema.String, loaded: Schema.Array(Schema.String) });
 
-export class ToolSearchFailed extends Schema.TaggedError<ToolSearchFailed>()("ToolSearchFailed", {
+class ToolSearchFailed extends Schema.TaggedError<ToolSearchFailed>()("ToolSearchFailed", {
 	message: Schema.String,
 }) {}
 
-export const toolSearchDef = Tool.define({
+const toolSearchDef = Tool.define({
 	name: TOOL_SEARCH_NAME,
 	label: "toolsearch",
 	description: DESCRIPTION,
@@ -49,32 +49,29 @@ export const toolSearchDef = Tool.define({
 
 const fail = (message: string) => Effect.fail(new ToolSearchFailed({ message }));
 
-export const toolSearchHandler: Tool.Handler<
-	typeof ToolSearchParams,
-	typeof ToolSearchSuccess,
-	typeof ToolSearchFailed
-> = Effect.fn("ToolSearch.handler")(function* ({ query, limit }) {
-	if (query.trim() === "") return yield* fail("query must not be empty");
-	const max = limit ?? DEFAULT_LIMIT;
-	if (!Number.isInteger(max) || max <= 0) return yield* fail("limit must be a positive integer");
-	const deferred = yield* (yield* ToolOffer).deferred;
-	const loaded = ToolSearch.rank(
-		query,
-		deferred.map((tool) => ({ name: tool.name, text: ToolSearch.text(tool), namespaceText: tool.namespace })),
-		max,
-	);
-	const listed = loaded.map((name) => {
-		const description = deferred.find((tool) => tool.name === name)?.description ?? "";
-		return `- ${name}: ${description.trim().split(/\r?\n/)[0]}`;
+const toolSearchHandler: Tool.Handler<typeof ToolSearchParams, typeof ToolSearchSuccess, typeof ToolSearchFailed> =
+	Effect.fn("ToolSearch.handler")(function* ({ query, limit }) {
+		if (query.trim() === "") return yield* fail("query must not be empty");
+		const max = limit ?? DEFAULT_LIMIT;
+		if (!Number.isInteger(max) || max <= 0) return yield* fail("limit must be a positive integer");
+		const deferred = yield* (yield* ToolOffer).deferred;
+		const loaded = ToolSearch.rank(
+			query,
+			deferred.map((tool) => ({ name: tool.name, text: ToolSearch.text(tool), namespaceText: tool.namespace })),
+			max,
+		);
+		const listed = loaded.map((name) => {
+			const description = deferred.find((tool) => tool.name === name)?.description ?? "";
+			return `- ${name}: ${description.trim().split(/\r?\n/)[0]}`;
+		});
+		const text =
+			loaded.length === 0
+				? "No matching tools found."
+				: `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:\n${listed.join("\n")}`;
+		return { text, loaded };
 	});
-	const text =
-		loaded.length === 0
-			? "No matching tools found."
-			: `Loaded ${loaded.length} tool${loaded.length === 1 ? "" : "s"}. They are available from your next call:\n${listed.join("\n")}`;
-	return { text, loaded };
-});
 
-export const toolSearchTool = Tool.implement(toolSearchDef, toolSearchHandler);
+const toolSearchTool = Tool.implement(toolSearchDef, toolSearchHandler);
 
 export const toolSearchPlugin: Builtin = {
 	id: "codework.tool.toolsearch",

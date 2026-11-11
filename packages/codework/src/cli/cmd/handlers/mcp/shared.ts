@@ -1,7 +1,7 @@
 import { type EventList, Global, type Mcp, McpConfig, McpOAuth, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option, Path, Predicate } from "effect";
 import { InvalidInputError } from "../../../error.ts";
-import { Jsonc } from "../../../jsonc.ts";
+import * as Jsonc from "../../../jsonc.ts";
 import { Cmd } from "../../cmd.ts";
 
 /**

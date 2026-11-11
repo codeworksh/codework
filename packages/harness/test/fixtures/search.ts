@@ -3,7 +3,7 @@ import { findTool } from "../../src/plugin/builtin/tool/find.ts";
 import { grepTool } from "../../src/plugin/builtin/tool/grep.ts";
 import { lsTool } from "../../src/plugin/builtin/tool/ls.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
-import { Binary } from "../../src/tool/binary.ts";
+import * as Binary from "../../src/tool/binary.ts";
 import * as Executor from "../../src/tool/executor.ts";
 import * as Tool from "../../src/tool/tool.ts";
 import { pendingCall } from "../tools.fixture.ts";
@@ -45,7 +45,7 @@ export const files: Record<string, string> = {
 
 type Cases = Record<string, Record<string, unknown>>;
 
-export const grepCases: Cases = {
+const grepCases: Cases = {
 	basic: { pattern: "needle" },
 	"ignore-case": { pattern: "NEEDLE", ignoreCase: true },
 	"case-sensitive": { pattern: "NEEDLE" },
@@ -76,7 +76,7 @@ export const grepCases: Cases = {
  */
 export const VARIANCE = "glob-basename";
 
-export const lsCases: Cases = {
+const lsCases: Cases = {
 	// Dotfiles and dot-directories are listed.
 	root: {},
 	subdir: { path: "src" },
@@ -86,7 +86,7 @@ export const lsCases: Cases = {
 	missing: { path: "nope" },
 };
 
-export const findCases: Cases = {
+const findCases: Cases = {
 	// Hidden files are found unless ignored.
 	basename: { pattern: "*.ts" },
 	"with-path": { pattern: "src/**/*.ts" },

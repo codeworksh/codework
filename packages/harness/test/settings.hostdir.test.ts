@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
-import { LLM } from "../src/runner/llm.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
+import * as LLM from "../src/runner/llm.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 

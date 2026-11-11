@@ -6,9 +6,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
-import { Event } from "../src/event/event.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
+import * as Event from "../src/event/event.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { available, LIVE } from "./utils/live.ts";
 

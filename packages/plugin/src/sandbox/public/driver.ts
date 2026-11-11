@@ -12,5 +12,3 @@ export type {
 	RuntimeConfigBase as RuntimeConfig,
 	RuntimeInput,
 } from "../driver.ts";
-
-export * as SandboxDriver from "./driver.ts";

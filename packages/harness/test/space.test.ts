@@ -3,12 +3,12 @@ import { SqlClient } from "effect/sql";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
+import * as Database from "../src/db/db.ts";
 import { ProjectSchema } from "../src/project/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
-import { Space } from "../src/space/space.ts";
+import * as Space from "../src/space/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 

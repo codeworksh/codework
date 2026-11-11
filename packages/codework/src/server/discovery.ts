@@ -1,8 +1,8 @@
 import { type Duration, Effect, FileSystem, Option, Schedule, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { Health } from "./health.ts";
-import { Identity } from "./identity.ts";
-import { Registration } from "./registration.ts";
+import * as Health from "./health.ts";
+import * as Identity from "./identity.ts";
+import * as Registration from "./registration.ts";
 
 /** A server a client can connect to, and the process and port behind it. */
 export interface Endpoint {
@@ -12,7 +12,7 @@ export interface Endpoint {
 }
 
 /** A managed server could not be produced, in the words the CLI prints. */
-export class ServerStartError extends Schema.TaggedError<ServerStartError>()("Discovery.ServerStartError", {
+class ServerStartError extends Schema.TaggedError<ServerStartError>()("Discovery.ServerStartError", {
 	message: Schema.String,
 }) {}
 
@@ -217,5 +217,3 @@ const spawn = (options: Options) =>
 		);
 		return handle;
 	});
-
-export * as Discovery from "./discovery.ts";

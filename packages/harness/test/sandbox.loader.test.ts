@@ -1,10 +1,10 @@
 import { Cause, Effect, Exit, Schema } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
+import * as FakeSandboxDriver from "../src/sandbox/drivers/fake.ts";
 import { SandboxDriverLoadError, SandboxDriverRegistrationError } from "../src/sandbox/errors.ts";
-import { SandboxDriverLoader } from "../src/sandbox/loader.ts";
-import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
+import * as SandboxDriverLoader from "../src/sandbox/loader.ts";
+import * as SandboxDriverRegistry from "../src/sandbox/registry.ts";
 import { it } from "./utils/effect.ts";
 
 const errorFrom = <A, E>(exit: Exit.Exit<A, E>): E => {

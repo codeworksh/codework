@@ -1,15 +1,15 @@
 import { Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { Document } from "../src/document/document.ts";
-import { Event } from "../src/event/event.ts";
+import * as Database from "../src/db/db.ts";
+import * as Document from "../src/document/document.ts";
+import * as Event from "../src/event/event.ts";
 import { AbsolutePath } from "../src/schema.ts";
-import { SessionLive } from "../src/session/live.ts";
-import { SessionSchema } from "../src/session/schema.ts";
-import { Session } from "../src/session/session.ts";
-import { ThreadSchema } from "../src/thread/schema.ts";
-import { Thread } from "../src/thread/thread.ts";
+import * as SessionLive from "../src/session/live.ts";
+import * as SessionSchema from "../src/session/schema.ts";
+import * as Session from "../src/session/session.ts";
+import * as ThreadSchema from "../src/thread/schema.ts";
+import * as Thread from "../src/thread/thread.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 

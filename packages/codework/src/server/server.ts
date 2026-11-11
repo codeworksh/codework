@@ -6,14 +6,14 @@ import * as NetAddress from "effect/net/NetAddress";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
-import { Clones } from "./clones.ts";
-import { Contract } from "./contract.ts";
-import { EventFeed } from "./feed.ts";
-import { Handlers } from "./handlers.ts";
-import { Host } from "./host.ts";
-import { Identity } from "./identity.ts";
-import { OAuth } from "./oauth.ts";
-import { Registration } from "./registration.ts";
+import * as Clones from "./clones.ts";
+import * as Contract from "./contract.ts";
+import * as EventFeed from "./feed.ts";
+import * as Handlers from "./handlers.ts";
+import * as Host from "./host.ts";
+import * as Identity from "./identity.ts";
+import * as OAuth from "./oauth.ts";
+import * as Registration from "./registration.ts";
 
 // Managed instances outlive any single RPC; the serve scope is what stops them.
 const managedShutdown = Layer.unwrap(
@@ -110,5 +110,3 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provide(Harness.layer(options.harness)),
 	);
 };
-
-export * as Server from "./server.ts";

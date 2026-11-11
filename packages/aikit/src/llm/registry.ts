@@ -3,7 +3,7 @@ import * as Model from "../model/model.ts";
 
 export const DEFAULT_AI_SDK_FALLBACK = "@ai-sdk/openai-compatible";
 
-export const AI_SDK_PACKAGE_TO_PROTOCOL = {
+const AI_SDK_PACKAGE_TO_PROTOCOL = {
 	"@ai-sdk/anthropic": Model.KnownProviderEnum.anthropic,
 	"@ai-sdk/google": Model.KnownProviderEnum.google,
 	"@ai-sdk/google-vertex": Model.KnownProviderEnum.googleVertex,

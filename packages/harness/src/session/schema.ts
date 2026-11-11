@@ -84,5 +84,3 @@ export type Usage = typeof Usage.Type;
 // "JSON string whose object carries a conforming usage" as one codec;
 // JSON.parse failures land in the same SchemaError channel as shape failures.
 export const AssistantEnvelopeUsage = Schema.fromJsonString(Schema.Struct({ usage: Usage }));
-
-export * as SessionSchema from "./schema.ts";

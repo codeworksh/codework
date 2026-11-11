@@ -1,6 +1,6 @@
 import { Global } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
-import type { Discovery } from "../server/discovery.ts";
+import type * as Discovery from "../server/discovery.ts";
 
 interface Shared {
 	readonly userConfigDir: Option.Option<string>;
@@ -29,5 +29,3 @@ export const options = (shared: Shared, server: { readonly host: string; readonl
 			],
 		})),
 	);
-
-export * as Service from "./service.ts";

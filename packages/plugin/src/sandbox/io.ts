@@ -3,7 +3,7 @@ import { posix } from "../posix.ts";
 import type { SandboxDriver } from "./driver.ts";
 import { SandboxFileSystem } from "./filesystem.ts";
 import { SandboxInstance } from "./instance.ts";
-import { SandboxMutation } from "./mutation.ts";
+import * as SandboxMutation from "./mutation.ts";
 import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell.ts";
 
 /**

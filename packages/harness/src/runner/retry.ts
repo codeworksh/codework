@@ -7,7 +7,7 @@
 
 import { Duration, Schema } from "effect";
 import type { RetryPolicy } from "../settings/schema.ts";
-import { Runner } from "./run.ts";
+import * as Runner from "./run.ts";
 
 /**
  * Milliseconds to wait before retry `attempt` (1-based), or `undefined` to give up.
@@ -27,5 +27,3 @@ export const delay = (policy: RetryPolicy, attempt: number, error: unknown): num
 	const requested = error.reason.retryAfter === undefined ? 0 : Duration.toMillis(error.reason.retryAfter);
 	return requested > policy.maxDelayMs ? undefined : Math.max(backoff, Math.ceil(requested));
 };
-
-export * as Retry from "./retry.ts";

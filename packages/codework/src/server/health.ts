@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { Client } from "./client.ts";
+import * as Client from "./client.ts";
 
 /**
  * One `server.info` call, with the answer normalized to `undefined` for every
@@ -19,5 +19,3 @@ export const probe = (url: string) =>
 			Effect.orElseSucceed(() => undefined),
 		);
 	}).pipe(Effect.scoped);
-
-export * as Health from "./health.ts";

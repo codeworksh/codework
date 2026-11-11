@@ -9,7 +9,7 @@ import {
 } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
-import { Client } from "../server/client.ts";
+import * as Client from "../server/client.ts";
 import { writeError } from "./output.ts";
 
 /** Bad flag or argument combinations the parser cannot express on its own. */
@@ -187,6 +187,8 @@ const settingsHint = (reason: Settings.SettingsError["reason"]): string => {
 	switch (reason) {
 		case "read":
 			return "the file exists but could not be read; check that it is a file and readable";
+		case "write":
+			return "the file could not be written; check that its directory is writable";
 		case "parse":
 			return "the file is not valid JSON; the location above is where parsing stopped";
 		case "decode":

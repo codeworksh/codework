@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { userInfo } from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Contract, LOCAL_SERVER } from "@codeworksh/contract";
-import type { Client } from "../../../packages/codework/src/server/client.ts";
+import type * as Client from "../../../packages/codework/src/server/client.ts";
 import {
 	app,
 	cleanup,

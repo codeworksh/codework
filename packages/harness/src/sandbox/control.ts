@@ -13,9 +13,9 @@ import {
 } from "effect";
 import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import { Space } from "../space/space.ts";
-import { Telemetry } from "../telemetry/telemetry.ts";
+import * as Store from "../db/store.ts";
+import * as Space from "../space/space.ts";
+import * as Telemetry from "../telemetry/telemetry.ts";
 import { SandboxDriver } from "./driver.ts";
 import {
 	providerError,
@@ -41,14 +41,14 @@ import {
 	sanitizeError,
 } from "./errors.ts";
 import { SandboxFileSystem } from "./fs/filesystem.ts";
-import { EnvNodeJSDefault } from "./fs/nodejs.ts";
-import { Local } from "./fs/vfs.ts";
+import * as EnvNodeJSDefault from "./fs/nodejs.ts";
+import * as Local from "./fs/vfs.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
-import { SandboxDriverRegistry } from "./registry.ts";
-import { HostExe } from "./shell/host.ts";
+import * as SandboxDriverRegistry from "./registry.ts";
+import * as HostExe from "./shell/host.ts";
 import { type ISandboxExe, withCwd as shellWithCwd } from "./shell/shell.ts";
-import { SandboxStore } from "./store.ts";
+import * as SandboxStore from "./store.ts";
 
 export interface CreateInput<CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase> {
 	readonly driver: SandboxDriver.Definition<CreateConfig, RuntimeConfig>;
@@ -966,5 +966,3 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 });
 
 export const layer = (options: Options) => Layer.effect(Controller, make(options));
-
-export * as SandboxController from "./control.ts";

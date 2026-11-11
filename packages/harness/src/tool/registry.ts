@@ -1,6 +1,6 @@
 import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
-import { Context, Effect, Layer } from "effect";
+import { Effect } from "effect";
 import * as Executor from "./executor.ts";
 import type { DeferredTool } from "./offer.ts";
 import { type AnyToolDef, declared, type RegisteredTool, toAikitTool } from "./tool.ts";
@@ -129,16 +129,3 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 		resolve,
 	});
 };
-
-/**
- * `ToolRegistry` — the registry as an Effect service, for a loop assembled as a `Layer.effect`
- * that does `yield* ToolRegistry`. The service value is the non-generic {@link Registry} (tool
- * `R` is discharged at registration), so there is no capability union to fix here.
- */
-export class ToolRegistry extends Context.Service<ToolRegistry, Registry>()(
-	"@codeworksh/harness/tool/registry/ToolRegistry",
-) {}
-
-/** Provide a catalog of registered tools as the {@link ToolRegistry} service. */
-export const layer = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): Layer.Layer<ToolRegistry> =>
-	Layer.succeed(ToolRegistry, ToolRegistry.of(make(tools)));

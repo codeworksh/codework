@@ -5,6 +5,7 @@ import {
 	GripVertical,
 	Maximize2,
 	Minimize2,
+	MoreHorizontal,
 	Pin,
 	PinOff,
 	X,
@@ -19,12 +20,15 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuShortcut,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { FrameIcon } from "@codeworksh/widget/view";
+import { MENU_ROW } from "@/components/menu";
 import { shortcutLabel } from "../shell/switcher";
 import { Title } from "./title";
 
@@ -64,6 +68,8 @@ interface FrameProps {
 	readonly onMove: (workspaceId: string) => void;
 	/** Moves the frame to a new workspace; unset while all workspaces are in use. */
 	readonly onMoveNew: (() => void) | undefined;
+	/** The widget's own rows in the frame menu, below Move. */
+	readonly menu?: ReactNode;
 	readonly onClose: () => void;
 	readonly onDragStart: () => void;
 	readonly onDragMove: (movement: DragMovement) => void;
@@ -133,7 +139,9 @@ export function Frame(props: FrameProps) {
 							active={false}
 							onClick={props.onMaximize}
 						/>
-						<Move destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew} />
+						<More destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew}>
+							{props.menu}
+						</More>
 						<Action icon={X} label="Close" active={false} onClick={props.onClose} />
 					</div>
 				</header>
@@ -146,38 +154,54 @@ export function Frame(props: FrameProps) {
 	);
 }
 
-function Move({
+/** The frame menu: Move, then the widget's own rows. */
+function More({
 	destinations,
 	onMove,
 	onMoveNew,
+	children,
 }: {
 	readonly destinations: readonly Destination[];
 	readonly onMove: (workspaceId: string) => void;
 	readonly onMoveNew: (() => void) | undefined;
+	readonly children?: ReactNode;
 }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				aria-label="Move"
-				title="Move"
+				aria-label="More"
+				title="More"
 				className={`${actionClass} data-[state=open]:bg-ink/8 data-[state=open]:text-ink`}
 			>
-				<WorkspaceIcon className="size-3.5" strokeWidth={1.75} />
+				<MoreHorizontal className="size-3.5" strokeWidth={1.75} />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-64">
-				<DropdownMenuLabel>Move</DropdownMenuLabel>
-				{destinations.map(({ id, name, position }) => (
-					<DropdownMenuItem key={id} title={name} onSelect={() => onMove(id)}>
+			<DropdownMenuContent align="end" className="min-w-44">
+				<DropdownMenuSub>
+					<DropdownMenuSubTrigger className={`${MENU_ROW} [&>svg:last-child]:size-3.5`}>
 						<WorkspaceIcon strokeWidth={1.75} />
-						<span className="truncate">{name}</span>
-						<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
-					</DropdownMenuItem>
-				))}
-				{destinations.length > 0 && <DropdownMenuSeparator />}
-				<DropdownMenuItem disabled={onMoveNew === undefined} onSelect={() => onMoveNew?.()}>
-					<Plus strokeWidth={1.75} />
-					<span>New Workspace</span>
-				</DropdownMenuItem>
+						Move
+					</DropdownMenuSubTrigger>
+					{/* Shifted up by its padding and border, so its first row lines up with the trigger. */}
+					<DropdownMenuSubContent alignOffset={-5} className="max-w-64 min-w-44">
+						{destinations.map(({ id, name, position }) => (
+							<DropdownMenuItem key={id} title={name} className={MENU_ROW} onSelect={() => onMove(id)}>
+								<WorkspaceIcon strokeWidth={1.75} />
+								<span className="truncate">{name}</span>
+								<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
+							</DropdownMenuItem>
+						))}
+						{destinations.length > 0 && <DropdownMenuSeparator />}
+						<DropdownMenuItem
+							className={MENU_ROW}
+							disabled={onMoveNew === undefined}
+							onSelect={() => onMoveNew?.()}
+						>
+							<Plus strokeWidth={1.75} />
+							New Tab
+						</DropdownMenuItem>
+					</DropdownMenuSubContent>
+				</DropdownMenuSub>
+				{children}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

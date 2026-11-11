@@ -159,5 +159,3 @@ export const make = <Key, E, Reason = never>(options: {
 
 		return { active: Effect.sync(() => new Set(executions.keys())), run, wake, interrupt, awaitIdle };
 	});
-
-export * as RunCoordinator from "./coordinator.ts";

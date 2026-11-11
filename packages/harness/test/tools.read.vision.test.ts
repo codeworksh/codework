@@ -5,9 +5,9 @@ import { copyFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
-import type { LLM } from "../src/runner/llm.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
+import type * as LLM from "../src/runner/llm.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 

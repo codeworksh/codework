@@ -14,6 +14,7 @@ import {
 	Session,
 	SessionStore,
 	Settings,
+	SettingsFile,
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
@@ -40,7 +41,7 @@ export const SandboxInfo = Schema.Struct({
 export type SandboxInfo = typeof SandboxInfo.Type;
 
 /** One logical codebase, whatever env it is checked out in. */
-export const ProjectInfo = Schema.Struct({
+const ProjectInfo = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	status: Schema.Literals(["active", "archived"]),
@@ -51,7 +52,7 @@ export const ProjectInfo = Schema.Struct({
 export type ProjectInfo = typeof ProjectInfo.Type;
 
 /** One directory of a project in one env; sessions attach to it. */
-export const SpaceInfo = Schema.Struct({
+const SpaceInfo = Schema.Struct({
 	id: Schema.String,
 	projectId: Schema.String,
 	location: Session.AbsolutePath,
@@ -88,7 +89,7 @@ export const SessionInfo = Schema.Struct({
 export type SessionInfo = typeof SessionInfo.Type;
 
 /** `cut` is the committed seq of `entryId`: the inherited line ends there. */
-export const ThreadOrigin = Schema.Union([
+const ThreadOrigin = Schema.Union([
 	Schema.Struct({ kind: Schema.Literal("main") }),
 	Schema.Struct({ kind: Schema.Literal("fork"), threadId: Schema.String, entryId: Schema.String, cut: Schema.Int }),
 	Schema.Struct({
@@ -102,7 +103,7 @@ export const ThreadOrigin = Schema.Union([
 ]);
 
 /** Billed usage of a thread's own entries; what it inherits through a fork point counts for its source. */
-export const ThreadUsage = Schema.Struct({
+const ThreadUsage = Schema.Struct({
 	/** Total cost in US dollars, from the catalog's prices. */
 	cost: Schema.Finite,
 	input: Schema.Int,
@@ -113,7 +114,7 @@ export const ThreadUsage = Schema.Struct({
 export type ThreadUsage = typeof ThreadUsage.Type;
 
 /** The last run of a thread; `error` is set unless it succeeded or is still going. */
-export const ThreadRun = Schema.Struct({
+const ThreadRun = Schema.Struct({
 	/** Epoch milliseconds. */
 	startedAt: Schema.Finite,
 	endedAt: optional(Schema.Finite),
@@ -264,10 +265,10 @@ export const RuntimeConfig = Schema.Struct({
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
-export const SandboxRef = Sandbox.Selection;
+const SandboxRef = Sandbox.Selection;
 
 /** A model to choose, by the catalog's id and display name, with the thinking levels it supports. */
-export const ModelOption = Schema.Struct({
+const ModelOption = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	/** In ascending order; `["off"]` for a model that does not reason. */
@@ -275,7 +276,7 @@ export const ModelOption = Schema.Struct({
 });
 
 /** A provider this server can call, with the models a session may use from it. */
-export const ModelProvider = Schema.Struct({
+const ModelProvider = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	models: Schema.Array(ModelOption),
@@ -283,7 +284,7 @@ export const ModelProvider = Schema.Struct({
 export type ModelProvider = typeof ModelProvider.Type;
 
 /** A project's name as a client sets it: trimmed, never empty. */
-export const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
+const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
 	message: Schema.String,
@@ -345,7 +346,7 @@ export type Repository = typeof Repository.Type;
 export const CloneStage = Schema.Literals(["connecting", "counting", "receiving", "resolving", "checkout"]);
 export type CloneStage = typeof CloneStage.Type;
 
-export const ClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
+const ClonePhase = Schema.Literals(["running", "done", "failed", "cancelled"]);
 export type ClonePhase = typeof ClonePhase.Type;
 
 /** A tracked clone; `path` (the absolute destination) is its id. */
@@ -397,7 +398,7 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 /** One of a thread's MCP servers as that thread sees it. */
-export const McpStatus = Schema.Struct({
+const McpStatus = Schema.Struct({
 	server: Schema.String,
 	state: EventList.McpState,
 	error: optional(Schema.String),
@@ -412,6 +413,17 @@ export const McpStatus = Schema.Struct({
 export type McpStatus = typeof McpStatus.Type;
 
 const McpErrors = Schema.Union([ThreadErrors, McpError.UnknownServerError]);
+
+const SettingsFileRef = { projectId: optional(Schema.String), file: Schema.Literals(["settings", "mcp"]) };
+/** The settings a project's `settings.jsonc` falls back to, as the page shows them. */
+const Inherited = Schema.Struct({
+	retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
+});
+const SettingsFileErrors = Schema.Union([
+	Settings.SettingsError,
+	Project.ProjectNotFoundError,
+	Project.ProjectCheckoutError,
+]);
 
 export const Api = RpcGroup.make(
 	/**
@@ -493,10 +505,58 @@ export const Api = RpcGroup.make(
 		/** `HostError` when `hostDir` is a clone still running, failed or cancelled. */
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors, HostError]),
 	}),
+	/** The `origin` URL of a project's main checkout on the host, credentials taken out; null when there is none. */
+	Rpc.make("project.remote", {
+		payload: { projectId: Schema.String },
+		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
+		error: Project.ProjectNotFoundError,
+	}),
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
 		error: Project.ProjectNotFoundError,
+	}),
+	/**
+	 * A settings file as written: the project's when `projectId` is given -- the one sessions in its
+	 * main checkout read -- otherwise the user's. `version` is what `settings.write` is held to;
+	 * `error` is what the runtime would reject in the file as it stands.
+	 */
+	Rpc.make("settings.read", {
+		payload: SettingsFileRef,
+		success: Schema.Struct({
+			path: Schema.String,
+			source: Schema.String,
+			exists: Schema.Boolean,
+			version: Schema.String,
+			/** The file's JSONC as a value; absent when it does not parse. */
+			value: optional(Schema.Unknown),
+			error: optional(Schema.String),
+			/**
+			 * For `settings.jsonc`: what applies where this file sets nothing -- the user's settings over the
+			 * defaults for a project's file, the defaults for the user's. Absent when a lower file is broken.
+			 */
+			inherited: optional(Inherited),
+		}),
+		error: SettingsFileErrors,
+	}),
+	/** The whole file, written only when it is still at `version` and the runtime would accept it. */
+	Rpc.make("settings.write", {
+		payload: { ...SettingsFileRef, source: Schema.String, version: Schema.String },
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union([SettingsFileErrors, SettingsFile.SettingsConflictError]),
+	}),
+	/**
+	 * One value at `at` set in place, keeping the rest of the file as written; no `value` removes it.
+	 * Refused when the result would not be accepted.
+	 */
+	Rpc.make("settings.set", {
+		payload: {
+			...SettingsFileRef,
+			at: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Int])),
+			value: optional(Schema.Unknown),
+		},
+		success: Schema.Struct({ version: Schema.String }),
+		error: SettingsFileErrors,
 	}),
 	/**
 	 * The models a session anchored at `hostDir` can use: providers this server holds credentials
@@ -847,5 +907,3 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 );
-
-export * as Contract from "./contract.ts";

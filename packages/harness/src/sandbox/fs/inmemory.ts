@@ -1,11 +1,12 @@
 /* oxlint-disable effecttsgo/async-function -- VFS operations implement a Promise-based adapter contract. */
 import { create, MemoryProvider } from "@platformatic/vfs";
 import { Effect, Layer, Schema } from "effect";
-import { Process } from "../utils/process.ts";
-import { Seed, type SeedOptions } from "../utils/seed.ts";
-import { Local } from "./vfs.ts";
+import * as Process from "../utils/process.ts";
+import * as Seed from "../utils/seed.ts";
+import { type SeedOptions } from "../utils/seed.ts";
+import * as Local from "./vfs.ts";
 
-export class InMemoryError extends Schema.TaggedError<InMemoryError>()("InMemoryError", {
+class InMemoryError extends Schema.TaggedError<InMemoryError>()("InMemoryError", {
 	message: Schema.String,
 	cause: Schema.Defect(),
 }) {}
@@ -42,5 +43,3 @@ export const make = (options?: Options) =>
 // layer build gets its own fresh, isolated tree.
 export const layer = (options?: Options) =>
 	Layer.merge(Layer.effect(Local.Vfs, make(options)), options?.hostProcess ? Process.host : Process.unsupported);
-
-export * as EnvInMemory from "./inmemory.ts";

@@ -26,7 +26,7 @@ import {
 	Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { Contract } from "./contract.ts";
+import * as Contract from "./contract.ts";
 
 interface Interface {
 	readonly start: (input: {
@@ -702,5 +702,3 @@ const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(Service, make);
-
-export * as Clones from "./clones.ts";

@@ -1,13 +1,12 @@
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlError, SqlSchema } from "effect/sql";
 import { SpaceRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
+import * as Store from "../db/store.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import type { Sandbox } from "../sandbox/sandbox.ts";
 import type { AbsolutePath } from "../schema.ts";
-import { Hash } from "../util/hash.ts";
+import * as Hash from "../util/hash.ts";
 import { SpaceSchema } from "./schema.ts";
 
 /** `hash(env, location)` — no project component (D-SPACEID). */
@@ -258,7 +257,3 @@ export const layer = Layer.effect(
 		});
 	}),
 );
-
-export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) => layer.pipe(Layer.provide(sandbox));
-
-export * as Space from "./space.ts";

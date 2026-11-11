@@ -1,6 +1,6 @@
 import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { RunCoordinator } from "../src/runner/coordinator.ts";
+import * as RunCoordinator from "../src/runner/coordinator.ts";
 import { it } from "./utils/effect.ts";
 
 /**

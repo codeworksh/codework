@@ -152,5 +152,3 @@ export const make = (
 	});
 
 export const layer = (...drivers: ReadonlyArray<SandboxDriver.Registration>) => Layer.effect(Registry, make(drivers));
-
-export * as SandboxDriverRegistry from "./registry.ts";

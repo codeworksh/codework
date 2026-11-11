@@ -3,8 +3,8 @@ import { createAssistantMessageEventStream, type Model, Transcript } from "@code
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { join } from "node:path";
-import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
+import * as Harness from "../src/effect/harness.ts";
+import * as Session from "../src/effect/session.ts";
 import type { SharedPluginContext } from "../src/plugin/context.ts";
 import { Section } from "../src/plugin/index.ts";
 import { make } from "../src/plugin/registry.ts";

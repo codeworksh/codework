@@ -20,13 +20,14 @@ import type {
 } from "@modelcontextprotocol/client";
 import { Effect, Predicate } from "effect";
 import type { RegisteredTool } from "../tool/tool.ts";
-import { McpContent } from "./content.ts";
-import { type McpError, ResourceError } from "./error.ts";
-import { McpTool } from "./tool.ts";
+import * as McpContent from "./content.ts";
+import type * as McpError from "./error.ts";
+import { ResourceError } from "./error.ts";
+import * as McpTool from "./tool.ts";
 
-export const LIST_RESOURCES_TOOL = "list_mcp_resources";
-export const LIST_TEMPLATES_TOOL = "list_mcp_resource_templates";
-export const READ_RESOURCE_TOOL = McpContent.READ_RESOURCE_TOOL;
+const LIST_RESOURCES_TOOL = "list_mcp_resources";
+const LIST_TEMPLATES_TOOL = "list_mcp_resource_templates";
+const READ_RESOURCE_TOOL = McpContent.READ_RESOURCE_TOOL;
 
 /** A server that offers resources, reached through its current connection. */
 export interface Server {
@@ -230,5 +231,3 @@ export const make = (input: {
 		}),
 	];
 };
-
-export * as McpResources from "./resources.ts";

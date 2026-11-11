@@ -27,7 +27,7 @@ export interface ContextUsageEstimate {
 	lastUsageIndex: number | null;
 }
 
-export function calculateContextTokens(usage: Message.Usage): number {
+function calculateContextTokens(usage: Message.Usage): number {
 	return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
@@ -49,7 +49,7 @@ function contentChars(content: ReadonlyArray<Message.TextContent | Message.Image
 	return chars;
 }
 
-export function estimateContentTokens(content: ReadonlyArray<Message.TextContent | Message.ImageContent>): number {
+function estimateContentTokens(content: ReadonlyArray<Message.TextContent | Message.ImageContent>): number {
 	return Math.ceil(contentChars(content) / CHARS_PER_TOKEN);
 }
 

@@ -5,23 +5,23 @@
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
-import { Store } from "../db/store.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
-import { Location } from "../location/location.ts";
-import { SandboxController } from "../sandbox/control.ts";
+import * as Store from "../db/store.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
+import * as Location from "../location/location.ts";
+import * as SandboxController from "../sandbox/control.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { RunCoordinator } from "./coordinator.ts";
-import { RunnerExecution } from "./execution.ts";
-import { Runner } from "./run.ts";
+import * as RunCoordinator from "./coordinator.ts";
+import * as RunnerExecution from "./execution.ts";
+import * as Runner from "./run.ts";
 
 // session
-import { SessionFailure } from "../session/failure.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { Session } from "../session/session.ts";
-import { Mcp } from "../mcp/mcp.ts";
-import { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
+import * as SessionFailure from "../session/failure.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as Session from "../session/session.ts";
+import * as Mcp from "../mcp/mcp.ts";
+import * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
 
 type ThreadId = ThreadSchema.ID;
 
@@ -251,5 +251,3 @@ export const layer = Layer.effect(
 		});
 	}),
 );
-
-export * as RunnerExecute from "./execute.ts";

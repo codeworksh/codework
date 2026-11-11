@@ -9,6 +9,7 @@ import {
 	type LineRequest,
 	LineThread,
 	type Priority,
+	type ProjectSpace,
 	type SidebarProject,
 	type SidebarSession,
 	SyncError,
@@ -80,7 +81,8 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		createdAt: number;
 		updatedAt: number;
 	}>`
-		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind, session.color,
+		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind,
+			COALESCE(thread.color, session.color) AS color,
 			session.dir, session.hostdir, thread.id AS thread_id, thread.title, thread.model_provider,
 			thread.model_id, thread.run_state, thread.status, thread.priority, thread.created_at,
 			(SELECT MAX(activity.updated_at) FROM thread AS activity
@@ -426,5 +428,21 @@ export const line = Effect.fn("Reads.line")(function* (request: LineRequest) {
 		} satisfies ThreadLine;
 	}).pipe(Effect.orDie);
 });
+
+/** A project's directories, its main checkout first, then by folder. */
+export const spaces = Effect.fn("Reads.spaces")(function* ({
+	machineId,
+	projectId,
+}: {
+	readonly machineId: string;
+	readonly projectId: string;
+}) {
+	const sql = yield* SqlClient.SqlClient;
+	return yield* sql<ProjectSpace>`
+		SELECT id, location, kind, env, status FROM space
+		WHERE machine_id = ${machineId} AND project_id = ${projectId}
+		ORDER BY kind <> 'primary', location
+	`;
+}, Effect.orDie);
 
 export * as Reads from "./reads.ts";

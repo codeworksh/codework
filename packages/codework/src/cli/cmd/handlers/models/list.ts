@@ -1,6 +1,6 @@
 import { ModelCatalog } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
 import { InvalidInputError, reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";

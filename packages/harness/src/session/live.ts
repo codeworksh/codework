@@ -8,9 +8,7 @@
  */
 
 import { Layer } from "effect";
-import { SessionProjector } from "./projector.ts";
-import { Session } from "./session.ts";
+import * as SessionProjector from "./projector.ts";
+import * as Session from "./session.ts";
 
 export const layer = Layer.provideMerge(SessionProjector.layer, Session.storeLayer);
-
-export * as SessionLive from "./live.ts";

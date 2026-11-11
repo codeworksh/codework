@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import type { Plugin } from "../plugin/plugin.ts";
-import { EventList } from "./list.ts";
+import * as EventList from "./list.ts";
 import { EventSchema } from "./schema.ts";
 
 /**
@@ -85,5 +85,3 @@ export const layer = (definitions: ReadonlyArray<EventSchema.Definition> = Event
 			replace,
 		});
 	});
-
-export * as EventRegistry from "./registry.ts";

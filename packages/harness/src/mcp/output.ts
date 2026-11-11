@@ -23,5 +23,3 @@ export const save = Effect.fn("Mcp.saveOutput")(function* (data: string | Uint8A
 		.pipe(Effect.mapError((error) => new OutputError({ message: error.message })));
 	return path;
 });
-
-export * as McpOutput from "./output.ts";

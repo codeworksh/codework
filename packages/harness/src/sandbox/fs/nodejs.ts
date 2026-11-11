@@ -3,8 +3,8 @@ import { Layer } from "effect";
 // The VFS provider contract is Promise/sync-based, so Effect's FileSystem cannot back it.
 // @effect-diagnostics-next-line nodeBuiltinImport:off
 import fs from "node:fs";
-import { Process } from "../utils/process.ts";
-import { Local } from "./vfs.ts";
+import * as Process from "../utils/process.ts";
+import * as Local from "./vfs.ts";
 
 // `RealFSProvider.realpath` mis-maps results for a `/` root (it looks for a
 // `//` prefix and falls back to echoing the input), so with provider paths
@@ -40,5 +40,3 @@ export const layer = () => {
 
 	return Layer.merge(Layer.succeed(Local.Vfs, vfs), Process.host);
 };
-
-export * as EnvNodeJSDefault from "./nodejs.ts";

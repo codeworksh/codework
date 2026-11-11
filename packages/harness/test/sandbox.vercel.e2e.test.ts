@@ -9,7 +9,7 @@ import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import * as EnvVercel from "../src/sandboxes/vercel/provider.ts";
 import { SandboxResource } from "../src/sandbox/resource.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { conformanceSpec } from "./fixtures/conformance.spec.ts";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";

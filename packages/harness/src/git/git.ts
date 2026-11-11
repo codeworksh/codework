@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { posix as path } from "../util/posix.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Sandbox } from "../sandbox/sandbox.ts";
+import * as Sandbox from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
 
 /** Git could not be run at all: the process failed to spawn. */
@@ -262,5 +262,3 @@ export function resolvePath(cwd: string, value: string) {
 	if (path.isAbsolute(trimmed)) return path.normalize(trimmed);
 	return path.resolve(cwd, trimmed);
 }
-
-export * as Git from "./git.ts";

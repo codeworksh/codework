@@ -2,16 +2,16 @@ import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { ContextCodec } from "../src/context/codec.ts";
-import { Context } from "../src/context/context.ts";
-import { Database } from "../src/db/db.ts";
-import { Event } from "../src/event/event.ts";
-import { EventList } from "../src/event/list.ts";
+import * as ContextCodec from "../src/context/codec.ts";
+import * as Context from "../src/context/context.ts";
+import * as Database from "../src/db/db.ts";
+import * as Event from "../src/event/event.ts";
+import * as EventList from "../src/event/list.ts";
 import { seedSpace } from "./fixtures/space.ts";
-import { SessionLive } from "../src/session/live.ts";
-import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { Session } from "../src/session/session.ts";
-import { Thread } from "../src/thread/thread.ts";
+import * as SessionLive from "../src/session/live.ts";
+import * as SessionMessageSchema from "../src/session/message/schema.ts";
+import * as Session from "../src/session/session.ts";
+import * as Thread from "../src/thread/thread.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const sessionLayer = SessionLive.layer.pipe(

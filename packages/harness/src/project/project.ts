@@ -1,22 +1,22 @@
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
-import { Database } from "../db/db.ts";
+import * as Database from "../db/db.ts";
 import { ProjectRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
-import { Git } from "../git/git.ts";
+import * as Store from "../db/store.ts";
+import * as Git from "../git/git.ts";
 import { DirectoryNotFoundError, NotDirectoryError, type Error as LocationError } from "../location/error.ts";
-import { Repo } from "../repo/repo.ts";
+import * as Repo from "../repo/repo.ts";
 import type { RepoSchema } from "../repo/schema.ts";
-import { SandboxFs } from "../sandbox/fs/util.ts";
+import * as SandboxFs from "../sandbox/fs/util.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { Sandbox } from "../sandbox/sandbox.ts";
+import * as Sandbox from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
-import { Space } from "../space/space.ts";
-import { Hash } from "../util/hash.ts";
+import * as Space from "../space/space.ts";
+import * as Hash from "../util/hash.ts";
 import { posix as path } from "../util/posix.ts";
-import { Worktree } from "../worktree/worktree.ts";
+import * as Worktree from "../worktree/worktree.ts";
 import { ProjectSchema } from "./schema.ts";
 
 /** Deterministic, env-local id for a directory without a portable identity. Never written to a marker. */
@@ -235,6 +235,11 @@ export class ProjectNotFoundError extends Schema.TaggedError<ProjectNotFoundErro
 	projectId: Schema.String,
 }) {}
 
+/** The project has no main checkout on this host, so no host file of its own. */
+export class ProjectCheckoutError extends Schema.TaggedError<ProjectCheckoutError>()("ProjectCheckoutError", {
+	projectId: Schema.String,
+}) {}
+
 /** Renames a project. Needs only the database, not a mount: a name is the same in every env. */
 export const rename = Effect.fn("Project.rename")(function* (input: {
 	readonly projectId: string;
@@ -260,6 +265,22 @@ export const rename = Effect.fn("Project.rename")(function* (input: {
 	});
 });
 
+/**
+ * A project's main checkout on the host, if it has an active one: its repository's main worktree,
+ * or the folder of a project that is not a repository. Needs only the database; a
+ * checkout inside a sandbox has no host path to run git in.
+ */
+export const mainCheckout = Effect.fn("Project.mainCheckout")(function* (projectId: string) {
+	const sql = yield* SqlClient.SqlClient;
+	const found = yield* sql<{ id: string }>`SELECT id FROM project WHERE id = ${projectId}`.pipe(Effect.orDie);
+	if (found.length === 0) return yield* new ProjectNotFoundError({ projectId });
+	const rows = yield* sql<{ location: string }>`
+		SELECT location FROM space
+		WHERE project_id = ${projectId} AND env IS NULL AND kind IN ('primary', 'plain') AND status = 'active'
+	`.pipe(Effect.orDie);
+	return rows[0]?.location;
+});
+
 /** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
@@ -270,5 +291,3 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	);
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));
-
-export * as Project from "./project.ts";

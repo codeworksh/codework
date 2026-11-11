@@ -94,7 +94,7 @@ export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOpt
 	};
 }
 
-export function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
+function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
 	model: Model.Info | undefined,
 	protocol: TProtocol,
 ): asserts model is Model.TModel<TProtocol> {

@@ -4,12 +4,12 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ContextCodec } from "../../../src/context/codec.ts";
-import type { Session } from "../../../src/effect/session.ts";
-import { Event } from "../../../src/event/event.ts";
-import { EventList } from "../../../src/event/list.ts";
+import * as ContextCodec from "../../../src/context/codec.ts";
+import type * as Session from "../../../src/effect/session.ts";
+import * as Event from "../../../src/event/event.ts";
+import * as EventList from "../../../src/event/list.ts";
 import { toolSearchPlugin } from "../../../src/plugin/builtin/tool/toolsearch.ts";
-import type { LLM } from "../../../src/runner/llm.ts";
+import type * as LLM from "../../../src/runner/llm.ts";
 import { assistant, sectionNames } from "../llm.ts";
 
 const fixtures = fileURLToPath(new URL("./", import.meta.url));
@@ -71,7 +71,7 @@ export const scripted = (answered = 0) => {
 };
 
 /** Threads and servers connect concurrently; their keys are sorted so the artifact does not depend on it. */
-export const byName = <A>(record: Record<string, A>) =>
+const byName = <A>(record: Record<string, A>) =>
 	Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
 
 /** Every `mcp.server.status` event, by thread label and server, in order; `read` takes a copy. */

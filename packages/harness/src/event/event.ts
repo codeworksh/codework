@@ -1,12 +1,12 @@
 import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/sql";
 import { EventRow } from "../db/schema.sql.ts";
-import { Store } from "../db/store.ts";
+import * as Store from "../db/store.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
 // stored types up in.
 // import { Durable } from "./manifest.ts";
 import { Schema } from "effect";
-import { EventManifest } from "./manifest.ts";
+import * as EventManifest from "./manifest.ts";
 import type { Data, Definition, ID, Payload } from "./schema.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -700,5 +700,3 @@ export const layer = Layer.effect(
 		});
 	}),
 );
-
-export * as Event from "./event.ts";

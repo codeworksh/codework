@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { Server } from "../../../acp/server.ts";
-import { Runtime } from "../../../framework/runtime.ts";
+import * as Server from "../../../acp/server.ts";
+import * as Runtime from "../../../framework/runtime.ts";
 import { reportFailure } from "../../error.ts";
 import { harnessOptions } from "../../harness.ts";
 import { Cmd } from "../cmd.ts";

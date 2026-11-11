@@ -4,8 +4,8 @@ import { NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { createInterface } from "node:readline";
 import { assistant } from "../../../../packages/harness/test/fixtures/llm.ts";
-import type { LLM } from "../../../../packages/harness/src/runner/llm.ts";
-import { Server } from "../../../../packages/codework/src/server/server.ts";
+import type * as LLM from "../../../../packages/harness/src/runner/llm.ts";
+import * as Server from "../../../../packages/codework/src/server/server.ts";
 import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
 
 /*

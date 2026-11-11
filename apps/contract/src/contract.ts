@@ -47,7 +47,7 @@ export const SidebarSession = Schema.Struct({
 	/** Its main thread. */
 	threadId: Schema.String,
 	spaceKind: SpaceInfo.fields.kind,
-	/** Hex; null is the default. */
+	/** Its main thread's color, else its own, as All Threads shows it; hex, null is the default. */
 	color: Schema.NullOr(Schema.String),
 	/** The main thread's title, or what an untitled one is called. */
 	title: Schema.String,
@@ -77,8 +77,24 @@ export const SidebarProject = Schema.Struct({
 });
 export type SidebarProject = typeof SidebarProject.Type;
 
+/** One of a project's directories: its main checkout, a worktree, a copy or a plain folder. */
+export const ProjectSpace = Schema.Struct({
+	id: Schema.String,
+	location: Schema.String,
+	kind: SpaceInfo.fields.kind,
+	/** The sandbox it is in; null for the host. */
+	env: Schema.NullOr(Schema.String),
+	status: SpaceInfo.fields.status,
+});
+export type ProjectSpace = typeof ProjectSpace.Type;
+
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
+	message: Schema.String,
+}) {}
+
+/** A project operation that failed, such as renaming one the server no longer has. */
+export class ProjectError extends Schema.TaggedError<ProjectError>()("Server.ProjectError", {
 	message: Schema.String,
 }) {}
 
@@ -90,6 +106,44 @@ export class ModelsError extends Schema.TaggedError<ModelsError>()("Server.Model
 	path: Schema.String,
 	message: Schema.String,
 }) {}
+
+/** A settings file the runtime would reject, at `path`; nothing was written. */
+export class SettingsError extends Schema.TaggedError<SettingsError>()("Server.SettingsError", {
+	path: Schema.String,
+	message: Schema.String,
+}) {}
+
+/** A settings file changed since it was read; nothing was written. */
+export class SettingsConflict extends Schema.TaggedError<SettingsConflict>()("Server.SettingsConflict", {
+	path: Schema.String,
+}) {}
+
+/** `settings.jsonc` or `mcp.json`: the project's with `projectId`, else the user's. */
+export const SettingsFileRef = {
+	projectId: Schema.optionalKey(Schema.String),
+	file: Schema.Literals(["settings", "mcp"]),
+};
+
+/** A settings file as written. `version` is what a write is held to; `error` is what the runtime would reject. */
+export const SettingsFile = Schema.Struct({
+	path: Schema.String,
+	source: Schema.String,
+	exists: Schema.Boolean,
+	version: Schema.String,
+	/** The file's JSONC as a value; absent when it does not parse. */
+	value: Schema.optionalKey(Schema.Unknown),
+	error: Schema.optionalKey(Schema.String),
+	/** For `settings.jsonc`: what applies where this file sets nothing. */
+	inherited: Schema.optionalKey(
+		Schema.Struct({
+			retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
+		}),
+	),
+});
+export type SettingsFile = typeof SettingsFile.Type;
+
+/** Every settings call's: only a write can conflict, but one set keeps the app server's mapping single. */
+const SettingsErrors = [CodeworkUnavailable, HostError, ProjectError, SettingsError, SettingsConflict] as const;
 
 export const Layout = Schema.Literals(["tile", "monocle"]);
 export type Layout = typeof Layout.Type;
@@ -439,6 +493,11 @@ export const Api = RpcGroup.make(
 	 * An organization's active projects, newest activity first, each with its sessions that are not
 	 * deleted: on the default machine only, or on every machine. Read from app.db alone.
 	 */
+	/** A project's directories, its main checkout first; read from app.db alone. */
+	Rpc.make("projects.spaces", {
+		payload: { machineId: Schema.String, projectId: Schema.String },
+		success: Schema.Array(ProjectSpace),
+	}),
 	Rpc.make("sidebar.list", {
 		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },
 		success: Schema.Array(SidebarProject),
@@ -476,6 +535,40 @@ export const Api = RpcGroup.make(
 		payload: { name: Schema.String },
 		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
+	}),
+	/** The `origin` URL of a project's main checkout, credentials taken out; null when it has none. */
+	Rpc.make("projects.remote", {
+		payload: { projectId: Schema.String },
+		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
+		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
+	}),
+	/** A settings file on the CodeWork server, as written. */
+	Rpc.make("settings.read", {
+		payload: SettingsFileRef,
+		success: SettingsFile,
+		error: Schema.Union(SettingsErrors),
+	}),
+	/** The whole file, written only when it is still at `version` and the runtime would accept it. */
+	Rpc.make("settings.write", {
+		payload: { ...SettingsFileRef, source: Schema.String, version: Schema.String },
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union(SettingsErrors),
+	}),
+	/** One value at `at` set in place, the rest of the file kept as written; no `value` removes it. */
+	Rpc.make("settings.set", {
+		payload: {
+			...SettingsFileRef,
+			at: Schema.NonEmptyArray(Schema.Union([Schema.String, Schema.Int])),
+			value: Schema.optionalKey(Schema.Unknown),
+		},
+		success: Schema.Struct({ version: Schema.String }),
+		error: Schema.Union(SettingsErrors),
+	}),
+	/** Renames a project on the CodeWork server; the sidebar follows once the change syncs back. */
+	Rpc.make("projects.rename", {
+		payload: { projectId: Schema.String, name: Schema.Trimmed.check(Schema.isNonEmpty()) },
+		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
 	}),
 	/** An existing folder as an absolute path; a missing one is created. */
 	Rpc.make("host.add", {

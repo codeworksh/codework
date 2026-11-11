@@ -83,5 +83,3 @@ export type Failure = UnavailableError | ToolCallError | ResourceError;
 export class StdioError extends Schema.TaggedError<StdioError>()("Mcp.StdioError", {
 	message: Schema.String,
 }) {}
-
-export * as McpError from "./error.ts";

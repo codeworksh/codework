@@ -1,11 +1,11 @@
 import { Effect, Layer, Option } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { SandboxController } from "../src/sandbox/control.ts";
+import * as Database from "../src/db/db.ts";
+import * as SandboxController from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
-import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
-import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
+import * as SandboxDriverRegistry from "../src/sandbox/registry.ts";
+import * as MemorySandboxDriver from "../src/sandbox/drivers/memory.ts";
+import * as SqldbSandboxDriver from "../src/sandbox/drivers/sqldb.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { testEffect } from "./utils/effect.ts";
 

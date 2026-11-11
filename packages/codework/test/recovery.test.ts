@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
-import { Client } from "../src/server/client.ts";
+import * as Client from "../src/server/client.ts";
 import type { EventEnvelope } from "../src/server/envelope.ts";
 import { type ChatRequest, models, type Reply, serveCli, streaming, toolCalls, writeSettings } from "./fixtures/cli.ts";
 

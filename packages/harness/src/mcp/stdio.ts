@@ -1,7 +1,7 @@
 import { type JSONRPCMessage, ReadBuffer, serializeMessage, type Transport } from "@modelcontextprotocol/client";
 import { Cause, Duration, Effect, Fiber, Option, Queue, Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { Process } from "../sandbox/utils/process.ts";
+import * as Process from "../sandbox/utils/process.ts";
 import { StdioError } from "./error.ts";
 
 /** How long a server gets to exit on its own after stdin closes, before it is terminated. */
@@ -254,5 +254,3 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 
 	return { transport, stderr: () => stderr };
 });
-
-export * as McpStdio from "./stdio.ts";

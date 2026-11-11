@@ -20,6 +20,8 @@ import { useElementSize } from "./size";
 import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
 import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
+import { session } from "../widgets/session";
+import { ThreadMenu } from "../widgets/session/menu";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
@@ -464,6 +466,11 @@ export function Desktop({ workspace }: DesktopProps) {
 									if (destination !== undefined) move(widget.id, destination);
 								}}
 								onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
+								menu={
+									instance.kind === session.kind ? (
+										<ThreadMenu address={instance.address} instanceId={widget.id} />
+									) : undefined
+								}
 								onClose={() => close(widget.id)}
 								onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 								onDragMove={({ clientX, clientY, deltaX, deltaY }) =>

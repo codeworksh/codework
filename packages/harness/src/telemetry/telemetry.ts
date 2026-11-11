@@ -91,5 +91,3 @@ export const timed = <A, E, R, R2>(
 		const start = clock.currentTimeMillisUnsafe();
 		return self.pipe(Effect.onExit((exit) => observe((clock.currentTimeMillisUnsafe() - start) / 1000, exit)));
 	});
-
-export * as Telemetry from "./telemetry.ts";

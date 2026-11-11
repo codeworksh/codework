@@ -71,5 +71,3 @@ export const initialize = async (vfs: VirtualFileSystem, options?: SeedOptions):
 		await vfs.promises.writeFile(target, typeof data === "string" ? data : Buffer.from(data));
 	}
 };
-
-export * as Seed from "./seed.ts";

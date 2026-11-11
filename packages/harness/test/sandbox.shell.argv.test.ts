@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { fromExec, type ISandboxExe, perMount, quote, Shell, withCwd } from "../src/sandbox/shell/shell.ts";
 
 // `execArgv` exists so values the harness does not control — branch names, file

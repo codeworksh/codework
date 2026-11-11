@@ -8,6 +8,15 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Changed
+
+- `vp run knip:check` reports unused exports in `packages/aikit`, `packages/codework`, `packages/harness` and `packages/plugin` as well as the apps. Modules other than a package's entry points no longer re-export themselves as a namespace (`export * as X from "./x.ts"`); their importers use `import * as X`, so knip sees which members are used.
+
+### Removed
+
+- Internal exports nothing imported, across aikit, codework, harness and plugin. Those also unused inside their own module are deleted, among them harness's `PluginStore.remove` and `PluginStore.all`, the `ToolRegistry` service and its layer, `Space.layerWith`, `Worktree.layerWith` and `Worktree.defaultLayer`. Package entry points are unchanged except as below.
+- `@codeworksh/harness/effect`: `Global.defaultLayer`, a duplicate of `Global.layer`.
+
 ## [@codeworksh/desktop@0.4.0] - 2026-11-06
 
 ### Added

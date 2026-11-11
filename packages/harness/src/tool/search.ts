@@ -47,7 +47,7 @@ const stem = (term: string): string => {
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 /** Unicode words, split at camelCase boundaries, lowercase, without stop words; ASCII words in singular form. */
-export const tokenize = (text: string): string[] => {
+const tokenize = (text: string): string[] => {
 	const normalized = text
 		.normalize("NFC")
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -185,5 +185,3 @@ export const text = (tool: Message.Tool): string => {
 	schemaText(tool.parameters, parts);
 	return parts.filter((part) => part.trim() !== "").join(" ");
 };
-
-export * as ToolSearch from "./search.ts";

@@ -28,7 +28,7 @@ import {
 import { Cause, Clock, Data, Duration, Effect, Exit, FiberSet, Schedule, Semaphore } from "effect";
 import { hostPath } from "../host.ts";
 import { ConnectError, NeedsAuthError, RequestError, SessionExpiredError } from "./error.ts";
-import { McpStdio } from "./stdio.ts";
+import * as McpStdio from "./stdio.ts";
 
 const DEFAULT_REQUEST_TIMEOUT = Duration.seconds(60);
 const TERMINATE_TIMEOUT = Duration.seconds(1);
@@ -674,5 +674,3 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 	};
 	return connection;
 });
-
-export * as McpClient from "./client.ts";

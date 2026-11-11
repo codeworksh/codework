@@ -1,11 +1,12 @@
 /* oxlint-disable effecttsgo/async-function -- VFS operations implement a Promise-based adapter contract. */
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer, Schema } from "effect";
-import { Process } from "../utils/process.ts";
-import { Seed, type SeedOptions } from "../utils/seed.ts";
-import { Local } from "./vfs.ts";
+import * as Process from "../utils/process.ts";
+import * as Seed from "../utils/seed.ts";
+import { type SeedOptions } from "../utils/seed.ts";
+import * as Local from "./vfs.ts";
 
-export class SqldbError extends Schema.TaggedError<SqldbError>()("SqldbError", {
+class SqldbError extends Schema.TaggedError<SqldbError>()("SqldbError", {
 	message: Schema.String,
 	cause: Schema.Defect(),
 }) {}
@@ -68,5 +69,3 @@ export const layer = (opts?: LayerOptions) =>
 		vfsLayer(opts?.location, opts?.options),
 		opts?.options?.hostProcess ? Process.host : Process.unsupported,
 	);
-
-export * as EnvSqldb from "./sqldb.ts";

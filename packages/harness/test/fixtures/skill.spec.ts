@@ -4,10 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect } from "vite-plus/test";
-import { Harness } from "../../src/effect/harness.ts";
-import { Sandbox } from "../../src/effect/sandbox.ts";
-import { Session } from "../../src/effect/session.ts";
-import { SandboxController } from "../../src/sandbox/control.ts";
+import * as Harness from "../../src/effect/harness.ts";
+import * as Sandbox from "../../src/effect/sandbox.ts";
+import * as Session from "../../src/effect/session.ts";
+import * as SandboxController from "../../src/sandbox/control.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import { immediateOpen } from "./llm.ts";
 

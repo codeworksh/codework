@@ -1,8 +1,8 @@
 import { Global } from "@codeworksh/harness/effect";
 import { Effect, FileSystem, Layer, Logger } from "effect";
-import { Runtime } from "../../../framework/runtime.ts";
-import { Registration } from "../../../server/registration.ts";
-import { Server } from "../../../server/server.ts";
+import * as Runtime from "../../../framework/runtime.ts";
+import * as Registration from "../../../server/registration.ts";
+import * as Server from "../../../server/server.ts";
 import { renderError } from "../../error.ts";
 import { harnessOptions } from "../../harness.ts";
 import { writeError } from "../../output.ts";

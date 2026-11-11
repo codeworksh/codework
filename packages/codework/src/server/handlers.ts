@@ -13,6 +13,7 @@ import {
 	Session,
 	SessionStore,
 	Settings,
+	SettingsFile,
 	State,
 	Store,
 	Sync,
@@ -20,8 +21,8 @@ import {
 	ThreadStore,
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
+import * as Contract from "./contract.ts";
 import {
-	Contract,
 	type HistoryEntry,
 	type IndexItem,
 	type LogSynced,
@@ -34,14 +35,15 @@ import {
 	type ThreadItem,
 	type ThreadSummary,
 } from "./contract.ts";
-import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
-import { Clones } from "./clones.ts";
-import { EventFeed } from "./feed.ts";
-import { Host } from "./host.ts";
-import { Identity } from "./identity.ts";
-import { OAuth } from "./oauth.ts";
-import { MessagePart } from "./part.ts";
-import { Rows } from "./rows.ts";
+import * as Envelope from "./envelope.ts";
+import { type EncodingError, type EventEnvelope } from "./envelope.ts";
+import * as Clones from "./clones.ts";
+import * as EventFeed from "./feed.ts";
+import * as Host from "./host.ts";
+import * as Identity from "./identity.ts";
+import * as OAuth from "./oauth.ts";
+import * as MessagePart from "./part.ts";
+import * as Rows from "./rows.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -235,6 +237,15 @@ export const layer = Contract.Api.toLayer(
 				return yield* mcp[operation](yield* resolve(ref), server);
 			});
 
+		const settings = yield* Settings.Service;
+		/** The project's file is the one sessions in its main checkout read. */
+		const settingsTarget = Effect.fnUntraced(function* (projectId: string | undefined, file: "settings" | "mcp") {
+			if (projectId === undefined) return yield* settings.locate(undefined, file);
+			const checkout = yield* Project.mainCheckout(projectId);
+			if (checkout === undefined) return yield* new Project.ProjectCheckoutError({ projectId });
+			return yield* settings.locate(checkout, file);
+		});
+
 		return Contract.Api.of({
 			"server.info": Effect.fnUntraced(function* () {
 				const head = yield* store.head;
@@ -308,9 +319,44 @@ export const layer = Contract.Api.toLayer(
 					},
 				};
 			}),
+			"project.remote": Effect.fnUntraced(function* ({ projectId }) {
+				const checkout = yield* Project.mainCheckout(projectId);
+				const url = checkout === undefined ? undefined : yield* host.remote(checkout);
+				return { url: url ?? null };
+			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });
 				return { id: renamed.id, name: renamed.name };
+			}),
+			"settings.read": Effect.fnUntraced(function* ({ projectId, file }) {
+				const target = yield* settingsTarget(projectId, file);
+				const current = yield* SettingsFile.read(target.path);
+				const problem = yield* Effect.flip(SettingsFile.check(target, current.source)).pipe(Effect.option);
+				const parsed = SettingsFile.parse(current.source);
+				// Below a project's file are the user's settings; below the user's, the defaults.
+				const below =
+					file !== "settings"
+						? Option.none()
+						: projectId === undefined
+							? Option.some(Settings.defaults)
+							: yield* settings.load(undefined).pipe(Effect.option);
+				return {
+					path: target.path,
+					source: current.source,
+					exists: current.exists,
+					version: current.version,
+					...("value" in parsed ? { value: parsed.value } : {}),
+					...(Option.isSome(problem) ? { error: problem.value.detail } : {}),
+					...(Option.isSome(below) ? { inherited: { retry: below.value.retry } } : {}),
+				};
+			}),
+			"settings.write": Effect.fnUntraced(function* ({ projectId, file, source, version }) {
+				const target = yield* settingsTarget(projectId, file);
+				return { version: yield* SettingsFile.replace(target, source, version) };
+			}),
+			"settings.set": Effect.fnUntraced(function* ({ projectId, file, at, value }) {
+				const target = yield* settingsTarget(projectId, file);
+				return { version: yield* SettingsFile.set(target, at, value) };
 			}),
 			"plugin.reload": Effect.fnUntraced(function* () {
 				return yield* state.reload;
@@ -534,5 +580,3 @@ export const layer = Contract.Api.toLayer(
 		});
 	}),
 );
-
-export * as Handlers from "./handlers.ts";

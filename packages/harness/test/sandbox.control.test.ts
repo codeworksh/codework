@@ -1,11 +1,11 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db.ts";
-import { SandboxController } from "../src/sandbox/control.ts";
+import * as Database from "../src/db/db.ts";
+import * as SandboxController from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
-import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
+import * as SandboxDriverRegistry from "../src/sandbox/registry.ts";
+import * as FakeSandboxDriver from "../src/sandbox/drivers/fake.ts";
 import {
 	SandboxBusyError,
 	SandboxDriverNotRegisteredError,
@@ -17,7 +17,7 @@ import {
 } from "../src/sandbox/errors.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { SandboxStore } from "../src/sandbox/store.ts";
+import * as SandboxStore from "../src/sandbox/store.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("control-fake"));

@@ -2,9 +2,9 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../../src/sandbox/sandbox.ts";
+import * as Sandbox from "../../src/sandbox/sandbox.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
-import { Binary } from "../../src/tool/binary.ts";
+import * as Binary from "../../src/tool/binary.ts";
 import { normalize, runAll } from "./search.ts";
 import { tmpdir } from "./tempdir.ts";
 

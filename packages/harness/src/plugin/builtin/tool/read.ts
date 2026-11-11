@@ -1,8 +1,8 @@
 import { Effect, Layer, Schema } from "effect";
 import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { Image } from "../../../tool/image/index.ts";
-import { ToolPath } from "../../../tool/path.ts";
+import * as Image from "../../../tool/image/index.ts";
+import * as ToolPath from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "../../../tool/truncate.ts";
 import { define } from "../../plugin.ts";
@@ -52,7 +52,7 @@ class ReadFailed extends Schema.TaggedError<ReadFailed>()("ReadFailed", { messag
 
 const BINARY_PROBE_BYTES = 8000;
 
-export const readDef = Tool.define({
+const readDef = Tool.define({
 	name: "read",
 	label: "read",
 	description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
@@ -184,12 +184,10 @@ const readText = (
 		return { type: "text" as const, text: shown.text };
 	});
 
-export const readHandler: Tool.Handler<
-	typeof ReadParams,
-	typeof ReadSuccess,
-	typeof ReadFailed,
-	SandboxIO.FileSystem
-> = (params, ctx) =>
+const readHandler: Tool.Handler<typeof ReadParams, typeof ReadSuccess, typeof ReadFailed, SandboxIO.FileSystem> = (
+	params,
+	ctx,
+) =>
 	Effect.gen(function* () {
 		const fs = yield* SandboxIO.FileSystem;
 		const resolved = yield* ToolPath.resolveRead(fs, params.path);

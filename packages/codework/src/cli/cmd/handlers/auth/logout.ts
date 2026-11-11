@@ -1,6 +1,6 @@
 import { oauthNotice } from "@codeworksh/aikit/oauth/summary";
 import { Effect, Option } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeError } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";

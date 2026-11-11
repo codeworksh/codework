@@ -50,31 +50,25 @@ import {
 	Semaphore,
 } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
-import {
-	ConnectError,
-	type McpError,
-	NeedsAuthError,
-	ToolCallError,
-	UnavailableError,
-	UnknownServerError,
-} from "./error.ts";
-import { Event } from "../event/event.ts";
-import { EventList } from "../event/list.ts";
+import type * as McpError from "./error.ts";
+import { ConnectError, NeedsAuthError, ToolCallError, UnavailableError, UnknownServerError } from "./error.ts";
+import * as Event from "../event/event.ts";
+import * as EventList from "../event/list.ts";
 import { ID as SessionId } from "../session/schema.ts";
 import { ID as ThreadId } from "../thread/schema.ts";
 import type { DeferredTool } from "../tool/offer.ts";
 import { type RegisteredTool, toAikitTool } from "../tool/tool.ts";
-import { McpClient } from "./client.ts";
+import * as McpClient from "./client.ts";
 import { namespace } from "./config.ts";
-import { McpLog } from "./log.ts";
-import { McpOAuth } from "./oauth.ts";
-import { McpOutput } from "./output.ts";
-import { McpResources } from "./resources.ts";
-import { McpSection } from "./section.ts";
-import { McpTool } from "./tool.ts";
-import { McpValue } from "./value.ts";
+import * as McpLog from "./log.ts";
+import * as McpOAuth from "./oauth.ts";
+import * as McpOutput from "./output.ts";
+import * as McpResources from "./resources.ts";
+import * as McpSection from "./section.ts";
+import * as McpTool from "./tool.ts";
+import * as McpValue from "./value.ts";
 import { hostPath } from "../host.ts";
-import { ModelCatalog } from "../model/catalog.ts";
+import * as ModelCatalog from "../model/catalog.ts";
 import { expandTilde } from "../util/home.ts";
 
 /**
@@ -1242,5 +1236,3 @@ export const check = Effect.fn("Mcp.check")(function* (
 	yield* mcp.settle(threadId);
 	return yield* mcp.status(threadId);
 });
-
-export * as Mcp from "./mcp.ts";

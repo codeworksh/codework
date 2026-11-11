@@ -79,5 +79,3 @@ export const known = Effect.fn("ACP.config.known")(function* (
 	const catalog = yield* catalogFor(hostDir);
 	return catalog[model.provider]?.[model.id] !== undefined;
 });
-
-export * as Config from "./config.ts";

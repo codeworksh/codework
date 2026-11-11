@@ -1,7 +1,7 @@
 import { Session } from "@codeworksh/harness/effect";
 import { Effect, type Option } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
-import { Client } from "../../../../server/client.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
+import * as Client from "../../../../server/client.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { threadFlag } from "../../../thread.ts";
@@ -12,7 +12,7 @@ import { describe, MARKS } from "./shared.ts";
  * `reconnect` and `disconnect`: one RPC on a thread's server in a running server, which acts on the
  * instance every thread sharing it uses. Exits 1 when the server did not end up as asked.
  */
-export const control = (operation: "connect" | "disconnect") =>
+const control = (operation: "connect" | "disconnect") =>
 	Effect.fn(`CLI.mcp.${operation}`)(function* ({
 		name,
 		session,

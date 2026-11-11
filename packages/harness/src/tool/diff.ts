@@ -32,7 +32,7 @@ export const stripBom = (content: string): { bom: string; text: string } =>
  * The form both sides are compared in when the exact text is not found:
  * NFKC, no trailing whitespace per line, ASCII quotes, dashes and spaces.
  */
-export const normalizeForFuzzyMatch = (text: string): string =>
+const normalizeForFuzzyMatch = (text: string): string =>
 	text
 		.normalize("NFKC")
 		.split("\n")
@@ -98,7 +98,7 @@ const applyReplacements = (content: string, replacements: ReadonlyArray<TextRepl
  * replacement ranges drive this, so duplicate normalized lines cannot be
  * aligned to the wrong occurrence.
  */
-export const applyReplacementsPreservingUnchangedLines = (
+const applyReplacementsPreservingUnchangedLines = (
 	originalContent: string,
 	baseContent: string,
 	replacements: ReadonlyArray<TextReplacement>,
@@ -148,7 +148,7 @@ export interface FuzzyMatchResult {
 }
 
 /** Find `oldText`, exactly first, then in fuzzy-normalized space. */
-export const fuzzyFindText = (content: string, oldText: string): FuzzyMatchResult => {
+const fuzzyFindText = (content: string, oldText: string): FuzzyMatchResult => {
 	const exactIndex = content.indexOf(oldText);
 	if (exactIndex !== -1) {
 		return {
@@ -326,5 +326,3 @@ export const generateDiffString = (
 
 	return { diff: output.join("\n"), firstChangedLine };
 };
-
-export * as EditDiff from "./diff.ts";

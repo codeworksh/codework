@@ -18,7 +18,7 @@ import type { SandboxFileSystem } from "./filesystem.ts";
  * Only for callers where an unreliable answer is acceptable — never for one
  * that deletes or overwrites on the strength of an absent result.
  */
-export const existsOrFalse = (fs: SandboxFileSystem.Interface, path: string) =>
+const existsOrFalse = (fs: SandboxFileSystem.Interface, path: string) =>
 	fs.exists(path).pipe(Effect.orElseSucceed(() => false));
 
 /**
@@ -90,5 +90,3 @@ export const realpath = Effect.fn("SandboxFileSystem.realpath")(function* (
 ) {
 	return yield* fs.realpath(path).pipe(Effect.orElseSucceed(() => posix.normalize(path)));
 });
-
-export * as SandboxFs from "./util.ts";

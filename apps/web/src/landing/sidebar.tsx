@@ -28,10 +28,11 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
-import { sessionAddress } from "../widgets/session/address";
+import { sessionAddress, threadRef } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
+import { useWorkspaces, workspaceTag } from "../wm/workspaces";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
@@ -73,16 +74,24 @@ export function SessionsSidebar() {
 	const [place, setPlace] = useAtom(placeAtom);
 	const addProject = useAddProject();
 	const navigate = useNavigate();
-	// The session in front on the workspace on screen reads as current.
+	// The session in front on the workspace on screen reads as current; the others it shows, as open.
 	const { workspaceId } = useParams({ strict: false });
 	const { instances } = useAtomValue(deskAtom);
 	const focusedOn = useAtomValue(focusedAtom);
-	const focusedId = workspaceId === undefined ? undefined : focusedOn.get(workspaceId);
-	const current = instances.find((instance) => instance.id === focusedId)?.address;
+	const workspace = useWorkspaces().find((candidate) => candidate.id === workspaceId);
+	const focusedId = workspace === undefined ? undefined : focusedOn.get(workspace.id);
+	const current = threadRef(instances.find((instance) => instance.id === focusedId)?.address)?.sessionId;
+	const shown = new Set(
+		workspace === undefined
+			? []
+			: instances.flatMap((instance) =>
+					(instance.tags & workspaceTag(workspace)) === 0 ? [] : (threadRef(instance.address)?.sessionId ?? []),
+				),
+	);
 	// A new session starts on the start page, in the current session's project when one is in front.
 	const startNew = () => {
 		const project = AsyncResult.isSuccess(result)
-			? result.value.find((candidate) => candidate.sessions.some(({ id }) => sessionAddress(id) === current))
+			? result.value.find((candidate) => candidate.sessions.some(({ id }) => id === current))
 			: undefined;
 		if (project !== undefined) setPlace({ kind: "folder", path: project.path });
 		void navigate({ to: "/" });
@@ -200,6 +209,7 @@ export function SessionsSidebar() {
 									label="Grouping"
 									mark={<LayoutGrid aria-hidden />}
 									value={display.group}
+									current={GROUPS.find(({ value }) => value === display.group)?.label}
 									options={marked(GROUPS)}
 									onChange={(group) => changeDisplay({ group })}
 								/>
@@ -207,6 +217,7 @@ export function SessionsSidebar() {
 									label="Ordering"
 									mark={<ArrowUpDown aria-hidden />}
 									value={display.order}
+									current={ORDERS.find(({ value }) => value === display.order)?.label}
 									options={marked(ORDERS)}
 									onChange={(order) => changeDisplay({ order })}
 								/>
@@ -218,6 +229,7 @@ export function SessionsSidebar() {
 								group={group}
 								expanded={needle !== "" || !collapsed.has(group.key)}
 								current={current}
+								shown={shown}
 								onToggle={() => toggle(group.key)}
 								onStartNew={group.kind === "project" ? () => startIn(group.project.path) : undefined}
 								onOpen={open}
@@ -248,27 +260,31 @@ function GroupSection({
 	group,
 	expanded,
 	current,
+	shown,
 	onToggle,
 	onStartNew,
 	onOpen,
 }: {
 	readonly group: Group;
 	readonly expanded: boolean;
+	/** The session id in front on the workspace on screen. */
 	readonly current: string | undefined;
+	/** Every session id the workspace on screen shows. */
+	readonly shown: ReadonlySet<string>;
 	readonly onToggle: () => void;
 	/** A project's new thread; other groups have none. */
 	readonly onStartNew: (() => void) | undefined;
 	readonly onOpen: (sessionId: string, projectName: string, event: MouseEvent) => void;
 }) {
 	const label = groupLabel(group);
-	const open = expanded ? undefined : group.entries.find(({ session }) => sessionAddress(session.id) === current);
+	const open = expanded ? undefined : group.entries.find(({ session }) => session.id === current);
 	const row = ({ session, project }: Entry) => (
 		<SessionRow
 			key={session.id}
 			session={session}
 			projectName={project.name}
 			machineName={project.machine.name}
-			current={sessionAddress(session.id) === current}
+			state={session.id === current ? "current" : shown.has(session.id) ? "shown" : undefined}
 			onOpen={onOpen}
 		/>
 	);
@@ -328,14 +344,15 @@ const SessionRow = memo(function SessionRow({
 	session,
 	projectName,
 	machineName,
-	current,
+	state,
 	onOpen,
 }: {
 	/** Kept across reads while it does not change, with the project's parts as plain values, so the row renders only for its own changes. */
 	readonly session: SidebarSession;
 	readonly projectName: string;
 	readonly machineName: string;
-	readonly current: boolean;
+	/** In front on the workspace on screen, or shown there in another frame. */
+	readonly state: "current" | "shown" | undefined;
 	readonly onOpen: (sessionId: string, projectName: string, event: MouseEvent) => void;
 }) {
 	// The main thread's key is its session's id.
@@ -345,12 +362,24 @@ const SessionRow = memo(function SessionRow({
 			<button
 				type="button"
 				title={`${session.path} on ${machineName}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
-				aria-current={current ? "true" : undefined}
-				className="group/row relative flex h-[26px] w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-selection-current aria-current:font-medium aria-current:text-ink"
+				aria-current={state === "current" ? "true" : undefined}
+				data-state={state}
+				// One weight in every state: a bolder current row would shift its title as focus moves.
+				className="group/row relative flex h-[26px] w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring data-[state=current]:bg-selection-current data-[state=current]:text-ink data-[state=shown]:text-ink"
 				onClick={(event) => onOpen(session.id, projectName, event)}
 				onAuxClick={(event) => onOpen(session.id, projectName, event)}
 			>
-				<span className="flex size-[15px] shrink-0 items-center justify-center text-ink-muted group-aria-current/row:text-ink">
+				{/* Its color washes in from the right edge, behind the time, so it shows through a run and takes no room. */}
+				{session.color !== null && (
+					<span
+						aria-hidden
+						className="pointer-events-none absolute inset-y-0 right-0 w-2/5 rounded-r-md"
+						style={{
+							backgroundImage: `linear-gradient(to left, color-mix(in srgb, ${session.color} 22%, transparent), transparent)`,
+						}}
+					/>
+				)}
+				<span className="flex size-[15px] shrink-0 items-center justify-center text-ink-muted group-data-[state]/row:text-ink">
 					<RunMark display={display} />
 				</span>
 				<span className="min-w-0 flex-1 truncate">{session.title}</span>

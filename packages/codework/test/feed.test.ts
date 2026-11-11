@@ -1,7 +1,7 @@
 import { Event, EventList, EventSchema, Session } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Exit, Fiber, Option, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { EventFeed } from "../src/server/feed.ts";
+import * as EventFeed from "../src/server/feed.ts";
 
 /** Stands in for the event bus: one listener, published to on demand. */
 const source = () => {

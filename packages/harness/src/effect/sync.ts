@@ -1,14 +1,14 @@
 import { DateTime, Effect, Option, Schema } from "effect";
 import { SqlClient, SqlSchema, type Statement } from "effect/sql";
 import { InboxRow, ProjectRow, SpaceRow } from "../db/schema.sql.ts";
-import { Inbox } from "../inbox/inbox.ts";
+import * as Inbox from "../inbox/inbox.ts";
 import type { Admitted } from "../inbox/schema.ts";
 import type { ProjectSchema } from "../project/schema.ts";
 import type { AbsolutePath } from "../schema.ts";
 import type { SpaceSchema } from "../space/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { ThreadSchema } from "../thread/schema.ts";
-import { Thread } from "../thread/thread.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as ThreadSchema from "../thread/schema.ts";
+import * as Thread from "../thread/thread.ts";
 import { type Info, info, type ThreadSummary, threadSummary } from "./session.ts";
 
 /** Where a read in revision order stands: past revision `rev` whole, or past `key` within it. */
@@ -261,5 +261,3 @@ export const open = Effect.fn("Sync.open")(function* (threadId: ThreadSchema.ID,
 		)
 		.pipe(Effect.orDie);
 });
-
-export * as Sync from "./sync.ts";

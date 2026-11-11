@@ -9,17 +9,17 @@ export function readEnv(name: string): string | undefined {
 	return process.env[name];
 }
 
-export function joinPath(...parts: string[]): string {
+function joinPath(...parts: string[]): string {
 	return parts.filter(Boolean).join("/").replaceAll(/\/+/g, "/");
 }
 
-export function expandHome(path: string): string {
+function expandHome(path: string): string {
 	if (path === "~") return homeDirectory();
 	if (path.startsWith("~/")) return joinPath(homeDirectory(), path.slice(2));
 	return path;
 }
 
-export function homeDirectory(): string {
+function homeDirectory(): string {
 	const home = readEnv("HOME") ?? readEnv("USERPROFILE");
 	if (!home) {
 		throw new Error("unable to resolve home directory for OAuth credential storage");
@@ -27,13 +27,13 @@ export function homeDirectory(): string {
 	return home;
 }
 
-export function codeworkHomeDirectory(): string {
+function codeworkHomeDirectory(): string {
 	const override = readEnv("CODEWORK_HOME_DIR");
 	if (override) return expandHome(override);
 	return joinPath(homeDirectory(), ".codework");
 }
 
-export function defaultAuthFilePath(): string {
+function defaultAuthFilePath(): string {
 	const authFile = readEnv("CODEWORK_CREDENTIALS");
 	if (authFile) return expandHome(authFile);
 	return joinPath(codeworkHomeDirectory(), "aikit", "auth.json");

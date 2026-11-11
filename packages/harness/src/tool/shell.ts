@@ -12,7 +12,7 @@ import { Shell } from "../sandbox/shell/shell.ts";
  */
 
 /** Infra/spawn failure — not model-actionable; handlers should treat it as a defect. */
-export class ToolShellError extends Schema.TaggedError<ToolShellError>()("ToolShellError", {
+class ToolShellError extends Schema.TaggedError<ToolShellError>()("ToolShellError", {
 	command: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}

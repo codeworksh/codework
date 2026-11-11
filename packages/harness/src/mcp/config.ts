@@ -15,7 +15,7 @@
 import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { McpServer, McpSettings } from "@codeworksh/plugin/settings";
 import { Effect, Predicate, Result } from "effect";
-import { Global } from "../global.ts";
+import * as Global from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import * as Jsonc from "../util/jsonc.ts";
 
@@ -155,7 +155,11 @@ const read = Effect.fnUntraced(function* (path: string, scope: "user" | "project
 		if (reason !== "NotFound") state.errors.push(`${path}: cannot be read: ${reason}`);
 		return;
 	}
-	const document = Jsonc.parse(source.success);
+	apply(path, source.success, scope, state);
+});
+
+const apply = (path: string, source: string, scope: "user" | "project", state: State) => {
+	const document = Jsonc.parse(source);
 	if ("error" in document) {
 		state.errors.push(`${path}: ${document.error}`);
 		return;
@@ -197,7 +201,7 @@ const read = Effect.fnUntraced(function* (path: string, scope: "user" | "project
 		}
 		servers.set(name, { name, config, file: path });
 	}
-});
+};
 
 /**
  * Both layers. `userDir` is where the user `settings.jsonc` is read from; `root` is the session's
@@ -214,4 +218,22 @@ export const load = Effect.fn("Mcp.loadConfig")(function* (input: {
 	return { servers: [...state.servers.values()], errors: state.errors } satisfies McpSettings;
 });
 
-export * as McpConfig from "./config.ts";
+/**
+ * What is wrong with `source` as the `mcp.json` at `path`, read the way {@link load} would read it:
+ * a project file over the user one in `userDir`, so an override is checked against the server it
+ * overrides. Problems in the user file itself are not this file's.
+ */
+export const check = Effect.fn("Mcp.checkConfig")(function* (input: {
+	readonly path: string;
+	readonly source: string;
+	readonly scope: "user" | "project";
+	readonly userDir: string;
+}) {
+	const state: State = { servers: new Map(), errors: [] };
+	if (input.scope === "project") {
+		yield* read(hostPath.join(input.userDir, "mcp.json"), "user", state);
+		state.errors.length = 0;
+	}
+	apply(input.path, input.source, input.scope, state);
+	return state.errors as ReadonlyArray<string>;
+});

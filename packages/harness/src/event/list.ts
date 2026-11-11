@@ -1,11 +1,11 @@
 import { Schema } from "effect";
 import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "../schema.ts";
-import { SessionFailure } from "../session/failure.ts";
-import { SessionMessageSchema } from "../session/message/schema.ts";
-import { PromptSchema } from "../session/prompt/schema.ts";
-import { SessionSchema } from "../session/schema.ts";
-import { DocumentSchema } from "../document/schema.ts";
-import { ThreadSchema } from "../thread/schema.ts";
+import * as SessionFailure from "../session/failure.ts";
+import * as SessionMessageSchema from "../session/message/schema.ts";
+import * as PromptSchema from "../session/prompt/schema.ts";
+import * as SessionSchema from "../session/schema.ts";
+import * as DocumentSchema from "../document/schema.ts";
+import * as ThreadSchema from "../thread/schema.ts";
 import { AbsolutePath } from "../schema.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -504,6 +504,8 @@ export const Definitions = EventSchema.inventory(
  * The wire contract: what a client is allowed to receive. Identical to
  * `Definitions` today, and separate so that adding a kernel event is not by
  * itself a decision to publish it.
+ *
+ * @alias
  */
 export const PublicDefinitions = Definitions;
 
@@ -530,5 +532,3 @@ export const DurableDefinitions = EventSchema.inventory(
 	RunFailed,
 	ToolSettled,
 );
-
-export * as EventList from "./list.ts";

@@ -119,7 +119,7 @@ function googleThinkingLevel(mapped: string): GoogleThinkingLevel {
  * outright with "reasoning is mandatory for this endpoint and cannot be disabled"
  * -- so its reasoning stays pass-through.
  */
-export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
+function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	// A model that cannot reason has nothing to switch off.
 	if (!model.reasoning) return {};
 
@@ -322,5 +322,3 @@ function field(value: unknown, ...keys: string[]): unknown {
 		value,
 	);
 }
-
-export * as Thinking from "./thinking.ts";

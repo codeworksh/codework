@@ -2,10 +2,8 @@ import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SandboxDriver } from "../driver.ts";
 import { providerError, type SandboxProviderError } from "../errors.ts";
-import { EnvInMemory } from "../fs/inmemory.ts";
-import { SandboxFileSystem } from "../fs/filesystem.ts";
+import * as EnvInMemory from "../fs/inmemory.ts";
 import type { SandboxInstance } from "../instance.ts";
-import { Shell } from "../shell/shell.ts";
 import { transport } from "../virtual.ts";
 
 export interface CreateConfig {
@@ -228,14 +226,3 @@ export const make = (
 		},
 	};
 };
-
-export const io = Effect.gen(function* () {
-	return {
-		filesystem: yield* SandboxFileSystem.Service,
-		shell: yield* Shell,
-	};
-});
-
-export const providerResourceId = (resource: Resource) => Option.some(resource.providerResourceId);
-
-export * as FakeSandboxDriver from "./fake.ts";

@@ -58,5 +58,3 @@ export class InvalidPromptError extends Schema.TaggedError<InvalidPromptError>()
 
 export const Delivery = Schema.Literals(["steer", "followUp"]);
 export type Delivery = typeof Delivery.Type;
-
-export * as PromptSchema from "./schema.ts";

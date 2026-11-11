@@ -129,5 +129,3 @@ export const replay = ({ entry, parts }: ThreadStore.HydratedEntry): ReadonlyArr
 		}
 	});
 };
-
-export * as Feed from "./feed.ts";

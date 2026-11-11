@@ -18,7 +18,11 @@ export interface Options {
 	readonly wait: Duration.Input;
 }
 
-/** The lock directory could not be created for a reason other than another holder. */
+/**
+ * The lock directory could not be created for a reason other than another holder.
+ *
+ * @public In the error channel of {@link acquire}, so emitted declarations must name it.
+ */
 export class LockError extends Schema.TaggedError<LockError>()("LockError", {
 	path: Schema.String,
 	message: Schema.String,
@@ -68,5 +72,3 @@ export const acquire = Effect.fn("Lock.acquire")(function* <E>(path: string, opt
 	);
 	if (!acquired) return yield* Effect.fail(onTimeout());
 });
-
-export * as Lock from "./lock.ts";

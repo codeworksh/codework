@@ -1,8 +1,8 @@
 import { McpConfig } from "@codeworksh/harness/effect";
 import { Effect, Option, Predicate } from "effect";
-import { Runtime } from "../../../../framework/runtime.ts";
+import * as Runtime from "../../../../framework/runtime.ts";
 import { InvalidInputError, reportFailure } from "../../../error.ts";
-import { Jsonc } from "../../../jsonc.ts";
+import * as Jsonc from "../../../jsonc.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
 import { configured, readServers } from "./shared.ts";

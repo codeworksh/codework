@@ -40,5 +40,3 @@ export const resolveRead = (
 		}
 		return normalized;
 	});
-
-export * as ToolPath from "./path.ts";

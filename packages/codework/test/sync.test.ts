@@ -7,11 +7,11 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
-import type { LLM } from "../../harness/src/runner/llm.ts";
+import type * as LLM from "../../harness/src/runner/llm.ts";
 import { assistant, immediateOpen } from "../../harness/test/fixtures/llm.ts";
-import { Client } from "../src/server/client.ts";
+import * as Client from "../src/server/client.ts";
 import type { IndexItem, ThreadItem } from "../src/server/contract.ts";
-import { Server } from "../src/server/server.ts";
+import * as Server from "../src/server/server.ts";
 
 type Synced = Extract<IndexItem, { _tag: "Synced" }>;
 

@@ -4,7 +4,7 @@ import type { CommandModule } from "yargs";
 import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry.ts";
 import * as ModelCatalog from "../model/catalog.ts";
 import * as Model from "../model/model.ts";
-import { OpenRouter } from "../model/openrouter.ts";
+import * as OpenRouter from "../model/openrouter.ts";
 import { GITHUB_COPILOT_STATIC_HEADERS } from "../providers/github-copilot/copilot-headers.ts";
 import * as Filesystem from "../utils/filesystem.ts";
 
@@ -91,7 +91,7 @@ export interface Sources {
 }
 
 /** Providers bundled with aikit as the baseline catalog, read until a generated one exists. */
-export const BASELINE_PROVIDERS = ["anthropic", "openai", OpenRouter.PROVIDER_ID] as const;
+const BASELINE_PROVIDERS = ["anthropic", "openai", OpenRouter.PROVIDER_ID] as const;
 
 function modelsDevURL(): string {
 	return process.env.CODEWORK_MODELS_DEV_URL || "https://models.dev";
@@ -549,7 +549,7 @@ const GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol"]);
 
 /** The Codex models, from the generated `openai` entries; one models.dev does not list is skipped. */
-export function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Record<string, Model.Info> {
+function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Record<string, Model.Info> {
 	const models: Record<string, Model.Info> = {};
 	for (const seed of OPENAI_CODEX_MODELS) {
 		const base = openai[seed.id];

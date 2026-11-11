@@ -15,20 +15,20 @@
  */
 
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
-import { Event } from "./event/event.ts";
-import { EventList } from "./event/list.ts";
-import { Inbox } from "./inbox/inbox.ts";
-import { Mcp } from "./mcp/mcp.ts";
+import * as Event from "./event/event.ts";
+import * as EventList from "./event/list.ts";
+import * as Inbox from "./inbox/inbox.ts";
+import * as Mcp from "./mcp/mcp.ts";
 import type { Admitted } from "./inbox/schema.ts";
-import { RunnerExecution } from "./runner/execution.ts";
-import type { Runner } from "./runner/run.ts";
-import { SessionMessageSchema } from "./session/message/schema.ts";
+import * as RunnerExecution from "./runner/execution.ts";
+import type * as Runner from "./runner/run.ts";
+import * as SessionMessageSchema from "./session/message/schema.ts";
 import type { Delivery, Prompt } from "./session/prompt/schema.ts";
-import { SessionSchema } from "./session/schema.ts";
-import { Session } from "./session/session.ts";
+import * as SessionSchema from "./session/schema.ts";
+import * as Session from "./session/session.ts";
 import type { ThreadRow } from "./db/schema.sql.ts";
-import { ThreadSchema } from "./thread/schema.ts";
-import { Thread } from "./thread/thread.ts";
+import * as ThreadSchema from "./thread/schema.ts";
+import * as Thread from "./thread/thread.ts";
 
 /**
  * The prompt could not be admitted under the id it was given: either that id
@@ -370,5 +370,3 @@ export const layer = Layer.effect(
 		});
 	}),
 );
-
-export * as Control from "./control.ts";

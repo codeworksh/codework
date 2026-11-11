@@ -37,9 +37,9 @@
  * is a log line. Failing is what gets it fixed.
  */
 
-import { Context, Effect, Layer, Predicate, Result, Schema, SchemaIssue } from "effect";
-import { Global } from "../global.ts";
-import { McpConfig } from "../mcp/config.ts";
+import { Context, Effect, Layer, Option, Predicate, Result, Schema, SchemaIssue } from "effect";
+import * as Global from "../global.ts";
+import * as McpConfig from "../mcp/config.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import * as Jsonc from "../util/jsonc.ts";
@@ -150,9 +150,44 @@ export function paths(input: {
 	];
 }
 
+/** One settings file a person edits: `settings.jsonc` or `mcp.json`, in the user or the project layer. */
+export interface Target {
+	readonly path: string;
+	readonly kind: "settings" | "mcp";
+	readonly scope: "user" | "project";
+	/** The user layer's directory, which a project `mcp.json` is checked against. */
+	readonly userDir: string;
+}
+
+/**
+ * The file an edit lands in: the one a session at `hostDir` reads, or the user layer's without
+ * `hostDir`. A directory in no project becomes one, at `hostDir`, when the file is written.
+ * An existing `settings.json` is kept over creating `settings.jsonc` beside it.
+ */
+export const locate = Effect.fn("Settings.locate")(function* (input: {
+	readonly home: string;
+	readonly userConfigDir?: string | undefined;
+	readonly hostDir?: string | undefined;
+	readonly kind: Target["kind"];
+}) {
+	const userDir = input.userConfigDir ?? input.home;
+	const directory =
+		input.hostDir === undefined
+			? userDir
+			: hostPath.join((yield* projectRoot(input.hostDir, input.home)) ?? input.hostDir, Global.appConfigDir);
+	const scope: Target["scope"] = input.hostDir === undefined ? "user" : "project";
+	if (input.kind === "mcp")
+		return { path: hostPath.join(directory, "mcp.json"), kind: input.kind, scope, userDir } satisfies Target;
+	const candidates = settingsIn(directory);
+	const existing = yield* Effect.findFirst(candidates, (path) =>
+		fileSystem.exists(path).pipe(Effect.orElseSucceed(() => false)),
+	);
+	return { path: Option.getOrElse(existing, () => candidates[0]!), kind: input.kind, scope, userDir } satisfies Target;
+});
+
 export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {
 	path: Schema.String,
-	reason: Schema.Literals(["read", "parse", "decode"]),
+	reason: Schema.Literals(["read", "write", "parse", "decode"]),
 	detail: Schema.String,
 }) {
 	override get message(): string {
@@ -212,6 +247,8 @@ export interface Interface {
 	 * session that was never given one -- the user layer alone, with no walk (see {@link Options}).
 	 */
 	readonly load: (hostDir: string | undefined) => Effect.Effect<Info, SettingsError>;
+	/** The file {@link locate} names for this app's home and `--user-config-dir`. */
+	readonly locate: (hostDir: string | undefined, kind: Target["kind"]) => Effect.Effect<Target>;
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
@@ -324,9 +361,10 @@ export const layer = (options: Omit<Options, "hostDir"> = {}) =>
 			const global = yield* Global.Service;
 			return Service.of({
 				load: (hostDir) => load({ ...options, home: global.home, hostDir }),
+				locate: (hostDir, kind) =>
+					locate({ home: global.home, userConfigDir: options.userConfigDir, hostDir, kind }),
 			});
 		}),
 	);
 
 export { defaults } from "./schema.ts";
-export * as Settings from "./settings.ts";

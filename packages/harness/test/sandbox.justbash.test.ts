@@ -3,8 +3,9 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { bridge, EnvBash } from "../src/sandbox/shell/justbash.ts";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
+import * as EnvBash from "../src/sandbox/shell/justbash.ts";
+import { bridge } from "../src/sandbox/shell/justbash.ts";
+import * as Sandbox from "../src/sandbox/sandbox.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvBash", () => {

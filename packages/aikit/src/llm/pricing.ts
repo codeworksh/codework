@@ -75,5 +75,3 @@ export function cacheWrite1hTokens(providerMetadata: unknown): number | undefine
 	}
 	return undefined;
 }
-
-export * as Pricing from "./pricing.ts";

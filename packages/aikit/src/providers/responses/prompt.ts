@@ -106,7 +106,7 @@ export type ResponsesPromptOptions = {
 // Tool call ids round-trip through the AI SDK as `call_id|item_id` because the
 // Responses API needs both halves: `call_id` to pair function_call_output and
 // `id` for the function_call item itself.
-export function splitToolCallId(toolCallId: string): { callId: string; itemId: string } {
+function splitToolCallId(toolCallId: string): { callId: string; itemId: string } {
 	const separator = toolCallId.indexOf("|");
 	if (separator === -1) return { callId: toolCallId, itemId: toolCallId };
 	return { callId: toolCallId.slice(0, separator), itemId: toolCallId.slice(separator + 1) };

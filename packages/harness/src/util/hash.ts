@@ -13,4 +13,3 @@ export function sha256(input: string | Uint8Array): string {
 	const data = typeof input === "string" ? encoder.encode(input) : input;
 	return Hex.encode(Effect.runSync(crypto.digest("SHA-256", data)));
 }
-export * as Hash from "./hash.ts";
