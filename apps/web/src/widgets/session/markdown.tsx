@@ -3,11 +3,13 @@ import { useAtomValue } from "@effect/atom-react";
 
 import {
 	type ComponentProps,
+	createContext,
 	createElement,
 	isValidElement,
 	type JSX,
 	memo,
 	type ReactNode,
+	use,
 	useEffect,
 	useState,
 } from "react";
@@ -75,7 +77,7 @@ function CodeBlock(props: ComponentProps<"pre"> & ExtraProps) {
 	const block = fence(props.children);
 	const theme = useAtomValue(themeAtom);
 	const language = languageOf(block?.language);
-	const highlighted = useHighlight(block?.code ?? "", language, theme);
+	const highlighted = useHighlight(block?.code ?? "", language, theme, !use(Growing));
 	if (block === undefined) return <pre className={preClass}>{props.children}</pre>;
 	return (
 		<div className="my-4 overflow-hidden rounded-lg border border-ink/10 bg-muted first:mt-0 last:mb-0">
@@ -84,7 +86,7 @@ function CodeBlock(props: ComponentProps<"pre"> & ExtraProps) {
 				<CopyButton text={block.code} />
 			</div>
 			<pre className={preClass}>
-				{highlighted === undefined ? <code>{block.code}</code> : <HighlightedCode root={highlighted} />}
+				{highlighted === undefined ? <code>{block.code}</code> : <HighlightedCode lines={highlighted} />}
 			</pre>
 		</div>
 	);
@@ -129,25 +131,33 @@ const components: Components = {
 
 const plugins = [remarkGfm];
 
-// One finished block of a streaming reply: it keeps its render while later blocks grow.
+/** Whether a block is the one a streaming reply is still writing, so its code changes every delta. */
+const Growing = createContext(false);
+
+// One block of a reply: it keeps its render while later blocks grow.
 const Block = memo(function Block({
 	source,
+	growing = false,
 	remarkPlugins = plugins,
 }: {
 	readonly source: string;
+	readonly growing?: boolean;
 	readonly remarkPlugins?: Options["remarkPlugins"];
 }) {
 	return (
-		<ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
-			{source}
-		</ReactMarkdown>
+		<Growing value={growing}>
+			<ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+				{source}
+			</ReactMarkdown>
+		</Growing>
 	);
 });
 
 /**
  * A message's markdown, rendered as text: raw HTML in it stays escaped. It re-renders only when its
- * text changes. While a reply streams, it renders block by block, so only the growing block is
- * parsed again on each delta; text that can't be split but has code fences parses incrementally.
+ * text changes. It renders block by block, so a streaming reply parses only its growing block again
+ * on each delta and keeps its blocks when it finishes; streamed text that can't be split but has
+ * code fences parses incrementally.
  */
 export const Markdown = memo(function Markdown({
 	text,
@@ -159,17 +169,18 @@ export const Markdown = memo(function Markdown({
 	readonly className?: string;
 }) {
 	const [incremental] = useState(incrementalMarkdown);
-	const blocks = streaming ? splitMarkdownBlocks(text) : null;
+	const blocks = splitMarkdownBlocks(text);
 	const fenced = streaming && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
 	const remarkPlugins = fenced ? [remarkGfm, incremental] : plugins;
 	return (
 		<div className={`agent-markdown min-w-0 ${className ?? ""}`}>
-			{/* react-markdown renders a Fragment, so the blocks' elements sit in this div as one document's would.
-			    Whole text stays block 0, so a finished reply reuses its first block rather than remounting. */}
+			{/* react-markdown renders a Fragment, so the blocks' elements sit in this div as one document's would. */}
 			{blocks === null ? (
-				<Block key={0} source={text} remarkPlugins={remarkPlugins} />
+				<Block key={0} source={text} growing={streaming} remarkPlugins={remarkPlugins} />
 			) : (
-				blocks.map((source, index) => <Block key={index} source={source} />)
+				blocks.map((source, index) => (
+					<Block key={index} source={source} growing={streaming && index === blocks.length - 1} />
+				))
 			)}
 		</div>
 	);

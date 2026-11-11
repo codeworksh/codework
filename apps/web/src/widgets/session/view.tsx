@@ -4,8 +4,18 @@ import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCa
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { LegendList, type LegendListRef, type LegendListRenderItemProps } from "@legendapp/list/react";
-import { createContext, memo, type ReactNode, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LegendList, type LegendListRenderItemProps } from "@legendapp/list/react";
+import {
+	createContext,
+	type CSSProperties,
+	memo,
+	type ReactNode,
+	use,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 
 import { Logo } from "@/components/logo";
 import { NoticeLine, noticeSurface, type Notice } from "@/components/banner";
@@ -569,19 +579,16 @@ function Conversation({
 				}
 			: undefined);
 
-	const surface = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLDivElement>(null);
 	// The last composer's height, so a conversation opens at its end with the composer already
 	// counted and the list does not scroll again once it is measured.
 	const [inset, setInset] = useState(lastInset);
 	// Before paint, so the first frame is laid out with the composer's height.
 	useLayoutEffect(() => {
-		const root = surface.current;
 		const element = composer.current;
-		if (root === null || element === null) return;
+		if (element === null) return;
 		const sync = () => {
 			const height = element.getBoundingClientRect().height;
-			root.querySelector<HTMLElement>(".session-transcript")?.style.setProperty("--composer-height", `${height}px`);
 			lastInset = Math.ceil(height);
 			setInset(lastInset);
 		};
@@ -599,7 +606,7 @@ function Conversation({
 	if (view.status === "failed") return <p className="p-3 text-ink-muted">{view.message}</p>;
 	const running = isRunning(view);
 	return (
-		<div ref={surface} inert={stand !== undefined} className="relative flex h-full flex-col">
+		<div inert={stand !== undefined} className="relative flex h-full flex-col">
 			<StreamedContext value={message}>
 				<ForkContext value={forkAt}>
 					<Transcript
@@ -740,13 +747,10 @@ function Transcript({
 			modelName={modelName}
 		/>
 	);
-	const transcriptRef = (instance: LegendListRef | null) => {
-		instance?.getScrollableNode().style.setProperty("--composer-height", `${inset}px`);
-		return ref(instance);
-	};
 	return (
 		<LegendList<Turn>
-			ref={transcriptRef}
+			ref={ref}
+			style={{ "--composer-height": `${inset}px` } as CSSProperties}
 			data={turns}
 			extraData={extraData}
 			keyExtractor={turnKey}
@@ -1205,15 +1209,30 @@ function WorkLog({
 	);
 }
 
+/**
+ * The first paragraph with text, code fences blanked: fences are blanked one at a time and only
+ * until that paragraph ends, so a long streaming block isn't scanned whole on every delta.
+ */
+function firstParagraph(text: string) {
+	const separator = /\n\s*\n/g;
+	let body = "";
+	for (let at = 0; ;) {
+		const open = text.indexOf("```", at);
+		body += open === -1 ? text.slice(at) : `${text.slice(at, open)} `;
+		const start = body.search(/\S/);
+		separator.lastIndex = Math.max(start, 0);
+		const end = start === -1 ? undefined : separator.exec(body)?.index;
+		if (end !== undefined) return body.slice(start, end).trim();
+		// An unclosed fence runs to the end.
+		const close = open === -1 ? -1 : text.indexOf("```", open + 3);
+		if (close === -1) return body.trim();
+		at = close + 3;
+	}
+}
+
 /** First paragraph of a folded block, stripped to one plain line. */
 function proseSummary(text: string) {
-	const body = text.replace(/```[\s\S]*?(?:```|$)/g, " ");
-	const paragraph =
-		body
-			.split(/\n\s*\n/)
-			.map((part) => part.trim())
-			.find(Boolean) ?? "";
-	return paragraph
+	return firstParagraph(text)
 		.replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
 		.replace(/`([^`]*)`/g, "$1")
 		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")

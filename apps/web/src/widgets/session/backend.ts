@@ -181,10 +181,11 @@ export const session = defineBackend({
 				const notice = Option.getOrUndefined(decodeChanged(event.payload));
 				if (notice === undefined) return;
 				const detail = notice.threadId === followed.threadId;
-				// Messages first, so a promoted prompt is in the conversation before it leaves the queue.
+				// Messages first, so a promoted prompt is in the conversation before it leaves the queue. A
+				// draft is a checkpoint the next one replaces, so only settled messages are stored.
 				if (detail && notice.entry.length > 0)
 					for (const message of yield* sync.entries(notice.entry))
-						yield* publish(key, { _tag: "Message", message });
+						yield* publish(key, { _tag: "Message", message }, message.state === "draft");
 				if (detail || notice.thread.length > 0 || notice.removed.length > 0) yield* refresh(key);
 			});
 
