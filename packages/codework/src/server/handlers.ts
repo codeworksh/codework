@@ -15,6 +15,7 @@ import {
 	SessionStore,
 	Settings,
 	SettingsFile,
+	Skill,
 	State,
 	Store,
 	Sync,
@@ -330,6 +331,16 @@ export const layer = Contract.Api.toLayer(
 				const checkout = yield* Project.mainCheckout(projectId);
 				const url = checkout === undefined ? undefined : yield* host.remote(checkout);
 				return { url: url ?? null };
+			}),
+			"skill.list": Effect.fnUntraced(function* ({ spaceId }) {
+				const listed = yield* exported("Server.skill.list", Skill.list(spaceId));
+				return {
+					sandbox:
+						listed.sandbox === undefined
+							? null
+							: { ...listed.sandbox, providerResourceId: listed.sandbox.providerResourceId ?? null },
+					skills: listed.skills ?? null,
+				};
 			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });

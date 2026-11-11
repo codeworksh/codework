@@ -7,6 +7,7 @@ import {
 	McpError,
 	optional,
 	Project,
+	Skill,
 	PromptSchema,
 	Runner,
 	Sandbox,
@@ -510,6 +511,34 @@ export const Api = RpcGroup.make(
 		payload: { projectId: Schema.String },
 		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
 		error: Project.ProjectNotFoundError,
+	}),
+	/**
+	 * The skills sessions in a space see from its folder. A sandbox is read only while it is running:
+	 * otherwise `skills` is null and `sandbox.status` says why. `sandbox` is null for the host.
+	 */
+	Rpc.make("skill.list", {
+		payload: { spaceId: Schema.String },
+		success: Schema.Struct({
+			sandbox: Schema.NullOr(
+				Schema.Struct({
+					driver: Schema.String,
+					providerResourceId: Schema.NullOr(Schema.String),
+					status: Sandbox.SandboxInstance.Status,
+				}),
+			),
+			skills: Schema.NullOr(
+				Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						description: Schema.String,
+						path: Schema.String,
+						/** Its frontmatter keeps it out of the prompt. */
+						hidden: Schema.Boolean,
+					}),
+				),
+			),
+		}),
+		error: Schema.Union([Skill.SpaceNotFoundError, SandboxErrors]),
 	}),
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: ProjectName },

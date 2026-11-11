@@ -18,6 +18,7 @@ import { Event } from "./event.ts";
 import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
 import { Reads } from "./reads.ts";
+import { Skills } from "./skills.ts";
 import { Servers } from "./servers.ts";
 import { Sync } from "./sync.ts";
 import { Tracking } from "./tracking.ts";
@@ -96,6 +97,7 @@ export const layer = Contract.Api.toLayer(
 
 			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"projects.spaces": (input) => Reads.spaces(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"projects.skills": (input) => Skills.list(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 

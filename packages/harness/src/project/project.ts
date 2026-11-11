@@ -281,6 +281,15 @@ export const mainCheckout = Effect.fn("Project.mainCheckout")(function* (project
 	return rows[0]?.location;
 });
 
+/** An active space by its id: its folder and the sandbox it is in (`null` for the host). */
+export const space = Effect.fn("Project.space")(function* (spaceId: string) {
+	const sql = yield* SqlClient.SqlClient;
+	const rows = yield* sql<{ location: string; env: string | null }>`
+		SELECT location, env FROM space WHERE id = ${spaceId} AND status = 'active'
+	`.pipe(Effect.orDie);
+	return rows[0];
+});
+
 /** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(

@@ -420,6 +420,20 @@ export const CreateError = Schema.Union([
 ]);
 export type CreateError = typeof CreateError.Type;
 
+/** Why `skill.list` failed: the space is gone, or its sandbox could not be read. */
+export const SkillListError = Schema.Union([
+	Schema.TaggedStruct("SpaceNotFoundError", { spaceId: Schema.String }),
+	Schema.TaggedStruct("SandboxNotFoundError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxDriverNotRegisteredError", { driver: Schema.String }),
+	Schema.TaggedStruct("SandboxDriverRegistrationError", { driver: Schema.String, reason: Schema.String }),
+	Schema.TaggedStruct("SandboxUnsupportedError", { driver: Schema.String, operation: Schema.String }),
+	Schema.TaggedStruct("SandboxProviderError", { driver: Schema.String, operation: Schema.String }),
+	Schema.TaggedStruct("SandboxUnavailError", { id: Schema.String, reason: Schema.String }),
+	Schema.TaggedStruct("SandboxRemovedError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxTransitionConflictError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxBusyError", { id: Schema.String }),
+]);
+
 /** A directory on the host, by its name and absolute path. */
 export const Folder = Schema.Struct({ name: Schema.String, path: Schema.String });
 export type Folder = typeof Folder.Type;
@@ -551,6 +565,30 @@ export const Api = RpcGroup.make(
 		/** The session's main thread. */
 		success: ThreadInfo,
 		error: CreateError,
+	}),
+	/** The skills sessions in a space see; `skills` is null while its sandbox is not running. */
+	Rpc.make("skill.list", {
+		payload: { spaceId: Schema.String },
+		success: Schema.Struct({
+			sandbox: Schema.NullOr(
+				Schema.Struct({
+					driver: Schema.String,
+					providerResourceId: Schema.NullOr(Schema.String),
+					status: Schema.String,
+				}),
+			),
+			skills: Schema.NullOr(
+				Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						description: Schema.String,
+						path: Schema.String,
+						hidden: Schema.Boolean,
+					}),
+				),
+			),
+		}),
+		error: SkillListError,
 	}),
 	/** The `origin` URL of a project's main checkout on the host, credentials taken out; null when there is none. */
 	Rpc.make("project.remote", {

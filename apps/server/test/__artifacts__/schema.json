@@ -128,6 +128,12 @@
 		},
 		{
 			"type": "table",
+			"name": "skill",
+			"tbl_name": "skill",
+			"sql": "CREATE TABLE skill ( machine_id TEXT NOT NULL, space_id TEXT NOT NULL, skills TEXT NOT NULL, synced_at INTEGER NOT NULL, PRIMARY KEY (machine_id, space_id), FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE )"
+		},
+		{
+			"type": "table",
 			"name": "space",
 			"tbl_name": "space",
 			"sql": "CREATE TABLE space ( machine_id TEXT NOT NULL, id TEXT NOT NULL, organization_id TEXT NOT NULL REFERENCES organization(id), project_id TEXT NOT NULL, location TEXT NOT NULL, kind TEXT NOT NULL, env TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (machine_id, id), FOREIGN KEY (machine_id, project_id) REFERENCES project(machine_id, id) ON DELETE CASCADE )"

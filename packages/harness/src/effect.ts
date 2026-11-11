@@ -1,5 +1,6 @@
 export * as Harness from "./effect/harness.ts";
 export * as Sandbox from "./effect/sandbox.ts";
+export * as Skill from "./effect/skill.ts";
 export * as Session from "./effect/session.ts";
 export * as Sync from "./effect/sync.ts";
 export * as Control from "./control.ts";
