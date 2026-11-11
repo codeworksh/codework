@@ -2,6 +2,7 @@
 import { Effect, Stream } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Control, Session } from "../../../packages/harness/src/effect.ts";
+import { testModel } from "../../../packages/harness/test/fixtures/model.ts";
 import { snapshot as match, waitFor } from "./fixtures/apps.ts";
 import { available, ensure, machine, orb } from "./machines/orb.ts";
 
@@ -40,7 +41,8 @@ const fresh = async () => {
 	await cw.stop("KILL");
 	await cw.wipe();
 	await cw.sh(
-		`mkdir -p ${work} && printf '%s' '{"retry":{"maxRetries":10,"baseDelayMs":10,"maxDelayMs":1000}}' > ${cw.cwHome}/settings.jsonc`,
+		// No provider is configured on the machine, so settings name the model the scripted server answers as.
+		`mkdir -p ${work} && printf '%s' '${JSON.stringify({ model: testModel, retry: { maxRetries: 10, baseDelayMs: 10, maxDelayMs: 1000 } })}' > ${cw.cwHome}/settings.jsonc`,
 	);
 	await cw.start();
 	await reachable();

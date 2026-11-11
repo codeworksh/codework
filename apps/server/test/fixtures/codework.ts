@@ -2,8 +2,11 @@
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { assistant } from "../../../../packages/harness/test/fixtures/llm.ts";
+import { testModel } from "../../../../packages/harness/test/fixtures/model.ts";
 import type * as LLM from "../../../../packages/harness/src/runner/llm.ts";
 import * as Server from "../../../../packages/codework/src/server/server.ts";
 import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
@@ -23,6 +26,13 @@ import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
 
 const [home, port, host = "127.0.0.1", mode] = process.argv.slice(2);
 if (home === undefined || port === undefined) throw new Error("usage: codework.ts <home> <port> [host] [sweep]");
+
+// No provider is configured here, so a run needs settings to name its model; the scripted one answers.
+const settings = join(home, "settings.jsonc");
+if (!existsSync(settings)) {
+	mkdirSync(home, { recursive: true });
+	writeFileSync(settings, JSON.stringify({ model: testModel }));
+}
 
 const waiting: Array<() => void> = [];
 let credits = 0;
