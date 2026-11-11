@@ -16,7 +16,10 @@ function DropdownMenuTrigger({ ...props }: React.ComponentProps<typeof DropdownM
 }
 
 // A menu comes out of its trigger: a short slide away from it as it fades in, no growth. It leaves
-// by fading alone, quicker than it came.
+// by fading alone, quicker than it came. Popovers that act as menus share the surface and motion.
+export const menuSurface =
+	"rounded-[12px] border bg-popover text-[13px] text-popover-foreground shadow-(--cw-menu-shadow) [-webkit-app-region:no-drag] data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-[state=closed]:animate-out data-[state=closed]:duration-100 data-[state=closed]:ease-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:duration-150 data-[state=open]:ease-(--ease-out) data-[state=open]:fade-in-0 motion-reduce:animate-none";
+
 function DropdownMenuContent({
 	className,
 	sideOffset = 4,
@@ -28,7 +31,8 @@ function DropdownMenuContent({
 				data-slot="dropdown-menu-content"
 				sideOffset={sideOffset}
 				className={cn(
-					"z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-[12px] border bg-popover p-1 text-[13px] text-popover-foreground shadow-(--cw-menu-shadow) [-webkit-app-region:no-drag] data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 data-[state=closed]:animate-out data-[state=closed]:duration-100 data-[state=closed]:ease-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:duration-150 data-[state=open]:ease-(--ease-out) data-[state=open]:fade-in-0 motion-reduce:animate-none",
+					"z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto p-1",
+					menuSurface,
 					className,
 				)}
 				{...props}

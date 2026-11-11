@@ -162,7 +162,7 @@ function Repository({ main, url }: { readonly main: ProjectSpace; readonly url: 
 			<Row
 				title={
 					<>
-						Host directory
+						Host Directory
 						{main.kind === "primary" && <Tag>main</Tag>}
 					</>
 				}
@@ -189,7 +189,7 @@ function CopyButton({ text }: { readonly text: string }) {
 			onClick={() => {
 				void navigator.clipboard.writeText(text).then(
 					() => setCopied(true),
-					() => toast.error("Not copied"),
+					() => toast.error("Not Copied"),
 				);
 			}}
 			className="grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"

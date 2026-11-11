@@ -1,11 +1,18 @@
 import type { SettingsFile } from "@codeworksh/contract";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { ArrowUpRightIcon } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
+import { Popover as PopoverPrimitive } from "radix-ui";
 import { Cause, Option, Predicate } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useId, useState } from "react";
 
 import { ModelPicker, ThinkingPicker } from "@/components/model";
+import { Command, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command";
+import { menuSurface } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import { Plus } from "@/components/vuesax";
 import { Server } from "../../kernel/rpc";
 import { codeworkKey } from "../../kernel/servers";
 import { tilde } from "../../shell/paths";
@@ -52,11 +59,26 @@ export function Heading({ children }: { readonly children: string }) {
 	return <h2 className="px-4 text-[14px]/5 font-medium text-ink">{children}</h2>;
 }
 
-export function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
+export function Section(props: {
+	readonly title: string;
+	/** A quiet link at the heading's end, to where the section's things are made. */
+	readonly action?: ReactNode;
+	readonly children: ReactNode;
+}) {
+	const { title, children } = props;
 	return (
 		<section className="flex flex-col gap-2.5">
-			<Heading>{title}</Heading>
-			<div className="flex flex-col divide-y divide-edge/60 rounded-[10px] border border-edge/60">{children}</div>
+			{props.action === undefined ? (
+				<Heading>{title}</Heading>
+			) : (
+				<div className="flex items-center justify-between gap-4 pr-2">
+					<Heading>{title}</Heading>
+					{props.action}
+				</div>
+			)}
+			<div className="flex flex-col divide-y divide-edge/60 overflow-hidden rounded-[10px] border border-edge/60">
+				{children}
+			</div>
 		</section>
 	);
 }
@@ -121,7 +143,7 @@ export function General({ projectId, hostDir }: { readonly projectId: string; re
 	const retriesId = useId();
 	return (
 		<Section title="General">
-			<Row title="Default model" description="New sessions start on it">
+			<Row title="Default Model" description="New sessions start on it">
 				<div className="flex shrink-0 items-center gap-1">
 					<ModelPicker
 						hostDir={hostDir}
@@ -226,18 +248,24 @@ function Count(props: {
 interface McpRow {
 	readonly name: string;
 	readonly from: "project" | "user";
-	readonly detail: string;
+	readonly detail: Detail;
 	readonly enabled: boolean;
 	/** The project entry only turns the user's server on or off. */
 	readonly override: boolean;
 }
 
 /** Where a server runs, as a line: its own description, else its command or URL. */
-const detailOf = (config: Readonly<Record<string, unknown>>) => {
-	if (typeof config.description === "string") return config.description;
-	if (typeof config.url === "string") return config.url;
+/** A server's line: its own description as prose, else its URL or command as code. */
+interface Detail {
+	readonly text: string;
+	readonly code: boolean;
+}
+
+const detailOf = (config: Readonly<Record<string, unknown>>): Detail => {
+	if (typeof config.description === "string") return { text: config.description, code: false };
+	if (typeof config.url === "string") return { text: config.url, code: true };
 	const args = Array.isArray(config.args) ? config.args.filter(Predicate.isString) : [];
-	return typeof config.command === "string" ? [config.command, ...args].join(" ") : "";
+	return { text: typeof config.command === "string" ? [config.command, ...args].join(" ") : "", code: true };
 };
 
 const isOverride = (config: Readonly<Record<string, unknown>>) =>
@@ -284,34 +312,151 @@ export function Mcp({ projectId }: { readonly projectId: string }) {
 			return void set(["mcpServers", server.name]).catch(() => undefined);
 		void set(["mcpServers", server.name, "enabled"], enabled).catch(() => undefined);
 	};
+	const yours = servers.filter((server) => server.from === "user");
+	const local = servers.filter((server) => server.from === "project");
+	const row = (server: McpRow) => (
+		<Row
+			key={server.name}
+			// A server that is off reads quieter, so the list shows at a glance what this project uses.
+			title={
+				<span
+					className={`truncate transition-colors duration-150 ease-out ${server.enabled ? "" : "text-ink-muted"}`}
+				>
+					{server.name}
+				</span>
+			}
+			description={
+				server.detail.code ? (
+					<span className="font-mono text-[11px]">{server.detail.text}</span>
+				) : (
+					server.detail.text
+				)
+			}
+		>
+			<Switch
+				aria-label={`Use ${server.name}`}
+				checked={server.enabled}
+				onCheckedChange={(checked) => toggle(server, checked)}
+			/>
+		</Row>
+	);
 	return (
-		<Section title="MCP">
+		<Section
+			title="MCP Connectors"
+			action={
+				<Link
+					to="/settings/mcp"
+					title="Your MCP Servers in Settings"
+					className="relative flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-ink-muted outline-none transition-[background-color,color] duration-150 ease-out before:absolute before:-inset-y-2 before:inset-x-0 hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					Manage
+					<ArrowUpRightIcon className="size-3" aria-hidden />
+				</Link>
+			}
+		>
 			{project.error !== undefined && (
-				<Row title="mcp.json has errors" description={<span className="text-destructive">{project.error}</span>} />
+				<Row title="Errors in mcp.json" description={<span className="text-destructive">{project.error}</span>} />
 			)}
-			{servers.length === 0 ? (
-				<Row title="No servers" description="Add one in mcp.json" />
-			) : (
-				servers.map((server) => (
-					<Row
-						key={server.name}
-						title={
-							<>
-								<span className="truncate">{server.name}</span>
-								<Tag>{server.from === "user" ? "User" : "Project"}</Tag>
-							</>
-						}
-						description={server.detail}
-					>
-						<Switch
-							aria-label={`Use ${server.name}`}
-							checked={server.enabled}
-							onCheckedChange={(checked) => toggle(server, checked)}
-						/>
-					</Row>
-				))
+			{yours.length > 0 && (
+				<Group label="User" count={yours.length}>
+					{yours.map(row)}
+				</Group>
 			)}
+			{/* Connectors are added to the project; signing in to one belongs to your user settings. */}
+			<Group label="Project" count={local.length}>
+				{local.map(row)}
+				<AddConnector />
+			</Group>
 		</Section>
+	);
+}
+
+/** Opens the connector directory as a searchable menu. The directory is not listed yet. */
+function AddConnector() {
+	const [open, setOpen] = useState(false);
+	const [search, setSearch] = useState("");
+	return (
+		// The button's own padding stands in for the row's on its side, so its text lines up with the switches.
+		<div className="flex min-h-15 items-center justify-between gap-4 py-3 pr-2 pl-4">
+			<span className="min-w-0 truncate text-ink-muted">Add a Connector to this Project</span>
+			<PopoverPrimitive.Root
+				open={open}
+				onOpenChange={(next) => {
+					setOpen(next);
+					if (!next) setSearch("");
+				}}
+			>
+				<PopoverPrimitive.Trigger asChild>
+					<button
+						type="button"
+						className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-ink/6 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] data-[state=open]:bg-ink/6"
+					>
+						<Plus className="size-3.5" aria-hidden />
+						Add Connector
+					</button>
+				</PopoverPrimitive.Trigger>
+				<PopoverPrimitive.Portal>
+					<PopoverPrimitive.Content
+						align="start"
+						sideOffset={4}
+						collisionPadding={8}
+						className={cn("z-50 w-60 overflow-hidden outline-hidden", menuSurface)}
+					>
+						{/* Dense, as the other menus: a plain 32px search row and a short empty line. */}
+						<Command
+							loop
+							className="**:data-[slot=command-input-wrapper]:h-8 **:data-[slot=command-input-wrapper]:px-2.5"
+						>
+							<CommandInput
+								start={false}
+								value={search}
+								onValueChange={setSearch}
+								placeholder="Search"
+								aria-label="Search connectors"
+								className="h-8 py-0 text-[13px]"
+							/>
+							<CommandList>
+								<CommandEmpty className="flex flex-col">
+									<span className="px-2.5 py-2 text-[13px] text-ink-muted">No Connectors Found</span>
+									{/* Where connectors come from: your user settings, where they are added and signed in to. */}
+									<div className="border-t p-1">
+										<Link
+											to="/settings/mcp"
+											onClick={() => setOpen(false)}
+											// The list takes Enter for its own rows; on the link it follows the link.
+											onKeyDown={(event) => {
+												if (event.key === "Enter") event.stopPropagation();
+											}}
+											className="flex h-7 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:bg-accent"
+										>
+											Manage
+											<ArrowUpRightIcon className="size-3 text-ink-muted" aria-hidden />
+										</Link>
+									</div>
+								</CommandEmpty>
+							</CommandList>
+						</Command>
+					</PopoverPrimitive.Content>
+				</PopoverPrimitive.Portal>
+			</PopoverPrimitive.Root>
+		</div>
+	);
+}
+
+/**
+ * Rows from one source inside a section, under a quiet label: where they come from is said once for the
+ * group instead of on every row.
+ */
+function Group(props: { readonly label: string; readonly count: number; readonly children: ReactNode }) {
+	const id = useId();
+	return (
+		<div role="group" aria-labelledby={id} className="flex flex-col divide-y divide-edge/60">
+			<div className="flex h-8 items-center justify-between bg-ink/2 px-4 text-xs text-ink-muted">
+				<span id={id}>{props.label}</span>
+				{props.count > 0 && <span className="tabular-nums">{props.count}</span>}
+			</div>
+			{props.children}
+		</div>
 	);
 }
 
@@ -401,7 +546,7 @@ function Editor(props: {
 		const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
 		if (error?._tag === "Server.SettingsConflict")
 			return setProblem({ message: "Changed on disk since you opened it.", conflict: true });
-		setProblem({ message: error !== undefined && "message" in error ? error.message : "Not saved", conflict: false });
+		setProblem({ message: error !== undefined && "message" in error ? error.message : "Not Saved", conflict: false });
 	};
 	return (
 		<div className="flex flex-col gap-2 border-t border-edge/60 p-4">
