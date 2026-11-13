@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { SERVER_CHANNEL } from "./ipc.ts";
-import { manifest } from "./manifest.ts";
+import { channel } from "./manifest.ts";
 
 // The server bundle: in the app's Resources when packaged, else beside this app in the workspace.
 const ENTRY = app.isPackaged
@@ -22,7 +22,7 @@ export function startServer(): Promise<string> {
 			...process.env,
 			ELECTRON_RUN_AS_NODE: "1",
 			// The app server keeps app.db in the CodeWork home under desktop/<channel>; from the repo, `local`.
-			CODEWORK_CHANNEL: app.isPackaged ? manifest().channel : "local",
+			CODEWORK_CHANNEL: channel(),
 		},
 		stdio: ["ignore", "pipe", "inherit"],
 	});

@@ -8,3 +8,6 @@ export const manifest = () =>
 		readonly appId: string;
 		readonly channel: "latest" | "dev" | "canary";
 	};
+
+/** Where this build comes from: its release channel when packaged, `local` running from the repo. */
+export const channel = () => (app.isPackaged ? manifest().channel : "local");
