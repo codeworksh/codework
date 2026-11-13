@@ -133,7 +133,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 				pop={pop}
 			/>
 			<CommandList className={PALETTE_LIST}>
-				<CommandEmpty>No sources match.</CommandEmpty>
+				<CommandEmpty>No Sources Match</CommandEmpty>
 				<CommandGroup heading="Sources">
 					{pick !== undefined && bridge !== undefined && (
 						<Row

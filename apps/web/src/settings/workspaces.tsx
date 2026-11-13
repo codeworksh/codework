@@ -197,7 +197,7 @@ export function WorkspacesSettings() {
 					{listed.length === 0 && (
 						<div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
 							<StackIcon className="mb-1 size-6 text-ink-muted" aria-hidden />
-							<p className="font-medium">No workspaces yet</p>
+							<p className="font-medium">No Workspaces Yet</p>
 							<p className="text-ink-muted">Create a workspace to organize your sessions.</p>
 						</div>
 					)}

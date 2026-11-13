@@ -190,7 +190,7 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	const failed = AsyncResult.isFailure(result);
 	const label = failed ? "Unavailable" : none ? "No Models" : (found?.model.name ?? current?.id ?? "Choose model");
 	const empty =
-		list === undefined ? "Loading models…" : providers.length === 0 ? "No provider is signed in." : "No models found";
+		list === undefined ? "Loading Models…" : providers.length === 0 ? "No Provider Is Signed In" : "No Models Found";
 
 	return (
 		<Popover

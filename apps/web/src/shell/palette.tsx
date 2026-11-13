@@ -120,7 +120,7 @@ export function Palette() {
 				<>
 					<CommandInput placeholder="Type a command or search…" />
 					<CommandList className={PALETTE_LIST}>
-						<CommandEmpty>No results.</CommandEmpty>
+						<CommandEmpty>No Results</CommandEmpty>
 						<CommandGroup heading="Navigation">
 							<CommandItem
 								value={GO_THREADS}
