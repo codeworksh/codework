@@ -36,8 +36,8 @@ export function NavigationControls() {
 		<header className="flex h-titlebar w-full shrink-0 items-center bg-desktop pr-2 select-none [-webkit-app-region:drag]">
 			<div
 				data-slot="sidebar-navigation"
-				className={`flex shrink-0 items-center gap-1 pr-2 ${insetTitleBar ? "min-w-44 pl-22" : "min-w-28 pl-3"}`}
-				style={{ width: withSidebar ? "var(--sidebar-width)" : insetTitleBar ? "11rem" : "7rem" }}
+				className={`flex shrink-0 items-center gap-1 pr-3 ${insetTitleBar ? "pl-22" : "pl-3"}`}
+				style={{ width: withSidebar ? "var(--sidebar-width)" : "fit-content" }}
 			>
 				<SidebarTrigger
 					title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
@@ -111,7 +111,7 @@ function NewWorkspaceButton() {
 			title={full ? `All ${MAX_WORKSPACES} workspaces are in use` : "New workspace"}
 			disabled={full}
 			onClick={() => void add()}
-			className={chromeButton}
+			className={`${chromeButton} ml-1`}
 		>
 			<PlusIcon className="size-4" aria-hidden />
 		</button>

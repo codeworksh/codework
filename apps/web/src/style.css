@@ -269,6 +269,10 @@
 .app-shell :is([data-slot="sidebar-gap"], [data-slot="sidebar-navigation"]) {
 	transition: width 200ms var(--ease-drawer);
 }
+/* Closed, the title bar's controls are as wide as their content; this lets that width animate too. */
+.app-shell [data-slot="sidebar-navigation"] {
+	interpolate-size: allow-keywords;
+}
 .app-shell[data-resizing] :is([data-slot="sidebar-gap"], [data-slot="sidebar-navigation"]) {
 	transition: none;
 }
