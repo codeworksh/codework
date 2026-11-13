@@ -30,7 +30,8 @@ export default {
 	copyright: "Copyright © CodeWork",
 	directories: { output: "dist", buildResources: "resources" },
 	// appId too: on Windows the app takes it as its AppUserModelID, the one the installer gives its shortcuts.
-	extraMetadata: { name: packageName, productName, appId, homepage: "https://www.codework.sh" },
+	// channel: the app keeps its data in the CodeWork home under desktop/<channel>.
+	extraMetadata: { name: packageName, productName, appId, channel, homepage: "https://www.codework.sh" },
 	// The app is its two bundles and its icon; Electron is the only dependency, and it is the runtime.
 	files: ["out/*.cjs", "resources/icon.png", "package.json"],
 	// The app server runs as its own process from Resources, so it sits outside the asar archive.

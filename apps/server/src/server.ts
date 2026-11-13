@@ -1,10 +1,11 @@
 import { NodeHttpServer, NodeServices } from "@effect/platform-node";
-import { Config, Effect, Layer, Schedule } from "effect";
+import { Config, Effect, FileSystem, Layer, Option, Schedule } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
+import path from "node:path";
 import { Codework } from "./codework.ts";
 import { Contract } from "@codeworksh/contract";
 import { Db } from "./db.ts";
@@ -76,8 +77,19 @@ const exitWithParent = Layer.effectDiscard(
 	}),
 );
 
-// Electron main sets the path to a file in its userData folder.
-const database = Layer.unwrap(Effect.map(Config.String("CODEWORK_DATABASE"), Db.layer)).pipe(Layer.orDie);
+/**
+ * `<CodeWork home>/desktop/<channel>/app.db`, beside the CLI's data; Electron main names its channel.
+ * `CODEWORK_DATABASE` names the file instead (tests).
+ */
+const database = Layer.unwrap(
+	Effect.gen(function* () {
+		const named = yield* Config.option(Config.String("CODEWORK_DATABASE"));
+		if (Option.isSome(named)) return Db.layer(named.value);
+		const dir = path.join(yield* Servers.cliHome, "desktop", yield* Config.String("CODEWORK_CHANNEL"));
+		yield* (yield* FileSystem.FileSystem).makeDirectory(dir, { recursive: true });
+		return Db.layer(path.join(dir, "app.db"));
+	}),
+).pipe(Layer.orDie);
 
 const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "websocket" }).pipe(
 	Layer.provide(Handlers.layer),
