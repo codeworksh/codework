@@ -128,6 +128,9 @@ export type Reply = typeof Reply.Type;
 
 export const Info = Schema.Struct({
 	title: Schema.String,
+	machineId: Schema.String,
+	/** The space the session is placed in. */
+	spaceId: Schema.String,
 	/** The host folder the session is anchored to, whose project settings it reads. */
 	hostDir: Schema.optionalKey(Schema.String),
 	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),

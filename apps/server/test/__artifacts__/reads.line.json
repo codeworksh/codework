@@ -4,19 +4,20 @@
 			"id": "<thr 1>",
 			"sessionId": "<ses 1>",
 			"machineId": "<id 1>",
+			"spaceId": "<id 2>",
 			"title": "Fork prompt",
 			"runState": "idle",
 			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
-				"id": "<id 2>",
+				"id": "<id 3>",
 				"name": "Line"
 			}
 		},
 		"entries": [
 			{
-				"id": "<id 3>",
+				"id": "<id 4>",
 				"threadId": "<thr 2>",
 				"seq": "<seq 4>",
 				"role": "user",
@@ -57,19 +58,20 @@
 			"id": "<thr 1>",
 			"sessionId": "<ses 1>",
 			"machineId": "<id 1>",
+			"spaceId": "<id 2>",
 			"title": "Fork prompt",
 			"runState": "idle",
 			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
-				"id": "<id 2>",
+				"id": "<id 3>",
 				"name": "Line"
 			}
 		},
 		"entries": [
 			{
-				"id": "<id 4>",
+				"id": "<id 5>",
 				"threadId": "<thr 3>",
 				"seq": "<seq 2>",
 				"role": "user",
@@ -110,13 +112,14 @@
 			"id": "<thr 1>",
 			"sessionId": "<ses 1>",
 			"machineId": "<id 1>",
+			"spaceId": "<id 2>",
 			"title": "Fork prompt",
 			"runState": "idle",
 			"parked": false,
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
-				"id": "<id 2>",
+				"id": "<id 3>",
 				"name": "Line"
 			}
 		},
@@ -145,9 +148,9 @@
 	"budgeted": {
 		"entries": [
 			"<assistant 3>",
-			"<id 4>",
+			"<id 5>",
 			"<assistant 2>",
-			"<id 3>",
+			"<id 4>",
 			"<assistant 1>"
 		],
 		"more": true
@@ -160,19 +163,20 @@
 				"id": "<thr 1>",
 				"sessionId": "<ses 1>",
 				"machineId": "<id 1>",
+				"spaceId": "<id 2>",
 				"title": "Fork prompt",
 				"runState": "idle",
 				"parked": false,
 				"updatedAt": "<time>",
 				"directory": "<home>",
 				"project": {
-					"id": "<id 2>",
+					"id": "<id 3>",
 					"name": "Line"
 				}
 			},
 			"entries": [
 				{
-					"id": "<id 5>",
+					"id": "<id 6>",
 					"threadId": "<thr 3>",
 					"seq": "<seq 0>",
 					"role": "user",
@@ -214,6 +218,7 @@
 			"id": "<thr 1>",
 			"sessionId": "<ses 1>",
 			"machineId": "<id 1>",
+			"spaceId": "<id 2>",
 			"title": "gate",
 			"runState": "running",
 			"lastRun": {
@@ -223,13 +228,13 @@
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
-				"id": "<id 2>",
+				"id": "<id 3>",
 				"name": "Line"
 			}
 		},
 		"entries": [
 			{
-				"id": "<id 3>",
+				"id": "<id 4>",
 				"threadId": "<thr 2>",
 				"seq": "<seq 4>",
 				"role": "user",
@@ -263,7 +268,7 @@
 		],
 		"inbox": [
 			{
-				"id": "<id 6>",
+				"id": "<id 7>",
 				"delivery": "followUp",
 				"text": "Queued",
 				"admittedSeq": 30,
@@ -278,6 +283,7 @@
 			"id": "<thr 1>",
 			"sessionId": "<ses 1>",
 			"machineId": "<id 1>",
+			"spaceId": "<id 2>",
 			"title": "gate",
 			"runState": "idle",
 			"lastRun": {
@@ -293,13 +299,13 @@
 			"updatedAt": "<time>",
 			"directory": "<home>",
 			"project": {
-				"id": "<id 2>",
+				"id": "<id 3>",
 				"name": "Line"
 			}
 		},
 		"inbox": [
 			{
-				"id": "<id 6>",
+				"id": "<id 7>",
 				"delivery": "followUp",
 				"text": "Queued",
 				"admittedSeq": 30,

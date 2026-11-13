@@ -200,6 +200,7 @@ const ID_COLUMNS = new Set([
 	"threadId",
 	"entryId",
 	"sessionId",
+	"spaceId",
 	"grouping_id",
 	"groupingId",
 	"slug",

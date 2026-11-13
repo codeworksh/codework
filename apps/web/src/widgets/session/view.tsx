@@ -24,7 +24,8 @@ import { threadAddress, threadRef } from "./address";
 import { SessionComposer } from "./composer";
 import { useFollow } from "./follow";
 import { Markdown } from "./markdown";
-import { menuThreads, useSettings } from "./menu";
+import { changesAtom, menuThreads, useSettings } from "./menu";
+import { changesAddress } from "../changes/address";
 import { Message } from "./message";
 import { Queue, trayCard } from "./queue";
 import { ProjectSettings } from "./settings";
@@ -463,6 +464,12 @@ function Conversation({
 	// stand-in goes, so the queue row and its actions show again.
 	const run = loaded.status === "ready" ? loaded : undefined;
 	const failure = run?.info.failure;
+	const machineId = run?.info.machineId;
+	const spaceId = run?.info.spaceId;
+	const setChanges = useAtomSet(changesAtom(threadKey(thread)));
+	useEffect(() => {
+		if (machineId !== undefined && spaceId !== undefined) setChanges(changesAddress(machineId, spaceId));
+	}, [machineId, spaceId, setChanges]);
 	const outcome = `${run?.info.runState}|${failure?.kind ?? ""}|${failure?.message ?? ""}`;
 	const [seenOutcome, setSeenOutcome] = useState(outcome);
 	if (outcome !== seenOutcome) {

@@ -468,7 +468,11 @@ export function Desktop({ workspace }: DesktopProps) {
 								onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
 								menu={
 									instance.kind === session.kind ? (
-										<ThreadMenu address={instance.address} instanceId={widget.id} />
+										<ThreadMenu
+											address={instance.address}
+											instanceId={widget.id}
+											onOpen={(address) => stableShellFor(widget.id).open(address, { placement: "next" })}
+										/>
 									) : undefined
 								}
 								onClose={() => close(widget.id)}

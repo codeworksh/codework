@@ -14,6 +14,8 @@ export default defineConfig({
 	],
 	// shadcn components import through "@/"; tsconfig.json declares the same alias.
 	resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+	// The diff highlighter's worker loads grammars on demand, which a classic worker bundle cannot split.
+	worker: { format: "es" },
 	// Pinned so the desktop shell can proxy to a fixed address; `localhost`
 	// may bind IPv6-only, which Electron's 127.0.0.1 lookup then misses.
 	server: { host: "127.0.0.1", port: 5173, strictPort: true },

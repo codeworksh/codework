@@ -12,7 +12,21 @@
  */
 import type { Daemon } from "@codeworksh/plugin/plugin";
 import { SqlClient } from "effect/sql";
-import { Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope } from "effect";
+import {
+	Cause,
+	Clock,
+	Context,
+	Deferred,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	Queue,
+	Schema,
+	Scope,
+} from "effect";
 import * as Event from "../event/event.ts";
 import * as EventList from "../event/list.ts";
 import { EventSchema } from "../event/schema.ts";
@@ -73,6 +87,8 @@ interface Running {
 	readonly methods: Map<string, MethodHandler>;
 	readonly works: Array<Work.Work>;
 	started: boolean;
+	/** Whether its start succeeded, once it is over. */
+	readonly ready: Deferred.Deferred<boolean>;
 	/** Events offered and not yet handled. */
 	pending: number;
 }
@@ -314,10 +330,12 @@ export const layer = (options: Options) =>
 					);
 					if (!started) {
 						if (instance.plugins.get(running.daemon.id) === running) instance.plugins.delete(running.daemon.id);
+						yield* Deferred.succeed(running.ready, false);
 						yield* Queue.shutdown(running.queue);
 						return yield* Scope.close(scope, Exit.void);
 					}
 					running.started = true;
+					yield* Deferred.succeed(running.ready, true);
 					yield* Queue.take(running.queue).pipe(
 						Effect.flatMap((event) => handle(running, event)),
 						Effect.forever,
@@ -356,6 +374,7 @@ export const layer = (options: Options) =>
 							methods: new Map(),
 							works: [],
 							started: false,
+							ready: Deferred.makeUnsafe<boolean>(),
 							pending: 0,
 						};
 						target.plugins.set(daemon.id, running);
@@ -481,9 +500,28 @@ export const layer = (options: Options) =>
 			const unlisten = yield* events.listen(onEvent);
 			yield* Effect.addFinalizer(() => unlisten);
 
+			/** A space on this machine: reading it wakes nothing, so a call may start its daemons. */
+			const local = (spaceId: string) =>
+				sql<{ env: string | null }>`SELECT env FROM space WHERE id = ${spaceId} AND status = 'active'`.pipe(
+					Effect.map(([row]) => row !== undefined && (row.env === null || row.env === SandboxInstance.ID.local)),
+					Effect.orDie,
+				);
+
+			/** Starts a local space's daemons for a call, and stops them again once no run or call uses them. */
+			const startForCall = (spaceId: string, plugin: string) =>
+				Effect.gen(function* () {
+					const instance = yield* ensure(spaceId);
+					if (!occupied(spaceId)) yield* scheduleIdle(instance);
+					const running = instance.plugins.get(plugin);
+					if (running !== undefined) yield* Deferred.await(running.ready);
+					return instance.plugins.get(plugin);
+				});
+
 			const call: Interface["call"] = (input) =>
 				Effect.gen(function* () {
-					const running = instances.get(input.spaceId)?.plugins.get(input.plugin);
+					let running = instances.get(input.spaceId)?.plugins.get(input.plugin);
+					if ((running === undefined || !running.started) && (yield* local(input.spaceId)))
+						running = yield* startForCall(input.spaceId, input.plugin);
 					if (running === undefined || !running.started) {
 						return yield* new DaemonCallError({
 							reason: "unavailable",

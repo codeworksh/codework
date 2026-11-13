@@ -13,8 +13,11 @@ import * as EventList from "../event/list.ts";
 import { EventSchema } from "../event/schema.ts";
 import type { ISandboxExe } from "@codeworksh/plugin/sandbox/shell";
 
-/** Patches past this many bytes are cut, like opencode's `MAX_TOTAL_PATCH_BYTES`. */
+/** A read's patches past this many bytes are left out, file by file. */
 export const MAX_PATCH_BYTES = 10_000_000;
+
+/** Untracked files larger than this on disk are not read: one could crowd every other file out. */
+export const MAX_UNTRACKED_FILE_BYTES = 5_000_000;
 
 const FileStatus = Schema.Struct({
 	file: Schema.String,
@@ -44,6 +47,7 @@ export type Status = typeof Status.Type;
 
 const FileDiff = Schema.Struct({
 	file: Schema.String,
+	/** Empty when the file was left out of the read; its counts are then the summary's. */
 	patch: Schema.String,
 	status: Schema.Literals(["added", "deleted", "modified"]),
 	additions: Schema.Int,
@@ -60,8 +64,9 @@ export const DiffInput = Schema.Struct({
 export const DiffOutput = Schema.Struct({
 	files: Schema.Array(FileDiff),
 	/**
-	 * Set when the patches passed {@link MAX_PATCH_BYTES}, or there were more untracked files than
-	 * {@link MAX_COUNTED_UNTRACKED}, and the rest were left out.
+	 * Set when files were left out: past {@link MAX_PATCH_BYTES} ({@link MAX_CACHED_PATCH_BYTES} when
+	 * `cached`) or {@link MAX_UNTRACKED_FILE_BYTES}, each with an empty patch, or untracked past
+	 * {@link MAX_COUNTED_UNTRACKED}, not listed.
 	 */
 	truncated: Schema.optional(Schema.Literal(true)),
 	/**
@@ -78,19 +83,27 @@ const SEPARATOR = "\u0001";
 /**
  * Every script starts at the repository root, so every path is root-relative even for a space that
  * is a subfolder. `GIT_OPTIONAL_LOCKS=0` keeps a background read from taking the index lock an
- * agent's next `git add` needs; `LC_ALL=C` keeps git's messages matchable.
+ * agent's next `git add` needs; `GIT_LITERAL_PATHSPECS=1` makes a path with `*` or `:` name only
+ * itself; `LC_ALL=C` keeps git's messages matchable.
  */
 const PRELUDE = [
-	"export GIT_OPTIONAL_LOCKS=0 LC_ALL=C",
+	"export GIT_OPTIONAL_LOCKS=0 GIT_LITERAL_PATHSPECS=1 LC_ALL=C",
 	"top=$(git rev-parse --show-toplevel) || exit $?",
 	'cd "$top" || exit $?',
 ].join("\n");
 
 /**
- * The patches kept per space for `diff` while it is not mounted, read when the summary changes and
- * dropped past this size: a remote space's diff is wanted after its run, when nothing holds it.
+ * The patches kept per space for `diff` while it is not mounted, read on each refresh: a remote
+ * space's diff is wanted after its run, when nothing holds it.
  */
 export const MAX_CACHED_PATCH_BYTES = 1_000_000;
+
+/**
+ * A file's patch size guessed from its line counts (one hunk's context included), so a file that
+ * cannot fit is not read. Erring large: past twice the cap the read is cut in git's order, and the
+ * files after the cut are left out.
+ */
+const estimate = (file: FileStatus) => 150 + (file.additions + file.deletions + 6) * 55;
 
 /**
  * Untracked files past this many get no line counts in the summary and no patch in a `diff` (which
@@ -149,8 +162,8 @@ const statusOf = (xy: string): FileStatus["status"] | undefined =>
 	xy === "AD" ? undefined : xy.includes("D") ? "deleted" : xy.includes("A") ? "added" : "modified";
 
 export interface Summary {
-	readonly head: string | undefined;
-	readonly branch: string | undefined;
+	readonly head?: string;
+	readonly branch?: string;
 	readonly files: ReadonlyArray<FileStatus>;
 }
 
@@ -189,7 +202,8 @@ export const parseSummary = (stdout: string): Summary => {
 		}
 	}
 	files.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-	return { head, branch, files };
+	// Left out rather than undefined: the event feed carries JSON, which has no undefined.
+	return { ...(head === undefined ? {} : { head }), ...(branch === undefined ? {} : { branch }), files };
 };
 
 // Some remote shells deliver git's message on stdout rather than stderr: both are read.
@@ -256,7 +270,7 @@ export const parsePatch = (patch: string): Array<FileDiff> => {
 	});
 };
 
-const diffScript = (input: typeof DiffInput.Type) => {
+const diffScript = (input: typeof DiffInput.Type, limit: number) => {
 	const context = Math.max(0, Math.floor(input.context ?? 3));
 	const paths = input.files === undefined ? "" : ` -- ${input.files.map(quote).join(" ")}`;
 	const flags = `--no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ --unified=${context}`;
@@ -268,10 +282,10 @@ const diffScript = (input: typeof DiffInput.Type) => {
 		`git diff "$base" --quiet --no-renames${paths}; rc=$?; [ "$rc" -le 1 ] || exit "$rc"`,
 		"{",
 		`git -c core.quotepath=false diff "$base" --no-renames ${flags}${paths}`,
-		`${untracked(paths)} | xargs -0 -n 1 git -c core.quotepath=false diff --no-index ${flags} -- /dev/null 2>/dev/null`,
-		`} | head -c ${MAX_PATCH_BYTES + 1}`,
+		`${untracked(paths)} | xargs -0 -n 1 sh -c '[ "$(wc -c < "$1")" -le ${MAX_UNTRACKED_FILE_BYTES} ] && exec git -c core.quotepath=false diff --no-index ${flags} -- /dev/null "$1"' sh 2>/dev/null`,
+		`} | head -c ${limit + 1}`,
 		// Said after the patches, outside the byte cap: more untracked files than were read.
-		`[ "$(git ls-files -o --exclude-standard${paths} | head -n ${MAX_COUNTED_UNTRACKED + 1} | wc -l)" -gt ${MAX_COUNTED_UNTRACKED} ] && printf '${SEPARATOR}cut'`,
+		`[ "$(git ls-files -z -o --exclude-standard${paths} | tr -cd '\\0' | head -c ${MAX_COUNTED_UNTRACKED + 1} | wc -c)" -gt ${MAX_COUNTED_UNTRACKED} ] && printf '${SEPARATOR}cut'`,
 		"exit 0",
 	].join("\n");
 };
@@ -283,24 +297,88 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
 /** git could not produce the patches (not a repository, git missing): said, not shown as no changes. */
 export class DiffFailed extends Schema.TaggedError<DiffFailed>()("GitDiffFailed", { message: Schema.String }) {}
 
-const readPatches = (shell: ISandboxExe, input: typeof DiffInput.Type) =>
-	run(shell, diffScript(input)).pipe(
-		Effect.filterOrFail(
-			(result) => result.exitCode === 0,
-			(result) =>
-				new DiffFailed({ message: `${result.stderr}\n${result.stdout}`.trim() || `git exited ${result.exitCode}` }),
-		),
-		Effect.map((result): DiffOutput => {
-			const cut = result.stdout.endsWith(`${SEPARATOR}cut`);
-			const stdout = cut ? result.stdout.slice(0, -`${SEPARATOR}cut`.length) : result.stdout;
-			// `head -c` counts bytes; so does this.
-			const overflow = bytes(stdout) > MAX_PATCH_BYTES;
-			const files = parsePatch(stdout);
-			// A cut patch ends mid-file: that file is left out rather than shown half.
-			if (overflow) files.pop();
-			return overflow || cut ? { files, truncated: true } : { files };
-		}),
-	);
+const isFolder = (file: string) => file.endsWith("/");
+
+/** Matched like a pathspec: the file, or everything under a folder. */
+const within = (file: string, path: string) => file === path || file.startsWith(`${path.replace(/\/$/, "")}/`);
+
+const leftOut = (file: FileStatus): FileDiff => ({ ...file, patch: "" });
+
+/**
+ * The patches of `candidates`, the summary's files a read is for in its order (every file when the
+ * summary is unknown), within `cap` bytes. A file that does not fit what is left gets an empty patch
+ * and the rest still get theirs: guessed from its line counts it is not read at all, and what was
+ * read is checked again. A listed file the read did not return (untracked and too large, or past a
+ * cut) is left out too.
+ */
+const readPatches = (
+	shell: ISandboxExe,
+	input: typeof DiffInput.Type,
+	candidates: ReadonlyArray<FileStatus> | undefined,
+	cap: number,
+) =>
+	Effect.suspend(() => {
+		let guessed = 0;
+		const fit = new Set(
+			candidates?.filter((file) => {
+				// A file read alone is read: only what it really takes can keep it out.
+				if (candidates.length === 1) return true;
+				const size = estimate(file);
+				if (guessed + size > cap) return false;
+				guessed += size;
+				return true;
+			}),
+		);
+		if (candidates !== undefined && candidates.length > 0 && fit.size === 0)
+			return Effect.succeed<DiffOutput>({ files: candidates.map(leftOut), truncated: true });
+		const paths =
+			candidates === undefined || fit.size === candidates.length ? input.files : [...fit].map((file) => file.file);
+		const limit = cap * 2;
+		return run(shell, diffScript({ ...input, files: paths }, limit)).pipe(
+			Effect.filterOrFail(
+				(result) => result.exitCode === 0,
+				(result) =>
+					new DiffFailed({
+						message: `${result.stderr}\n${result.stdout}`.trim() || `git exited ${result.exitCode}`,
+					}),
+			),
+			Effect.map((result): DiffOutput => {
+				const cut = result.stdout.endsWith(`${SEPARATOR}cut`);
+				const stdout = cut ? result.stdout.slice(0, -`${SEPARATOR}cut`.length) : result.stdout;
+				const read = parsePatch(stdout);
+				// `head -c` counts bytes; so does this. A cut patch ends mid-file: that file is left out
+				// rather than shown half.
+				if (bytes(stdout) > limit) read.pop();
+				let total = 0;
+				const kept = (file: FileDiff) => {
+					const size = bytes(file.patch);
+					if (total + size > cap) return leftOut(file);
+					total += size;
+					return file;
+				};
+				const byFile = new Map(read.map((file) => [file.file, file]));
+				const used = new Set<FileDiff>();
+				const files: Array<FileDiff> = [];
+				for (const entry of candidates ?? []) {
+					if (!fit.has(entry)) {
+						files.push(leftOut(entry));
+						continue;
+					}
+					const exact = byFile.get(entry.file);
+					const mine = isFolder(entry.file)
+						? read.filter((file) => !used.has(file) && within(file.file, entry.file))
+						: exact === undefined || used.has(exact)
+							? []
+							: [exact];
+					for (const file of mine) used.add(file);
+					files.push(...mine.map(kept));
+					if (mine.length === 0 && !isFolder(entry.file)) files.push(leftOut(entry));
+				}
+				files.push(...read.filter((file) => !used.has(file)).map(kept));
+				return cut || files.some((file) => file.patch === "") ? { files, truncated: true } : { files };
+			}),
+		);
+	});
 
 const keyOf = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -314,6 +392,8 @@ export const daemon = Daemon.define({
 		Effect.gen(function* () {
 			let last: string | undefined;
 			let cached: DiffOutput | undefined;
+			/** The files of the last summary, which size a read before it is made. */
+			let known: ReadonlyArray<FileStatus> | undefined;
 			const publish = (data: Omit<Status["data"], "spaceId" | "observedAt">) =>
 				Effect.gen(function* () {
 					const key = yield* keyOf(data).pipe(Effect.orDie);
@@ -353,50 +433,58 @@ export const daemon = Daemon.define({
 			 * Read on every refresh, while the space is held, for a `diff` asked after it is let go: the
 			 * same line counts can hide a different patch. Best effort; without a fresh read there is none.
 			 */
-			const keepPatches = (data: Status["data"] | Omit<Status["data"], "spaceId" | "observedAt">) =>
-				!data.available || data.files.length === 0
-					? Effect.sync(() => {
-							cached = data.available ? { files: [] } : undefined;
-						})
-					: ctx.io
-							.use(({ shell }) => readPatches(shell, {}), { budget: "20 seconds" })
-							.pipe(
-								Effect.map((patches) =>
-									patches.truncated === undefined &&
-									patches.files.reduce((total, file) => total + bytes(file.patch), 0) <= MAX_CACHED_PATCH_BYTES
-										? patches
-										: undefined,
-								),
-								Effect.orElseSucceed(() => undefined),
-								Effect.map((patches) => {
-									cached = patches;
-								}),
-							);
+			const keepPatches = (data: Omit<Status["data"], "spaceId" | "observedAt">) =>
+				Effect.gen(function* () {
+					known = data.available ? data.files : undefined;
+					cached = data.available
+						? yield* ctx.io
+								.use(({ shell }) => readPatches(shell, {}, data.files, MAX_CACHED_PATCH_BYTES), {
+									budget: "20 seconds",
+								})
+								.pipe(Effect.orElseSucceed(() => undefined))
+						: undefined;
+				});
+			/** The summary's files a `diff` of `wanted` is for; one it does not list yet stands as itself. */
+			const candidatesOf = (wanted: ReadonlyArray<string> | undefined) =>
+				known === undefined || wanted === undefined
+					? known
+					: wanted.flatMap((path): ReadonlyArray<FileStatus> => {
+							const listed = known?.filter((file) => within(file.file, path)) ?? [];
+							return listed.length > 0
+								? listed
+								: [{ file: path, status: "modified", additions: 0, deletions: 0 }];
+						});
 			const refresh = summary.pipe(Effect.tap(publish), Effect.flatMap(keepPatches));
 			const status = yield* ctx.work("status", refresh);
 			yield* ctx.events.on(
 				[EventList.SpaceMountAttached, EventList.TurnEnded, EventList.SpaceMountDetached],
 				() => status.mark,
 			);
+			// A diff asked for is a look at the space: its summary is read again too, now if it is held (a
+			// local space always is), else at its next mount.
 			yield* ctx.handle("diff", (input) =>
-				ctx.io
-					.use(({ shell }) => readPatches(shell, input), { budget: "60 seconds" })
-					.pipe(
-						Effect.catchTag("Daemon.Detached", (error) => {
-							if (cached === undefined || (input.context ?? 3) !== 3) return Effect.fail(error);
-							const wanted = input.files;
-							// Matched like the live pathspecs: a file, or everything under a folder.
-							const files =
-								wanted === undefined
-									? cached.files
-									: cached.files.filter((file) =>
-											wanted.some(
-												(path) => file.file === path || file.file.startsWith(`${path.replace(/\/$/, "")}/`),
-											),
-										);
-							return Effect.succeed({ files, cached: true as const });
+				status.mark.pipe(
+					Effect.andThen(
+						ctx.io.use(({ shell }) => readPatches(shell, input, candidatesOf(input.files), MAX_PATCH_BYTES), {
+							budget: "60 seconds",
 						}),
 					),
+					Effect.catchTag("Daemon.Detached", (error) => {
+						if (cached === undefined || (input.context ?? 3) !== 3) return Effect.fail(error);
+						const wanted = input.files;
+						const files =
+							wanted === undefined
+								? cached.files
+								: cached.files.filter((file) => wanted.some((path) => within(file.file, path)));
+						const truncated =
+							files.some((file) => file.patch === "") || (wanted === undefined && cached.truncated);
+						return Effect.succeed({
+							files,
+							cached: true as const,
+							...(truncated ? { truncated: true as const } : {}),
+						});
+					}),
+				),
 			);
 		}),
 });

@@ -14,3 +14,5 @@ export const messageOf = (cause: unknown) =>
 	typeof cause === "object" && cause !== null && "message" in cause && typeof cause.message === "string"
 		? cause.message
 		: String(cause);
+
+export const capitalized = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);

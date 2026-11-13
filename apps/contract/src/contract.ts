@@ -116,6 +116,92 @@ export const SpaceSkills = Schema.Struct({
 });
 export type SpaceSkills = typeof SpaceSkills.Type;
 
+const ChangeStatus = Schema.Literals(["added", "deleted", "modified"]);
+
+/** A changed file in a space's working tree. A wholly untracked folder is one `dir/` entry with no counts. */
+export const ChangedFile = Schema.Struct({
+	file: Schema.String,
+	status: ChangeStatus,
+	additions: Schema.Int,
+	deletions: Schema.Int,
+});
+export type ChangedFile = typeof ChangedFile.Type;
+
+/**
+ * A space's working-tree changes against `HEAD`, as its git daemon last read them: after each run in
+ * the space, so a stopped sandbox shows its last read. `observedAt` is when, in epoch milliseconds.
+ */
+export const SpaceChanges = Schema.Struct({
+	observedAt: Schema.Finite,
+	available: Schema.Boolean,
+	/** Absent before the first commit. */
+	head: Schema.optionalKey(Schema.String),
+	/** Absent on a detached HEAD. */
+	branch: Schema.optionalKey(Schema.String),
+	files: Schema.Array(ChangedFile),
+	reason: Schema.optionalKey(Schema.Literals(["not-a-repository", "git-missing", "failed"])),
+	message: Schema.optionalKey(Schema.String),
+});
+export type SpaceChanges = typeof SpaceChanges.Type;
+
+/** One file's patch: a `diff --git` chunk with 3 lines of context. */
+export const FileDiff = Schema.Struct({
+	file: Schema.String,
+	/** Empty when the file was left out (past the caps): read it alone with `files`. */
+	patch: Schema.String,
+	status: ChangeStatus,
+	additions: Schema.Int,
+	deletions: Schema.Int,
+});
+export type FileDiff = typeof FileDiff.Type;
+
+export const SpaceDiff = Schema.Struct({
+	files: Schema.Array(FileDiff),
+	/** Files were left out: past the daemon's caps (10 MB of patches, 1 MB cached; a 5 MB untracked file), or past 200 untracked files. */
+	truncated: Schema.optionalKey(Schema.Literal(true)),
+	/** The space is not mounted: these are the patches read after its last run, as old as its changes. */
+	cached: Schema.optionalKey(Schema.Literal(true)),
+});
+export type SpaceDiff = typeof SpaceDiff.Type;
+
+/** A thread working in a space: its session's, or one placed there. */
+export const SpaceThread = Schema.Struct({
+	id: Schema.String,
+	sessionId: Schema.String,
+	/** Its session's main thread, whose address is the session's. */
+	main: Schema.Boolean,
+	/** Its own, else its nearest titled ancestor's; absent while none has one. */
+	title: Schema.optionalKey(Schema.String),
+	/** Its session's name: the main thread's title, else the session's slug. */
+	sessionName: Schema.String,
+	runState: RunState,
+	/** Epoch milliseconds. */
+	updatedAt: Schema.Finite,
+});
+export type SpaceThread = typeof SpaceThread.Type;
+
+/** Where a space's changes are, and whose they can be: every thread there shares its working tree. */
+export const ChangesSpace = Schema.Struct({
+	location: Schema.String,
+	kind: SpaceInfo.fields.kind,
+	/** Its sandbox, as the machine's store has it: null for the host, empty when the machine did not answer. */
+	env: Schema.NullOr(
+		Schema.Struct({ driver: Schema.optionalKey(Schema.String), status: Schema.optionalKey(Schema.String) }),
+	),
+	/** Newest activity first; subagents left out. */
+	threads: Schema.Array(SpaceThread),
+});
+export type ChangesSpace = typeof ChangesSpace.Type;
+
+/**
+ * The patches could not be read: no git daemon runs in the space yet (`unavailable`, until a run
+ * mounts it), it is not mounted and nothing was kept (`detached`), or git failed.
+ */
+export class ChangesError extends Schema.TaggedError<ChangesError>()("Server.ChangesError", {
+	reason: Schema.Literals(["unavailable", "detached", "failed"]),
+	message: Schema.String,
+}) {}
+
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
@@ -546,6 +632,26 @@ export const Api = RpcGroup.make(
 	Rpc.make("projects.skills", {
 		payload: { machineId: Schema.String, projectId: Schema.String },
 		success: Schema.Array(SpaceSkills),
+	}),
+	/** A space's changes from the mirror of its git daemon; null when it was never read. Never wakes a sandbox. */
+	Rpc.make("changes.status", {
+		payload: { machineId: Schema.String, spaceId: Schema.String },
+		success: Schema.NullOr(SpaceChanges),
+	}),
+	/** A space's folder, environment and threads, from the app's own rows and the machine's store; null when unknown. Never wakes a sandbox. */
+	Rpc.make("changes.space", {
+		payload: { machineId: Schema.String, spaceId: Schema.String },
+		success: Schema.NullOr(ChangesSpace),
+	}),
+	/** A space's patches, from its git daemon on the space's machine: all files, or `files`. Never wakes a sandbox. */
+	Rpc.make("changes.diff", {
+		payload: {
+			machineId: Schema.String,
+			spaceId: Schema.String,
+			files: Schema.optionalKey(Schema.Array(Schema.String)),
+		},
+		success: SpaceDiff,
+		error: Schema.Union([CodeworkUnavailable, ChangesError]),
 	}),
 	Rpc.make("sidebar.list", {
 		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },

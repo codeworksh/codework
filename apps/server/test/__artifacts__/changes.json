@@ -1,0 +1,114 @@
+{
+	"changes.status before any run": null,
+	"changes.status after a run edited README.md and added notes.txt": {
+		"available": true,
+		"head": "cdaec6762e3502f6aa3bbf851e855c9ba12b3a6b",
+		"branch": "main",
+		"files": [
+			{
+				"file": "README.md",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			},
+			{
+				"file": "notes.txt",
+				"status": "added",
+				"additions": 2,
+				"deletions": 0
+			}
+		],
+		"observed": true
+	},
+	"changes.diff": {
+		"files": [
+			{
+				"file": "README.md",
+				"patch": "diff --git a/README.md b/README.md\nindex e91ebc3..02297c0 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,3 @@\n # 69th\n 69th Testing Repository for Agents\n+Edited by a run.\n",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			},
+			{
+				"file": "notes.txt",
+				"patch": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..94954ab\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+hello\n+world\n",
+				"status": "added",
+				"additions": 2,
+				"deletions": 0
+			}
+		]
+	},
+	"changes.diff of notes.txt": {
+		"files": [
+			{
+				"file": "notes.txt",
+				"patch": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..94954ab\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+hello\n+world\n",
+				"status": "added",
+				"additions": 2,
+				"deletions": 0
+			}
+		]
+	},
+	"threads.line carries the session's space": true,
+	"changes.space of the host folder with its one thread": {
+		"location": "<home>",
+		"kind": "primary",
+		"env": null,
+		"threads": [
+			{
+				"id": "<thr 1>",
+				"sessionId": "<ses 1>",
+				"main": true,
+				"title": "bash printf 'Edited by a run.\\n' >> README.md…",
+				"sessionName": "bash printf 'Edited by a run.\\n' >> README.md…",
+				"runState": "idle",
+				"updated": true
+			}
+		]
+	},
+	"changes.space after a second session in the same folder": {
+		"location": "<home>",
+		"kind": "primary",
+		"env": null,
+		"threads": [
+			{
+				"id": "<thr 2>",
+				"sessionId": "<ses 2>",
+				"main": true,
+				"sessionName": "<slug>",
+				"runState": "idle",
+				"updated": true
+			},
+			{
+				"id": "<thr 1>",
+				"sessionId": "<ses 1>",
+				"main": true,
+				"title": "bash printf 'Edited by a run.\\n' >> README.md…",
+				"sessionName": "bash printf 'Edited by a run.\\n' >> README.md…",
+				"runState": "idle",
+				"updated": true
+			}
+		]
+	},
+	"the second session shares the space": true,
+	"changes.space of an unknown space": null,
+	"changes.status of a space no run mounted": null,
+	"changes.diff of a local space no run mounted": {
+		"files": [
+			{
+				"file": "idea.txt",
+				"patch": "diff --git a/idea.txt b/idea.txt\nnew file mode 100644\nindex 0000000..5626abf\n--- /dev/null\n+++ b/idea.txt\n@@ -0,0 +1 @@\n+one\n",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"changes.status after a run reverted everything": {
+		"available": true,
+		"head": "cdaec6762e3502f6aa3bbf851e855c9ba12b3a6b",
+		"branch": "main",
+		"files": [],
+		"observed": true
+	}
+}

@@ -149,6 +149,26 @@ const SPLIT = {
 	grouping: "thread.grouping_id, thread.ordering",
 } satisfies Record<ThreadsBy, string>;
 
+interface Titled {
+	readonly id: string;
+	readonly title: string | null;
+	readonly originThreadId: string | null;
+}
+
+/** Each thread's title among `rows`: an untitled fork reads as its nearest titled ancestor, as its line does. */
+export const titles = <Row extends Titled>(rows: ReadonlyArray<Row>) => {
+	const byId = new Map(rows.map((row) => [row.id, row]));
+	return (row: Row) => {
+		const seen = new Set<string>();
+		for (let at: Row | undefined = row; at !== undefined && !seen.has(at.id);) {
+			if (at.title !== null) return at.title;
+			seen.add(at.id);
+			at = at.originThreadId === null ? undefined : byId.get(at.originThreadId);
+		}
+		return undefined;
+	};
+};
+
 export const threads = Effect.fn("Reads.threads")(function* ({
 	organizationId,
 	by,
@@ -190,23 +210,13 @@ export const threads = Effect.fn("Reads.threads")(function* ({
 		SELECT id, organization_id, name, color, ordering FROM grouping
 		WHERE organization_id = ${organizationId} ORDER BY ordering
 	`;
-	// An untitled fork reads as its nearest titled ancestor, as its line does.
-	const byId = new Map(rows.map((row) => [row.id, row]));
-	const titleOf = (row: (typeof rows)[number]) => {
-		const seen = new Set<string>();
-		for (let at: typeof row | undefined = row; at !== undefined && !seen.has(at.id);) {
-			if (at.title !== null) return at.title;
-			seen.add(at.id);
-			at = at.originThreadId === null ? undefined : byId.get(at.originThreadId);
-		}
-		return UNTITLED;
-	};
+	const titleOf = titles(rows);
 	const listed = rows.map((row): ListedThread => ({
 		id: row.id,
 		sessionId: row.sessionId,
 		originKind: row.originKind,
 		originThreadId: row.originThreadId,
-		title: titleOf(row),
+		title: titleOf(row) ?? UNTITLED,
 		machine: { id: row.machineId, name: row.machineName },
 		project: { id: row.projectId, name: row.projectName },
 		runState: row.runState,
@@ -307,6 +317,7 @@ const head = (sql: SqlClient.SqlClient, { sessionId, threadId }: LineRequest) =>
 		id: string;
 		sessionId: string;
 		machineId: string;
+		spaceId: string;
 		title: string | null;
 		modelProvider: string | null;
 		modelId: string | null;
@@ -325,7 +336,7 @@ const head = (sql: SqlClient.SqlClient, { sessionId, threadId }: LineRequest) =>
 		projectName: string;
 		removed: number;
 	}>`
-		SELECT thread.id, thread.session_id, session.machine_id, thread.title, thread.model_provider, thread.model_id,
+		SELECT thread.id, thread.session_id, session.machine_id, session.space_id, thread.title, thread.model_provider, thread.model_id,
 			thread.thinking_level, thread.run_state, thread.run_started_at, thread.run_ended_at, thread.run_outcome,
 			thread.run_error, thread.parked, thread.updated_at, thread.floor, session.dir, session.hostdir,
 			project.id AS project_id, project.name AS project_name,
@@ -408,6 +419,7 @@ export const line = Effect.fn("Reads.line")(function* (request: LineRequest) {
 			id: row.id,
 			sessionId: row.sessionId,
 			machineId: row.machineId,
+			spaceId: row.spaceId,
 			...(titled === undefined ? {} : { title: titled.title }),
 			...model(row.modelProvider, row.modelId),
 			...(row.thinkingLevel === null ? {} : { thinkingLevel: row.thinkingLevel }),
