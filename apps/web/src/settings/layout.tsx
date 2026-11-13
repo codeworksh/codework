@@ -91,9 +91,7 @@ export function SettingsSidebar() {
 							</SidebarMenu>
 						</SidebarGroup>
 					))}
-					{matches.length === 0 && (
-						<p className="px-2 py-2 text-xs text-ink-muted">No settings match “{query}”.</p>
-					)}
+					{matches.length === 0 && <p className="px-2 py-2 text-xs text-ink-muted">No Settings Match “{query}”</p>}
 				</nav>
 			</SidebarContent>
 			<SidebarRail />

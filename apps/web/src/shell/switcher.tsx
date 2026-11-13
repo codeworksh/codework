@@ -146,7 +146,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							onClick={() => void close(workspace, index)}
 							className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
 						>
-							<XIcon className="size-3" weight="bold" aria-hidden />
+							<XIcon className="size-3.5" aria-hidden />
 						</button>
 					</div>
 				);

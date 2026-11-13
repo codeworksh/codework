@@ -96,7 +96,7 @@ export function Picker({
 						className="h-9 text-[13px]"
 					/>
 					<CommandList>
-						<CommandEmpty className="py-4 text-center text-xs text-ink-muted">No results.</CommandEmpty>
+						<CommandEmpty className="py-4 text-center text-xs text-ink-muted">No Results</CommandEmpty>
 						<CommandGroup heading={heading} className="[&_[cmdk-group-heading]]:text-2xs">
 							{options.map((option, index) => (
 								<CommandItem

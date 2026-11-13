@@ -92,7 +92,7 @@ function NoticeCard({
 					onClick={onDismiss}
 					className="-mr-1 grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
 				>
-					<XIcon className="size-3" weight="bold" aria-hidden />
+					<XIcon className="size-3.5" aria-hidden />
 				</button>
 			)}
 		</div>
@@ -140,7 +140,7 @@ export function NoticeLine({
 					onClick={onDismiss}
 					className="grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color,opacity] duration-150 ease-out hover:bg-ink/10 hover:text-ink focus-visible:opacity-100 active:scale-95 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
 				>
-					<XIcon className="size-3" weight="bold" aria-hidden />
+					<XIcon className="size-3.5" aria-hidden />
 				</button>
 			)}
 		</div>

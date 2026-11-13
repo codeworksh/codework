@@ -233,7 +233,7 @@ export function Projects() {
 		return null;
 	};
 
-	if (AsyncResult.isFailure(projects)) return <p className="p-3 text-ink-muted">Could not load projects.</p>;
+	if (AsyncResult.isFailure(projects)) return <p className="p-3 text-ink-muted">Could Not Load Projects</p>;
 	const count = AsyncResult.isSuccess(projects) ? projects.value.length : 0;
 	return (
 		<div className="flex h-full flex-col">

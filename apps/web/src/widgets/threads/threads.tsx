@@ -79,7 +79,7 @@ export function AllThreads({ instanceId }: WidgetProps<unknown>) {
 				onNewGroup={() => void newGroup()}
 			/>
 			{AsyncResult.isFailure(result) && board === undefined ? (
-				<p className="p-3 text-ink-muted">Could not load the threads.</p>
+				<p className="p-3 text-ink-muted">Could Not Load the Threads</p>
 			) : shown === undefined ? null : (
 				<List
 					board={shown}
@@ -316,7 +316,7 @@ function List({
 	)
 		return (
 			<p className="p-6 text-center text-xs text-ink-muted">
-				{filtering(options) ? "No threads match the filters." : "No threads yet."}
+				{filtering(options) ? "No Threads Match the Filters" : "No Threads Yet"}
 			</p>
 		);
 
@@ -463,7 +463,7 @@ function ThreadPicker({
 		return (
 			<Picker
 				{...common}
-				placeholder="Change status…"
+				placeholder="Change Status…"
 				digits
 				value={thread.status}
 				options={MANUAL_STATUSES.map((value) => ({
@@ -481,7 +481,7 @@ function ThreadPicker({
 		return (
 			<Picker
 				{...common}
-				placeholder="Change priority…"
+				placeholder="Change Priority…"
 				digits
 				value={String(thread.priority)}
 				options={PRIORITIES.map((value: Priority) => ({
@@ -496,7 +496,7 @@ function ThreadPicker({
 		return (
 			<Picker
 				{...common}
-				placeholder="Change color…"
+				placeholder="Change Color…"
 				digits
 				value={thread.color ?? ""}
 				options={[
@@ -512,7 +512,7 @@ function ThreadPicker({
 	return (
 		<Picker
 			{...common}
-			placeholder="Change or add group…"
+			placeholder="Change or Add Group…"
 			heading={groups.length > 0 ? "Groups" : undefined}
 			value={thread.groupingId ?? "none"}
 			options={[

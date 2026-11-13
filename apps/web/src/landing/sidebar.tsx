@@ -9,6 +9,7 @@ import {
 	NotePencilIcon,
 	PlusIcon,
 	SquaresFourIcon,
+	XIcon,
 } from "@phosphor-icons/react";
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -50,9 +51,9 @@ import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDispla
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
-/** A sidebar action: New, Threads, Settings. */
+/** A sidebar action: New, Threads, Settings. Each sets its own colour: New, the primary action, is full ink. */
 const NAV_ROW =
-	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring";
+	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const collapsedKey = "codework.sidebar.collapsed";
 const decodeCollapsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
@@ -70,6 +71,7 @@ export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const problem = useAtomValue(problemAtom);
 	const [query, setQuery] = useState("");
+	const search = useRef<HTMLInputElement>(null);
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
 	const addProject = useAddProject();
@@ -138,9 +140,9 @@ export function SessionsSidebar() {
 
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
-			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-2">
-				<button type="button" onClick={startNew} className={NAV_ROW}>
-					<NotePencilIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
+			<SidebarHeader className="gap-1 px-2 pt-2 pb-3">
+				<button type="button" onClick={startNew} className={`${NAV_ROW} text-ink`}>
+					<NotePencilIcon size={15} className="shrink-0" aria-hidden />
 					<span>New</span>
 				</button>
 				<div className="relative">
@@ -150,6 +152,7 @@ export function SessionsSidebar() {
 						aria-hidden
 					/>
 					<SidebarInput
+						ref={search}
 						type="search"
 						placeholder="Search"
 						aria-label="Search threads"
@@ -161,12 +164,26 @@ export function SessionsSidebar() {
 								setQuery("");
 							}
 						}}
-						className="h-7 rounded-md border-0 bg-transparent pr-2 pl-[30px] text-ui shadow-none dark:bg-transparent placeholder:text-ink-muted hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-2 focus-visible:ring-ring"
+						className="h-7 rounded-md border-0 bg-transparent pr-7 pl-[30px] text-ui shadow-none dark:bg-transparent placeholder:text-ink-muted not-placeholder-shown:bg-selection-subtle hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-1 focus-visible:ring-edge focus-visible:ring-inset [&::-webkit-search-cancel-button]:appearance-none"
 					/>
+					{query !== "" && (
+						<button
+							type="button"
+							aria-label="Clear search"
+							title="Clear search (Esc)"
+							onClick={() => {
+								setQuery("");
+								search.current?.focus();
+							}}
+							className="absolute top-1/2 right-1 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted outline-none hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							<XIcon className="size-3.5" aria-hidden />
+						</button>
+					)}
 				</div>
 				<Link
 					to="/threads"
-					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:font-medium aria-[current=page]:text-ink`}
+					className={`${NAV_ROW} text-ink-muted aria-[current=page]:bg-selection-current aria-[current=page]:text-ink aria-[current=page]:[&>svg]:text-ink`}
 				>
 					<ChatsIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Threads</span>
@@ -179,15 +196,15 @@ export function SessionsSidebar() {
 						className="w-full font-normal text-ink-muted hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
 					/>
 				) : AsyncResult.isFailure(result) ? (
-					<p className="px-2 py-2 text-xs text-ink-muted">Could not load sessions.</p>
+					<p className="px-2 py-2 text-xs text-ink-muted">Could Not Load Sessions</p>
 				) : AsyncResult.isSuccess(result) && groups.length === 0 ? (
 					needle !== "" ? (
-						<p className="px-2 py-2 text-xs text-ink-muted">No threads match “{query}”.</p>
+						<p className="px-2 py-2 text-xs text-ink-muted">No Threads Match “{query}”</p>
 					) : (
 						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
 								<>
-									<span>No projects yet</span>
+									<span>No Projects Yet</span>
 									<EmptyAction
 										icon={<PlusIcon size={12} weight="bold" className="-mx-0.5 size-3" aria-hidden />}
 										onClick={addProject}
@@ -196,7 +213,7 @@ export function SessionsSidebar() {
 									</EmptyAction>
 								</>
 							) : (
-								<span>No threads yet</span>
+								<span>No Threads Yet</span>
 							)}
 						</Empty>
 					)
@@ -239,7 +256,7 @@ export function SessionsSidebar() {
 				)}
 			</SidebarContent>
 			<SidebarFooter className="p-2">
-				<Link to="/settings/workspaces" className={NAV_ROW}>
+				<Link to="/settings/workspaces" className={`${NAV_ROW} text-ink-muted`}>
 					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Settings</span>
 				</Link>
