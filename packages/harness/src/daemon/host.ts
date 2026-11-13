@@ -147,7 +147,14 @@ export const layer = (options: Options) =>
 				},
 			});
 
-			const context = (instance: Instance, running: Running, space: Daemon.SpaceInfo, env: SandboxInstance.ID) => {
+			const context = (
+				instance: Instance,
+				running: Running,
+				space: Daemon.SpaceInfo,
+				env: SandboxInstance.ID,
+				/** The daemon's own scope: a start that fails closes it, and its work with it. */
+				scope: Scope.Scope,
+			) => {
 				const ctx: Daemon.SpaceContext = {
 					plugin: { id: running.daemon.id, options: {} },
 					space,
@@ -210,7 +217,7 @@ export const layer = (options: Options) =>
 						Effect.gen(function* () {
 							const work = yield* Work.make({
 								name: `${running.daemon.id}/${name}`,
-								scope: instance.scope,
+								scope,
 								readable: readable(instance),
 								run,
 							});
@@ -288,7 +295,7 @@ export const layer = (options: Options) =>
 						const found = yield* resolve(instance);
 						if (Option.isNone(found)) return false;
 						yield* running.daemon
-							.start(context(instance, running, found.value.space, found.value.env) as never)
+							.start(context(instance, running, found.value.space, found.value.env, scope) as never)
 							.pipe(
 								Scope.provide(scope),
 								Effect.timeoutOrElse({
@@ -387,14 +394,18 @@ export const layer = (options: Options) =>
 
 			const occupied = (spaceId: string) => [...threads.values()].includes(spaceId);
 
-			const scheduleIdle = (instance: Instance) =>
+			const scheduleIdle = (instance: Instance): Effect.Effect<void> =>
 				Effect.gen(function* () {
 					if (instance.idle !== undefined) yield* Fiber.interrupt(instance.idle);
 					instance.idle = yield* Effect.sleep(idleTimeout).pipe(
 						Effect.andThen(
 							Effect.suspend(() => {
 								instance.idle = undefined;
-								return occupied(instance.spaceId) ? Effect.void : stop(instance);
+								if (occupied(instance.spaceId)) return Effect.void;
+								// Pending work finishes first: it is waited for another idle period.
+								return settled(instance).pipe(
+									Effect.flatMap((done) => (done ? stop(instance) : scheduleIdle(instance))),
+								);
 							}),
 						),
 						Effect.forkIn(root),

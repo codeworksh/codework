@@ -7,6 +7,7 @@ import {
 	Layer,
 	LayerMap,
 	Option,
+	RcMap,
 	type Scope,
 	Schema,
 	Semaphore,
@@ -764,7 +765,9 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		gate.withPermits(1)(
 			Effect.gen(function* () {
 				const row = yield* requireRow(id);
-				const attached = (attachedLeases.get(id) ?? 0) > 0 || holding(id);
+				// A lease or hold says one was attached; the map says it still is (an invalidated one would be rebuilt).
+				const attached =
+					((attachedLeases.get(id) ?? 0) > 0 || holding(id)) && (yield* RcMap.has(transports.rcMap, id));
 				if (!allow() || !attached || row.status !== "online") return yield* new SandboxNotHeldError({ id });
 				const context = yield* transports.contextEffect(id);
 				return { row, context };
@@ -883,7 +886,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				operation: "wake",
 			});
 		}
-		if (refCount(id) === 0) yield* transports.invalidate(id);
+		if (!held(id)) yield* transports.invalidate(id);
 		const observed = yield* provision(attached.driver.name, "wake", attached.driver.wake(attached.input)).pipe(
 			Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
 				providerErrorIsNotFound(error) ? markUnavailable(id, error) : persistProviderFailure(id, "faulted", error),

@@ -72,6 +72,7 @@ export const DiffOutput = Schema.Struct({
 });
 export type DiffOutput = typeof DiffOutput.Type;
 
+/** A record of its own between {@link SUMMARY}'s NUL-separated sections: no status or numstat record is this. */
 const SEPARATOR = "\u0001";
 
 /**
@@ -100,27 +101,33 @@ export const MAX_COUNTED_UNTRACKED = 200;
 /** The commit to diff against: `HEAD`, or the empty tree before the first commit. */
 const BASE = `base=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || git hash-object -t tree /dev/null)`;
 
-/** Status, tracked line counts and untracked line counts in one exec, split by SOH. */
+/**
+ * At most {@link MAX_COUNTED_UNTRACKED} untracked paths, NUL-separated and intact. NUL and newline
+ * are swapped so `head` (and `grep`) can count whole names: a newline in a name never splits it.
+ */
+const untracked = (args: string, filter = "") =>
+	`git -c core.quotepath=false ls-files -z -o --exclude-standard ${args} | tr '\\n\\0' '\\0\\n'${filter} | head -n ${MAX_COUNTED_UNTRACKED} | tr '\\n\\0' '\\0\\n'`;
+
+/** Status, tracked line counts and untracked line counts in one exec, sections split by a {@link SEPARATOR} record. */
 const SUMMARY = [
 	PRELUDE,
 	// A wholly untracked folder is one `dir/` entry, as git shows it by default: a run that fills one
 	// with thousands of files must not turn every published summary into thousands of entries.
 	"git -c core.quotepath=false status --porcelain=v2 -z --branch --untracked-files=normal --no-renames || exit $?",
-	`printf '${SEPARATOR}'`,
+	"printf '\\001\\000'",
 	BASE,
-	'git -c core.quotepath=false diff "$base" --numstat -z --no-renames',
-	`printf '${SEPARATOR}'`,
+	'git -c core.quotepath=false diff "$base" --numstat -z --no-renames || exit $?',
+	"printf '\\001\\000'",
 	// Listed the way status lists them, folders collapsed: only untracked files get line counts.
-	`git -c core.quotepath=false ls-files -z -o --exclude-standard --directory --no-empty-directory | tr '\\0' '\\n' | grep -v '/$' | head -n ${MAX_COUNTED_UNTRACKED} | tr '\\n' '\\0' | xargs -0 -n 1 git diff --no-index --numstat -z -- /dev/null 2>/dev/null`,
+	`${untracked("--directory --no-empty-directory", " | grep -av '/$'")} | xargs -0 -n 1 git diff --no-index --numstat -z -- /dev/null 2>/dev/null`,
 	"exit 0",
 ].join("\n");
 
 type Counts = Map<string, { readonly additions: number; readonly deletions: number }>;
 
 /** `added\tdeleted\tpath\0`, or `added\tdeleted\t\0from\0to\0` for a pair (an untracked file against /dev/null). */
-const parseNumstat = (text: string): Counts => {
+const parseNumstat = (tokens: ReadonlyArray<string>): Counts => {
 	const counts: Counts = new Map();
-	const tokens = text.split("\0");
 	for (let index = 0; index < tokens.length; index++) {
 		const match = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(tokens[index] ?? "");
 		if (match === null) continue;
@@ -149,8 +156,12 @@ export interface Summary {
 
 /** Parses {@link SUMMARY}'s output: porcelain v2 status, then tracked and untracked numstat. */
 export const parseSummary = (stdout: string): Summary => {
-	const [status = "", tracked = "", untracked = ""] = stdout.split(SEPARATOR);
-	const counts = new Map([...parseNumstat(tracked), ...parseNumstat(untracked)]);
+	const records = stdout.split("\0");
+	const first = records.indexOf(SEPARATOR);
+	const second = first === -1 ? -1 : records.indexOf(SEPARATOR, first + 1);
+	const status = first === -1 ? records : records.slice(0, first);
+	const tracked = first === -1 ? [] : records.slice(first + 1, second === -1 ? undefined : second);
+	const counts = new Map([...parseNumstat(tracked), ...parseNumstat(second === -1 ? [] : records.slice(second + 1))]);
 	let head: string | undefined;
 	let branch: string | undefined;
 	const files: Array<FileStatus> = [];
@@ -158,7 +169,7 @@ export const parseSummary = (stdout: string): Summary => {
 		if (kind !== undefined)
 			files.push({ file, status: kind, ...(counts.get(file) ?? { additions: 0, deletions: 0 }) });
 	};
-	for (const entry of status.split("\0")) {
+	for (const entry of status) {
 		if (entry.startsWith("# branch.oid ")) {
 			const oid = entry.slice("# branch.oid ".length);
 			head = oid === "(initial)" ? undefined : oid;
@@ -195,6 +206,20 @@ const unavailable = (exitCode: number, output: string) =>
 		message: output.trim() || `git exited ${exitCode}`,
 	}) satisfies Omit<Status["data"], "spaceId" | "observedAt">;
 
+const ESCAPES: Record<string, string> = { a: "\x07", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r" };
+
+/** A path git C-quoted in a patch (`"b/with\ttab"`), as the name. With `core.quotepath=false` an octal escape is one byte. */
+const unquote = (path: string) =>
+	path.length >= 2 && path.startsWith('"') && path.endsWith('"')
+		? path
+				.slice(1, -1)
+				.replace(/\\([0-7]{3}|.)/g, (_, escape: string) =>
+					escape.length === 3 ? String.fromCharCode(Number.parseInt(escape, 8)) : (ESCAPES[escape] ?? escape),
+				)
+		: path;
+
+const failed = (message: string) => ({ available: false as const, files: [], reason: "failed" as const, message });
+
 /** Splits a combined patch into one entry per file. */
 export const parsePatch = (patch: string): Array<FileDiff> => {
 	const chunks = patch.split(/^(?=diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
@@ -204,10 +229,16 @@ export const parsePatch = (patch: string): Array<FileDiff> => {
 		const minus = lines.find((line) => line.startsWith("--- "));
 		const strip = (line: string | undefined, prefix: string) => {
 			if (line === undefined || line.endsWith("/dev/null")) return undefined;
-			const path = line.slice(4).replace(/\t$/, "");
+			const path = unquote(line.slice(4).replace(/\t$/, ""));
 			return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 		};
-		const file = strip(plus, "b/") ?? strip(minus, "a/") ?? /^diff --git a\/(.*) b\//.exec(lines[0] ?? "")?.[1] ?? "";
+		// A binary or mode-only change has no `---`/`+++` lines: its name is in the header.
+		const quoted = /^diff --git ("(?:[^"\\]|\\.)*")/.exec(lines[0] ?? "")?.[1];
+		const header =
+			quoted === undefined
+				? /^diff --git a\/(.*) b\//.exec(lines[0] ?? "")?.[1]
+				: unquote(quoted).slice("a/".length);
+		const file = strip(plus, "b/") ?? strip(minus, "a/") ?? header ?? "";
 		let additions = 0;
 		let deletions = 0;
 		let inHunk = false;
@@ -232,9 +263,12 @@ const diffScript = (input: typeof DiffInput.Type) => {
 	return [
 		PRELUDE,
 		BASE,
+		// git's errors (a bad pathspec, an unreadable index) are said, not shown as no changes: the
+		// pipeline below cannot report them. 1 means there are changes.
+		`git diff "$base" --quiet --no-renames${paths}; rc=$?; [ "$rc" -le 1 ] || exit "$rc"`,
 		"{",
 		`git -c core.quotepath=false diff "$base" --no-renames ${flags}${paths}`,
-		`git -c core.quotepath=false ls-files -z -o --exclude-standard${paths} | tr '\\0' '\\n' | head -n ${MAX_COUNTED_UNTRACKED} | tr '\\n' '\\0' | xargs -0 -n 1 git -c core.quotepath=false diff --no-index ${flags} -- /dev/null 2>/dev/null`,
+		`${untracked(paths)} | xargs -0 -n 1 git -c core.quotepath=false diff --no-index ${flags} -- /dev/null 2>/dev/null`,
 		`} | head -c ${MAX_PATCH_BYTES + 1}`,
 		// Said after the patches, outside the byte cap: more untracked files than were read.
 		`[ "$(git ls-files -o --exclude-standard${paths} | head -n ${MAX_COUNTED_UNTRACKED + 1} | wc -l)" -gt ${MAX_COUNTED_UNTRACKED} ] && printf '${SEPARATOR}cut'`,
@@ -300,15 +334,20 @@ export const daemon = Daemon.define({
 					{ budget: "20 seconds" },
 				)
 				.pipe(
-					// Said, not left stale: a repository too big to read in time is a state the client shows.
-					Effect.catchTag("Daemon.BudgetExceeded", (error) =>
-						Effect.succeed({
-							available: false,
-							files: [],
-							reason: "failed" as const,
-							message: `git did not answer within ${error.budget}`,
-						}),
-					),
+					// Said, not left stale: a repository too big to read in time, or a deleted folder, is a
+					// state the client shows.
+					Effect.catchTags({
+						"Daemon.BudgetExceeded": (error) =>
+							Effect.succeed(failed(`git did not answer within ${error.budget}`)),
+						ShellError: (error) =>
+							Effect.succeed(
+								failed(
+									error.cause instanceof Error
+										? error.cause.message
+										: `could not run git in ${ctx.space.location}`,
+								),
+							),
+					}),
 				);
 			/**
 			 * Read on every refresh, while the space is held, for a `diff` asked after it is let go: the
