@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const electronBinary = createRequire(import.meta.url)("electron");
-const APP_NAME = "CodeWork";
+// The name main gives an unpackaged run (src/main.ts), so the Dock and the menu agree.
+const APP_NAME = "CodeWork Local";
 // Its own identity, so a local run never shares data or Dock state with an installed channel.
 const APP_ID = "sh.codework.desktop.local";
 
@@ -17,7 +18,7 @@ function brandedElectron() {
 	const target = path.join(desktopDir, ".electron-runtime", `${APP_NAME}.app`);
 	const marker = path.join(desktopDir, ".electron-runtime", "source");
 	const binary = path.join(target, "Contents", "MacOS", "Electron");
-	const stamp = `${source}\n${APP_ID}`;
+	const stamp = `${source}\n${APP_ID}\n${APP_NAME}`;
 	if (existsSync(marker) && readFileSync(marker, "utf8") === stamp) return binary;
 
 	rmSync(target, { recursive: true, force: true });

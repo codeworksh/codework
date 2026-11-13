@@ -2,8 +2,17 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "elect
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL } from "./ipc.ts";
-import { manifest } from "./manifest.ts";
+import { channel, manifest } from "./manifest.ts";
 import { startServer } from "./server.ts";
+
+// Running from the repo Electron would take the package name (`@codeworksh/desktop`); a packaged
+// build is named by its productName. Each build keeps Electron's own data in a folder of its own,
+// named like the app: `codework` for latest, `codeworkcanary`, `codeworkdev`, `codeworklocal`.
+if (!app.isPackaged) app.setName("CodeWork Local");
+app.setPath(
+	"userData",
+	path.join(app.getPath("appData"), channel() === "latest" ? "codework" : `codework${channel()}`),
+);
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
 const HOST = "app";
