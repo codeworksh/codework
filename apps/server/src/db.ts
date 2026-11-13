@@ -272,6 +272,23 @@ const migrations = {
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
+	// What each space's daemons last published (git status, skills), mirrored from CodeWork's event
+	// stream; it replaces the skills read on demand.
+	"202611130001_space_state": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`DROP TABLE IF EXISTS skill`;
+		yield* sql`
+			CREATE TABLE space_state (
+				machine_id TEXT NOT NULL,
+				space_id TEXT NOT NULL,
+				type TEXT NOT NULL,
+				data TEXT NOT NULL,
+				observed_at INTEGER NOT NULL,
+				PRIMARY KEY (machine_id, space_id, type),
+				FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE
+			)
+		`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

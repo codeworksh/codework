@@ -200,6 +200,21 @@ export const layer = Layer.effect(
 
 			const scopedRun = Effect.gen(function* () {
 				const mountContext = yield* Layer.build(mount);
+				// Space daemons see this thread's events from `attached` to `detached`. `detached` is
+				// published here, ahead of the lease's own finalizer, so the lease is still held while its
+				// listeners run, whether the drain succeeded, failed or was stopped.
+				const spaceEvent = { sessionId, threadId, spaceId: placement.value.space.id };
+				let attached = false;
+				yield* Effect.addFinalizer(() =>
+					attached
+						? DateTime.now.pipe(
+								Effect.flatMap((timestamp) =>
+									events.publish(EventList.SpaceMountDetached, { ...spaceEvent, timestamp }),
+								),
+								Effect.asVoid,
+							)
+						: Effect.void,
+				);
 				const current = Context.get(mountContext, SandboxIO.Current);
 				const fs = Context.get(mountContext, SandboxIO.FileSystem);
 				if (!(yield* fs.exists(current.cwd))) {
@@ -227,6 +242,9 @@ export const layer = Layer.effect(
 					),
 				);
 
+				// Set first: interrupted mid-publish, the drain still sends `detached`; a stray one is harmless.
+				attached = true;
+				yield* events.publish(EventList.SpaceMountAttached, { ...spaceEvent, timestamp: yield* DateTime.now });
 				// The thread's MCP servers stay open while its drain runs, and idle out after.
 				yield* mcp.lease({ sessionId, threadId });
 				return yield* ending(

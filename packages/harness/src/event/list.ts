@@ -460,6 +460,23 @@ export const McpServerStatus = EventSchema.define({
 export type McpServerStatus = typeof McpServerStatus.Type;
 
 /**
+ * A drain of the thread mounted a space and its directory checks passed: from here until the
+ * matching `detached`, the thread's session events belong to that space.
+ */
+export const SpaceMountAttached = EventSchema.define({
+	type: "space.mount.attached",
+	schema: { ...baseOptions, spaceId: Schema.String },
+});
+export type SpaceMountAttached = typeof SpaceMountAttached.Type;
+
+/** The drain is releasing the space; its lease is still held while this publishes. */
+export const SpaceMountDetached = EventSchema.define({
+	type: "space.mount.detached",
+	schema: { ...baseOptions, spaceId: Schema.String },
+});
+export type SpaceMountDetached = typeof SpaceMountDetached.Type;
+
+/**
  * Everything the kernel can publish. `PublicDefinitions` is the narrower set
  * that reaches clients -- adding an event here does not publish it.
  */
@@ -498,6 +515,8 @@ export const Definitions = EventSchema.inventory(
 	ToolSettled,
 	PluginUpdated,
 	McpServerStatus,
+	SpaceMountAttached,
+	SpaceMountDetached,
 );
 
 /**

@@ -1,0 +1,79 @@
+{
+	"pushed after an edit": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": [
+			{
+				"file": "README.md",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			},
+			{
+				"file": "added.txt",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"types seen by the filtered subscriber": [
+		"server.connected",
+		"plugin.git.status"
+	],
+	"daemon.call diff": [
+		{
+			"file": "README.md",
+			"patch": "diff --git a/README.md b/README.md\nindex <blobs>\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,3 @@\n # 69th\n 69th Testing Repository for Agents\n+from the rpc e2e\n",
+			"status": "modified",
+			"additions": 1,
+			"deletions": 0
+		}
+	],
+	"replayed to a late subscriber": [
+		"server.connected",
+		{
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": [
+				{
+					"file": "README.md",
+					"status": "modified",
+					"additions": 1,
+					"deletions": 0
+				},
+				{
+					"file": "added.txt",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
+	],
+	"daemon.call errors": {
+		"unknown space": "unavailable",
+		"unknown method": "method_not_found",
+		"invalid input": "invalid_input"
+	},
+	"replayed after a restart, before any run": [
+		"server.connected"
+	],
+	"pushed after the next run": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": []
+	},
+	"replayed after that run": [
+		"server.connected",
+		{
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": []
+		}
+	]
+}

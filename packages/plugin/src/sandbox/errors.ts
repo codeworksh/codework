@@ -56,6 +56,11 @@ export class SandboxBusyError extends Schema.TaggedError<SandboxBusyError>()("Sa
 	refCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 }) {}
 
+/** No drain holds the sandbox and no handover is open: borrowing its I/O would have to attach, which can wake it. */
+export class SandboxNotHeldError extends Schema.TaggedError<SandboxNotHeldError>()("SandboxNotHeldError", {
+	id: SandboxInstance.ID,
+}) {}
+
 export class SandboxMustBeStoppedError extends Schema.TaggedError<SandboxMustBeStoppedError>()(
 	"SandboxMustBeStoppedError",
 	{

@@ -1,3 +1,5 @@
+import * as Daemons from "../daemon/builtin.ts";
+import * as DaemonHost from "../daemon/host.ts";
 import { type Duration, Effect, Layer, Option, Ref } from "effect";
 import * as Context from "../context/context.ts";
 import * as Control from "../control.ts";
@@ -66,6 +68,8 @@ export interface Options {
 	readonly watchModels?: boolean;
 	/** How long an MCP server no running session holds stays open. Default: 10 minutes. */
 	readonly mcpIdleTimeout?: Duration.Input;
+	/** Space daemon timings: the handover after a space's last drain, and the idle stop. */
+	readonly daemons?: Pick<DaemonHost.Options, "handover" | "idleTimeout">;
 }
 
 export const layer = (options: Options = {}) =>
@@ -258,6 +262,7 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
+				Layer.provideMerge(DaemonHost.layer({ ...options.daemons, daemons: Daemons.daemons })),
 				Layer.provideMerge(
 					Mcp.layer({ hostCwd, home: paths.home, authFile, idleTimeout: options.mcpIdleTimeout }).pipe(
 						Layer.provide(Process.host),

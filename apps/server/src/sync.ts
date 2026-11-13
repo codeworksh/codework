@@ -1,6 +1,20 @@
 import { Codework as Client } from "@codeworksh/widget/backend";
 import type { Codework as Wire } from "@codeworksh/widget/codework";
-import { Clock, Context, Deferred, Effect, FiberMap, FileSystem, Layer, Option, Stream, SubscriptionRef } from "effect";
+import {
+	Cause,
+	Clock,
+	Context,
+	Deferred,
+	Effect,
+	FiberHandle,
+	FiberMap,
+	FileSystem,
+	Layer,
+	Option,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { SqlClient } from "effect/sql";
 import type { Publish } from "@codeworksh/widget/event";
 import { CodeworkUnavailable, SyncError, type SyncThread, syncTopics } from "@codeworksh/contract";
@@ -10,6 +24,12 @@ import { Mirror } from "./mirror.ts";
 import { Servers } from "./servers.ts";
 
 type Connection = typeof Client.Service;
+
+/** The space daemon events this server mirrors: the builtin ones the desktop shows. */
+const daemonTypes = ["plugin.git.status", "plugin.skills.list"];
+/** Where a daemon event belongs and when it was read; the rest is stored as it came. */
+const decodePoint = Schema.decodeUnknownOption(Schema.Struct({ spaceId: Schema.String, observedAt: Schema.Number }));
+const DataText = Schema.fromJsonString(Schema.Unknown);
 type IndexSynced = Extract<Wire.IndexItem, { _tag: "Synced" }>;
 type IndexRow = Exclude<Wire.IndexItem, IndexSynced>;
 type ThreadSynced = Extract<Wire.ThreadItem, { _tag: "Synced" }>;
@@ -239,6 +259,50 @@ export const layer = Layer.effect(
 				}
 			});
 
+		/**
+		 * The builtin space daemons' events, into `space_state`. A subscription opens with each space's
+		 * last event: it is (re)started after an index batch mirrored spaces, so that replay finds their
+		 * rows, and again whenever it fails or ends. Only a newer event replaces a row.
+		 */
+		const followDaemons = (machineId: string, client: Connection) =>
+			client("event.subscribe", { types: daemonTypes }).pipe(
+				Stream.filter((frame) => daemonTypes.includes(frame.type)),
+				Stream.runForEach((frame) =>
+					Effect.gen(function* () {
+						const point = decodePoint(frame.data);
+						if (Option.isNone(point)) return;
+						const { spaceId, observedAt } = point.value;
+						const text = yield* Schema.encodeEffect(DataText)(frame.data).pipe(Effect.orDie);
+						yield* transact((append) =>
+							Effect.gen(function* () {
+								const written = yield* sql<{ spaceId: string }>`
+									INSERT INTO space_state (machine_id, space_id, type, data, observed_at)
+									SELECT ${machineId}, ${spaceId}, ${frame.type}, ${text}, ${observedAt}
+									WHERE EXISTS (SELECT 1 FROM space WHERE machine_id = ${machineId} AND id = ${spaceId})
+									ON CONFLICT (machine_id, space_id, type) DO UPDATE
+									SET data = excluded.data, observed_at = excluded.observed_at
+									WHERE space_state.observed_at < excluded.observed_at
+									RETURNING space_id
+								`;
+								if (written.length === 0) return;
+								yield* append({
+									topic: syncTopics.state,
+									source: "sync",
+									payload: { machineId, spaceId, type: frame.type },
+								});
+							}),
+						);
+					}),
+				),
+				Effect.catchCause((cause) =>
+					Cause.hasInterruptsOnly(cause)
+						? Effect.interrupt
+						: Effect.logWarning(`Space daemon events of machine ${machineId} stopped`, cause),
+				),
+				Effect.andThen(Effect.sleep("1 second")),
+				Effect.forever,
+			);
+
 		/** One connection's sync: decides between resume and full sync, then follows the index. */
 		const connected = (machineId: string, client: Connection) =>
 			Effect.gen(function* () {
@@ -263,6 +327,8 @@ export const layer = Layer.effect(
 						if (lives.get(machineId) === live) lives.delete(machineId);
 					}),
 				);
+				const daemons = yield* FiberHandle.make<never>();
+				let following = false;
 				yield* batches<IndexRow, IndexSynced>(
 					client("index.sync", { after: full ? 0 : machine.cursor }),
 					(item) => item._tag === "Synced",
@@ -271,6 +337,7 @@ export const layer = Layer.effect(
 						Effect.gen(function* () {
 							const now = yield* Clock.currentTimeMillis;
 							const wasFull = full;
+							let spaces = false;
 							yield* transact((append) =>
 								Effect.gen(function* () {
 									const changes = yield* Mirror.index(
@@ -280,6 +347,7 @@ export const layer = Layer.effect(
 										append,
 									);
 									if (wasFull) yield* Mirror.unseen(machineId, changes, now);
+									spaces = changes.space.size > 0;
 									yield* sql`
 										UPDATE machine SET cursor = ${synced.rev}, store_id = ${synced.storeId} WHERE id = ${machineId}
 									`;
@@ -292,6 +360,10 @@ export const layer = Layer.effect(
 								}),
 							);
 							full = false;
+							if (wasFull || spaces || !following) {
+								following = true;
+								yield* FiberHandle.run(daemons, followDaemons(machineId, client));
+							}
 							lives.set(machineId, live);
 							yield* SubscriptionRef.update(applied, (cursors) => new Map(cursors).set(machineId, synced.rev));
 							yield* startOpened(machineId, live);

@@ -7,6 +7,7 @@ import {
 	Layer,
 	LayerMap,
 	Option,
+	type Scope,
 	Schema,
 	Semaphore,
 	Stream,
@@ -28,6 +29,7 @@ import {
 	type SandboxMountError,
 	SandboxMustBeStoppedError,
 	SandboxNotFoundError,
+	SandboxNotHeldError,
 	SandboxProviderError,
 	type SandboxReadError,
 	type SandboxRefreshError,
@@ -106,6 +108,22 @@ export interface Interface {
 		use: Effect.Effect<A, E, R>,
 		options?: MountOptions,
 	) => Effect.Effect<A, E | SandboxMountError, Exclude<R, SandboxIO.Provides>>;
+	/**
+	 * The sandbox's I/O without taking a lease: allowed only while a drain holds the sandbox or a
+	 * {@link Interface.hold} is open, so the transport is already attached and nothing can wake it.
+	 * The host is always allowed. Never counts toward `refCount`, so it never blocks `stop`.
+	 */
+	readonly borrow: (
+		id: SandboxInstance.ID | undefined,
+		options?: MountOptions,
+	) => SandboxIO.Layer<SandboxMountError | SandboxNotHeldError>;
+	/** Whether `borrow` is allowed right now: always for the host. */
+	readonly held: (id: SandboxInstance.ID) => Effect.Effect<boolean>;
+	/**
+	 * Keep the sandbox borrowable for the calling scope after its drain lets go: taken only while a
+	 * drain still holds it, and pins the attached transport. Not a lease: `stop` ends it.
+	 */
+	readonly hold: (id: SandboxInstance.ID) => Effect.Effect<void, SandboxNotHeldError | SandboxMountError, Scope.Scope>;
 	readonly wake: (id: SandboxInstance.ID) => Effect.Effect<SandboxInstance.Info, SandboxWakeError>;
 	readonly stop: (id: SandboxInstance.ID) => Effect.Effect<SandboxInstance.Info, SandboxStopError>;
 	readonly destroy: (id: SandboxInstance.ID, options?: DestroyOptions) => Effect.Effect<void, SandboxDestroyError>;
@@ -185,6 +203,16 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 	const store = yield* SandboxStore.make;
 	const gate = yield* Semaphore.make(1);
 	const refs = new Map<SandboxInstance.ID, number>();
+	// Handovers open after a drain let go: they let `borrow` in, and are never leases. One token per
+	// hold, so a hold `stop` already ended cannot end a newer one when it closes.
+	const holds = new Map<SandboxInstance.ID, Set<object>>();
+	// Leases whose transport is attached: with one, `borrow` pins a built transport and never attaches.
+	const attachedLeases = new Map<SandboxInstance.ID, number>();
+	const countAttached = (id: SandboxInstance.ID, delta: 1 | -1) => {
+		const next = (attachedLeases.get(id) ?? 0) + delta;
+		if (next <= 0) attachedLeases.delete(id);
+		else attachedLeases.set(id, next);
+	};
 	const hostDefaultCwd = SandboxIO.resolveMountCwd(options.hostCwd);
 	const hostCreatedAt = asDate(yield* DateTime.now);
 
@@ -224,6 +252,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					if (next === 0) refs.delete(id);
 					else refs.set(id, next);
 					lease.held = false;
+					if (lease.mounted) countAttached(id, -1);
 					return next === 0;
 				}),
 			);
@@ -690,7 +719,13 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				);
 				const fs = Context.get(context, SandboxIO.FileSystem);
 				const shell = Context.get(context, SandboxIO.Shell);
-				lease.mounted = true;
+				// With the count, in one step: a release between the two would uncount another lease.
+				yield* gate.withPermits(1)(
+					Effect.sync(() => {
+						lease.mounted = true;
+						if (id !== SandboxInstance.ID.local && lease.held) countAttached(id, 1);
+					}),
+				);
 
 				if (id !== SandboxInstance.ID.local) {
 					const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
@@ -716,6 +751,81 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		);
 
 	const mount: Interface["mount"] = (id, mountOptions) => mountLayer(id, mountOptions);
+
+	const holding = (id: SandboxInstance.ID) => (holds.get(id)?.size ?? 0) > 0;
+	const held = (id: SandboxInstance.ID) => refCount(id) > 0 || holding(id);
+
+	/**
+	 * Under the gate `stop` claims with, so a stop either lands first (the sandbox is no longer
+	 * online) or after the transport is pinned. Only a transport some lease or hold already attached
+	 * is pinned, so this returns at once and never attaches.
+	 */
+	const borrowable = (id: SandboxInstance.ID, allow: () => boolean) =>
+		gate.withPermits(1)(
+			Effect.gen(function* () {
+				const row = yield* requireRow(id);
+				const attached = (attachedLeases.get(id) ?? 0) > 0 || holding(id);
+				if (!allow() || !attached || row.status !== "online") return yield* new SandboxNotHeldError({ id });
+				const context = yield* transports.contextEffect(id);
+				return { row, context };
+			}),
+		);
+
+	const borrow: Interface["borrow"] = (id = SandboxInstance.ID.local, mountOptions = {}) =>
+		Layer.unwrap(
+			Effect.gen(function* () {
+				let identity: SandboxIO.Identity;
+				let context: Context.Context<SandboxIO.FileSystem | SandboxIO.Shell>;
+				if (id === SandboxInstance.ID.local) {
+					identity = {
+						id,
+						driver: SandboxDriver.Name.make("local"),
+						kind: "local",
+						cwd: SandboxIO.resolveMountCwd(hostDefaultCwd, mountOptions.cwd),
+						spillPath: SandboxIO.DEFAULT_SPILL_PATH,
+					};
+					context = yield* transports.contextEffect(id);
+				} else {
+					const borrowed = yield* borrowable(id, () => held(id));
+					const attached = yield* runtime(borrowed.row, "mount");
+					identity = {
+						id,
+						driver: attached.driver.name,
+						kind: borrowed.row.kind,
+						cwd: SandboxIO.resolveMountCwd(attached.input.runtimeConfig.defaultCwd, mountOptions.cwd),
+						spillPath: attached.input.runtimeConfig.spillPath ?? SandboxIO.DEFAULT_SPILL_PATH,
+					};
+					context = borrowed.context;
+				}
+				const fs = Context.get(context, SandboxIO.FileSystem);
+				const shell = Context.get(context, SandboxIO.Shell);
+				return Layer.mergeAll(
+					Layer.succeed(SandboxIO.Current, identity),
+					Layer.succeed(SandboxIO.FileSystem, SandboxFileSystem.withCwd(fs, identity.cwd)),
+					// Untimed: the exec metric measures what runs do, not daemon reads between them.
+					Layer.succeed(SandboxIO.Shell, shellWithCwd(shell, identity.cwd)),
+				).pipe(SandboxIO.withMutation);
+			}),
+		);
+
+	const isHeld: Interface["held"] = (id) => Effect.sync(() => id === SandboxInstance.ID.local || held(id));
+
+	const hold: Interface["hold"] = (id) =>
+		Effect.gen(function* () {
+			if (id === SandboxInstance.ID.local) return;
+			yield* borrowable(id, () => refCount(id) > 0);
+			const token = {};
+			holds.set(id, (holds.get(id) ?? new Set()).add(token));
+			yield* Effect.addFinalizer(() =>
+				gate.withPermits(1)(
+					Effect.sync(() => {
+						const tokens = holds.get(id);
+						tokens?.delete(token);
+						if (tokens?.size === 0) holds.delete(id);
+					}),
+				),
+			);
+		});
 
 	const withMount: Interface["withMount"] = (id, use, mountOptions) =>
 		use.pipe(Effect.provide(mount(id, mountOptions)), Effect.scoped);
@@ -804,6 +914,8 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				const latest = yield* requireRow(id);
 				const count = refCount(id);
 				if (count > 0) return yield* new SandboxBusyError({ id, refCount: count });
+				// A handover never keeps a sandbox up against a stop: it ends here.
+				holds.delete(id);
 				if (latest.status === "offline") return { claimed: false as const, row: latest };
 				if (latest.status === "removed") {
 					return yield* new SandboxRemovedError({
@@ -959,6 +1071,9 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		refresh,
 		mount,
 		withMount,
+		borrow,
+		held: isHeld,
+		hold,
 		wake,
 		stop,
 		destroy,

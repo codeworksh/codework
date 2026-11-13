@@ -1,6 +1,7 @@
 import { Model } from "@codeworksh/aikit";
 import {
 	Control,
+	DaemonHost,
 	Event,
 	EventList,
 	EventRegistry,
@@ -15,7 +16,6 @@ import {
 	SessionStore,
 	Settings,
 	SettingsFile,
-	Skill,
 	State,
 	Store,
 	Sync,
@@ -221,6 +221,7 @@ export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
 		const feed = yield* EventFeed.Service;
+		const daemons = yield* DaemonHost.Service;
 		const sessions = yield* SessionStore.Service;
 		const threads = yield* ThreadStore.Service;
 		const resolve = (ref: Control.ThreadRef) =>
@@ -331,16 +332,6 @@ export const layer = Contract.Api.toLayer(
 				const checkout = yield* Project.mainCheckout(projectId);
 				const url = checkout === undefined ? undefined : yield* host.remote(checkout);
 				return { url: url ?? null };
-			}),
-			"skill.list": Effect.fnUntraced(function* ({ spaceId }) {
-				const listed = yield* exported("Server.skill.list", Skill.list(spaceId));
-				return {
-					sandbox:
-						listed.sandbox === undefined
-							? null
-							: { ...listed.sandbox, providerResourceId: listed.sandbox.providerResourceId ?? null },
-					skills: listed.skills ?? null,
-				};
 			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });
@@ -603,18 +594,27 @@ export const layer = Contract.Api.toLayer(
 			// Acquiring the feed subscription is the readiness barrier: `server.connected`
 			// is only emitted once this client is registered, so a prompt admitted after
 			// it cannot land in the gap.
-			"event.subscribe": ({ threadId }) =>
-				Stream.unwrap(
-					feed.subscribe.pipe(
-						Effect.map((events) =>
-							Stream.make({ id: EventSchema.ID.create(), type: Envelope.Connected.type, data: {} }).pipe(
-								Stream.concat(
-									threadId === undefined ? events : events.pipe(Stream.filter(Envelope.ofThread(threadId))),
+			"event.subscribe": ({ threadId, types }) => {
+				const only = types === undefined ? undefined : new Set(types);
+				return Stream.unwrap(
+					feed
+						.filtered(
+							{
+								...(only === undefined ? {} : { types: only }),
+								...(threadId === undefined ? {} : { threadId }),
+							},
+							only === undefined ? undefined : () => daemons.last(only),
+						)
+						.pipe(
+							Effect.map((events) =>
+								Stream.make({ id: EventSchema.ID.create(), type: Envelope.Connected.type, data: {} }).pipe(
+									Stream.concat(events),
 								),
 							),
 						),
-					),
-				),
+				);
+			},
+			"daemon.call": (input) => daemons.call(input),
 		});
 	}),
 );

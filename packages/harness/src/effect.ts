@@ -1,6 +1,5 @@
 export * as Harness from "./effect/harness.ts";
 export * as Sandbox from "./effect/sandbox.ts";
-export * as Skill from "./effect/skill.ts";
 export * as Session from "./effect/session.ts";
 export * as Sync from "./effect/sync.ts";
 export * as Control from "./control.ts";
@@ -19,6 +18,9 @@ export * as ThreadSchema from "./thread/schema.ts";
 export * as DocumentSchema from "./document/schema.ts";
 export * as Runner from "./runner/run.ts";
 export * as Git from "./git/git.ts";
+export * as DaemonHost from "./daemon/host.ts";
+export * as GitDaemon from "./daemon/git.ts";
+export * as SkillsDaemon from "./daemon/skills.ts";
 export * as Location from "./location/location.ts";
 export * as Project from "./project/project.ts";
 export * as McpConfig from "./mcp/config.ts";

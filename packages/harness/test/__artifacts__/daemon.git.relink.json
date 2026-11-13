@@ -1,0 +1,79 @@
+{
+	"daytona after its run": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": [
+			{
+				"file": "where.txt",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"vercel after its run": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": [
+			{
+				"file": "README.md",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			},
+			{
+				"file": "where.txt",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"host after its run": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": [
+			{
+				"file": "README.md",
+				"status": "deleted",
+				"additions": 0,
+				"deletions": 2
+			},
+			{
+				"file": "where.txt",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"three distinct spaces": true,
+	"daytona published nothing after the session left": true,
+	"handovers closed": {
+		"daytona": true,
+		"vercel": true
+	},
+	"diff of where.txt in each space": {
+		"daytona": {
+			"cached": true,
+			"lines": [
+				"+on daytona"
+			]
+		},
+		"vercel": {
+			"cached": true,
+			"lines": [
+				"+on vercel"
+			]
+		},
+		"host": {
+			"cached": false,
+			"lines": [
+				"+on host"
+			]
+		}
+	}
+}

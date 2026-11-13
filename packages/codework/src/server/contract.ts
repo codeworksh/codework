@@ -1,13 +1,13 @@
 import { Model } from "@codeworksh/aikit";
 import {
 	Control,
+	DaemonHost,
 	Event,
 	EventList,
 	Location,
 	McpError,
 	optional,
 	Project,
-	Skill,
 	PromptSchema,
 	Runner,
 	Sandbox,
@@ -512,34 +512,6 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
 		error: Project.ProjectNotFoundError,
 	}),
-	/**
-	 * The skills sessions in a space see from its folder. A sandbox is read only while it is running:
-	 * otherwise `skills` is null and `sandbox.status` says why. `sandbox` is null for the host.
-	 */
-	Rpc.make("skill.list", {
-		payload: { spaceId: Schema.String },
-		success: Schema.Struct({
-			sandbox: Schema.NullOr(
-				Schema.Struct({
-					driver: Schema.String,
-					providerResourceId: Schema.NullOr(Schema.String),
-					status: Sandbox.SandboxInstance.Status,
-				}),
-			),
-			skills: Schema.NullOr(
-				Schema.Array(
-					Schema.Struct({
-						name: Schema.String,
-						description: Schema.String,
-						path: Schema.String,
-						/** Its frontmatter keeps it out of the prompt. */
-						hidden: Schema.Boolean,
-					}),
-				),
-			),
-		}),
-		error: Schema.Union([Skill.SpaceNotFoundError, SandboxErrors]),
-	}),
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
@@ -942,11 +914,34 @@ export const Api = RpcGroup.make(
 		error: SandboxErrors,
 	}),
 	/**
+	 * Calls a method of a space daemon running in `spaceId`, such as `git.diff`. Never starts a daemon
+	 * and never wakes a sandbox: `unavailable` when none runs there, `detached` when the space is not
+	 * mounted.
+	 */
+	Rpc.make("daemon.call", {
+		payload: {
+			plugin: Schema.String,
+			spaceId: Schema.String,
+			method: Schema.String,
+			input: optional(Schema.Unknown),
+		},
+		success: Schema.Unknown,
+		error: DaemonHost.DaemonCallError,
+	}),
+	/**
 	 * Every event the server publishes, live, after a `server.connected` frame. With `threadId`,
 	 * only the events naming that thread; the frame still comes first.
 	 */
 	Rpc.make("event.subscribe", {
-		payload: { threadId: optional(ThreadSchema.ID) },
+		payload: {
+			threadId: optional(ThreadSchema.ID),
+			/**
+			 * Only these event types. The last event of each type that a space daemon published is sent
+			 * first, after `server.connected`: a client that was away catches up without a change.
+			 */
+			types: optional(Schema.Array(Schema.String)),
+			// With `threadId` too, only events naming that thread pass: daemon events name none.
+		},
 		success: EventEnvelope,
 		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,

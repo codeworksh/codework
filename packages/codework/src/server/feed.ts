@@ -1,5 +1,5 @@
 import { Event, EventRegistry, EventSchema } from "@codeworksh/harness/effect";
-import { Cause, Context, Effect, Layer, Queue, Scope, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Option, Queue, type Scope, Stream } from "effect";
 import * as Envelope from "./envelope.ts";
 import { EncodingError, type EventEnvelope } from "./envelope.ts";
 
@@ -7,9 +7,24 @@ const SubscriberCapacity = 4096;
 
 export type Error = Event.SubscriptionOverflowError | EncodingError;
 
+/** What one client receives; checked before an event takes a place in its queue. */
+export interface Filter {
+	/** Only these types. */
+	readonly types?: ReadonlySet<string>;
+	/** Only events naming this thread. */
+	readonly threadId?: string;
+}
+
+type Stream_ = Effect.Effect<Stream.Stream<EventEnvelope, Error>, never, Scope.Scope>;
+
 export interface Interface {
 	/** A live envelope stream for one client; releasing the scope unregisters it. */
-	readonly subscribe: Effect.Effect<Stream.Stream<EventEnvelope, Error>, never, Scope.Scope>;
+	readonly subscribe: Stream_;
+	/**
+	 * {@link subscribe}, with a filter applied before an event takes a place in the queue. `replay` is
+	 * read in the step that registers the client, and its events lead the stream.
+	 */
+	readonly filtered: (filter: Filter, replay?: () => ReadonlyArray<EventSchema.Payload>) => Stream_;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/cli/server/feed/Service") {}
@@ -32,11 +47,11 @@ export const make = Effect.fn("EventFeed.make")(function* (
 	const capacity = options?.capacity ?? SubscriberCapacity;
 	// Whatever this server knows how to describe, plugin registrations included.
 	const registry = options?.registry ?? Envelope.Core;
-	const subscribers = new Set<Queue.Queue<EventEnvelope, Error>>();
+	const subscribers = new Map<Queue.Queue<EventEnvelope, Error>, Filter>();
 
 	const failAll = (error: Error) =>
 		Effect.sync(() => {
-			const current = Array.from(subscribers);
+			const current = Array.from(subscribers.keys());
 			subscribers.clear();
 			for (const subscriber of current) Queue.failCauseUnsafe(subscriber, Cause.fail(error));
 		});
@@ -47,7 +62,8 @@ export const make = Effect.fn("EventFeed.make")(function* (
 		// cannot describe must not spend a client's capacity on its way to nowhere.
 		if (registry(event.type) === undefined) return;
 		const envelope = yield* Envelope.encode(event, registry);
-		for (const subscriber of subscribers) {
+		for (const [subscriber, filter] of subscribers) {
+			if (!accepts(filter, envelope)) continue;
 			if (Queue.offerUnsafe(subscriber, envelope)) continue;
 			subscribers.delete(subscriber);
 			Queue.failCauseUnsafe(subscriber, Cause.fail(new Event.SubscriptionOverflowError({ capacity })));
@@ -66,16 +82,35 @@ export const make = Effect.fn("EventFeed.make")(function* (
 			}),
 		);
 
+	const accepts = (filter: Filter, envelope: EventEnvelope) =>
+		(filter.types === undefined || filter.types.has(envelope.type)) &&
+		(filter.threadId === undefined || Envelope.ofThread(filter.threadId)(envelope));
+
+	const filtered: Interface["filtered"] = (filter, replay = () => []) =>
+		Effect.gen(function* () {
+			const queue = yield* Effect.acquireRelease(Queue.dropping<EventEnvelope, Error>(capacity), (queue) =>
+				Effect.sync(() => subscribers.delete(queue)).pipe(Effect.andThen(Queue.shutdown(queue))),
+			);
+			// Read and registered in one step: an event published after the snapshot is delivered live.
+			const missed = yield* Effect.sync(() => {
+				subscribers.set(queue, filter);
+				return replay();
+			});
+			const replayed: Array<EventEnvelope> = [];
+			for (const event of missed) {
+				if (registry(event.type) === undefined) continue;
+				const envelope = yield* Envelope.encode(event, registry).pipe(Effect.option);
+				if (Option.isSome(envelope) && accepts(filter, envelope.value)) replayed.push(envelope.value);
+			}
+			return Stream.fromIterable(replayed).pipe(Stream.concat(Stream.fromQueue(queue)));
+		});
+
 	const unsubscribe = yield* listen(publish);
 	yield* Effect.addFinalizer(() => unsubscribe);
 
 	return Service.of({
-		subscribe: Effect.acquireRelease(
-			Queue.dropping<EventEnvelope, Error>(capacity).pipe(
-				Effect.tap((queue) => Effect.sync(() => subscribers.add(queue))),
-			),
-			(queue) => Effect.sync(() => subscribers.delete(queue)).pipe(Effect.andThen(Queue.shutdown(queue))),
-		).pipe(Effect.map(Stream.fromQueue)),
+		subscribe: filtered({}),
+		filtered,
 	});
 });
 

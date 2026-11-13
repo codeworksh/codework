@@ -1,0 +1,159 @@
+[
+	{
+		"step": "first run: clean clone",
+		"status": {
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": []
+		}
+	},
+	{
+		"step": "edit, add and nest files",
+		"status": {
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": [
+				{
+					"file": "README.md",
+					"status": "modified",
+					"additions": 1,
+					"deletions": 0
+				},
+				{
+					"file": "docs/",
+					"status": "added",
+					"additions": 0,
+					"deletions": 0
+				},
+				{
+					"file": "notes.md",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
+	},
+	{
+		"step": "diff of two files",
+		"diff": [
+			{
+				"file": "README.md",
+				"patch": "diff --git a/README.md b/README.md\nindex <blobs>\n--- a/README.md\n+++ b/README.md\n@@ -1,2 +1,3 @@\n # 69th\n 69th Testing Repository for Agents\n+one more line\n",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			},
+			{
+				"file": "notes.md",
+				"patch": "diff --git a/notes.md b/notes.md\nnew file mode 100644\nindex <blobs>\n--- /dev/null\n+++ b/notes.md\n@@ -0,0 +1 @@\n+hello from the daemon e2e\n",
+				"status": "added",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	{
+		"step": "commit everything",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"branch": "main",
+			"files": []
+		}
+	},
+	{
+		"step": "branch, then delete a tracked file",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"branch": "feature/e2e",
+			"files": [
+				{
+					"file": "README.md",
+					"status": "deleted",
+					"additions": 0,
+					"deletions": 3
+				}
+			]
+		}
+	},
+	{
+		"step": "reset and detach HEAD",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"files": []
+		}
+	},
+	{
+		"step": "a session in a subfolder: a new file in a new folder shows as the folder",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"files": [
+				{
+					"file": "sub/",
+					"status": "added",
+					"additions": 0,
+					"deletions": 0
+				}
+			]
+		}
+	},
+	{
+		"step": "an untracked folder of 2000 files",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"files": [
+				{
+					"file": "build-cache/",
+					"status": "added",
+					"additions": 0,
+					"deletions": 0
+				}
+			]
+		}
+	},
+	{
+		"step": "outside edit, picked up on the next run",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"files": [
+				{
+					"file": "outside.txt",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
+	},
+	{
+		"step": "a skill added by a run",
+		"skills": [
+			{
+				"name": "deploy",
+				"description": "Deploy the 69th app.",
+				"path": "<repo>/.agents/skills/deploy/SKILL.md",
+				"hidden": false
+			}
+		]
+	},
+	{
+		"step": "the skill removed by a run",
+		"skills": []
+	},
+	{
+		"step": "a space that is not a repository",
+		"status": {
+			"available": false,
+			"files": [],
+			"reason": "not-a-repository"
+		}
+	}
+]

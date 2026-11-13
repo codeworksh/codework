@@ -10,6 +10,8 @@ import { testModel } from "../../../../packages/harness/test/fixtures/model.ts";
 import type * as LLM from "../../../../packages/harness/src/runner/llm.ts";
 import * as Server from "../../../../packages/codework/src/server/server.ts";
 import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
+import { bashPlugin } from "../../../../packages/harness/src/plugin/builtin/tool/bash.ts";
+import * as DaytonaDriver from "../../../../packages/harness/src/sandboxes/daytona/index.ts";
 
 /*
  * `node --conditions=development codework.ts <home> <port> [host] [sweep]`: a real CodeWork server
@@ -18,6 +20,7 @@ import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
  * - `gate`: "Hello " | "wor" | "ld" | "!" | end, held before each step after the first;
  * - `hold`: held after its start, until interrupted;
  * - `long <n>`: n chunks of 32 characters, one every 10 ms;
+ * - `bash <command>`: one `bash` tool call running `command`, then `done` once its result is back;
  * - anything else: `reply to <text>`, at once.
  * Each line `release` on stdin lets the oldest held reply take its next step.
  * With `sweep`, it only ends the runs the last server left open, as a start does before it listens,
@@ -55,6 +58,14 @@ const promptOf = (input: LLM.Input) => {
 	return user?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("") ?? "";
 };
 
+/** The `bash <command>` a prompt asks for, unless its call was already made. */
+const bashOf = (input: LLM.Input) => {
+	const messages = input.context.messages;
+	const last = messages.findLastIndex((message) => message.role === "user");
+	if (messages.slice(last + 1).some((message) => message.role === "assistant")) return undefined;
+	return /^bash (.+)$/s.exec(promptOf(input))?.[1];
+};
+
 // Ids unique across restarts of this process: entry ids are the reply's message ids.
 let count = 0;
 const scripted: LLM.Open = (input, signal) =>
@@ -63,6 +74,30 @@ const scripted: LLM.Open = (input, signal) =>
 		const index = count;
 		const messageId = `assistant_${process.pid}_${index}`;
 		const text = promptOf(input);
+		const command = bashOf(input);
+		if (command !== undefined || text.startsWith("bash ")) {
+			const reply =
+				command === undefined
+					? assistant(input, index, { messageId, parts: [{ type: "text", text: "done" }] })
+					: assistant(input, index, {
+							messageId,
+							stopReason: "toolUse",
+							parts: [
+								{
+									type: "toolCall",
+									callID: `call_${process.pid}_${index}`,
+									name: "bash",
+									arguments: { command },
+									status: "pending",
+									time: { start: index, end: index },
+								},
+							],
+						});
+			const stream = createAssistantMessageEventStream();
+			stream.push({ type: "start", partial: reply });
+			stream.push({ type: "done", reason: command === undefined ? "stop" : "toolUse", message: reply });
+			return stream;
+		}
 		const long = /^long (\d+)$/.exec(text);
 		const chunks =
 			text === "gate"
@@ -107,7 +142,10 @@ const scripted: LLM.Open = (input, signal) =>
 		return events;
 	});
 
-const harness = { home, hostCwd: home, plugins: [], llm: scripted };
+// A remote sandbox driver when this machine was given its credentials.
+const sandboxes = process.env.DAYTONA_API_KEY?.trim() ? [DaytonaDriver.make()] : [];
+// Only the bash tool: the scripted model's `bash <command>` prompts call it, and nothing else varies the prompt.
+const harness = { home, hostCwd: home, plugins: [bashPlugin], llm: scripted, sandboxes };
 
 NodeRuntime.runMain(
 	mode === "sweep"

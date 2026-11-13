@@ -1,0 +1,35 @@
+{
+	"mirrored types": [
+		"plugin.git.status",
+		"plugin.skills.list"
+	],
+	"projects.skills when the skill came before the machine": [
+		{
+			"kind": "primary",
+			"skills": [
+				{
+					"name": "deploy",
+					"description": "Deploy the 69th app.",
+					"hidden": false
+				}
+			],
+			"read": true
+		}
+	],
+	"projects.skills after a run removed it": [
+		{
+			"kind": "primary",
+			"skills": [],
+			"read": true
+		}
+	],
+	"a sync/state notice names the space": true,
+	"new sync/state notices after an app restart": 0,
+	"projects.skills after an app restart": [
+		{
+			"kind": "primary",
+			"skills": [],
+			"read": true
+		}
+	]
+}
