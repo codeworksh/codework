@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
-import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL } from "./ipc.ts";
+import { manifest } from "./manifest.ts";
 import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
@@ -165,8 +165,7 @@ app.on("second-instance", () => {
 // The installer's shortcuts carry the app id, and Windows groups the taskbar button with the
 // shortcut whose id the running app takes.
 if (process.platform === "win32" && app.isPackaged) {
-	const { appId } = JSON.parse(readFileSync(path.join(app.getAppPath(), "package.json"), "utf8")) as { appId: string };
-	app.setAppUserModelId(appId);
+	app.setAppUserModelId(manifest().appId);
 }
 
 void app.whenReady().then(async () => {

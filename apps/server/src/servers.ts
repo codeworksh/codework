@@ -6,7 +6,9 @@ import path from "node:path";
 import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "@codeworksh/contract";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
-const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(Config.withDefault(path.join(os.homedir(), ".codework")));
+export const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(
+	Config.withDefault(path.join(os.homedir(), ".codework")),
+);
 
 // Stored with every value; only the app server reads the sensitive ones.
 export const StoredEnv = Schema.Array(
