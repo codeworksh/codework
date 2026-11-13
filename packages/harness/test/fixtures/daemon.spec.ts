@@ -348,7 +348,13 @@ export const gitScenario = (target: Target) => (workspace: Workspace) =>
 
 			if (id === undefined) return { steps } satisfies Outcome;
 
-			// Remote only: once the handover closed, a stopped sandbox is never woken by the daemon.
+			// Remote only: patches past the cache's size, then once the handover closed, a stopped sandbox
+			// is never woken by the daemon.
+			yield* session.main.run(`for i in 1 2 3; do yes ${"x".repeat(40)} | head -n 12000 > big-$i.txt; done`);
+			yield* git.settle(
+				spaceId,
+				(status) => status.files.filter((file) => file.file.startsWith("big-")).length === 3,
+			);
 			const wake: Record<string, unknown> = {};
 			const released = yield* Effect.gen(function* () {
 				for (let attempt = 0; attempt < 120; attempt++) {
@@ -363,9 +369,19 @@ export const gitScenario = (target: Target) => (workspace: Workspace) =>
 			wake["diff on a stopped sandbox"] = yield* host
 				.call({ plugin: "git", spaceId, method: "diff", input: {} })
 				.pipe(
-					Effect.map((output) =>
-						(output as Git.DiffOutput).cached === true ? "served from the cache" : "read live",
-					),
+					Effect.map((output) => {
+						const { cached, truncated, files } = output as Git.DiffOutput;
+						return cached === true
+							? {
+									from: "the cache",
+									files: files.map((file) => (file.patch === "" ? `${file.file} (left out)` : file.file)),
+									truncated: truncated === true,
+									"within its size":
+										files.reduce((total, file) => total + Buffer.byteLength(file.patch), 0) <=
+										Git.MAX_CACHED_PATCH_BYTES,
+								}
+							: "read live";
+					}),
 					Effect.catchTag("DaemonCallError", (error) => Effect.succeed(error.reason)),
 				);
 			wake["diff with other context on a stopped sandbox"] = yield* host
@@ -375,7 +391,7 @@ export const gitScenario = (target: Target) => (workspace: Workspace) =>
 					Effect.catchTag("DaemonCallError", (error) => Effect.succeed(error.reason)),
 				);
 			wake["provider status after that call"] = (yield* controller.refresh(id)).status;
-			yield* session.main.run("printf 'after a wake\\n' > woken.txt");
+			yield* session.main.run("rm big-*.txt && printf 'after a wake\\n' > woken.txt");
 			record(
 				"the next run wakes it and the daemon catches up",
 				yield* git.settle(spaceId, (status) => status.files.some((file) => file.file === "woken.txt")),

@@ -2,7 +2,17 @@
 	"wake": {
 		"borrowable after the handover closed": false,
 		"stopped": "offline",
-		"diff on a stopped sandbox": "served from the cache",
+		"diff on a stopped sandbox": {
+			"from": "the cache",
+			"files": [
+				"big-1.txt",
+				"big-2.txt (left out)",
+				"big-3.txt (left out)",
+				"outside.txt"
+			],
+			"truncated": true,
+			"within its size": true
+		},
 		"diff with other context on a stopped sandbox": "detached",
 		"provider status after that call": "offline"
 	},
