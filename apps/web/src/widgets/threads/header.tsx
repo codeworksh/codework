@@ -122,6 +122,7 @@ export function SectionHeader({
 			{group !== undefined && (
 				<>
 					<DotsSixVerticalIcon
+						weight="bold"
 						className="ml-auto size-3.5 cursor-grab text-ink-muted opacity-0 group-hover/header:opacity-100"
 						aria-hidden
 					/>

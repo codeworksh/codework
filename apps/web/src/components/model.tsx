@@ -1,8 +1,8 @@
 import {
+	BrainIcon,
 	CaretDownIcon,
 	CheckIcon,
 	FileMagnifyingGlassIcon,
-	GaugeIcon,
 	MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
@@ -403,7 +403,7 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 							: "This model does not reason"
 				}
 			>
-				<GaugeIcon className="size-3.5 shrink-0" aria-hidden />
+				<BrainIcon className="size-3.5 shrink-0" aria-hidden />
 				<span className="truncate">{choosable ? levelLabels[shown] : "Reasoning"}</span>
 				<CaretDownIcon
 					className="size-3 shrink-0 text-ink-muted transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
