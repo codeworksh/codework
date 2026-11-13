@@ -1,4 +1,4 @@
-import { Check, GlobeIcon } from "@/components/vuesax";
+import { CheckIcon, GlobeIcon } from "@phosphor-icons/react";
 import { useAtomSet } from "@effect/atom-react";
 
 import { type ReactNode, useState } from "react";
@@ -82,7 +82,7 @@ export function AddServer({
 							<span
 								className={`grid size-5 place-items-center rounded-full text-2xs ${index < step ? "bg-info text-white" : "bg-ink/8"}`}
 							>
-								{index < step ? <Check className="size-3" /> : index + 1}
+								{index < step ? <CheckIcon className="size-3" /> : index + 1}
 							</span>
 							{label}
 						</li>
@@ -95,7 +95,7 @@ export function AddServer({
 						<div className="grid grid-cols-2 gap-2">
 							<KindTile selected icon={<Mark />} title="Local" detail="Runs on this machine" />
 							<KindTile
-								icon={<GlobeIcon className="size-5 text-ink-muted" strokeWidth={1.75} />}
+								icon={<GlobeIcon className="size-5 text-ink-muted" />}
 								title="Remote"
 								detail="Another machine's server"
 								badge={<Badge tone="info">Coming soon</Badge>}
@@ -220,7 +220,7 @@ function KindTile({
 				<span className="text-xs text-ink-muted">{detail}</span>
 			</span>
 			{badge}
-			{selected && <Check className="size-4 text-info" />}
+			{selected && <CheckIcon className="size-4 text-info" />}
 		</div>
 	);
 }

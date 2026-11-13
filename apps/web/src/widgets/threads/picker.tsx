@@ -1,4 +1,4 @@
-import { Plus } from "@/components/vuesax";
+import { PlusIcon } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 
 import {
@@ -119,7 +119,7 @@ export function Picker({
 						{creatable && (
 							<CommandGroup forceMount>
 								<CommandItem forceMount value={`\u0000create ${name}`} onSelect={create} className={PICKER_ROW}>
-									<Plus aria-hidden />
+									<PlusIcon aria-hidden />
 									<span className="truncate">
 										Create {onCreate.noun} <span className="text-ink-muted">“{name}”</span>
 									</span>

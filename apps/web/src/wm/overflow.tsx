@@ -1,4 +1,4 @@
-import { ChevronUp } from "@/components/vuesax";
+import { CaretUpIcon } from "@phosphor-icons/react";
 import type { FrameIcon } from "@codeworksh/widget/view";
 
 import type { Rect } from "webwm";
@@ -38,7 +38,7 @@ export function Overflow({
 		>
 			<DropdownMenu>
 				<DropdownMenuTrigger className="flex h-full w-full border-t border-edge bg-frame items-center gap-1.5 px-3 text-left text-ink-muted outline-none transition-colors select-none hover:text-ink data-[state=open]:text-ink">
-					<ChevronUp className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+					<CaretUpIcon className="size-3.5 shrink-0" aria-hidden />
 					<span className="font-semibold">+{hidden.length} more</span>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent side="top" align="start" className="max-h-80 w-64 overflow-y-auto">

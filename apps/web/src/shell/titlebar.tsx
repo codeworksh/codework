@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Plus, X } from "@/components/vuesax";
+import { ArrowLeftIcon, ArrowRightIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -52,7 +52,7 @@ export function NavigationControls() {
 						onClick={() => router.history.back()}
 						className={chromeButton}
 					>
-						<ArrowLeft className="size-3.5" strokeWidth={1.5} aria-hidden />
+						<ArrowLeftIcon className="size-3.5" aria-hidden />
 					</button>
 					<button
 						type="button"
@@ -62,7 +62,7 @@ export function NavigationControls() {
 						onClick={() => router.history.forward()}
 						className={chromeButton}
 					>
-						<ArrowRight className="size-3.5" strokeWidth={1.5} aria-hidden />
+						<ArrowRightIcon className="size-3.5" aria-hidden />
 					</button>
 				</div>
 			</div>
@@ -89,7 +89,7 @@ function CloseSettings() {
 			className={`${chromeButton} ml-auto`}
 			onClick={() => void navigate(back)}
 		>
-			<X className="size-4" strokeWidth={1.5} aria-hidden />
+			<XIcon className="size-4" aria-hidden />
 		</button>
 	);
 }
@@ -113,7 +113,7 @@ function NewWorkspaceButton() {
 			onClick={() => void add()}
 			className={chromeButton}
 		>
-			<Plus className="size-4" strokeWidth={1.75} aria-hidden />
+			<PlusIcon className="size-4" aria-hidden />
 		</button>
 	);
 }

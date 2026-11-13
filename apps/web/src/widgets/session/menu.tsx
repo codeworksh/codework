@@ -1,11 +1,10 @@
 import type { Priority } from "@codeworksh/contract";
-import { GitDiffIcon } from "@phosphor-icons/react";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { MENU_ROW, MenuChoice } from "@/components/menu";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { MessageSquare, Settings } from "@/components/vuesax";
+import { ChatTextIcon, GearSixIcon, GitDiffIcon } from "@phosphor-icons/react";
 import { failed } from "../threads/common";
 import { setColor, setGroup, setPriority, setStatus, threadsAtom } from "../threads/data";
 import {
@@ -76,7 +75,7 @@ export function ThreadMenu({
 			)}
 			<DropdownMenuItem className={MENU_ROW} onSelect={() => setSettings(!settings)}>
 				<span className="grid size-[15px] shrink-0 place-items-center">
-					{settings ? <MessageSquare aria-hidden /> : <Settings aria-hidden />}
+					{settings ? <ChatTextIcon aria-hidden /> : <GearSixIcon aria-hidden />}
 				</span>
 				{settings ? "Back to Thread" : "Settings"}
 			</DropdownMenuItem>

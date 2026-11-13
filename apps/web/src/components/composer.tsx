@@ -1,4 +1,4 @@
-import { ArrowUp } from "@/components/vuesax";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
@@ -118,7 +118,7 @@ export function ComposerSubmit({
 			className="grid size-6.5 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground transition-[transform,background-color,color,opacity] duration-150 ease-out outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame enabled:active:scale-95 disabled:pointer-events-none disabled:bg-primary/30 disabled:text-primary-foreground/40"
 			title={title ?? `${label} (Enter)`}
 		>
-			<ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
+			<ArrowUpIcon className="size-3.5" weight="bold" aria-hidden />
 		</button>
 	);
 }

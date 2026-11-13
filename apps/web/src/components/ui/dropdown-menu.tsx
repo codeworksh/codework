@@ -1,4 +1,4 @@
-import { Check as CheckIcon, ChevronRight as ChevronRightIcon } from "@/components/vuesax";
+import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
@@ -180,7 +180,7 @@ function DropdownMenuSubTrigger({
 			{...props}
 		>
 			{children}
-			<ChevronRightIcon className="ml-auto size-4" />
+			<CaretRightIcon className="ml-auto size-4" />
 		</DropdownMenuPrimitive.SubTrigger>
 	);
 }

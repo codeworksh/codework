@@ -1,15 +1,14 @@
 import { ProviderIcon } from "@/components/provider";
 import {
-	ArrowLeft,
-	GitBranch,
-	Link,
-	CornerDownLeft,
-	Folder,
-	FolderGit2,
-	FolderOpen,
-	FolderPlus,
-	FolderUp,
-} from "@/components/vuesax";
+	ArrowBendDownLeftIcon,
+	ArrowBendLeftUpIcon,
+	ArrowLeftIcon,
+	FolderIcon,
+	FolderOpenIcon,
+	FolderPlusIcon,
+	GitBranchIcon,
+	LinkIcon,
+} from "@phosphor-icons/react";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Cause, Option } from "effect";
@@ -130,7 +129,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 				value={step.query}
 				onValueChange={setQuery}
 				placeholder="Add a project from…"
-				icon={<FolderPlus />}
+				icon={<FolderPlusIcon />}
 				pop={pop}
 			/>
 			<CommandList className={PALETTE_LIST}>
@@ -140,7 +139,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 						<Row
 							value="source:finder"
 							keywords={["finder", "folder", "open", "dialog", "files"]}
-							icon={<FolderOpen />}
+							icon={<FolderOpenIcon />}
 							title={`Open ${fileManager}`}
 							detail={`Choose a folder in ${fileManager}`}
 							onSelect={() => pick(bridge.home)}
@@ -149,7 +148,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 					<Row
 						value="source:new"
 						keywords={["new project", "create", "empty", "repository", "git init"]}
-						icon={<FolderGit2 />}
+						icon={<FolderPlusIcon />}
 						title="New Project"
 						detail="Start a new Git repository from a name"
 						onSelect={() => push({ kind: "create" })}
@@ -157,7 +156,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 					<Row
 						value="source:local"
 						keywords={["local", "folder", "directory", "browse"]}
-						icon={<Folder />}
+						icon={<FolderIcon />}
 						title="Local Folder"
 						detail="Browse a folder on disk"
 						onSelect={() => push({ kind: "browse" }, BROWSE_START)}
@@ -165,7 +164,7 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 					<Row
 						value="source:url"
 						keywords={["clone", "remote", "repository", "repo", "git", "url"]}
-						icon={<Link />}
+						icon={<LinkIcon />}
 						title="Git URL"
 						detail="Clone from a remote URL"
 						onSelect={() => push({ kind: "remote", source: "url" })}
@@ -294,7 +293,7 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 				value={query}
 				onValueChange={(next) => (next === "" ? pop() : type(pastedPath(query, next)))}
 				placeholder="Enter path (e.g. ~/projects/my-app)"
-				icon={<Folder />}
+				icon={<FolderIcon />}
 				pop={pop}
 				onKeyDown={onKeyDown}
 				onPick={() => setPicked(true)}
@@ -303,13 +302,18 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 				{folders.browsing && (folders.up !== null || folders.visible.length > 0) && (
 					<CommandGroup heading="Directories">
 						{folders.up !== null && (
-							<Row value=".." icon={<FolderUp />} title=".." onSelect={() => enter(folders.up ?? query)} />
+							<Row
+								value=".."
+								icon={<ArrowBendLeftUpIcon />}
+								title=".."
+								onSelect={() => enter(folders.up ?? query)}
+							/>
 						)}
 						{folders.visible.map((entry) => (
 							<Row
 								key={entry.path}
 								value={`dir:${entry.name}`}
-								icon={<Folder />}
+								icon={<FolderIcon />}
 								title={entry.name}
 								onSelect={() => enter(`${folders.directory}${entry.name}/`)}
 							/>
@@ -334,7 +338,7 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 				start={
 					pick !== undefined && (
 						<Button variant="ghost" size="xs" onClick={() => pick(folders.resolved ?? bridge?.home ?? "")}>
-							<FolderOpen />
+							<FolderOpenIcon />
 							Open in {fileManager}
 						</Button>
 					)
@@ -401,7 +405,7 @@ function Create({ step, setQuery, pop, close }: Nav) {
 					setQuery(next);
 				}}
 				placeholder="Project name"
-				icon={<FolderGit2 />}
+				icon={<FolderPlusIcon />}
 				pop={pop}
 				onKeyDown={onKeyDown}
 				onPick={() => setPicked(true)}
@@ -421,7 +425,7 @@ function Create({ step, setQuery, pop, close }: Nav) {
 				<CommandGroup>
 					<Row
 						value="create:existing"
-						icon={<FolderPlus />}
+						icon={<FolderPlusIcon />}
 						title="Add existing project"
 						detail="Open a folder or clone a repository"
 						onSelect={pop}
@@ -489,7 +493,7 @@ function Remote({ step, setQuery, push, pop, source }: Nav & { source: "url" | "
 					setQuery(next);
 				}}
 				placeholder={github ? "Enter GitHub repository (owner/repo)" : "Enter Git clone URL"}
-				icon={github ? <ProviderIcon id="github" name="GitHub" className="size-4" /> : <Link />}
+				icon={github ? <ProviderIcon id="github" name="GitHub" className="size-4" /> : <LinkIcon />}
 				pop={pop}
 				onKeyDown={onKeyDown}
 			/>
@@ -556,7 +560,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 				value={query}
 				onValueChange={(next) => (next === "" ? pop() : type(pastedPath(query, next)))}
 				placeholder="Where to clone"
-				icon={<GitBranch />}
+				icon={<GitBranchIcon />}
 				pop={pop}
 				onKeyDown={onKeyDown}
 				onPick={() => setPicked(true)}
@@ -569,7 +573,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 						{folders.up !== null && (
 							<Row
 								value=".."
-								icon={<FolderUp />}
+								icon={<ArrowBendLeftUpIcon />}
 								title=".."
 								onSelect={() => enter(cloneTarget(folders.up ?? query, target.name))}
 							/>
@@ -578,7 +582,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 							<Row
 								key={entry.path}
 								value={`dir:${entry.name}`}
-								icon={<Folder />}
+								icon={<FolderIcon />}
 								title={entry.name}
 								onSelect={() => enter(into(folders.directory, entry.name))}
 							/>
@@ -645,7 +649,7 @@ function Input({
 						onClick={pop}
 						className="-ml-1 grid size-6 place-items-center rounded-md hover:bg-selection-subtle hover:text-ink"
 					>
-						<ArrowLeft strokeWidth={1.75} />
+						<ArrowLeftIcon />
 					</button>
 					{icon}
 				</span>
@@ -734,7 +738,7 @@ function Action({ disabled, onClick, children }: { disabled: boolean; onClick: (
 	return (
 		<Button size="xs" disabled={disabled} onClick={onClick}>
 			{children}
-			<CornerDownLeft aria-hidden />
+			<ArrowBendDownLeftIcon aria-hidden />
 		</Button>
 	);
 }

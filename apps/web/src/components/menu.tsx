@@ -1,4 +1,3 @@
-import { CheckIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 import {
@@ -8,14 +7,14 @@ import {
 	DropdownMenuSubContent,
 	DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Check } from "@/components/vuesax";
+import { CheckIcon } from "@phosphor-icons/react";
 
 /** Menu rows read as an OS menu's: 13px text and a 15px leading mark. */
 export const MENU_ROW = "text-[13px] [&_svg:not([class*='size-'])]:size-[15px]";
 
 /** Options named with an icon, as `MenuChoice` takes them: each icon drawn as its mark. */
 export const marked = <A extends string>(
-	options: ReadonlyArray<{ readonly value: A; readonly label: string; readonly icon: typeof Check }>,
+	options: ReadonlyArray<{ readonly value: A; readonly label: string; readonly icon: typeof CheckIcon }>,
 ) => options.map(({ icon: Icon, ...option }) => ({ ...option, mark: <Icon aria-hidden /> }));
 
 /** The current pick of a list, at the end of its row. */

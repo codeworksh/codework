@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "@phosphor-icons/react";
 import { Exit, Schema } from "effect";
 import { type ComponentType, createElement, type ReactNode } from "react";
 
@@ -47,7 +47,7 @@ export interface WidgetDefinition<Props> extends Navigation {
 	readonly kind: string;
 	/** Default frame title; an instance may override it. */
 	readonly title: string;
-	readonly icon: LucideIcon;
+	readonly icon: Icon;
 	/** Smallest usable size in CSS pixels; the layout never goes below it. */
 	readonly minWidth: number;
 	readonly minHeight: number;
@@ -67,7 +67,7 @@ export interface WidgetDefinition<Props> extends Navigation {
 export interface Widget extends Navigation {
 	readonly kind: string;
 	readonly title: string;
-	readonly icon: LucideIcon;
+	readonly icon: Icon;
 	readonly minWidth: number;
 	readonly minHeight: number;
 	readonly cardinality: "one" | "many";

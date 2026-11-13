@@ -1,4 +1,4 @@
-import { ChevronRight, CircleDashed, Folder, X } from "@/components/vuesax";
+import { CaretRightIcon, CircleNotchIcon, FolderIcon, XIcon } from "@phosphor-icons/react";
 import { RegistryContext, useAtomMount, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { type HistoryEntry, type LiveDelta, Part, type QueuedPrompt, type ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, useShell, type WidgetProps } from "@codeworksh/widget/view";
@@ -546,7 +546,7 @@ function Conversation({
 		setTitle(title, projectName);
 		// The project's folder icon, as in the sessions sidebar. The run's state shows on the workspace's tab
 		// just above, so the frame does not repeat it.
-		if (projectName !== undefined) setIcon(<Folder size={14} className="shrink-0 text-ink-muted" aria-hidden />);
+		if (projectName !== undefined) setIcon(<FolderIcon size={14} className="shrink-0 text-ink-muted" aria-hidden />);
 		// While focused, the workspace's tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
 	}, [settings, title, projectName, setTitle, setIcon, setTab]);
@@ -1151,13 +1151,12 @@ function WorkLog({
 				}
 			/>
 			{expandable && (
-				<ChevronRight
+				<CaretRightIcon
 					className={`absolute size-3.5 text-ink-muted transition-[opacity,transform] duration-150 ease-out ${
 						open
 							? "scale-100 rotate-90 opacity-100"
 							: "scale-90 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100"
 					}`}
-					strokeWidth={1.75}
 					aria-hidden
 				/>
 			)}
@@ -1284,13 +1283,12 @@ function WorkStepDetail({ open, children }: { readonly open: boolean; readonly c
 
 function StepChevron({ open }: { readonly open: boolean }) {
 	return (
-		<ChevronRight
+		<CaretRightIcon
 			className={`size-3.5 shrink-0 text-ink-muted transition-[transform,opacity] duration-150 ease-out ${
 				open
 					? "rotate-90 opacity-100"
 					: "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-visible:opacity-100"
 			}`}
-			strokeWidth={1.75}
 			aria-hidden
 		/>
 	);
@@ -1403,13 +1401,9 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 						))}
 				</span>
 				{running ? (
-					<CircleDashed
-						className="zen-tool-spin size-3.5 shrink-0 text-ink-muted"
-						strokeWidth={1.75}
-						aria-hidden
-					/>
+					<CircleNotchIcon className="zen-tool-spin size-3.5 shrink-0 text-ink-muted" aria-hidden />
 				) : (
-					failed && <X className="size-3.5 shrink-0 text-destructive" strokeWidth={2} aria-hidden />
+					failed && <XIcon className="size-3.5 shrink-0 text-destructive" weight="bold" aria-hidden />
 				)}
 				<StepChevron open={open} />
 			</button>

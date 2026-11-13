@@ -1,4 +1,4 @@
-import { RefreshCw } from "@/components/vuesax";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { ProviderIcon } from "@/components/provider";
@@ -160,7 +160,10 @@ export function ModelsSettings() {
 												className="text-ink-muted"
 												onClick={() => toggleOauth(account.id)}
 											>
-												<RefreshCw className={`size-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden />
+												<ArrowClockwiseIcon
+													className={`size-3.5 ${busy ? "animate-spin" : ""}`}
+													aria-hidden
+												/>
 												Refresh
 											</Button>
 											<Button

@@ -1,16 +1,16 @@
 import {
-	ChevronRight,
-	Plus,
-	WorkspaceIcon,
-	GripVertical,
-	Maximize2,
-	Minimize2,
-	MoreHorizontal,
-	Pin,
-	PinOff,
-	X,
-	type IconComponent,
-} from "@/components/vuesax";
+	CaretRightIcon,
+	CornersInIcon,
+	CornersOutIcon,
+	DotsSixVerticalIcon,
+	DotsThreeIcon,
+	type Icon,
+	PlusIcon,
+	PushPinIcon,
+	PushPinSlashIcon,
+	StackIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { isValidElement, type ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
@@ -111,14 +111,14 @@ export function Frame(props: FrameProps) {
 						ref={handleRef}
 						className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
 					>
-						{canDrag && <GripVertical className="size-3 shrink-0 text-ink-muted/40" aria-hidden />}
+						{canDrag && <DotsSixVerticalIcon className="size-3 shrink-0 text-ink-muted/40" aria-hidden />}
 						{icon !== undefined && <IconOf icon={icon} className="size-3.5 shrink-0 text-ink-muted" />}
 						{lead !== undefined && (
 							<>
 								<span className="max-w-1/3 shrink-0 truncate text-ui text-ink-muted" title={lead}>
 									{lead}
 								</span>
-								<ChevronRight className="size-3 shrink-0 text-ink-muted/40" strokeWidth={1.75} aria-hidden />
+								<CaretRightIcon className="size-3 shrink-0 text-ink-muted/40" aria-hidden />
 							</>
 						)}
 						<Title
@@ -128,13 +128,13 @@ export function Frame(props: FrameProps) {
 					</div>
 					<div className="flex shrink-0 items-center gap-0.5 border-l border-edge pl-2">
 						<Action
-							icon={pinned ? PinOff : Pin}
+							icon={pinned ? PushPinSlashIcon : PushPinIcon}
 							label={pinned ? "Unpin" : "Pin"}
 							active={pinned}
 							onClick={props.onPin}
 						/>
 						<Action
-							icon={maximized ? Minimize2 : Maximize2}
+							icon={maximized ? CornersInIcon : CornersOutIcon}
 							label={maximized ? "Restore" : "Maximize"}
 							active={false}
 							onClick={props.onMaximize}
@@ -142,7 +142,7 @@ export function Frame(props: FrameProps) {
 						<More destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew}>
 							{props.menu}
 						</More>
-						<Action icon={X} label="Close" active={false} onClick={props.onClose} />
+						<Action icon={XIcon} label="Close" active={false} onClick={props.onClose} />
 					</div>
 				</header>
 				{/* A collapsed frame keeps its widget mounted, so it keeps working and keeps its state. */}
@@ -173,19 +173,19 @@ function More({
 				title="More"
 				className={`${actionClass} data-[state=open]:bg-ink/8 data-[state=open]:text-ink`}
 			>
-				<MoreHorizontal className="size-3.5" strokeWidth={1.75} />
+				<DotsThreeIcon className="size-3.5" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="min-w-44">
 				<DropdownMenuSub>
 					<DropdownMenuSubTrigger className={`${MENU_ROW} [&>svg:last-child]:size-3.5`}>
-						<WorkspaceIcon strokeWidth={1.75} />
+						<StackIcon />
 						Move
 					</DropdownMenuSubTrigger>
 					{/* Shifted up by its padding and border, so its first row lines up with the trigger. */}
 					<DropdownMenuSubContent alignOffset={-5} className="max-w-64 min-w-44">
 						{destinations.map(({ id, name, position }) => (
 							<DropdownMenuItem key={id} title={name} className={MENU_ROW} onSelect={() => onMove(id)}>
-								<WorkspaceIcon strokeWidth={1.75} />
+								<StackIcon />
 								<span className="truncate">{name}</span>
 								<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
 							</DropdownMenuItem>
@@ -196,7 +196,7 @@ function More({
 							disabled={onMoveNew === undefined}
 							onSelect={() => onMoveNew?.()}
 						>
-							<Plus strokeWidth={1.75} />
+							<PlusIcon />
 							New Tab
 						</DropdownMenuItem>
 					</DropdownMenuSubContent>
@@ -211,7 +211,7 @@ const actionClass =
 	"grid size-6 place-items-center rounded-md text-ink-muted/80 transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-95 aria-pressed:text-ink";
 
 interface ActionProps {
-	readonly icon: IconComponent;
+	readonly icon: Icon;
 	readonly label: string;
 	readonly active: boolean;
 	readonly onClick: () => void;
@@ -227,12 +227,12 @@ function Action({ icon: Icon, label, active, onClick }: ActionProps) {
 			className={actionClass}
 			onClick={onClick}
 		>
-			<Icon className="size-3.5" strokeWidth={1.75} />
+			<Icon className="size-3.5" />
 		</button>
 	);
 }
 
 /** A frame icon as drawn: an element as given, a icon component at `className`. */
 export function IconOf({ icon: Icon, className }: { readonly icon: FrameIcon; readonly className?: string }) {
-	return isValidElement(Icon) ? Icon : <Icon className={className} strokeWidth={1.75} aria-hidden />;
+	return isValidElement(Icon) ? Icon : <Icon className={className} aria-hidden />;
 }

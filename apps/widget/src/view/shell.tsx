@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "@phosphor-icons/react";
 import { createContext, type ReactElement, useContext } from "react";
 
 import { isMac } from "./platform";
@@ -35,8 +35,8 @@ export interface Shell {
 	close(instanceId?: string): void;
 }
 
-/** A frame's icon: a Lucide icon, or an element drawn at icon size (a project's badge). */
-export type FrameIcon = LucideIcon | ReactElement;
+/** A frame's icon: a Phosphor icon, or an element drawn at icon size (a project's badge). */
+export type FrameIcon = Icon | ReactElement;
 
 export interface Frame {
 	readonly instanceId: string;

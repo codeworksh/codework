@@ -1,4 +1,4 @@
-import { Keyboard, Search, Undo2 } from "@/components/vuesax";
+import { ArrowCounterClockwiseIcon, KeyboardIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { isMac } from "@codeworksh/widget/view";
 import { type KeyboardEvent, useState } from "react";
 
@@ -201,14 +201,14 @@ export function KeybindingsSettings() {
 			actions={
 				hasCustom ? (
 					<Button size="sm" variant="secondary" onClick={() => setCustom({})}>
-						<Undo2 className="size-3.5" aria-hidden />
+						<ArrowCounterClockwiseIcon className="size-3.5" aria-hidden />
 						Reset all
 					</Button>
 				) : undefined
 			}
 		>
 			<div className="relative">
-				<Search
+				<MagnifyingGlassIcon
 					className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-ink-muted"
 					aria-hidden
 				/>
@@ -224,7 +224,7 @@ export function KeybindingsSettings() {
 
 			{filtered.length === 0 ? (
 				<EmptyState
-					icon={<Keyboard className="size-6" />}
+					icon={<KeyboardIcon className="size-6" />}
 					title="No matching shortcuts"
 					description={`No keybinding matches “${query}”.`}
 				/>
@@ -266,7 +266,7 @@ export function KeybindingsSettings() {
 															})
 														}
 													>
-														<Undo2 className="size-3.5" />
+														<ArrowCounterClockwiseIcon className="size-3.5" />
 													</Button>
 												)}
 												{item.fixed ? (

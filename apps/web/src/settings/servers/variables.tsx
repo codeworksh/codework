@@ -1,4 +1,4 @@
-import { Plus, Lock, LockOpen, X } from "@/components/vuesax";
+import { LockIcon, LockOpenIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import type { CliEnvVar } from "@codeworksh/contract";
 import { useState } from "react";
 
@@ -63,7 +63,7 @@ export function Variables({
 				className="self-start"
 				onClick={() => setRows((current) => [...current, rowOf({ name: "", value: "", sensitive: false })])}
 			>
-				<Plus />
+				<PlusIcon />
 				Add variable
 			</Button>
 			{rows.map((row, index) => (
@@ -106,7 +106,7 @@ export function Variables({
 							save(next);
 						}}
 					>
-						{row.sensitive ? <Lock className="text-info" /> : <LockOpen />}
+						{row.sensitive ? <LockIcon className="text-info" /> : <LockOpenIcon />}
 					</Button>
 					<Button
 						size="icon-xs"
@@ -119,7 +119,7 @@ export function Variables({
 							save(next);
 						}}
 					>
-						<X />
+						<XIcon />
 					</Button>
 				</span>
 			))}

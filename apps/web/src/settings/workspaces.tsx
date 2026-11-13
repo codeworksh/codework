@@ -1,4 +1,4 @@
-import { Plus, Trash2, WorkspaceIcon, GripVertical } from "@/components/vuesax";
+import { DotsSixVerticalIcon, PlusIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 
@@ -114,7 +114,7 @@ export function WorkspacesSettings() {
 					title={workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : undefined}
 					onClick={addWorkspace}
 				>
-					<Plus aria-hidden />
+					<PlusIcon aria-hidden />
 					{adding ? "Creating…" : "New workspace"}
 				</Button>
 			}
@@ -165,10 +165,10 @@ export function WorkspacesSettings() {
 									}}
 									onDragEnd={dragEnd}
 								>
-									<GripVertical className="size-4" aria-hidden />
+									<DotsSixVerticalIcon className="size-4" aria-hidden />
 								</button>
 								<span className="hidden size-9 shrink-0 items-center justify-center rounded-lg border border-edge bg-ink/3 text-ink-muted @min-[440px]:flex">
-									<WorkspaceIcon className="size-4" aria-hidden />
+									<StackIcon className="size-4" aria-hidden />
 								</span>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 									<div className="flex min-w-0 items-center gap-2">
@@ -196,7 +196,7 @@ export function WorkspacesSettings() {
 					})}
 					{listed.length === 0 && (
 						<div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
-							<WorkspaceIcon className="mb-1 size-6 text-ink-muted" aria-hidden />
+							<StackIcon className="mb-1 size-6 text-ink-muted" aria-hidden />
 							<p className="font-medium">No workspaces yet</p>
 							<p className="text-ink-muted">Create a workspace to organize your sessions.</p>
 						</div>
@@ -278,7 +278,7 @@ function DeleteButton({ workspace, onError }: RowProps) {
 					aria-label={`Delete ${workspace.name}`}
 					title={`Delete ${workspace.name}`}
 				>
-					<Trash2 />
+					<TrashIcon />
 				</Button>
 			</AlertDialogTrigger>
 			<AlertDialogContent>

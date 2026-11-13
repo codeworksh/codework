@@ -1,4 +1,4 @@
-import { Check, Copy, RefreshCw } from "@/components/vuesax";
+import { ArrowClockwiseIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { isMac } from "@codeworksh/widget/view";
 import { useState } from "react";
 
@@ -157,7 +157,7 @@ export function GeneralSettings() {
 								What’s new
 							</Button>
 							<Button size="sm" variant="secondary" disabled={checking} onClick={checkUpdates}>
-								<RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
+								<ArrowClockwiseIcon className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
 								{checking ? "Checking…" : "Check for updates"}
 							</Button>
 						</div>
@@ -172,7 +172,7 @@ export function GeneralSettings() {
 						}
 					>
 						<Button size="sm" variant="ghost" className="text-ink-muted" onClick={copyHome}>
-							{copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+							{copied ? <CheckIcon className="size-3.5 text-success" /> : <CopyIcon className="size-3.5" />}
 							{copied ? "Copied" : "Copy path"}
 						</Button>
 					</Row>

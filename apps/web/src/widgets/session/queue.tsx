@@ -1,12 +1,12 @@
 import {
-	Pencil,
-	SendHorizontal,
-	Trash2,
-	Undo2,
-	CornerDownRight,
-	ListEnd,
-	type IconComponent,
-} from "@/components/vuesax";
+	ArrowBendDownRightIcon,
+	ArrowCounterClockwiseIcon,
+	type Icon,
+	ListPlusIcon,
+	PaperPlaneRightIcon,
+	PencilSimpleIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
 import type { Delivery, QueuedPrompt } from "@codeworksh/widget/codework";
 import { useBus } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
@@ -150,12 +150,11 @@ export const Queue = memo(function Queue({
 					const pending = busy.has(prompt.id);
 					const draft = editing?.id === prompt.id ? editing.text : undefined;
 					// While idle both lanes wait for a wake, so the lane action is "send now".
-					const lane: { readonly label: string; readonly icon: IconComponent; readonly delivery: Delivery } =
-						!running
-							? { label: "Send Now", icon: SendHorizontal, delivery: "steer" }
-							: steer
-								? { label: "Queue as Follow Up", icon: ListEnd, delivery: "followUp" }
-								: { label: "Steer Now", icon: CornerDownRight, delivery: "steer" };
+					const lane: { readonly label: string; readonly icon: Icon; readonly delivery: Delivery } = !running
+						? { label: "Send Now", icon: PaperPlaneRightIcon, delivery: "steer" }
+						: steer
+							? { label: "Queue as Follow Up", icon: ListPlusIcon, delivery: "followUp" }
+							: { label: "Steer Now", icon: ArrowBendDownRightIcon, delivery: "steer" };
 					return (
 						<li
 							key={prompt.id}
@@ -238,19 +237,19 @@ export const Queue = memo(function Queue({
 											/>
 											<Action
 												label="Edit"
-												icon={Pencil}
+												icon={PencilSimpleIcon}
 												disabled={pending}
 												onClick={() => edit(prompt.id, prompt.text)}
 											/>
 											<Action
 												label="Back to Composer"
-												icon={Undo2}
+												icon={ArrowCounterClockwiseIcon}
 												disabled={pending}
 												onClick={() => void cancel(prompt, true)}
 											/>
 											<Action
 												label="Remove"
-												icon={Trash2}
+												icon={TrashIcon}
 												danger
 												disabled={pending}
 												onClick={() => void cancel(prompt, false)}
@@ -275,7 +274,7 @@ function Action({
 	onClick,
 }: {
 	readonly label: string;
-	readonly icon: IconComponent;
+	readonly icon: Icon;
 	readonly danger?: boolean;
 	readonly disabled: boolean;
 	readonly onClick: () => void;
@@ -289,7 +288,7 @@ function Action({
 			onClick={onClick}
 			className={`grid size-6 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/8 focus-visible:ring-2 focus-visible:ring-ring enabled:active:scale-95 disabled:pointer-events-none ${danger ? "hover:text-destructive" : "hover:text-ink"}`}
 		>
-			<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
+			<Icon className="size-3.5" aria-hidden />
 		</button>
 	);
 }

@@ -1,4 +1,4 @@
-import { Check } from "@/components/vuesax";
+import { CheckIcon } from "@phosphor-icons/react";
 import { useAtom } from "@effect/atom-react";
 
 import { isMac } from "@codeworksh/widget/view";
@@ -87,7 +87,7 @@ export function ThemesSettings() {
 										aria-hidden="true"
 										className="flex size-4 items-center justify-center rounded-full border border-edge group-has-checked:border-transparent group-has-checked:text-brand"
 									>
-										{selected && <Check className="size-4" />}
+										{selected && <CheckIcon className="size-4" />}
 									</span>
 								</span>
 							</label>

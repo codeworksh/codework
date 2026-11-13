@@ -1,14 +1,14 @@
 import {
-	Check,
-	ChevronRight,
-	Copy,
-	DocumentText,
-	Plus,
-	RefreshCw,
-	Search,
-	Sparkles,
-	Trash2,
-} from "@/components/vuesax";
+	ArrowClockwiseIcon,
+	CaretRightIcon,
+	CheckIcon,
+	CopyIcon,
+	FileTextIcon,
+	MagnifyingGlassIcon,
+	PlusIcon,
+	SparkleIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -126,11 +126,11 @@ export function SkillsSettings() {
 			actions={
 				<div className="flex items-center gap-2">
 					<Button size="sm" variant="ghost" disabled={refreshing} className="text-ink-muted" onClick={refresh}>
-						<RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+						<ArrowClockwiseIcon className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
 						<span className="hidden @min-[560px]:inline">{refreshing ? "Scanning…" : "Refresh"}</span>
 					</Button>
 					<Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						Add Skill
 					</Button>
 				</div>
@@ -138,7 +138,7 @@ export function SkillsSettings() {
 		>
 			<div className="flex flex-col gap-3 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:justify-between">
 				<div className="relative flex-1">
-					<Search
+					<MagnifyingGlassIcon
 						className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-ink-muted"
 						aria-hidden
 					/>
@@ -167,7 +167,7 @@ export function SkillsSettings() {
 			<Section title={`Discovered Skills (${visible.length})`}>
 				{visible.length === 0 ? (
 					<EmptyState
-						icon={<Sparkles className="size-6" />}
+						icon={<SparkleIcon className="size-6" />}
 						title="No matching skills"
 						description={
 							query.trim() !== ""
@@ -192,7 +192,7 @@ export function SkillsSettings() {
 											className="flex min-w-0 flex-1 items-start gap-3 text-left outline-none"
 										>
 											<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-edge bg-ink/3 text-ink-muted">
-												<DocumentText className="size-4" strokeWidth={1.75} aria-hidden />
+												<FileTextIcon className="size-4" aria-hidden />
 											</span>
 											<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 												<div className="flex flex-wrap items-center gap-2">
@@ -202,7 +202,7 @@ export function SkillsSettings() {
 												<p className="truncate text-xs text-ink-muted">{skill.description}</p>
 												<span className="truncate font-mono text-2xs text-ink-muted/75">{skill.path}</span>
 											</div>
-											<ChevronRight
+											<CaretRightIcon
 												className={`mt-1 size-4 shrink-0 text-ink-muted transition-transform ${
 													previewing ? "rotate-90" : ""
 												}`}
@@ -219,9 +219,9 @@ export function SkillsSettings() {
 												onClick={() => copyPath(skill)}
 											>
 												{copied ? (
-													<Check className="size-3.5 text-success" />
+													<CheckIcon className="size-3.5 text-success" />
 												) : (
-													<Copy className="size-3.5" />
+													<CopyIcon className="size-3.5" />
 												)}
 											</Button>
 											{skill.scope !== "builtin" && (
@@ -235,7 +235,7 @@ export function SkillsSettings() {
 														setSkills((current) => current.filter((item) => item.id !== skill.id))
 													}
 												>
-													<Trash2 className="size-3.5" />
+													<TrashIcon className="size-3.5" />
 												</Button>
 											)}
 											<Switch

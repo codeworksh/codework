@@ -1,4 +1,4 @@
-import { Minus, Plus, RefreshCw, Undo2 } from "@/components/vuesax";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { DEFAULT_SERVER_HEALTH, type LocalServerStatus } from "@codeworksh/contract";
 
@@ -55,13 +55,13 @@ export function ServersSettings() {
 						className="text-ink-muted"
 						onClick={() => runCheck({ payload: undefined })}
 					>
-						<RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
+						<ArrowClockwiseIcon className={`size-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
 						<span className="hidden @min-[640px]:inline">
 							{checking ? "Checking…" : <Checked at={servers} />}
 						</span>
 					</Button>
 					<Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						Add Provider
 					</Button>
 				</div>
@@ -146,7 +146,7 @@ function HealthInterval() {
 						className="-my-1 disabled:invisible"
 						onClick={() => set(DEFAULT_SERVER_HEALTH.interval)}
 					>
-						<Undo2 />
+						<ArrowCounterClockwiseIcon />
 					</Button>
 				</span>
 			}
@@ -162,7 +162,7 @@ function HealthInterval() {
 							disabled={interval === 0}
 							onClick={() => set(Math.max(0, interval - STEP))}
 						>
-							<Minus />
+							<MinusIcon />
 						</Button>
 						<SavingInput
 							value={String(interval)}
@@ -176,7 +176,7 @@ function HealthInterval() {
 							aria-label="Increase health check interval"
 							onClick={() => set(interval + STEP)}
 						>
-							<Plus />
+							<PlusIcon />
 						</Button>
 					</div>
 					<span className="text-xs text-ink-muted">seconds</span>
