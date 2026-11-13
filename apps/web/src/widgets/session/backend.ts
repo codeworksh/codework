@@ -41,6 +41,8 @@ const toInfo = (thread: LineThread): Info => {
 	const failure = failureOf(thread);
 	return {
 		title: thread.title ?? UNTITLED,
+		machineId: thread.machineId,
+		spaceId: thread.spaceId,
 		updated: thread.updatedAt,
 		runState: thread.runState,
 		stopping: stopping(thread),

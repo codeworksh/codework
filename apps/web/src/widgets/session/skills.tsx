@@ -8,6 +8,7 @@ import { ChevronDown } from "@/components/vuesax";
 import { Server } from "../../kernel/rpc";
 import { useElementSize } from "../../wm/size";
 import { useNowMinute } from "@/hooks/now";
+import { capitalized } from "@/lib/utils";
 import { ago } from "../time";
 import { Row, Section, Tag, useTilde } from "./config";
 
@@ -19,26 +20,31 @@ const decodeState = Schema.decodeUnknownOption(SyncState);
  */
 const skillsAtom = Atom.family((key: string) => {
 	const [machineId = "", projectId = ""] = key.split("/");
-	return Server.runtime.atom(
-		Stream.unwrap(
-			Server.use((client) =>
-				Effect.succeed(
-					client("event.subscribe", { topics: [syncTopics.state] }).pipe(
-						Stream.filter(
-							(item) =>
-								"_tag" in item ||
-								Option.exists(
-									decodeState(item.payload),
-									(state) => state.machineId === machineId && state.type === "plugin.skills.list",
-								),
+	return Server.runtime
+		.atom(
+			Stream.unwrap(
+				Server.use((client) =>
+					Effect.succeed(
+						client("event.subscribe", { topics: [syncTopics.state] }).pipe(
+							Stream.filter(
+								(item) =>
+									"_tag" in item ||
+									Option.exists(
+										decodeState(item.payload),
+										(state) => state.machineId === machineId && state.type === "plugin.skills.list",
+									),
+							),
+							Stream.debounce("50 millis"),
+							Stream.mapEffect(() => client("projects.skills", { machineId, projectId })),
 						),
-						Stream.debounce("50 millis"),
-						Stream.mapEffect(() => client("projects.skills", { machineId, projectId })),
 					),
 				),
-			),
-		).pipe(Stream.retry(Schedule.spaced("1 second"))),
-	);
+			).pipe(Stream.retry(Schedule.spaced("1 second"))),
+		)
+		.pipe(
+			// Kept a while after the page closes: coming back shows the last list at once instead of loading again.
+			Atom.setIdleTTL("5 minutes"),
+		);
 });
 
 /** A checkout's role, as its group says it; a folder that is not a repository needs none. */
@@ -64,8 +70,6 @@ const foldOf = <A,>(items: ReadonlyArray<A>, limit: number, open: boolean) => {
 
 /** A sandbox by the provider's own id, or by ours until the provider has named it. */
 const sandboxIdOf = ({ space, sandbox }: SpaceSkills) => sandbox?.providerResourceId ?? space.env ?? "";
-
-const capitalized = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 /**
  * The skills sessions in this project see, one group per space: read-only, since a skill is a file
@@ -119,11 +123,18 @@ function Grow({ children }: { readonly children: ReactNode }) {
 	);
 }
 
-/** A header and one row: less than the list it stands for, so the list only grows from it. */
+/**
+ * A header and one row: less than the list it stands for, so the list only grows from it. It fades in
+ * only after a moment, so a quick load goes straight to the list without a flash of bars.
+ */
 function Placeholder() {
 	const bar = "rounded-sm bg-ink/6 motion-safe:animate-pulse";
 	return (
-		<div aria-busy="true" aria-label="Loading skills" className="flex flex-col divide-y divide-edge/60">
+		<div
+			aria-busy="true"
+			aria-label="Loading skills"
+			className="flex flex-col divide-y divide-edge/60 animate-in fade-in-0 delay-300 duration-500 ease-out fill-mode-both motion-reduce:animate-none"
+		>
 			<div className="flex flex-col gap-1.5 bg-ink/2 px-4 py-2.5">
 				<span className={`h-3 w-24 ${bar}`} />
 				<span className={`h-2.5 w-64 max-w-full ${bar}`} />
@@ -149,7 +160,7 @@ function SpaceGroup({ entry }: { readonly entry: SpaceSkills }) {
 		<div
 			role="group"
 			aria-labelledby={id}
-			className="flex flex-col divide-y divide-edge/60 transition-opacity duration-200 ease-out starting:opacity-0"
+			className="flex flex-col divide-y divide-edge/60 transition-opacity duration-300 ease-out starting:opacity-0 motion-reduce:transition-none"
 		>
 			{/* Where the space is, then its folder; a sandbox says when it was last read, any space that it never was. */}
 			<div className="flex flex-col gap-0.5 bg-ink/2 px-4 py-2 text-xs text-ink-muted">

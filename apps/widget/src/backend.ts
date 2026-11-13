@@ -75,6 +75,8 @@ export const LineThread = Schema.Struct({
 	id: Schema.String,
 	sessionId: Schema.String,
 	machineId: Schema.String,
+	/** The space its session is placed in. */
+	spaceId: Schema.String,
 	/** Its own, else its nearest titled ancestor's by the line's walk; absent while none has one. */
 	title: Schema.optionalKey(Schema.String),
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),

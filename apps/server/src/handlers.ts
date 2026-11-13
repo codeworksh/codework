@@ -1,6 +1,7 @@
 import type * as Mirror from "@codeworksh/widget/codework";
 import { Effect, Predicate, Stream } from "effect";
 import { SqlClient } from "effect/sql";
+import { Changes } from "./changes.ts";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
 import {
@@ -99,6 +100,10 @@ export const layer = Contract.Api.toLayer(
 			"projects.spaces": (input) => Reads.spaces(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"projects.skills": (input) =>
 				Skills.list(input, sync.client(input.machineId)).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"changes.status": (input) => Changes.status(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"changes.space": (input) =>
+				Changes.space(input, sync.client(input.machineId)).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"changes.diff": (input) => Changes.diff(input, sync.client(input.machineId)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 

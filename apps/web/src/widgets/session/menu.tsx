@@ -1,4 +1,5 @@
 import type { Priority } from "@codeworksh/contract";
+import { GitDiffIcon } from "@phosphor-icons/react";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -20,6 +21,7 @@ import {
 	StatusIcon,
 } from "../threads/marks";
 import { threadRef } from "./address";
+import { threadKey } from "./schema";
 
 /**
  * The list the menu reads its thread from. Its frame keeps it mounted, so the menu opens with its
@@ -30,6 +32,12 @@ export const menuThreads = threadsAtom("status");
 /** The session frames showing their project's settings in place of their thread, by instance id. */
 const settingsAtom = Atom.make<ReadonlyArray<string>>([]).pipe(Atom.keepAlive);
 
+/**
+ * The address of the changes in each thread's space, by thread key: known once a view has loaded the
+ * thread, which the menu, outside the view, cannot do itself.
+ */
+export const changesAtom = Atom.family((_key: string) => Atom.make<string | undefined>(undefined).pipe(Atom.keepAlive));
+
 /** Whether a session frame shows its project's settings, and the switch between them and its thread. */
 export function useSettings(instanceId: string) {
 	const [frames, setFrames] = useAtom(settingsAtom);
@@ -38,19 +46,34 @@ export function useSettings(instanceId: string) {
 	return [frames.includes(instanceId), set] as const;
 }
 
-/** A session frame's menu rows: its thread's, then its project's settings below a divider. */
+/**
+ * A session frame's menu rows: its thread's, then its space's changes and its project's settings
+ * below a divider. `onOpen` opens an address beside the frame.
+ */
 export function ThreadMenu({
 	address,
 	instanceId,
+	onOpen,
 }: {
 	readonly address: string | undefined;
 	readonly instanceId: string;
+	readonly onOpen: (address: string) => void;
 }) {
 	const [settings, setSettings] = useSettings(instanceId);
+	const ref = threadRef(address);
+	const changes = useAtomValue(changesAtom(ref === undefined ? "" : threadKey(ref)));
 	return (
 		<>
 			<ThreadRows address={address} />
 			<DropdownMenuSeparator />
+			{changes !== undefined && (
+				<DropdownMenuItem className={MENU_ROW} onSelect={() => onOpen(changes)}>
+					<span className="grid size-[15px] shrink-0 place-items-center">
+						<GitDiffIcon aria-hidden />
+					</span>
+					Git Changes
+				</DropdownMenuItem>
+			)}
 			<DropdownMenuItem className={MENU_ROW} onSelect={() => setSettings(!settings)}>
 				<span className="grid size-[15px] shrink-0 place-items-center">
 					{settings ? <MessageSquare aria-hidden /> : <Settings aria-hidden />}
