@@ -260,7 +260,7 @@ export const layer = Layer.effect(
 			});
 
 		/**
-		 * The builtin space daemons' events, into `space_state`. A subscription opens with each space's
+		 * The builtin space daemons' events, into `machine_space_state`. A subscription opens with each space's
 		 * last event: it is (re)started after an index batch mirrored spaces, so that replay finds their
 		 * rows, and again whenever it fails or ends. Only a newer event replaces a row.
 		 */
@@ -276,12 +276,12 @@ export const layer = Layer.effect(
 						yield* transact((append) =>
 							Effect.gen(function* () {
 								const written = yield* sql<{ spaceId: string }>`
-									INSERT INTO space_state (machine_id, space_id, type, data, observed_at)
+									INSERT INTO machine_space_state (machine_id, space_id, type, data, observed_at)
 									SELECT ${machineId}, ${spaceId}, ${frame.type}, ${text}, ${observedAt}
 									WHERE EXISTS (SELECT 1 FROM space WHERE machine_id = ${machineId} AND id = ${spaceId})
 									ON CONFLICT (machine_id, space_id, type) DO UPDATE
 									SET data = excluded.data, observed_at = excluded.observed_at
-									WHERE space_state.observed_at < excluded.observed_at
+									WHERE machine_space_state.observed_at < excluded.observed_at
 									RETURNING space_id
 								`;
 								if (written.length === 0) return;
