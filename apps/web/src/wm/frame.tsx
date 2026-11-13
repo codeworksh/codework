@@ -111,7 +111,9 @@ export function Frame(props: FrameProps) {
 						ref={handleRef}
 						className={`flex min-w-0 flex-1 items-center gap-1.5 py-1 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}
 					>
-						{canDrag && <DotsSixVerticalIcon className="size-3 shrink-0 text-ink-muted/40" aria-hidden />}
+						{canDrag && (
+							<DotsSixVerticalIcon weight="bold" className="size-3 shrink-0 text-ink-muted" aria-hidden />
+						)}
 						{icon !== undefined && <IconOf icon={icon} className="size-3.5 shrink-0 text-ink-muted" />}
 						{lead !== undefined && (
 							<>

@@ -143,7 +143,7 @@ export function WorkspacesSettings() {
 									aria-label={`Reorder ${workspace.name}`}
 									title="Drag to reorder, or use the up and down arrow keys"
 									aria-describedby="workspace-order-help"
-									className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-ink-muted/50 outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-brand active:cursor-grabbing disabled:cursor-default disabled:opacity-30"
+									className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-brand active:cursor-grabbing disabled:cursor-default disabled:opacity-30"
 									onKeyDown={(event) => {
 										if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 										event.preventDefault();
@@ -165,7 +165,7 @@ export function WorkspacesSettings() {
 									}}
 									onDragEnd={dragEnd}
 								>
-									<DotsSixVerticalIcon className="size-4" aria-hidden />
+									<DotsSixVerticalIcon weight="bold" className="size-4" aria-hidden />
 								</button>
 								<span className="hidden size-9 shrink-0 items-center justify-center rounded-lg border border-edge bg-ink/3 text-ink-muted @min-[440px]:flex">
 									<StackIcon className="size-4" aria-hidden />

@@ -254,8 +254,24 @@
 	backdrop-filter: none;
 }
 
-/* The sidebar opens and closes at once, from its button or its shortcut alike: it is toggled many times a
- * day, and tweening the content edge reflows the transcript and composer on every frame. */
+/* The sidebar slides while the content edge and the title bar's controls follow it, all on one curve so
+ * they move as a unit. Hiding keeps it visible until the slide ends; a drag-resize tracks the pointer. */
+.app-shell [data-slot="sidebar"] > .shell-sidebar {
+	transition:
+		transform 200ms var(--ease-drawer),
+		visibility 0s;
+}
+.app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
+	transition:
+		transform 200ms var(--ease-drawer),
+		visibility 0s 200ms;
+}
+.app-shell :is([data-slot="sidebar-gap"], [data-slot="sidebar-navigation"]) {
+	transition: width 200ms var(--ease-drawer);
+}
+.app-shell[data-resizing] :is([data-slot="sidebar-gap"], [data-slot="sidebar-navigation"]) {
+	transition: none;
+}
 
 @property --composer-height {
 	syntax: "<length>";
