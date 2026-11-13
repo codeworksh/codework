@@ -20,7 +20,7 @@ This file is the canonical source for unreleased changes and published release n
 - `event.subscribe` takes `types`: only those types, and first the last event of each type per space.
 - `space.mount.attached` and `space.mount.detached` events: a run's drain mounting and releasing its space.
 - `@codeworksh/plugin/plugin/daemon`: the daemon plugin contract (space scope).
-- The desktop's project Skills section updates as runs change a space's skills, and says "not synced yet" for a space never read.
+- The desktop's project settings list each space's Skills as its skills daemon last published them, kept in `app.db`: they update as runs change them, a stopped sandbox shows its last list and its age, and a space never read says "not synced yet".
 
 ### Changed
 
@@ -30,13 +30,11 @@ This file is the canonical source for unreleased changes and published release n
 - The GitHub Copilot missing-key message ends with "or authenticate with GitHub Copilot".
 - Desktop notice titles are title case, and a failed reply's error no longer repeats as a notice.
 - `vp run knip:check` reports unused exports in `packages/aikit`, `packages/codework`, `packages/harness` and `packages/plugin` as well as the apps. Modules other than a package's entry points no longer re-export themselves as a namespace (`export * as X from "./x.ts"`); their importers use `import * as X`, so knip sees which members are used.
-- The desktop's project Skills come from what each space's skills daemon last published, kept in `app.db`, instead of a read when the page opens. A stopped sandbox shows its last list and its age.
 
 ### Removed
 
 - Internal exports nothing imported, across aikit, codework, harness and plugin. Those also unused inside their own module are deleted, among them harness's `PluginStore.remove` and `PluginStore.all`, the `ToolRegistry` service and its layer, `Space.layerWith`, `Worktree.layerWith` and `Worktree.defaultLayer`. Package entry points are unchanged except as below.
 - `@codeworksh/harness/effect`: `Global.defaultLayer`, a duplicate of `Global.layer`.
-- The CLI server's `skill.list` RPC and `Skill.list` in `@codeworksh/harness/effect`: the skills daemon publishes skills instead.
 
 ### Fixed
 
@@ -46,7 +44,6 @@ This file is the canonical source for unreleased changes and published release n
 
 - `@codeworksh/plugin`: `Settings.defaults.model` names no model, and `Settings.Info.model.provider` and `.id` are optional.
 - `@codeworksh/harness/effect`: `State.layer` requires `ModelCatalog.Credentials`.
-- `@codeworksh/harness/effect`: the `Skill` export is removed.
 
 ## [@codeworksh/desktop@0.4.0] - 2026-11-06
 
