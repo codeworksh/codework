@@ -26,7 +26,7 @@ export const list = Effect.fn("Skills.list")(function* (
 		Effect.orElseSucceed(() => []),
 	);
 	const kept = yield* sql<{ spaceId: string; data: string; observedAt: number }>`
-		SELECT space_id, data, observed_at FROM space_state
+		SELECT space_id, data, observed_at FROM machine_space_state
 		WHERE machine_id = ${input.machineId} AND type = 'plugin.skills.list'
 	`.pipe(Effect.orDie);
 	return spaces.map((space): SpaceSkills => {

@@ -137,7 +137,7 @@ const migrations = {
 		// What each space's daemons last published (git status, skills), mirrored from CodeWork's event
 		// stream: a stopped sandbox is shown from here, never woken.
 		yield* sql`
-			CREATE TABLE space_state (
+			CREATE TABLE machine_space_state (
 				machine_id TEXT NOT NULL,
 				space_id TEXT NOT NULL,
 				type TEXT NOT NULL,

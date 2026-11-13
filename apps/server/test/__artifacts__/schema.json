@@ -74,6 +74,12 @@
 		},
 		{
 			"type": "table",
+			"name": "machine_space_state",
+			"tbl_name": "machine_space_state",
+			"sql": "CREATE TABLE machine_space_state ( machine_id TEXT NOT NULL, space_id TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL, observed_at INTEGER NOT NULL, PRIMARY KEY (machine_id, space_id, type), FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE )"
+		},
+		{
+			"type": "table",
 			"name": "organization",
 			"tbl_name": "organization",
 			"sql": "CREATE TABLE organization ( id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
@@ -137,12 +143,6 @@
 			"name": "space_project_idx",
 			"tbl_name": "space",
 			"sql": "CREATE INDEX space_project_idx ON space (machine_id, project_id)"
-		},
-		{
-			"type": "table",
-			"name": "space_state",
-			"tbl_name": "space_state",
-			"sql": "CREATE TABLE space_state ( machine_id TEXT NOT NULL, space_id TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL, observed_at INTEGER NOT NULL, PRIMARY KEY (machine_id, space_id, type), FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE )"
 		},
 		{
 			"type": "table",

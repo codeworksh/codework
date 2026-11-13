@@ -27,7 +27,7 @@ afterAll(cleanup);
 
 /*
  * The desktop's Skills section without a read on demand: a real CodeWork server's skills daemon
- * publishes, the app server mirrors it into `space_state` and tells the UI which space changed, and
+ * publishes, the app server mirrors it into `machine_space_state` and tells the UI which space changed, and
  * `projects.skills` answers from the mirror.
  */
 it("mirrors a space's skills from its daemon into the app and serves them from there", async () => {
@@ -59,7 +59,7 @@ it("mirrors a space's skills from its daemon into the app and serves them from t
 	const stored = () =>
 		query(
 			appHome,
-			"SELECT type, data FROM space_state WHERE machine_id = ? AND space_id = ? ORDER BY type",
+			"SELECT type, data FROM machine_space_state WHERE machine_id = ? AND space_id = ? ORDER BY type",
 			machineId,
 			spaceId,
 		).map((row) => ({ type: row.type, data: JSON.parse(row.data as string) as Record<string, unknown> }));
