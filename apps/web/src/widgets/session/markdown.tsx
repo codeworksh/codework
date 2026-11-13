@@ -1,4 +1,4 @@
-import { Check, Copy } from "@/components/vuesax";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useAtomValue } from "@effect/atom-react";
 
 import {
@@ -54,18 +54,16 @@ function CopyButton({ text }: { readonly text: string }) {
 			className="grid size-6 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
 			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
 		>
-			<Copy
+			<CopyIcon
 				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
 					copied ? "scale-75 opacity-0 blur-[2px]" : "scale-100 opacity-100"
 				}`}
-				strokeWidth={1.75}
 				aria-hidden
 			/>
-			<Check
+			<CheckIcon
 				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
 					copied ? "scale-100 opacity-100" : "scale-75 opacity-0 blur-[2px]"
 				}`}
-				strokeWidth={1.75}
 				aria-hidden
 			/>
 		</button>

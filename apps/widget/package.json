@@ -14,15 +14,15 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@phosphor-icons/react": "2.1.10",
 		"@types/react": "^19.3.0",
 		"effect": "4.0.5",
-		"lucide-react": "^1.52.0",
 		"react": "^19.3.0",
 		"typescript": "catalog:"
 	},
 	"peerDependencies": {
+		"@phosphor-icons/react": "2.1.10",
 		"effect": "4.0.5",
-		"lucide-react": "^1.52.0",
 		"react": "^19.3.0"
 	}
 }

@@ -1,4 +1,4 @@
-import { Check, Copy, GitFork } from "@/components/vuesax";
+import { CheckIcon, CopyIcon, GitForkIcon } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 
 /** Wall-clock stamp for a message or finished turn, in the reader's own locale. */
@@ -24,18 +24,16 @@ function CopyButton({ text, label }: { readonly text: string; readonly label: st
 			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
 			className="-ml-1 grid place-items-center rounded-md p-1 text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/8 hover:text-ink active:scale-95"
 		>
-			<Copy
+			<CopyIcon
 				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
 					copied ? "scale-75 opacity-0 blur-[2px]" : "scale-100 opacity-100"
 				}`}
-				strokeWidth={1.75}
 				aria-hidden
 			/>
-			<Check
+			<CheckIcon
 				className={`col-start-1 row-start-1 size-3.5 transition-[transform,opacity,filter] duration-150 ease-out ${
 					copied ? "scale-100 opacity-100" : "scale-75 opacity-0 blur-[2px]"
 				}`}
-				strokeWidth={1.75}
 				aria-hidden
 			/>
 		</button>
@@ -51,7 +49,7 @@ function ForkButton({ onFork }: { readonly onFork: () => void }) {
 			onClick={onFork}
 			className="-ml-1 rounded-md p-1 text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/8 hover:text-ink active:scale-95"
 		>
-			<GitFork className="size-3.5" strokeWidth={1.75} aria-hidden />
+			<GitForkIcon className="size-3.5" aria-hidden />
 		</button>
 	);
 }
@@ -124,7 +122,7 @@ export function Message({
 						{hasCopy ? (
 							<CopyButton text={copyText} label="Copy response" />
 						) : (
-							<Check className="size-3.5 text-ink-muted" strokeWidth={1.75} aria-hidden />
+							<CheckIcon className="size-3.5 text-ink-muted" aria-hidden />
 						)}
 						{onFork !== undefined && <ForkButton onFork={onFork} />}
 					</span>

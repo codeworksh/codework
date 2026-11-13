@@ -412,15 +412,15 @@ importers:
 
   apps/widget:
     devDependencies:
+      '@phosphor-icons/react':
+        specifier: 2.1.10
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
       effect:
         specifier: 4.0.5
         version: 4.0.5
-      lucide-react:
-        specifier: ^1.52.0
-        version: 1.58.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: ^19.3.0
         version: 19.3.1

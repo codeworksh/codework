@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { Folder } from "@/components/vuesax";
+import { FolderIcon } from "@phosphor-icons/react";
 import { useContext, useState } from "react";
 
 import { NoticeSlot } from "@/components/banner";
@@ -130,7 +130,7 @@ export function Landing() {
 									onClick={addProject}
 									className="-ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 								>
-									<Folder className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+									<FolderIcon className="size-3.5 shrink-0" aria-hidden />
 									<span className="truncate">{placeLabel(place)}</span>
 								</button>
 								{error !== undefined && (

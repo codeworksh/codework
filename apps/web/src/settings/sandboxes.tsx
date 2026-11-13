@@ -1,4 +1,4 @@
-import { Box, FolderTree, GitBranch, Plus, Square, Trash2 } from "@/components/vuesax";
+import { CubeIcon, GitBranchIcon, PlusIcon, StopIcon, TrashIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -168,7 +168,7 @@ export function SandboxesSettings() {
 						<div key={driver.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 							<div className="flex min-w-0 flex-1 items-start gap-3">
 								<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-edge bg-ink/3 text-ink-muted">
-									<Box className="size-4" strokeWidth={1.75} aria-hidden />
+									<CubeIcon className="size-4" aria-hidden />
 								</span>
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 									<div className="flex flex-wrap items-center gap-2">
@@ -184,7 +184,7 @@ export function SandboxesSettings() {
 							</div>
 							{(driver.id === "memory" || driver.id === "vercel") && (
 								<Button size="sm" variant="secondary" onClick={() => provisionSandbox(driver.id)}>
-									<Plus className="size-3.5" aria-hidden />
+									<PlusIcon className="size-3.5" aria-hidden />
 									Start instance
 								</Button>
 							)}
@@ -196,7 +196,7 @@ export function SandboxesSettings() {
 			<Section title={`Active Sandbox Instances (${instances.length})`}>
 				{instances.length === 0 ? (
 					<EmptyState
-						icon={<Box className="size-6" />}
+						icon={<CubeIcon className="size-6" />}
 						title="No active sandboxes"
 						description="Managed sandboxes start automatically when a session requests one and stop when you end them."
 					/>
@@ -221,7 +221,7 @@ export function SandboxesSettings() {
 									variant="secondary"
 									onClick={() => setInstances((current) => current.filter((item) => item.id !== instance.id))}
 								>
-									<Square className="size-3" aria-hidden />
+									<StopIcon className="size-3" aria-hidden />
 									Stop
 								</Button>
 							</div>
@@ -236,13 +236,13 @@ export function SandboxesSettings() {
 						Linked worktrees let sessions work on separate branches concurrently without stashing.
 					</span>
 					<Button size="sm" variant="secondary" onClick={() => setCreatingWorktree(true)}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						Create Worktree
 					</Button>
 				</div>
 				{worktrees.length === 0 ? (
 					<EmptyState
-						icon={<FolderTree className="size-6" />}
+						icon={<TreeStructureIcon className="size-6" />}
 						title="No additional worktrees"
 						description="Create a worktree to run sessions on another branch in an isolated folder."
 					/>
@@ -252,13 +252,13 @@ export function SandboxesSettings() {
 							<div key={tree.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
 								<div className="flex min-w-0 flex-1 items-start gap-3">
 									<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-edge bg-ink/3 text-ink-muted">
-										<FolderTree className="size-4" strokeWidth={1.75} aria-hidden />
+										<TreeStructureIcon className="size-4" aria-hidden />
 									</span>
 									<div className="flex min-w-0 flex-1 flex-col gap-1">
 										<div className="flex flex-wrap items-center gap-2">
 											<span className="font-medium text-ink">{tree.name}</span>
 											<span className="inline-flex items-center gap-1 rounded-md bg-ink/6 px-1.5 py-0.5 font-mono text-2xs text-ink-secondary">
-												<GitBranch className="size-3" aria-hidden />
+												<GitBranchIcon className="size-3" aria-hidden />
 												{tree.branch}
 											</span>
 											<Badge tone={tree.dirty ? "warning" : "success"}>
@@ -280,7 +280,7 @@ export function SandboxesSettings() {
 									className="text-ink-muted hover:text-destructive"
 									onClick={() => setWorktrees((current) => current.filter((item) => item.id !== tree.id))}
 								>
-									<Trash2 className="size-3.5" />
+									<TrashIcon className="size-3.5" />
 								</Button>
 							</div>
 						))}

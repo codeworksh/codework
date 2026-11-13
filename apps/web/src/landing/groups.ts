@@ -1,6 +1,6 @@
 import type { Priority, SidebarProject, SidebarSession, ThreadStatus } from "@codeworksh/contract";
 import { Option, Schema } from "effect";
-import { Activity, Clock, Flag, Folder, SquarePlus } from "@/components/vuesax";
+import { ClockIcon, FlagIcon, FolderIcon, PlusSquareIcon, PulseIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { PRIORITIES, PRIORITY, STATUS, STATUSES } from "../widgets/threads/marks";
@@ -15,19 +15,19 @@ export type Display = typeof Display.Type;
 export const GROUPS: ReadonlyArray<{
 	readonly value: Display["group"];
 	readonly label: string;
-	readonly icon: typeof Folder;
+	readonly icon: typeof FolderIcon;
 }> = [
-	{ value: "project", label: "Project", icon: Folder },
-	{ value: "status", label: "Status", icon: Activity },
-	{ value: "priority", label: "Priority", icon: Flag },
+	{ value: "project", label: "Project", icon: FolderIcon },
+	{ value: "status", label: "Status", icon: PulseIcon },
+	{ value: "priority", label: "Priority", icon: FlagIcon },
 ];
 export const ORDERS: ReadonlyArray<{
 	readonly value: Display["order"];
 	readonly label: string;
-	readonly icon: typeof Folder;
+	readonly icon: typeof FolderIcon;
 }> = [
-	{ value: "updated", label: "Last Updated", icon: Clock },
-	{ value: "created", label: "Created", icon: SquarePlus },
+	{ value: "updated", label: "Last Updated", icon: ClockIcon },
+	{ value: "created", label: "Created", icon: PlusSquareIcon },
 ];
 
 const DEFAULTS: Display = { group: "project", order: "updated" };

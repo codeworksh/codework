@@ -1,4 +1,4 @@
-import { ThreadsIcon } from "@/components/vuesax";
+import { ChatsIcon } from "@phosphor-icons/react";
 import { Schema } from "effect";
 
 import { defineWidget } from "@codeworksh/widget/view";
@@ -11,7 +11,7 @@ const threadsAddress = "codework://threads";
 export const threads = defineWidget({
 	kind: "codework:threads",
 	title: "Threads",
-	icon: ThreadsIcon,
+	icon: ChatsIcon,
 	minWidth: 360,
 	minHeight: 200,
 	cardinality: "one",

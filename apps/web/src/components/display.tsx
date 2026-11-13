@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { SlidersHorizontal } from "@/components/vuesax";
+import { SlidersHorizontalIcon } from "@phosphor-icons/react";
 
 /** A view's display options: a dense menu whose choices open to the side, as an OS menu's do. */
 export function DisplayMenu({
@@ -26,7 +26,7 @@ export function DisplayMenu({
 					title="Display Options"
 					className={triggerClassName}
 				>
-					<SlidersHorizontal aria-hidden />
+					<SlidersHorizontalIcon aria-hidden />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align={align} side={side} className="min-w-44">

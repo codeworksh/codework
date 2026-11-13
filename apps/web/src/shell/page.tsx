@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import { HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
-import type { IconComponent } from "@/components/vuesax";
+import type { Icon } from "@phosphor-icons/react";
 import { type ReactNode, useContext, useLayoutEffect, useMemo, useRef } from "react";
 
 import { makeHost } from "../kernel/host";
@@ -19,7 +19,7 @@ export function Page({
 }: {
 	readonly instanceId: string;
 	readonly title: string;
-	readonly icon: IconComponent;
+	readonly icon: Icon;
 	readonly children: ReactNode;
 }) {
 	const registry = useContext(RegistryContext);
@@ -43,7 +43,7 @@ export function Page({
 			<HostContext value={host}>
 				<div className="flex h-full min-h-0 flex-col">
 					<header className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-4">
-						<Icon className="size-4 text-ink-muted" strokeWidth={1.75} aria-hidden />
+						<Icon className="size-4 text-ink-muted" aria-hidden />
 						<h1 className="text-ui font-medium text-ink">{title}</h1>
 					</header>
 					<div className="min-h-0 flex-1">{children}</div>

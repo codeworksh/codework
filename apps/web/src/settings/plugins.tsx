@@ -1,4 +1,4 @@
-import { Plus, Puzzle, RefreshCw, Trash2 } from "@/components/vuesax";
+import { ArrowClockwiseIcon, PlusIcon, PuzzlePieceIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -141,11 +141,11 @@ export function PluginsSettings() {
 			actions={
 				<div className="flex items-center gap-2">
 					<Button size="sm" variant="ghost" disabled={reloading} className="text-ink-muted" onClick={reloadAll}>
-						<RefreshCw className={`size-3.5 ${reloading ? "animate-spin" : ""}`} aria-hidden />
+						<ArrowClockwiseIcon className={`size-3.5 ${reloading ? "animate-spin" : ""}`} aria-hidden />
 						<span className="hidden @min-[560px]:inline">{reloading ? "Reloading…" : "Reload"}</span>
 					</Button>
 					<Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						Add Plugin
 					</Button>
 				</div>
@@ -163,7 +163,7 @@ export function PluginsSettings() {
 			<Section title="Installed & Local Plugins">
 				{external.length === 0 ? (
 					<EmptyState
-						icon={<Puzzle className="size-6" />}
+						icon={<PuzzlePieceIcon className="size-6" />}
 						title="No external plugins configured"
 						description="Add an npm package or a local TypeScript/JavaScript module to settings.jsonc."
 					/>
@@ -173,7 +173,7 @@ export function PluginsSettings() {
 							<div key={plugin.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 								<div className="flex min-w-0 flex-1 items-start gap-3">
 									<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-edge bg-ink/3 text-ink-muted">
-										<Puzzle className="size-4" strokeWidth={1.75} aria-hidden />
+										<PuzzlePieceIcon className="size-4" aria-hidden />
 									</span>
 									<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 										<div className="flex flex-wrap items-center gap-2">
@@ -194,7 +194,7 @@ export function PluginsSettings() {
 										className="text-ink-muted hover:text-destructive"
 										onClick={() => setExternal((current) => current.filter((item) => item.id !== plugin.id))}
 									>
-										<Trash2 className="size-3.5" />
+										<TrashIcon className="size-3.5" />
 									</Button>
 									<Switch
 										aria-label={`Enable ${plugin.spec}`}

@@ -1,13 +1,13 @@
 import {
-	ChevronRight,
-	CloudConnection,
+	ArrowClockwiseIcon,
+	CaretRightIcon,
 	GlobeIcon,
-	Plus,
-	RefreshCw,
-	Server,
-	Trash2,
-	TriangleAlert,
-} from "@/components/vuesax";
+	HardDrivesIcon,
+	PlugsConnectedIcon,
+	PlusIcon,
+	TrashIcon,
+	WarningIcon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -235,11 +235,11 @@ export function McpSettings() {
 			actions={
 				<div className="flex items-center gap-2">
 					<Button size="sm" variant="ghost" disabled={refreshing} className="text-ink-muted" onClick={refreshAll}>
-						<RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+						<ArrowClockwiseIcon className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
 						<span className="hidden @min-[560px]:inline">{refreshing ? "Checking…" : "Refresh"}</span>
 					</Button>
 					<Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						Add Server
 					</Button>
 				</div>
@@ -264,12 +264,12 @@ export function McpSettings() {
 			<Section title="Configured Servers">
 				{visible.length === 0 ? (
 					<EmptyState
-						icon={<CloudConnection className="size-6" />}
+						icon={<PlugsConnectedIcon className="size-6" />}
 						title="No MCP servers in this scope"
 						description="Add a stdio or streamable HTTP MCP server to give its tools and resources to the model."
 						action={
 							<Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-								<Plus aria-hidden />
+								<PlusIcon aria-hidden />
 								Add Server
 							</Button>
 						}
@@ -292,9 +292,9 @@ export function McpSettings() {
 										>
 											<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-edge bg-ink/3 text-ink-muted">
 												{server.transport === "http" ? (
-													<GlobeIcon className="size-4" strokeWidth={1.75} aria-hidden />
+													<GlobeIcon className="size-4" aria-hidden />
 												) : (
-													<Server className="size-4" strokeWidth={1.75} aria-hidden />
+													<HardDrivesIcon className="size-4" aria-hidden />
 												)}
 											</span>
 											<div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -310,7 +310,7 @@ export function McpSettings() {
 													{meta.detail} · scope: {server.scope} · {server.configPath}
 												</StatusDot>
 											</div>
-											<ChevronRight
+											<CaretRightIcon
 												className={`mt-1 size-4 shrink-0 text-ink-muted transition-transform ${
 													expanded ? "rotate-90" : ""
 												}`}
@@ -336,7 +336,10 @@ export function McpSettings() {
 													disabled={busy}
 													onClick={() => reconnectServer(server)}
 												>
-													<RefreshCw className={`size-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden />
+													<ArrowClockwiseIcon
+														className={`size-3.5 ${busy ? "animate-spin" : ""}`}
+														aria-hidden
+													/>
 													{busy ? "Reconnecting…" : "Reconnect"}
 												</Button>
 											)}
@@ -357,14 +360,14 @@ export function McpSettings() {
 										<div className="flex flex-col gap-3 border-t border-edge/40 bg-ink/2 px-4 py-3.5 text-xs">
 											{server.error !== undefined && (
 												<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-destructive">
-													<TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+													<WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
 													<span>{server.error}</span>
 												</div>
 											)}
 
 											{server.skipped !== undefined && server.skipped.length > 0 && (
 												<div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-warning">
-													<TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+													<WarningIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
 													<span>
 														Skipped {server.skipped.length} invalid tool schema (
 														{server.skipped.join(", ")}). See <Code>~/.codework/mcp.log</Code>.
@@ -500,7 +503,7 @@ export function McpSettings() {
 															setServers((current) => current.filter((item) => item.id !== server.id))
 														}
 													>
-														<Trash2 className="size-3" aria-hidden />
+														<TrashIcon className="size-3" aria-hidden />
 														Remove
 													</Button>
 												</div>

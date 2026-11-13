@@ -1,4 +1,4 @@
-import { TagIcon, Box } from "@/components/vuesax";
+import { CubeIcon, TagIcon } from "@phosphor-icons/react";
 import type { Grouping, ListedThread } from "@codeworksh/contract";
 import { isMac } from "@codeworksh/widget/view";
 import { type DragEvent, memo, type MouseEvent, type ReactNode } from "react";
@@ -133,7 +133,7 @@ export const Row = memo(function Row({
 					`Group: ${grouping?.name ?? "No Group"}`,
 					"L",
 					grouping === undefined ? (
-						<TagIcon className="size-3.5 opacity-0 group-hover/row:opacity-100" strokeWidth={1.75} aria-hidden />
+						<TagIcon className="size-3.5 opacity-0 group-hover/row:opacity-100" aria-hidden />
 					) : (
 						<span className="flex max-w-32 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary">
 							<Dot color={grouping.color} />
@@ -145,7 +145,7 @@ export const Row = memo(function Row({
 					title={thread.project.name}
 					className="hidden max-w-36 shrink-0 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-2xs text-ink-secondary @2xl:flex"
 				>
-					<Box className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
+					<CubeIcon className="size-3 shrink-0" aria-hidden />
 					<span className="truncate">{thread.project.name}</span>
 				</span>
 				{showMachine && <MachineAvatar id={thread.machine.id} name={thread.machine.name} />}

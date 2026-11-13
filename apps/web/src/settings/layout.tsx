@@ -1,4 +1,4 @@
-import { ArrowLeft, Search } from "@/components/vuesax";
+import { ArrowLeftIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 
 import { useRef, useState } from "react";
@@ -34,11 +34,11 @@ export function SettingsSidebar() {
 					{...back}
 					className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-ui text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<ArrowLeft size={15} className="shrink-0" aria-hidden />
+					<ArrowLeftIcon size={15} className="shrink-0" aria-hidden />
 					<span>Back to app</span>
 				</Link>
 				<div className="relative">
-					<Search
+					<MagnifyingGlassIcon
 						size={15}
 						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted"
 						aria-hidden

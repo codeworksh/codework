@@ -1,4 +1,4 @@
-import { Minus, Plus } from "@/components/vuesax";
+import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export function Stepper({
 					disabled={value <= min}
 					onClick={() => onChange(clamp(value - step))}
 				>
-					<Minus />
+					<MinusIcon />
 				</Button>
 				<SavingInput
 					value={String(value)}
@@ -110,7 +110,7 @@ export function Stepper({
 					disabled={value >= max}
 					onClick={() => onChange(clamp(value + step))}
 				>
-					<Plus />
+					<PlusIcon />
 				</Button>
 			</div>
 			{unit !== undefined && <span className="text-xs text-ink-muted">{unit}</span>}

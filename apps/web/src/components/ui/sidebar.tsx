@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeftIcon } from "@/components/vuesax";
+import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -307,7 +307,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 			}}
 			{...props}
 		>
-			<PanelLeftIcon />
+			<SidebarSimpleIcon />
 			<span className="sr-only">Toggle Sidebar</span>
 		</Button>
 	);

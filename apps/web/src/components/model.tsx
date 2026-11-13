@@ -1,4 +1,10 @@
-import { Check, ChevronDown, FileSearch, Gauge, Search } from "@/components/vuesax";
+import {
+	CaretDownIcon,
+	CheckIcon,
+	FileMagnifyingGlassIcon,
+	GaugeIcon,
+	MagnifyingGlassIcon,
+} from "@phosphor-icons/react";
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
 import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
@@ -77,7 +83,7 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 		tone: "error",
 		...(reveal === undefined
 			? {}
-			: { actions: [{ label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) }] }),
+			: { actions: [{ label: "Reveal", icon: FileMagnifyingGlassIcon, onClick: () => void reveal(error.path) }] }),
 	};
 }
 
@@ -214,9 +220,8 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 					/>
 				)}
 				<span className={`truncate ${unavailable ? "text-ink-muted/60" : ""}`}>{label}</span>
-				<ChevronDown
+				<CaretDownIcon
 					className="size-3 shrink-0 text-ink-muted transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
-					strokeWidth={1.75}
 					aria-hidden
 				/>
 			</PopoverTrigger>
@@ -270,7 +275,7 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 						className="flex min-w-0 flex-1 flex-col"
 					>
 						<div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2 text-ink-muted">
-							<Search className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+							<MagnifyingGlassIcon className="size-3.5 shrink-0" aria-hidden />
 							<CommandPrimitive.Input
 								ref={search}
 								placeholder="Search models"
@@ -310,7 +315,7 @@ function Models({ hostDir, value, onChange }: ModelPickerProps) {
 												</span>
 											)}
 											{isCurrent && (
-												<Check className="size-3.5 shrink-0 text-ink-muted" strokeWidth={2} aria-hidden />
+												<CheckIcon className="size-3.5 shrink-0 text-ink-muted" weight="bold" aria-hidden />
 											)}
 										</CommandPrimitive.Item>
 									);
@@ -398,11 +403,10 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 							: "This model does not reason"
 				}
 			>
-				<Gauge className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+				<GaugeIcon className="size-3.5 shrink-0" aria-hidden />
 				<span className="truncate">{choosable ? levelLabels[shown] : "Reasoning"}</span>
-				<ChevronDown
+				<CaretDownIcon
 					className="size-3 shrink-0 text-ink-muted transition-transform duration-150 ease-out group-data-[state=open]:rotate-180"
-					strokeWidth={1.75}
 					aria-hidden
 				/>
 			</DropdownMenuTrigger>
@@ -423,7 +427,7 @@ function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 					>
 						<span className="min-w-0 flex-1 truncate">{levelLabels[level]}</span>
 						{level === shown && (
-							<Check className="size-3.5 shrink-0 text-ink-muted" strokeWidth={2} aria-hidden />
+							<CheckIcon className="size-3.5 shrink-0 text-ink-muted" weight="bold" aria-hidden />
 						)}
 					</DropdownMenuItem>
 				))}

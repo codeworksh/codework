@@ -1,17 +1,17 @@
 import {
-	Activity,
-	ArrowUpDown,
-	Check,
-	Clock,
-	Flag,
-	GripVertical,
-	LayoutGrid,
-	ListFilter,
-	Minus,
-	Plus,
+	ArrowsDownUpIcon,
+	CheckIcon,
+	ClockIcon,
+	DotsSixVerticalIcon,
+	FlagIcon,
+	FunnelSimpleIcon,
+	MinusIcon,
+	PlusIcon,
+	PulseIcon,
+	SquaresFourIcon,
 	TagIcon,
-	X,
-} from "@/components/vuesax";
+	XIcon,
+} from "@phosphor-icons/react";
 import type { Priority, ThreadStatus } from "@codeworksh/contract";
 import type { ReactNode } from "react";
 
@@ -35,21 +35,21 @@ import type { Options } from "./options";
 const GROUPS: ReadonlyArray<{
 	readonly value: Options["group"];
 	readonly label: string;
-	readonly icon: typeof Activity;
+	readonly icon: typeof PulseIcon;
 }> = [
-	{ value: "status", label: "Status", icon: Activity },
-	{ value: "priority", label: "Priority", icon: Flag },
+	{ value: "status", label: "Status", icon: PulseIcon },
+	{ value: "priority", label: "Priority", icon: FlagIcon },
 	{ value: "grouping", label: "Group", icon: TagIcon },
-	{ value: "none", label: "No Grouping", icon: Minus },
+	{ value: "none", label: "No Grouping", icon: MinusIcon },
 ];
 const ORDERS: ReadonlyArray<{
 	readonly value: Options["order"];
 	readonly label: string;
-	readonly icon: typeof Activity;
+	readonly icon: typeof PulseIcon;
 }> = [
-	{ value: "manual", label: "Manual", icon: GripVertical },
-	{ value: "updated", label: "Last Updated", icon: Clock },
-	{ value: "priority", label: "Priority", icon: Flag },
+	{ value: "manual", label: "Manual", icon: DotsSixVerticalIcon },
+	{ value: "updated", label: "Last Updated", icon: ClockIcon },
+	{ value: "priority", label: "Priority", icon: FlagIcon },
 ];
 
 const toggled = <A,>(values: ReadonlyArray<A>, value: A) =>
@@ -76,14 +76,14 @@ export function Toolbar({
 				</span>
 				{options.group === "grouping" && (
 					<Button variant="ghost" size="xs" onClick={onNewGroup}>
-						<Plus aria-hidden />
+						<PlusIcon aria-hidden />
 						New Group
 					</Button>
 				)}
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<Button variant="ghost" size="icon-xs" aria-label="Filter" title="Filter">
-							<ListFilter aria-hidden />
+							<FunnelSimpleIcon aria-hidden />
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-44">
@@ -141,7 +141,7 @@ export function Toolbar({
 				<DisplayMenu>
 					<MenuChoice
 						label="Grouping"
-						mark={<LayoutGrid aria-hidden />}
+						mark={<SquaresFourIcon aria-hidden />}
 						value={options.group}
 						current={GROUPS.find(({ value }) => value === options.group)?.label}
 						options={marked(GROUPS)}
@@ -149,7 +149,7 @@ export function Toolbar({
 					/>
 					<MenuChoice
 						label="Ordering"
-						mark={<ArrowUpDown aria-hidden />}
+						mark={<ArrowsDownUpIcon aria-hidden />}
 						value={options.order}
 						current={ORDERS.find(({ value }) => value === options.order)?.label}
 						options={marked(ORDERS)}
@@ -195,7 +195,7 @@ function FilterItem({
 		>
 			{mark}
 			<span className="truncate">{label}</span>
-			{checked && <Check className="ml-auto size-3.5" aria-hidden />}
+			{checked && <CheckIcon className="ml-auto size-3.5" aria-hidden />}
 		</DropdownMenuItem>
 	);
 }
@@ -241,7 +241,7 @@ function Chips({
 						onClick={() => onChange(chip.clear)}
 						className="size-5"
 					>
-						<X aria-hidden />
+						<XIcon aria-hidden />
 					</Button>
 				</span>
 			))}

@@ -1,4 +1,4 @@
-import { WorkspaceIcon, X } from "@/components/vuesax";
+import { StackIcon, XIcon } from "@phosphor-icons/react";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
@@ -146,7 +146,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							onClick={() => void close(workspace, index)}
 							className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
 						>
-							<X className="size-3" strokeWidth={2} aria-hidden />
+							<XIcon className="size-3" weight="bold" aria-hidden />
 						</button>
 					</div>
 				);
@@ -166,7 +166,7 @@ function TabIcon({
 	const display = useRunDisplay(threads);
 	return (
 		<span className={`grid size-4 shrink-0 place-items-center ${current ? "text-ink" : "text-ink-muted"}`}>
-			<RunMark display={display} idle={<WorkspaceIcon className="size-3.5" strokeWidth={1.75} aria-hidden />} />
+			<RunMark display={display} idle={<StackIcon className="size-3.5" aria-hidden />} />
 		</span>
 	);
 }

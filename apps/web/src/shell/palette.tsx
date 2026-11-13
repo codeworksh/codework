@@ -1,4 +1,11 @@
-import { Check, ChevronRight, FolderTree, Settings, ThreadsIcon, FolderPlus } from "@/components/vuesax";
+import {
+	CaretRightIcon,
+	ChatsIcon,
+	CheckIcon,
+	FolderPlusIcon,
+	GearSixIcon,
+	TreeStructureIcon,
+} from "@phosphor-icons/react";
 import { useAtom, useAtomSet } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
@@ -120,7 +127,7 @@ export function Palette() {
 								keywords={["all threads", "go", "issues", "list", "status", "priority", "groups"]}
 								onSelect={() => run(() => void navigate({ to: "/threads" }))}
 							>
-								<ThreadsIcon strokeWidth={1.75} />
+								<ChatsIcon />
 								Threads
 							</CommandItem>
 							<CommandItem
@@ -128,7 +135,7 @@ export function Palette() {
 								keywords={["projects", "go", "sessions", "forks", "tree"]}
 								onSelect={() => run(() => void navigate({ to: "/projects" }))}
 							>
-								<FolderTree strokeWidth={1.75} />
+								<TreeStructureIcon />
 								Projects
 							</CommandItem>
 						</CommandGroup>
@@ -147,7 +154,7 @@ export function Palette() {
 								]}
 								onSelect={() => push({ kind: "sources" })}
 							>
-								<FolderPlus strokeWidth={1.75} />
+								<FolderPlusIcon />
 								Add Project…
 							</CommandItem>
 						</CommandGroup>
@@ -157,7 +164,7 @@ export function Palette() {
 								keywords={["change theme", "appearance", "colors"]}
 								onSelect={() => run(() => void navigate({ to: "/settings/themes" }))}
 							>
-								<Settings strokeWidth={1.75} />
+								<GearSixIcon />
 								Change theme…
 							</CommandItem>
 							{THEMES.map((theme) => (
@@ -169,10 +176,10 @@ export function Palette() {
 								>
 									<Swatch theme={theme.id} />
 									<span className="text-ink-muted">Change theme</span>
-									<ChevronRight className="-mx-1 size-3.5! text-ink-muted" strokeWidth={1.75} aria-hidden />
+									<CaretRightIcon className="-mx-1 size-3.5! text-ink-muted" aria-hidden />
 									{theme.name}
 									{theme.id === saved && (
-										<Check className="ml-auto text-ink-muted" aria-label="Current theme" />
+										<CheckIcon className="ml-auto text-ink-muted" aria-label="Current theme" />
 									)}
 								</CommandItem>
 							))}

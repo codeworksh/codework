@@ -1,4 +1,4 @@
-import { Archive, Folder, Trash2, Undo2 } from "@/components/vuesax";
+import { ArchiveIcon, ArrowCounterClockwiseIcon, FolderIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { ProviderIcon } from "@/components/provider";
@@ -87,7 +87,7 @@ export function ArchiveSettings() {
 			<Section title={`Archived Sessions (${sessions.length})`}>
 				{sessions.length === 0 ? (
 					<EmptyState
-						icon={<Archive className="size-6" />}
+						icon={<ArchiveIcon className="size-6" />}
 						title="No archived sessions"
 						description="Sessions you archive from a workspace or the threads list appear here."
 					/>
@@ -111,7 +111,7 @@ export function ArchiveSettings() {
 										variant="secondary"
 										onClick={() => setSessions((current) => current.filter((item) => item.id !== session.id))}
 									>
-										<Undo2 className="size-3" aria-hidden />
+										<ArrowCounterClockwiseIcon className="size-3" aria-hidden />
 										Unarchive
 									</Button>
 									<Button
@@ -122,7 +122,7 @@ export function ArchiveSettings() {
 										className="text-ink-muted hover:text-destructive"
 										onClick={() => setSessions((current) => current.filter((item) => item.id !== session.id))}
 									>
-										<Trash2 className="size-3.5" />
+										<TrashIcon className="size-3.5" />
 									</Button>
 								</div>
 							</div>
@@ -134,7 +134,7 @@ export function ArchiveSettings() {
 			<Section title={`Archived Projects (${projects.length})`}>
 				{projects.length === 0 ? (
 					<EmptyState
-						icon={<Folder className="size-6" />}
+						icon={<FolderIcon className="size-6" />}
 						title="No archived projects"
 						description="Projects you archive from the Projects view are kept here with their history intact."
 					/>
@@ -155,7 +155,7 @@ export function ArchiveSettings() {
 										variant="secondary"
 										onClick={() => setProjects((current) => current.filter((item) => item.id !== project.id))}
 									>
-										<Undo2 className="size-3" aria-hidden />
+										<ArrowCounterClockwiseIcon className="size-3" aria-hidden />
 										Unarchive
 									</Button>
 									<Button
@@ -166,7 +166,7 @@ export function ArchiveSettings() {
 										className="text-ink-muted hover:text-destructive"
 										onClick={() => setProjects((current) => current.filter((item) => item.id !== project.id))}
 									>
-										<Trash2 className="size-3.5" />
+										<TrashIcon className="size-3.5" />
 									</Button>
 								</div>
 							</div>

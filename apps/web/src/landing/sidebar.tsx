@@ -1,15 +1,15 @@
 import {
-	ArrowUpDown,
-	ChevronRight,
-	EditIcon,
-	Folder,
-	FolderOpen,
-	LayoutGrid,
-	Plus,
-	Search,
-	Settings,
-	ThreadsIcon,
-} from "@/components/vuesax";
+	ArrowsDownUpIcon,
+	CaretRightIcon,
+	ChatsIcon,
+	FolderIcon,
+	FolderOpenIcon,
+	GearSixIcon,
+	MagnifyingGlassIcon,
+	NotePencilIcon,
+	PlusIcon,
+	SquaresFourIcon,
+} from "@phosphor-icons/react";
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Option, Schema } from "effect";
@@ -140,11 +140,11 @@ export function SessionsSidebar() {
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-0.5 px-2 pt-2 pb-2">
 				<button type="button" onClick={startNew} className={NAV_ROW}>
-					<EditIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
+					<NotePencilIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>New</span>
 				</button>
 				<div className="relative">
-					<Search
+					<MagnifyingGlassIcon
 						size={15}
 						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted"
 						aria-hidden
@@ -168,7 +168,7 @@ export function SessionsSidebar() {
 					to="/threads"
 					className={`${NAV_ROW} aria-[current=page]:bg-selection-current aria-[current=page]:font-medium aria-[current=page]:text-ink`}
 				>
-					<ThreadsIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
+					<ChatsIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Threads</span>
 				</Link>
 			</SidebarHeader>
@@ -189,7 +189,7 @@ export function SessionsSidebar() {
 								<>
 									<span>No projects yet</span>
 									<EmptyAction
-										icon={<Plus size={12} strokeWidth={2} className="-mx-0.5 size-3" aria-hidden />}
+										icon={<PlusIcon size={12} weight="bold" className="-mx-0.5 size-3" aria-hidden />}
 										onClick={addProject}
 									>
 										Add project
@@ -207,7 +207,7 @@ export function SessionsSidebar() {
 							<DisplayMenu align="start" side="right" triggerClassName="size-5 text-ink-muted">
 								<MenuChoice
 									label="Grouping"
-									mark={<LayoutGrid aria-hidden />}
+									mark={<SquaresFourIcon aria-hidden />}
 									value={display.group}
 									current={GROUPS.find(({ value }) => value === display.group)?.label}
 									options={marked(GROUPS)}
@@ -215,7 +215,7 @@ export function SessionsSidebar() {
 								/>
 								<MenuChoice
 									label="Ordering"
-									mark={<ArrowUpDown aria-hidden />}
+									mark={<ArrowsDownUpIcon aria-hidden />}
 									value={display.order}
 									current={ORDERS.find(({ value }) => value === display.order)?.label}
 									options={marked(ORDERS)}
@@ -240,7 +240,7 @@ export function SessionsSidebar() {
 			</SidebarContent>
 			<SidebarFooter className="p-2">
 				<Link to="/settings/workspaces" className={NAV_ROW}>
-					<Settings size={15} className="shrink-0 text-ink-muted" aria-hidden />
+					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Settings</span>
 				</Link>
 			</SidebarFooter>
@@ -253,7 +253,7 @@ export function SessionsSidebar() {
 function GroupMark({ group, expanded }: { readonly group: Group; readonly expanded: boolean }) {
 	if (group.kind === "status") return <StatusIcon status={group.status} />;
 	if (group.kind === "priority") return <PriorityIcon priority={group.priority} />;
-	return expanded ? <FolderOpen size={14} aria-hidden /> : <Folder size={14} aria-hidden />;
+	return expanded ? <FolderOpenIcon size={14} aria-hidden /> : <FolderIcon size={14} aria-hidden />;
 }
 
 function GroupSection({
@@ -303,7 +303,7 @@ function GroupSection({
 						<span className="flex transition-opacity duration-100 group-hover/project:opacity-0 group-focus-visible/toggle:opacity-0">
 							<GroupMark group={group} expanded={expanded} />
 						</span>
-						<ChevronRight
+						<CaretRightIcon
 							size={12}
 							className={`absolute opacity-0 [transition:opacity_100ms_ease,transform_150ms_var(--ease-out)] group-hover/project:opacity-100 group-focus-visible/toggle:opacity-100 ${
 								expanded ? "rotate-90" : ""
@@ -324,7 +324,7 @@ function GroupSection({
 						onClick={onStartNew}
 						className="absolute right-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-muted opacity-0 outline-none transition-[opacity,transform] duration-150 ease-out group-hover/project:opacity-100 hover:bg-selection-strong hover:text-ink active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
 					>
-						<Plus size={13} aria-hidden />
+						<PlusIcon size={13} aria-hidden />
 					</button>
 				)}
 			</div>

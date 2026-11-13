@@ -1,4 +1,4 @@
-import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "@/components/vuesax";
+import { ArrowCounterClockwiseIcon, CheckIcon, CopyIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useAtomSet } from "@effect/atom-react";
 import { type CliAction, LOCAL_SERVER, type LocalServerStatus, type ServerUpdate } from "@codeworksh/contract";
 
@@ -89,9 +89,9 @@ export function LocalItem({ status }: { status: LocalServerStatus }) {
 					<span className="truncate font-medium">{status.name}</span>
 					{cli !== null && "version" in cli && <Version version={cli.version} />}
 					{problem !== undefined && (
-						<TriangleAlert className="size-3.5 shrink-0 text-warning" aria-label={problem}>
+						<WarningIcon className="size-3.5 shrink-0 text-warning" aria-label={problem}>
 							<title>{problem}</title>
-						</TriangleAlert>
+						</WarningIcon>
 					)}
 					{status.isDefault && <Badge tone="info">Default</Badge>}
 				</span>
@@ -314,7 +314,7 @@ function ServerActions({ status, onError }: { status: LocalServerStatus; onError
 							title="Remove"
 							disabled={busy}
 						>
-							<Trash2 />
+							<TrashIcon />
 						</Button>
 					</AlertDialogTrigger>
 					<AlertDialogContent>
@@ -405,7 +405,7 @@ function SettingField({
 						disabled={saving}
 						onClick={() => save("")}
 					>
-						<Undo2 />
+						<ArrowCounterClockwiseIcon />
 					</Button>
 				)}
 			</span>
@@ -457,7 +457,7 @@ function CopyCommand({ command }: { command: string }) {
 					})
 				}
 			>
-				{copied ? <Check /> : <Copy />}
+				{copied ? <CheckIcon /> : <CopyIcon />}
 			</Button>
 		</span>
 	);

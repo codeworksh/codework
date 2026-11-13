@@ -1,18 +1,18 @@
 import {
-	Archive,
-	Box,
-	CloudConnection,
-	Cpu,
-	Keyboard,
-	MessageSquare,
-	Palette,
-	Puzzle,
-	Server,
-	SlidersHorizontal,
-	Sparkles,
-	WorkspaceIcon,
-	type IconComponent,
-} from "@/components/vuesax";
+	ArchiveIcon,
+	ChatTextIcon,
+	CpuIcon,
+	CubeIcon,
+	HardDrivesIcon,
+	type Icon,
+	KeyboardIcon,
+	PaletteIcon,
+	PlugsConnectedIcon,
+	PuzzlePieceIcon,
+	SlidersHorizontalIcon,
+	SparkleIcon,
+	StackIcon,
+} from "@phosphor-icons/react";
 
 export interface SettingsSection {
 	readonly to:
@@ -29,7 +29,7 @@ export interface SettingsSection {
 		| "/settings/sandboxes"
 		| "/settings/archive";
 	readonly label: string;
-	readonly icon: IconComponent;
+	readonly icon: Icon;
 	/** Sidebar heading the section sits under. */
 	readonly group: string;
 	/** Extra words the search matches, beyond the label. */
@@ -40,42 +40,42 @@ const sections: readonly SettingsSection[] = [
 	{
 		to: "/settings/general",
 		label: "General",
-		icon: SlidersHorizontal,
+		icon: SlidersHorizontalIcon,
 		group: "App",
 		keywords: ["notifications", "sounds", "alerts", "quick", "composer", "editor", "terminal", "version", "updates"],
 	},
 	{
 		to: "/settings/workspaces",
 		label: "Workspaces",
-		icon: WorkspaceIcon,
+		icon: StackIcon,
 		group: "App",
 		keywords: ["tabs", "shortcuts", "reorder", "rename", "delete"],
 	},
 	{
 		to: "/settings/themes",
 		label: "Themes",
-		icon: Palette,
+		icon: PaletteIcon,
 		group: "App",
 		keywords: ["appearance", "colors", "dark", "light"],
 	},
 	{
 		to: "/settings/servers",
 		label: "Providers",
-		icon: Server,
+		icon: HardDrivesIcon,
 		group: "App",
 		keywords: ["servers", "provider", "local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
 	},
 	{
 		to: "/settings/keybindings",
 		label: "Keybindings",
-		icon: Keyboard,
+		icon: KeyboardIcon,
 		group: "App",
 		keywords: ["shortcuts", "hotkeys", "keyboard", "bindings", "keys", "palette"],
 	},
 	{
 		to: "/settings/models",
 		label: "Models",
-		icon: Cpu,
+		icon: CpuIcon,
 		group: "Agents",
 		keywords: [
 			"accounts",
@@ -94,14 +94,14 @@ const sections: readonly SettingsSection[] = [
 	{
 		to: "/settings/chat",
 		label: "Chat",
-		icon: MessageSquare,
+		icon: ChatTextIcon,
 		group: "Agents",
 		keywords: ["transcript", "composer", "prompt", "steer", "queue", "follow-up", "usage", "tokens", "games"],
 	},
 	{
 		to: "/settings/mcp",
 		label: "MCP",
-		icon: CloudConnection,
+		icon: PlugsConnectedIcon,
 		group: "Agents",
 		keywords: [
 			"mcp",
@@ -119,28 +119,28 @@ const sections: readonly SettingsSection[] = [
 	{
 		to: "/settings/skills",
 		label: "Skills",
-		icon: Sparkles,
+		icon: SparkleIcon,
 		group: "Agents",
 		keywords: ["skills", "skill.md", "instructions", "workflows", "project", "personal"],
 	},
 	{
 		to: "/settings/plugins",
 		label: "Plugins",
-		icon: Puzzle,
+		icon: PuzzlePieceIcon,
 		group: "Agents",
 		keywords: ["plugins", "extensions", "npm", "tools", "prompt", "bash", "grep", "find", "reload"],
 	},
 	{
 		to: "/settings/sandboxes",
 		label: "Sandboxes",
-		icon: Box,
+		icon: CubeIcon,
 		group: "Workspace",
 		keywords: ["sandboxes", "worktrees", "git", "branch", "vercel", "daytona", "memory", "isolation"],
 	},
 	{
 		to: "/settings/archive",
 		label: "Archive",
-		icon: Archive,
+		icon: ArchiveIcon,
 		group: "Workspace",
 		keywords: ["archived", "restore", "unarchive", "sessions", "projects", "hidden"],
 	},

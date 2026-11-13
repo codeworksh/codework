@@ -4,7 +4,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ArrowLeft, Check, Copy, Folder } from "@/components/vuesax";
+import { ArrowLeftIcon, CheckIcon, CopyIcon, FolderIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { failed } from "../threads/common";
 import { Files, General, Mcp, Row, Section, Tag, useTilde } from "./config";
@@ -31,7 +31,7 @@ export function ProjectSettings({ sessionId, onBack }: { readonly sessionId: str
 					onClick={onBack}
 					className="flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs text-ink-muted outline-none transition-[background-color,color] duration-150 ease-out hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<ArrowLeft className="size-3.5" aria-hidden />
+					<ArrowLeftIcon className="size-3.5" aria-hidden />
 					Back to Thread
 				</button>
 			</div>
@@ -138,7 +138,7 @@ function Banner({ project }: { readonly project: SidebarProject }) {
 	return (
 		<header className="flex items-center gap-3">
 			<span className="grid size-10 shrink-0 place-items-center rounded-lg border border-edge/60 bg-ink/4 text-ink-muted">
-				<Folder size={18} aria-hidden />
+				<FolderIcon size={18} aria-hidden />
 			</span>
 			<div className="flex min-w-0 flex-1">
 				<input
@@ -217,7 +217,7 @@ function CopyButton({ text }: { readonly text: string }) {
 			}}
 			className="grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96]"
 		>
-			{copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+			{copied ? <CheckIcon className="size-3.5" aria-hidden /> : <CopyIcon className="size-3.5" aria-hidden />}
 		</button>
 	);
 }

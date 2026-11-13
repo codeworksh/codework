@@ -1,4 +1,4 @@
-import { Check as CheckIcon, ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon } from "@/components/vuesax";
+import { CaretDownIcon, CaretUpIcon, CheckIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +36,7 @@ function SelectTrigger({
 		>
 			{children}
 			<SelectPrimitive.Icon asChild>
-				<ChevronDownIcon className="size-4 opacity-50" />
+				<CaretDownIcon className="size-4 opacity-50" />
 			</SelectPrimitive.Icon>
 		</SelectPrimitive.Trigger>
 	);
@@ -126,7 +126,7 @@ function SelectScrollUpButton({ className, ...props }: React.ComponentProps<type
 			className={cn("flex cursor-default items-center justify-center py-1", className)}
 			{...props}
 		>
-			<ChevronUpIcon className="size-4" />
+			<CaretUpIcon className="size-4" />
 		</SelectPrimitive.ScrollUpButton>
 	);
 }
@@ -141,7 +141,7 @@ function SelectScrollDownButton({
 			className={cn("flex cursor-default items-center justify-center py-1", className)}
 			{...props}
 		>
-			<ChevronDownIcon className="size-4" />
+			<CaretDownIcon className="size-4" />
 		</SelectPrimitive.ScrollDownButton>
 	);
 }

@@ -4,7 +4,7 @@ import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useId, useState } from "react";
 
-import { ChevronDown } from "@/components/vuesax";
+import { CaretDownIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { useElementSize } from "../../wm/size";
 import { useNowMinute } from "@/hooks/now";
@@ -223,7 +223,7 @@ function Fold(props: {
 			onClick={props.onToggle}
 			className={`flex h-10 w-full items-center gap-1.5 px-4 text-left text-xs text-ink-muted outline-none transition-[background-color,color] duration-150 ease-out hover:bg-ink/4 hover:text-ink focus-visible:bg-ink/4 focus-visible:text-ink ${props.section === true ? "bg-ink/2" : ""}`}
 		>
-			<ChevronDown
+			<CaretDownIcon
 				className={`size-3.5 transition-transform duration-200 ease-(--ease-out) ${props.open ? "rotate-180" : ""}`}
 				aria-hidden
 			/>

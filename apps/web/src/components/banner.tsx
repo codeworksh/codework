@@ -1,4 +1,4 @@
-import { CircleAlert, Clock, Download, TriangleAlert, type IconComponent, X } from "@/components/vuesax";
+import { ClockIcon, DownloadSimpleIcon, type Icon, WarningCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useLast } from "@/hooks/last";
 
 /**
@@ -14,35 +14,34 @@ export interface Notice {
 
 export interface NoticeAction {
 	readonly label: string;
-	readonly icon?: IconComponent;
+	readonly icon?: Icon;
 	readonly disabled?: boolean;
 	readonly onClick: () => void;
 }
 
-const tones: Record<Notice["tone"], { readonly icon: IconComponent; readonly text: string; readonly surface: string }> =
-	{
-		// A faint tint and border of the tone's color over the composer's tray surface.
-		error: {
-			icon: CircleAlert,
-			text: "text-destructive",
-			surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
-		},
-		warning: {
-			icon: TriangleAlert,
-			text: "text-warning",
-			surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
-		},
-		info: {
-			icon: Download,
-			text: "text-ink-muted",
-			surface: "border-edge bg-frame",
-		},
-		expired: {
-			icon: Clock,
-			text: "text-warning",
-			surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
-		},
-	};
+const tones: Record<Notice["tone"], { readonly icon: Icon; readonly text: string; readonly surface: string }> = {
+	// A faint tint and border of the tone's color over the composer's tray surface.
+	error: {
+		icon: WarningCircleIcon,
+		text: "text-destructive",
+		surface: "border-destructive/30 bg-[color-mix(in_oklab,var(--color-destructive)_8%,var(--color-frame))]",
+	},
+	warning: {
+		icon: WarningIcon,
+		text: "text-warning",
+		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
+	},
+	info: {
+		icon: DownloadSimpleIcon,
+		text: "text-ink-muted",
+		surface: "border-edge bg-frame",
+	},
+	expired: {
+		icon: ClockIcon,
+		text: "text-warning",
+		surface: "border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_8%,var(--color-frame))]",
+	},
+};
 
 /** The tone's tint and border, for a notice set on a surface of its own. */
 export const noticeSurface = (tone: Notice["tone"]) => tones[tone].surface;
@@ -65,7 +64,7 @@ function NoticeCard({
 			className={`flex items-start gap-2 rounded-xl border ${surface} px-3 py-2 transition-[transform,opacity] duration-180 ease-out starting:translate-y-1 starting:opacity-0`}
 		>
 			{/* Centered on the title's line, so a two-line description does not pull it down. */}
-			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
+			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} weight="bold" aria-hidden />
 			<div className="min-w-0 flex-1">
 				<p className="text-ui font-medium text-ink">{title}</p>
 				{description !== undefined && (
@@ -82,7 +81,7 @@ function NoticeCard({
 					onClick={action.onClick}
 					className="inline-flex shrink-0 items-center gap-1.5 self-center rounded-md border border-edge px-2 py-0.5 text-xs font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
 				>
-					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
+					{action.icon !== undefined && <action.icon className="size-3" weight="bold" aria-hidden />}
 					{action.label}
 				</button>
 			))}
@@ -93,7 +92,7 @@ function NoticeCard({
 					onClick={onDismiss}
 					className="-mr-1 grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color] duration-150 ease-out hover:bg-ink/10 hover:text-ink active:scale-95"
 				>
-					<X className="size-3" strokeWidth={2} aria-hidden />
+					<XIcon className="size-3" weight="bold" aria-hidden />
 				</button>
 			)}
 		</div>
@@ -117,7 +116,7 @@ export function NoticeLine({
 			role="alert"
 			className="group flex max-w-full items-start gap-2 text-ui transition-[opacity,translate] duration-180 ease-out starting:translate-y-1 starting:opacity-0"
 		>
-			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} strokeWidth={2} aria-hidden />
+			<Icon className={`mt-0.5 size-3.5 shrink-0 ${text}`} weight="bold" aria-hidden />
 			<p className="min-w-0 text-ink-muted">
 				<span className="font-medium text-ink">{title}</span>
 				{description !== undefined && <span> · {description}</span>}
@@ -130,7 +129,7 @@ export function NoticeLine({
 					onClick={action.onClick}
 					className="inline-flex shrink-0 items-center gap-1 rounded-md px-1 text-xs font-medium text-ink-muted transition-[transform,background-color,color] duration-150 ease-out outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 enabled:active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60"
 				>
-					{action.icon !== undefined && <action.icon className="size-3" strokeWidth={2} aria-hidden />}
+					{action.icon !== undefined && <action.icon className="size-3" weight="bold" aria-hidden />}
 					{action.label}
 				</button>
 			))}
@@ -141,7 +140,7 @@ export function NoticeLine({
 					onClick={onDismiss}
 					className="grid size-5 shrink-0 place-items-center rounded-md text-ink-muted transition-[transform,background-color,color,opacity] duration-150 ease-out hover:bg-ink/10 hover:text-ink focus-visible:opacity-100 active:scale-95 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
 				>
-					<X className="size-3" strokeWidth={2} aria-hidden />
+					<XIcon className="size-3" weight="bold" aria-hidden />
 				</button>
 			)}
 		</div>

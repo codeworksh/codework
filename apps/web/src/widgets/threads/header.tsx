@@ -1,4 +1,11 @@
-import { ChevronRight, MoreHorizontal, GripVertical, Palette, Pencil, Trash } from "@/components/vuesax";
+import {
+	CaretRightIcon,
+	DotsSixVerticalIcon,
+	DotsThreeIcon,
+	PaletteIcon,
+	PencilSimpleIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
 import { useAtomSet } from "@effect/atom-react";
 import type { Grouping } from "@codeworksh/contract";
 import type { DragEvent, ReactNode } from "react";
@@ -79,7 +86,7 @@ export function SectionHeader({
 				onClick={onCollapse}
 				className="grid size-5 place-items-center rounded-md text-ink-muted hover:bg-ink/8"
 			>
-				<ChevronRight
+				<CaretRightIcon
 					className={`size-3.5 transition-transform motion-reduce:transition-none ${collapsed ? "" : "rotate-90"}`}
 					aria-hidden
 				/>
@@ -114,7 +121,7 @@ export function SectionHeader({
 			<span className="text-ink-muted tabular-nums">{section.threads.length}</span>
 			{group !== undefined && (
 				<>
-					<GripVertical
+					<DotsSixVerticalIcon
 						className="ml-auto size-3.5 cursor-grab text-ink-muted opacity-0 group-hover/header:opacity-100"
 						aria-hidden
 					/>
@@ -123,7 +130,7 @@ export function SectionHeader({
 							aria-label={`${group.name} actions`}
 							className="grid size-5 place-items-center rounded-md text-ink-muted opacity-0 group-hover/header:opacity-100 hover:bg-ink/8 focus-visible:opacity-100 data-[state=open]:opacity-100"
 						>
-							<MoreHorizontal className="size-3.5" aria-hidden />
+							<DotsThreeIcon className="size-3.5" aria-hidden />
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
 							align="end"
@@ -132,12 +139,12 @@ export function SectionHeader({
 							onCloseAutoFocus={(event) => event.preventDefault()}
 						>
 							<DropdownMenuItem className={MENU_ROW} onSelect={() => onRename(group.id)}>
-								<Pencil aria-hidden />
+								<PencilSimpleIcon aria-hidden />
 								Rename
 							</DropdownMenuItem>
 							<MenuChoice
 								label="Color"
-								mark={<Palette aria-hidden />}
+								mark={<PaletteIcon aria-hidden />}
 								value={group.color ?? undefined}
 								options={COLORS.map(({ name, hex }) => ({
 									value: hex,
@@ -166,7 +173,7 @@ export function SectionHeader({
 								className={MENU_ROW}
 								onSelect={() => void remove({ payload: { groupingId: group.id } }).catch(failed)}
 							>
-								<Trash aria-hidden />
+								<TrashIcon aria-hidden />
 								Delete
 							</DropdownMenuItem>
 						</DropdownMenuContent>

@@ -1,4 +1,4 @@
-import { CircleAlert } from "@/components/vuesax";
+import { WarningCircleIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ export function OpenProviderSettings({ problem, className }: { problem: Problem;
 				className,
 			)}
 		>
-			<CircleAlert className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+			<WarningCircleIcon className="size-3.5 shrink-0" weight="bold" aria-hidden />
 			<span className="truncate">Open Provider Settings</span>
 		</button>
 	);

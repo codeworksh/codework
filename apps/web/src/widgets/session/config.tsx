@@ -1,6 +1,5 @@
 import type { SettingsFile } from "@codeworksh/contract";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { ArrowUpRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { Cause, Option, Predicate } from "effect";
@@ -12,7 +11,7 @@ import { Command, CommandEmpty, CommandInput, CommandList } from "@/components/u
 import { menuSurface } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { Plus } from "@/components/vuesax";
+import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { codeworkKey } from "../../kernel/servers";
 import { tilde } from "../../shell/paths";
@@ -367,7 +366,7 @@ function AddConnector() {
 						type="button"
 						className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-ink/6 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] data-[state=open]:bg-ink/6"
 					>
-						<Plus className="size-3.5" aria-hidden />
+						<PlusIcon className="size-3.5" aria-hidden />
 						Add Connector
 					</button>
 				</PopoverPrimitive.Trigger>
