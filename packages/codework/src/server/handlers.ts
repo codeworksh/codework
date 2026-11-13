@@ -6,6 +6,7 @@ import {
 	EventRegistry,
 	EventSchema,
 	Mcp,
+	McpConfig,
 	ModelCatalog,
 	Project,
 	PromptSchema,
@@ -14,6 +15,7 @@ import {
 	SessionStore,
 	Settings,
 	SettingsFile,
+	Skill,
 	State,
 	Store,
 	Sync,
@@ -330,6 +332,16 @@ export const layer = Contract.Api.toLayer(
 				const url = checkout === undefined ? undefined : yield* host.remote(checkout);
 				return { url: url ?? null };
 			}),
+			"skill.list": Effect.fnUntraced(function* ({ spaceId }) {
+				const listed = yield* exported("Server.skill.list", Skill.list(spaceId));
+				return {
+					sandbox:
+						listed.sandbox === undefined
+							? null
+							: { ...listed.sandbox, providerResourceId: listed.sandbox.providerResourceId ?? null },
+					skills: listed.skills ?? null,
+				};
+			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });
 				return { id: renamed.id, name: renamed.name };
@@ -346,6 +358,14 @@ export const layer = Contract.Api.toLayer(
 						: projectId === undefined
 							? Option.some(Settings.defaults)
 							: yield* settings.load(undefined).pipe(Effect.option);
+				// The servers as sessions merge them, so a list drawn from this never disagrees with a run.
+				const merged =
+					file !== "mcp"
+						? undefined
+						: yield* McpConfig.load({
+								userDir: target.userDir,
+								...(target.root === undefined ? {} : { root: target.root }),
+							});
 				return {
 					path: target.path,
 					source: current.source,
@@ -354,6 +374,18 @@ export const layer = Contract.Api.toLayer(
 					...("value" in parsed ? { value: parsed.value } : {}),
 					...(Option.isSome(problem) ? { error: problem.value.detail } : {}),
 					...(Option.isSome(below) ? { inherited: { retry: below.value.retry } } : {}),
+					...(merged === undefined
+						? {}
+						: {
+								servers: merged.servers.map((server) => ({
+									name: server.name,
+									from:
+										server.file === target.path && target.scope === "project"
+											? ("project" as const)
+											: ("user" as const),
+									enabled: server.config.enabled !== false,
+								})),
+							}),
 				};
 			}),
 			"settings.write": Effect.fnUntraced(function* ({ projectId, file, source, version }) {

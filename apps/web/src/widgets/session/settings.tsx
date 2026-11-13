@@ -9,6 +9,7 @@ import { Server } from "../../kernel/rpc";
 import { failed } from "../threads/common";
 import { Files, General, Mcp, Row, Section, Tag, useTilde } from "./config";
 import { projectsAtom, spacesAtom } from "./projects";
+import { Skills } from "./skills";
 
 const renameProject = Server.mutation("projects.rename");
 const remoteOf = (projectId: string) => Server.query("projects.remote", { projectId });
@@ -84,12 +85,34 @@ function Page({ project }: { readonly project: SidebarProject }) {
 			{view.main !== undefined && (
 				<>
 					<Repository main={view.main} url={view.url} />
-					<General projectId={view.project.id} hostDir={view.main.location} />
-					<Mcp projectId={view.project.id} />
-					<Files projectId={view.project.id} hostDir={view.main.location} />
+					{/* Settings and MCP files are read on this computer; a project only in a sandbox has none. */}
+					{view.main.env === null ? (
+						<General projectId={view.project.id} hostDir={view.main.location} />
+					) : (
+						<NoFolder title="General" />
+					)}
+					{view.main.env === null ? <Mcp projectId={view.project.id} /> : <NoFolder title="MCP Connectors" />}
+					<Skills machineId={view.project.machine.id} projectId={view.project.id} />
+					{view.main.env === null ? (
+						<Files projectId={view.project.id} hostDir={view.main.location} />
+					) : (
+						<NoFolder title="Advanced" />
+					)}
 				</>
 			)}
 		</>
+	);
+}
+
+/** A section whose files live on this computer, for a project that has no folder here. */
+function NoFolder({ title }: { readonly title: string }) {
+	return (
+		<Section title={title}>
+			<Row
+				title={<span className="text-ink-muted">Not Available</span>}
+				description="Requires a host directory linked to this project"
+			/>
+		</Section>
 	);
 }
 
@@ -162,7 +185,7 @@ function Repository({ main, url }: { readonly main: ProjectSpace; readonly url: 
 			<Row
 				title={
 					<>
-						Host Directory
+						{main.env === null ? "Host Directory" : "Sandbox Directory"}
 						{main.kind === "primary" && <Tag>main</Tag>}
 					</>
 				}

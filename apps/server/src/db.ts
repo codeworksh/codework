@@ -6,7 +6,7 @@ import { Migrator, SqlClient } from "effect/sql";
 // "YYYYMMDD<counter>_<label>"; the migrator runs by high-water mark, so a new
 // id must sort after every applied one.
 const migrations = {
-	"202610170001_init": Effect.gen(function* () {
+	"202611120001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`
 			CREATE TABLE kv (
@@ -134,6 +134,17 @@ const migrations = {
 			)
 		`;
 		yield* sql`CREATE INDEX space_project_idx ON space (machine_id, project_id)`;
+		// The last skills read from each space: a stopped sandbox is shown from here, never woken.
+		yield* sql`
+			CREATE TABLE skill (
+				machine_id TEXT NOT NULL,
+				space_id TEXT NOT NULL,
+				skills TEXT NOT NULL,
+				synced_at INTEGER NOT NULL,
+				PRIMARY KEY (machine_id, space_id),
+				FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE
+			)
+		`;
 		yield* sql`
 			CREATE TABLE session (
 				id TEXT PRIMARY KEY,
@@ -260,23 +271,6 @@ const migrations = {
 		})}`;
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
-	}),
-	// Statuses become Linear-like: only the user sets review, settled and cancelled, so each other status
-	// is derived again from the run. A settled or cancelled one stays only when the user's edit set it.
-	"202611100001_status": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`
-			UPDATE thread SET status = CASE
-				WHEN run_state = 'idle' AND (run_started_at IS NULL OR parked = 1) THEN 'enqueued'
-				ELSE 'working'
-			END
-			WHERE NOT (status IN ('settled', 'cancelled') AND (
-				SELECT event.source = 'tracking' AND json_extract(event.payload, '$.status') = thread.status
-				FROM event
-				WHERE event.topic = 'sync/status' AND json_extract(event.payload, '$.threadId') = thread.id
-				ORDER BY event.seq DESC LIMIT 1
-			) IS 1)
-		`;
 	}),
 };
 

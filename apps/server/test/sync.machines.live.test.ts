@@ -34,11 +34,11 @@ import { available, ensure, machine, type Machine, orb } from "./machines/orb.ts
  */
 
 const userHome = `/home/${userInfo().username}`;
-const fedora = machine("fedora");
+const ubuntu = machine("ubuntu");
 const cwA = machine("cw-a");
 const cwB = machine("cw-b");
 const cwC = machine("cw-c");
-const pool = [fedora, cwA, cwB, cwC];
+const pool = [ubuntu, cwA, cwB, cwC];
 
 type Rpc = Client.Client;
 type Server = { readonly run: <A, E>(use: (rpc: Rpc) => Effect.Effect<A, E>) => Promise<A> };
@@ -228,7 +228,7 @@ const describeMachines = available ? describe : describe.skip;
 
 describeMachines("sync across OrbStack machines", () => {
 	beforeAll(async () => {
-		for (const m of pool) await ensure(m.name, m.name === "fedora" ? "fedora" : "ubuntu");
+		for (const m of pool) await ensure(m.name);
 		await Promise.all(pool.map((m) => m.setup()));
 		await Promise.all(pool.map((m) => fresh(m)));
 		appHome = tempDir("machines-app");
@@ -236,12 +236,12 @@ describeMachines("sync across OrbStack machines", () => {
 		members.set("local", LOCAL_SERVER);
 		await session(local, appHome, "On the Mac");
 		desk = await app(appHome);
-		await step("start: the Mac and fedora", async () => {
+		await step("start: the Mac and ubuntu", async () => {
 			const at = lastSeq(appHome);
-			await add(fedora);
+			await add(ubuntu);
 			await caughtUp(LOCAL_SERVER, local);
-			await caughtUp(idOf(fedora), fedora);
-			return { local: pathOf(LOCAL_SERVER, at), fedora: pathOf(idOf(fedora), at) };
+			await caughtUp(idOf(ubuntu), ubuntu);
+			return { local: pathOf(LOCAL_SERVER, at), ubuntu: pathOf(idOf(ubuntu), at) };
 		});
 	}, 1_800_000);
 
@@ -399,23 +399,23 @@ describeMachines("sync across OrbStack machines", () => {
 	}, 300_000);
 
 	it("3. a session deleted while away is soft-deleted on resume, its detail kept and hidden from reads", async () => {
-		const machineId = idOf(fedora);
-		const kept = await session(fedora, work(fedora), "Kept");
-		const doomed = await session(fedora, work(fedora), "Doomed");
-		await caughtUp(machineId, fedora);
+		const machineId = idOf(ubuntu);
+		const kept = await session(ubuntu, work(ubuntu), "Kept");
+		const doomed = await session(ubuntu, work(ubuntu), "Doomed");
+		await caughtUp(machineId, ubuntu);
 		await desk.run((rpc) => rpc["sync.open"]({ sessionId: doomed.session.id, threadId: doomed.id }));
 		await desk.run((rpc) => rpc["sync.close"]({ sessionId: doomed.session.id, threadId: doomed.id }));
 
 		const cutAt = performance.now();
-		await fedora.net("cut");
-		await fedora.drive([["session.delete", { sessionId: doomed.session.id }]]);
+		await ubuntu.net("cut");
+		await ubuntu.drive([["session.delete", { sessionId: doomed.session.id }]]);
 		const held = 15_000 - (performance.now() - cutAt);
 		if (held > 0) await new Promise((resolve) => setTimeout(resolve, held));
 		const at = lastSeq(appHome);
-		await step("partition fedora, delete a session, restore", async () => {
-			await fedora.net("restore");
-			await caughtUp(machineId, fedora);
-			return { fedora: pathOf(machineId, at) };
+		await step("partition ubuntu, delete a session, restore", async () => {
+			await ubuntu.net("restore");
+			await caughtUp(machineId, ubuntu);
+			return { ubuntu: pathOf(machineId, at) };
 		});
 
 		const sessions = query(
@@ -440,7 +440,7 @@ describeMachines("sync across OrbStack machines", () => {
 		expect(entries).toHaveLength(2);
 		expect(listed).toEqual([{ id: kept.session.id }]);
 		expect(changed.at(-1)).toMatchObject({ full: false, removed: [doomed.session.id] });
-		const removed = await fedora.sql(`SELECT kind, id, rev FROM removed WHERE id = '${doomed.session.id}'`);
+		const removed = await ubuntu.sql(`SELECT kind, id, rev FROM removed WHERE id = '${doomed.session.id}'`);
 		expect(removed).toHaveLength(1);
 
 		await snapshot(
@@ -614,10 +614,10 @@ describeMachines("sync across OrbStack machines", () => {
 	}, 300_000);
 
 	it("7. a slow link keeps thread.sync in order, drops deltas that do not continue the draft, and lands the reply", async () => {
-		const machineId = idOf(fedora);
-		const created = await fedora.run((rpc) => rpc["session.create"]({ directory: work(fedora) }));
+		const machineId = idOf(ubuntu);
+		const created = await ubuntu.run((rpc) => rpc["session.create"]({ directory: work(ubuntu) }));
 		const ref = { sessionId: created.session.id, threadId: created.id };
-		await caughtUp(machineId, fedora);
+		await caughtUp(machineId, ubuntu);
 		await desk.run((rpc) => rpc["sync.open"](ref));
 		const forwarded: Array<{ entryId: string; offset: number; delta: string }> = [];
 		let subscribed = false;
@@ -645,15 +645,15 @@ describeMachines("sync across OrbStack machines", () => {
 		})();
 
 		const chunks = 400;
-		await fedora.net("slow");
+		await ubuntu.net("slow");
 		try {
-			await fedora.run((rpc) => rpc["thread.prompt"]({ ...ref, text: `long ${chunks}` }));
+			await ubuntu.run((rpc) => rpc["thread.prompt"]({ ...ref, text: `long ${chunks}` }));
 			await waitFor(() => (forwarded.length >= 20 ? true : undefined), "deltas over the slow link", 60_000);
 			// Closed and reopened mid-reply: the held draft goes, and the stream restarts from the last checkpoint.
 			const reopenedAt = forwarded.length;
 			await desk.run((rpc) => rpc["sync.close"](ref));
 			await desk.run((rpc) => rpc["sync.open"](ref));
-			await fedora.run((rpc) => rpc["thread.wait"](ref));
+			await ubuntu.run((rpc) => rpc["thread.wait"](ref));
 			const committed = () =>
 				query(
 					appHome,
@@ -672,7 +672,7 @@ describeMachines("sync across OrbStack machines", () => {
 				ref.threadId,
 			)[0]!.text as string;
 			const harness = (
-				await fedora.sql(
+				await ubuntu.sql(
 					`SELECT json_extract(part.data, '$.text') AS text FROM part JOIN entry ON entry.id = part.entry_id
 					 WHERE entry.thread_id = '${ref.threadId}' AND entry.type = 'assistant'`,
 				)
@@ -725,7 +725,7 @@ describeMachines("sync across OrbStack machines", () => {
 		} finally {
 			polling = false;
 			follower.stop();
-			await fedora.net("fast");
+			await ubuntu.net("fast");
 			await desk.run((rpc) => rpc["sync.close"](ref));
 		}
 	}, 300_000);
@@ -801,9 +801,9 @@ describeMachines("sync across OrbStack machines", () => {
 
 	it("9. several machines at once: one repository on two machines, commands to each machine, removal cascades", async () => {
 		const repo = `${userHome}/codework`;
-		const onFedora = await session(fedora, repo, "Repo on fedora");
+		const onUbuntu = await session(ubuntu, repo, "Repo on ubuntu");
 		const onA = await session(cwA, repo, "Repo on cw-a");
-		await caughtUp(idOf(fedora), fedora);
+		await caughtUp(idOf(ubuntu), ubuntu);
 		await caughtUp(idOf(cwA), cwA);
 		const projects = query(
 			appHome,
@@ -832,32 +832,32 @@ describeMachines("sync across OrbStack machines", () => {
 				sameAsItsMachine: JSON.stringify(line) === JSON.stringify(held),
 			};
 		};
-		const routed = { fedora: await detail(fedora, onFedora), "cw-a": await detail(cwA, onA) };
+		const routed = { ubuntu: await detail(ubuntu, onUbuntu), "cw-a": await detail(cwA, onA) };
 		expect(routed).toEqual({
-			fedora: { machine: idOf(fedora), sameAsItsMachine: true },
+			ubuntu: { machine: idOf(ubuntu), sameAsItsMachine: true },
 			"cw-a": { machine: idOf(cwA), sameAsItsMachine: true },
 		});
 
-		const fedoraId = idOf(fedora);
+		const ubuntuId = idOf(ubuntu);
 		const left = () => ({
-			project: query(appHome, "SELECT COUNT(*) AS n FROM project WHERE machine_id = ?", fedoraId)[0]!.n,
-			space: query(appHome, "SELECT COUNT(*) AS n FROM space WHERE machine_id = ?", fedoraId)[0]!.n,
-			session: query(appHome, "SELECT COUNT(*) AS n FROM session WHERE machine_id = ?", fedoraId)[0]!.n,
-			thread: query(appHome, "SELECT COUNT(*) AS n FROM thread WHERE id = ?", onFedora.id)[0]!.n,
-			entry: query(appHome, "SELECT COUNT(*) AS n FROM entry WHERE thread_id = ?", onFedora.id)[0]!.n,
+			project: query(appHome, "SELECT COUNT(*) AS n FROM project WHERE machine_id = ?", ubuntuId)[0]!.n,
+			space: query(appHome, "SELECT COUNT(*) AS n FROM space WHERE machine_id = ?", ubuntuId)[0]!.n,
+			session: query(appHome, "SELECT COUNT(*) AS n FROM session WHERE machine_id = ?", ubuntuId)[0]!.n,
+			thread: query(appHome, "SELECT COUNT(*) AS n FROM thread WHERE id = ?", onUbuntu.id)[0]!.n,
+			entry: query(appHome, "SELECT COUNT(*) AS n FROM entry WHERE thread_id = ?", onUbuntu.id)[0]!.n,
 		});
 		const beforeRemove = left();
-		await step("remove fedora", async () => {
-			await desk.run((rpc) => rpc["servers.remove"]({ id: fedoraId }));
-			return { fedora: "cascade" };
+		await step("remove ubuntu", async () => {
+			await desk.run((rpc) => rpc["servers.remove"]({ id: ubuntuId }));
+			return { ubuntu: "cascade" };
 		});
-		members.delete("fedora");
+		members.delete("ubuntu");
 		const afterRemove = left();
 		expect(Object.values(afterRemove).every((n) => n === 0)).toBe(true);
 
 		await snapshot(
 			"several",
-			normalize([[fedoraId, "<machine fedora>"]])({ projects, routed, beforeRemove, afterRemove }),
+			normalize([[ubuntuId, "<machine ubuntu>"]])({ projects, routed, beforeRemove, afterRemove }),
 		);
 	}, 300_000);
 
@@ -889,27 +889,27 @@ describeMachines("sync across OrbStack machines", () => {
 		});
 		members.delete("cw-b");
 		expect(rowsOf(cwBId)).toBe(0);
-		await step("add fedora again", async () => {
+		await step("add ubuntu again", async () => {
 			const at = lastSeq(appHome);
-			const id = await add(fedora);
-			await caughtUp(id, fedora);
-			return { fedora: pathOf(id, at) };
+			const id = await add(ubuntu);
+			await caughtUp(id, ubuntu);
+			return { ubuntu: pathOf(id, at) };
 		});
-		expect(differences(appTables(idOf(fedora)), await harnessTables(fedora))).toEqual([]);
+		expect(differences(appTables(idOf(ubuntu)), await harnessTables(ubuntu))).toEqual([]);
 	}, 900_000);
 
 	it("10. concurrent writes take strictly increasing revisions; a write without the current one is refused", async () => {
-		const machineId = idOf(fedora);
-		const created = await session(fedora, work(fedora), "Revisions");
+		const machineId = idOf(ubuntu);
+		const created = await session(ubuntu, work(ubuntu), "Revisions");
 		const sessionId = created.session.id;
-		const reply = (await fedora.run((rpc) => rpc["thread.history"]({ sessionId }))).entries.at(-1)!;
-		const fork = (await fedora.run((rpc) => rpc["thread.fork"]({ sessionId, entryId: reply.id }))).thread;
+		const reply = (await ubuntu.run((rpc) => rpc["thread.history"]({ sessionId }))).entries.at(-1)!;
+		const fork = (await ubuntu.run((rpc) => rpc["thread.fork"]({ sessionId, entryId: reply.id }))).thread;
 		const main = { sessionId, threadId: created.id };
 		const forked = { sessionId, threadId: fork.id };
-		const { rev: head } = await caughtUp(machineId, fedora);
+		const { rev: head } = await caughtUp(machineId, ubuntu);
 		const projectId = created.session.project?.id;
 
-		await fedora.run((rpc) =>
+		await ubuntu.run((rpc) =>
 			Effect.all(
 				[
 					rpc["thread.prompt"]({ ...main, text: "Concurrent main" }).pipe(
@@ -924,7 +924,7 @@ describeMachines("sync across OrbStack machines", () => {
 				{ concurrency: "unbounded", discard: true },
 			),
 		);
-		const items = await fedora.run((rpc) =>
+		const items = await ubuntu.run((rpc) =>
 			rpc["index.sync"]({ after: head }).pipe(
 				Stream.takeUntil((item) => item._tag === "Synced"),
 				Stream.runCollect,
@@ -935,32 +935,32 @@ describeMachines("sync across OrbStack machines", () => {
 		const rows = items.filter((item) => item._tag !== "Synced");
 		const increasing = revs.every((rev, index) => index === 0 || rev >= revs[index - 1]!);
 		// One revision per write transaction: no two distinct write paths share one.
-		const touched = await fedora.sql(
+		const touched = await ubuntu.sql(
 			`SELECT 'project' AS t, rev FROM project WHERE rev > ${head} UNION ALL SELECT 'thread', rev FROM thread WHERE rev > ${head}
 			 UNION ALL SELECT 'entry', rev FROM entry WHERE rev > ${head} ORDER BY rev`,
 		);
-		const [store] = await fedora.sql("SELECT rev FROM store");
+		const [store] = await ubuntu.sql("SELECT rev FROM store");
 		const configured = rows.find(
 			(item) => item._tag === "Thread" && item.thread.id === fork.id && item.thread.thinkingLevel === "high",
 		);
-		await caughtUp(machineId, fedora);
+		await caughtUp(machineId, ubuntu);
 		const appThread = query(appHome, "SELECT thinking_level FROM thread WHERE id = ?", fork.id)[0];
 		// The main thread's row is older than the head: rewriting it with its own rev is a write without the current revision.
-		const [stale] = await fedora.sql(`SELECT rev FROM thread WHERE id = '${created.id}'`);
+		const [stale] = await ubuntu.sql(`SELECT rev FROM thread WHERE id = '${created.id}'`);
 		expect(stale!.rev as number).toBeLessThan(store!.rev as number);
-		const refused = await fedora.refused(
+		const refused = await ubuntu.refused(
 			`UPDATE thread SET title = 'Not at the current revision' WHERE id = '${created.id}';`,
 		);
 		// A write that stamps the head without taking a new revision is not caught: the trigger compares with
 		// store.rev only, so it cannot tell a forgotten increment from a second write in the same transaction.
-		const atHead = await fedora.refused(
+		const atHead = await ubuntu.refused(
 			`UPDATE thread SET title = 'At the head, untaken', rev = (SELECT rev FROM store) WHERE id = '${created.id}';`,
 		);
-		const [headAfter] = await fedora.sql("SELECT rev FROM store");
-		const refusedInsert = await fedora.refused(
+		const [headAfter] = await ubuntu.sql("SELECT rev FROM store");
+		const refusedInsert = await ubuntu.refused(
 			`INSERT INTO project (id, name, status, created_at, updated_at, rev) VALUES ('stray', 'Stray', 'active', 1, 1, 0);`,
 		);
-		const untouched = await fedora.sql(`SELECT title FROM thread WHERE id = '${created.id}'`);
+		const untouched = await ubuntu.sql(`SELECT title FROM thread WHERE id = '${created.id}'`);
 		measure("case 10", { head, items: rows.length, revs: new Set(revs).size, store: store!.rev });
 		expect(increasing).toBe(true);
 		expect(revs.every((rev) => rev > head)).toBe(true);

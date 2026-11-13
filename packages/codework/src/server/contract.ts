@@ -7,6 +7,7 @@ import {
 	McpError,
 	optional,
 	Project,
+	Skill,
 	PromptSchema,
 	Runner,
 	Sandbox,
@@ -511,6 +512,34 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
 		error: Project.ProjectNotFoundError,
 	}),
+	/**
+	 * The skills sessions in a space see from its folder. A sandbox is read only while it is running:
+	 * otherwise `skills` is null and `sandbox.status` says why. `sandbox` is null for the host.
+	 */
+	Rpc.make("skill.list", {
+		payload: { spaceId: Schema.String },
+		success: Schema.Struct({
+			sandbox: Schema.NullOr(
+				Schema.Struct({
+					driver: Schema.String,
+					providerResourceId: Schema.NullOr(Schema.String),
+					status: Sandbox.SandboxInstance.Status,
+				}),
+			),
+			skills: Schema.NullOr(
+				Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						description: Schema.String,
+						path: Schema.String,
+						/** Its frontmatter keeps it out of the prompt. */
+						hidden: Schema.Boolean,
+					}),
+				),
+			),
+		}),
+		error: Schema.Union([Skill.SpaceNotFoundError, SandboxErrors]),
+	}),
 	Rpc.make("project.rename", {
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
@@ -536,6 +565,19 @@ export const Api = RpcGroup.make(
 			 * defaults for a project's file, the defaults for the user's. Absent when a lower file is broken.
 			 */
 			inherited: optional(Inherited),
+			/**
+			 * For `mcp.json`: the servers as sessions use them, user and project merged; entries the runtime
+			 * skips are left out. `from` is the file that defines the server, not one that only overrides it.
+			 */
+			servers: optional(
+				Schema.Array(
+					Schema.Struct({
+						name: Schema.String,
+						from: Schema.Literals(["user", "project"]),
+						enabled: Schema.Boolean,
+					}),
+				),
+			),
 		}),
 		error: SettingsFileErrors,
 	}),

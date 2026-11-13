@@ -1,7 +1,7 @@
 {
 	"changed": [
 		{
-			"machineId": "<machine fedora>",
+			"machineId": "<machine ubuntu>",
 			"full": false,
 			"items": 1,
 			"project": [],
@@ -27,7 +27,7 @@
 	"session": [
 		{
 			"id": "<ses 2>",
-			"machine_id": "<machine fedora>",
+			"machine_id": "<machine ubuntu>",
 			"organization_id": "personal",
 			"space_id": "<id 1>",
 			"slug": "<id 2>",
@@ -42,7 +42,7 @@
 		},
 		{
 			"id": "<ses 1>",
-			"machine_id": "<machine fedora>",
+			"machine_id": "<machine ubuntu>",
 			"organization_id": "personal",
 			"space_id": "<id 1>",
 			"slug": "<id 3>",
@@ -73,6 +73,7 @@
 			"foundation": null,
 			"placement_space_id": null,
 			"placement_dir": null,
+			"parked": 0,
 			"restarts": 0,
 			"attempt": null,
 			"run_state": "idle",
@@ -86,7 +87,7 @@
 			"tokens_output": 1,
 			"tokens_cache_read": 0,
 			"tokens_cache_write": 0,
-			"status": "attention",
+			"status": "working",
 			"status_at": "<time>",
 			"priority": 0,
 			"grouping_id": null,

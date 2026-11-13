@@ -31,11 +31,11 @@ export const orb = (args: ReadonlyArray<string>, options: { input?: string; time
 
 export type Row = Record<string, unknown>;
 
-/** Machines the suite created or found; `fedora` exists already and is never deleted. */
-export const ensure = async (name: string, distro = "ubuntu") => {
+/** Machines the suite created or found, all Ubuntu; `ubuntu` exists already and is never deleted. */
+export const ensure = async (name: string) => {
 	const list = await orb(["list", "--format", "json"]);
 	const found = (JSON.parse(list) as Array<{ name: string; state: string }>).find((m) => m.name === name);
-	if (found === undefined) await orb(["create", distro, name], { timeout: 600_000 });
+	if (found === undefined) await orb(["create", "ubuntu", name], { timeout: 600_000 });
 	else if (found.state !== "running") await orb(["start", name], { timeout: 300_000 });
 };
 

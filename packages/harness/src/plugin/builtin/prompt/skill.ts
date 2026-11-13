@@ -14,7 +14,6 @@ import * as SandboxFs from "../../../sandbox/fs/util.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { declared } from "../../../tool/tool.ts";
 import { posix } from "../../../util/posix.ts";
-import type { SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
 import { ancestors, present, stripBom } from "./walk.ts";
 
@@ -30,7 +29,7 @@ type IgnoreMatcher = ReturnType<typeof ignore>;
 
 type SkillDiscoveryMode = "codework" | "agents";
 
-interface Skill {
+export interface Skill {
 	readonly name: string;
 	readonly description: string;
 	readonly filePath: string;
@@ -283,12 +282,9 @@ const loadSkillsFromDir = (
  * `.agents/skills` from the cwd up to the git root (the closest ancestor holding `.git`), or up to
  * the sandbox root outside a repository. Earlier skills win name collisions.
  */
-export const discover = Effect.fnUntraced(function* (
-	fs: SandboxFileSystem.Interface,
-	location: SharedPluginContext["location"],
-) {
-	const chain = ancestors(location.directory);
-	const own = posix.join(location.directory, Global.appConfigDir, "skills");
+export const discover = Effect.fnUntraced(function* (fs: SandboxFileSystem.Interface, directory: string) {
+	const chain = ancestors(directory);
+	const own = posix.join(directory, Global.appConfigDir, "skills");
 	const agents = chain.map((directory) => posix.join(directory, ".agents", "skills"));
 	// One batch for every probe: on a remote sandbox each stat is a network round trip.
 	const [dirs, gits] = yield* Effect.all(
@@ -393,7 +389,7 @@ export const skillPlugin = define({
 		if (fileReadTool === undefined) return;
 
 		const fs = yield* SandboxIO.FileSystem;
-		const skills = yield* discover(fs, ctx.location);
+		const skills = yield* discover(fs, ctx.location.directory);
 		const formatted = formatSkillsForPrompt(skills, fileReadTool);
 		if (formatted.length === 0) return;
 

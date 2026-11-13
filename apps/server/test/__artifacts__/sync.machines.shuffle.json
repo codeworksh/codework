@@ -1,20 +1,20 @@
 [
 	{
-		"step": "start: the Mac and fedora",
+		"step": "start: the Mac and ubuntu",
 		"machines": [
 			"<machine local>",
-			"fedora"
+			"ubuntu"
 		],
 		"before": {
 			"local": 0
 		},
 		"after": {
 			"local": 4,
-			"fedora": 0
+			"ubuntu": 0
 		},
 		"paths": {
 			"local": "full sync",
-			"fedora": "full sync"
+			"ubuntu": "full sync"
 		},
 		"time": "<10s"
 	},
@@ -22,16 +22,16 @@
 		"step": "add cw-a with writes during its first sync",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 0
+			"ubuntu": 0
 		},
 		"after": {
 			"local": 4,
-			"fedora": 0,
+			"ubuntu": 0,
 			"cw-a": 862
 		},
 		"paths": {
@@ -43,17 +43,17 @@
 		"step": "partition cw-a and restore",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 0,
+			"ubuntu": 0,
 			"cw-a": 864
 		},
 		"after": {
 			"local": 4,
-			"fedora": 0,
+			"ubuntu": 0,
 			"cw-a": 865
 		},
 		"paths": {
@@ -62,24 +62,24 @@
 		"time": "<10s"
 	},
 	{
-		"step": "partition fedora, delete a session, restore",
+		"step": "partition ubuntu, delete a session, restore",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 865
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 865
 		},
 		"paths": {
-			"fedora": "resume"
+			"ubuntu": "resume"
 		},
 		"time": "<10s"
 	},
@@ -87,18 +87,18 @@
 		"step": "add cw-b live",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 865
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 865,
 			"cw-b": 0
 		},
@@ -111,19 +111,19 @@
 		"step": "crash cw-a mid-run and restart it",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 0
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 0
 		},
@@ -136,20 +136,20 @@
 		"step": "add cw-c live",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b",
 			"cw-c"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 0
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 0,
 			"cw-c": 0
@@ -163,21 +163,21 @@
 		"step": "restore cw-b's store from a backup",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b",
 			"cw-c"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 6,
 			"cw-c": 0
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 6,
 			"cw-c": 0
@@ -191,21 +191,21 @@
 		"step": "replace cw-c's store with a new one",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b",
 			"cw-c"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 6,
 			"cw-c": 4
 		},
 		"after": {
 			"local": 4,
-			"fedora": 6,
+			"ubuntu": 6,
 			"cw-a": 867,
 			"cw-b": 6,
 			"cw-c": 4
@@ -216,30 +216,30 @@
 		"time": "<10s"
 	},
 	{
-		"step": "remove fedora",
+		"step": "remove ubuntu",
 		"machines": [
 			"<machine local>",
-			"fedora",
+			"ubuntu",
 			"cw-a",
 			"cw-b",
 			"cw-c"
 		],
 		"before": {
 			"local": 4,
-			"fedora": 12,
+			"ubuntu": 12,
 			"cw-a": 874,
 			"cw-b": 6,
 			"cw-c": 6
 		},
 		"after": {
 			"local": 4,
-			"fedora": 0,
+			"ubuntu": 0,
 			"cw-a": 874,
 			"cw-b": 6,
 			"cw-c": 6
 		},
 		"paths": {
-			"fedora": "cascade"
+			"ubuntu": "cascade"
 		},
 		"time": "<10s"
 	},
@@ -294,12 +294,12 @@
 		"time": "<10s"
 	},
 	{
-		"step": "add fedora again",
+		"step": "add ubuntu again",
 		"machines": [
 			"<machine local>",
 			"cw-a",
 			"cw-c",
-			"fedora"
+			"ubuntu"
 		],
 		"before": {
 			"local": 4,
@@ -310,10 +310,10 @@
 			"local": 4,
 			"cw-a": 874,
 			"cw-c": 8,
-			"fedora": 10
+			"ubuntu": 10
 		},
 		"paths": {
-			"fedora": "full sync"
+			"ubuntu": "full sync"
 		},
 		"time": "<10s"
 	}

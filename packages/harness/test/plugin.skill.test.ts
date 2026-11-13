@@ -8,19 +8,13 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import * as Harness from "../src/effect/harness.ts";
 import * as Session from "../src/effect/session.ts";
-import * as Location from "../src/location/location.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { discover, skillPlugin } from "../src/plugin/builtin/prompt/skill.ts";
 import { bashPlugin } from "../src/plugin/builtin/tool/bash.ts";
 import { readPlugin } from "../src/plugin/builtin/tool/read.ts";
 import { define } from "../src/plugin/index.ts";
-import { ProjectSchema } from "../src/project/schema.ts";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath } from "../src/schema.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { SpaceSchema } from "../src/space/schema.ts";
-import * as Space from "../src/space/space.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { scenario } from "./fixtures/skill.spec.ts";
@@ -75,20 +69,6 @@ const prompt = async (input: {
 };
 
 const skillsSection = (text: string) => /<skills>\n[\s\S]*?\n<\/skills>/.exec(text)?.[0];
-
-const plain = (directory: string) =>
-	new Location.Info({
-		directory: AbsolutePath.make(directory),
-		space: new SpaceSchema.Info({
-			id: Space.id(SandboxInstance.ID.local, directory),
-			projectId: ProjectSchema.ID.make("local"),
-			location: AbsolutePath.make(directory),
-			kind: "plain",
-			env: SandboxInstance.ID.local,
-			status: "active",
-		}),
-		project: new ProjectSchema.Info({ id: ProjectSchema.ID.make("local"), name: "local", status: "active" }),
-	});
 
 describe("codework.prompt.skill", () => {
 	it("reads .codework/skills at the cwd and .agents/skills up to the sandbox root outside a repo, enforces validation/ignore/collision rules, and ignores host paths", () =>
@@ -458,9 +438,7 @@ describe("codework.prompt.skill", () => {
 		const collector = Logger.make(({ logLevel, message }) => {
 			if (logLevel === "Warn") warnings.push((Array.isArray(message) ? message : [message]).join(" "));
 		});
-		const found = await Effect.runPromise(
-			discover(fs, plain("/a/b/c")).pipe(Effect.provide(Logger.layer([collector]))),
-		);
+		const found = await Effect.runPromise(discover(fs, "/a/b/c").pipe(Effect.provide(Logger.layer([collector]))));
 
 		expect(stats.paths.sort()).toEqual([
 			"/.agents/skills",

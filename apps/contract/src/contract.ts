@@ -88,6 +88,34 @@ export const ProjectSpace = Schema.Struct({
 });
 export type ProjectSpace = typeof ProjectSpace.Type;
 
+/** One skill as a space's sessions see it: its frontmatter `name` and `description`. */
+export const SpaceSkill = Schema.Struct({
+	name: Schema.String,
+	description: Schema.String,
+	/** Its frontmatter keeps it out of the prompt. */
+	hidden: Schema.Boolean,
+});
+export type SpaceSkill = typeof SpaceSkill.Type;
+
+/**
+ * A space's skills. A host space is read each time; a sandbox only while it runs, else its last read
+ * is kept. `skills` is null when it was never read; `syncedAt` is when it was, in epoch milliseconds.
+ */
+export const SpaceSkills = Schema.Struct({
+	space: ProjectSpace,
+	/** The sandbox it is in, as last observed; null for the host. */
+	sandbox: Schema.NullOr(
+		Schema.Struct({
+			driver: Schema.String,
+			providerResourceId: Schema.NullOr(Schema.String),
+			status: Schema.String,
+		}),
+	),
+	skills: Schema.NullOr(Schema.Array(SpaceSkill)),
+	syncedAt: Schema.NullOr(Schema.Finite),
+});
+export type SpaceSkills = typeof SpaceSkills.Type;
+
 /** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
@@ -138,6 +166,12 @@ export const SettingsFile = Schema.Struct({
 		Schema.Struct({
 			retry: Schema.Struct({ maxRetries: Schema.Int, baseDelayMs: Schema.Int, maxDelayMs: Schema.Int }),
 		}),
+	),
+	/** For `mcp.json`: the servers as sessions use them, user and project merged. */
+	servers: Schema.optionalKey(
+		Schema.Array(
+			Schema.Struct({ name: Schema.String, from: Schema.Literals(["user", "project"]), enabled: Schema.Boolean }),
+		),
 	),
 });
 export type SettingsFile = typeof SettingsFile.Type;
@@ -497,6 +531,11 @@ export const Api = RpcGroup.make(
 	Rpc.make("projects.spaces", {
 		payload: { machineId: Schema.String, projectId: Schema.String },
 		success: Schema.Array(ProjectSpace),
+	}),
+	/** Each active space's skills, its main checkout first. Never wakes a sandbox. */
+	Rpc.make("projects.skills", {
+		payload: { machineId: Schema.String, projectId: Schema.String },
+		success: Schema.Array(SpaceSkills),
 	}),
 	Rpc.make("sidebar.list", {
 		payload: { organizationId: Schema.String, machines: Schema.Literals(["default", "all"]) },

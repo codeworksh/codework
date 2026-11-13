@@ -1,7 +1,7 @@
 {
 	"projects": [
 		{
-			"machine_id": "<machine fedora>",
+			"machine_id": "<machine ubuntu>",
 			"id": "<id 1>",
 			"name": "codework"
 		},
@@ -12,8 +12,8 @@
 		}
 	],
 	"routed": {
-		"fedora": {
-			"machine": "<machine fedora>",
+		"ubuntu": {
+			"machine": "<machine ubuntu>",
 			"sameAsItsMachine": true
 		},
 		"cw-a": {

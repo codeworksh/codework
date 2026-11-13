@@ -250,11 +250,8 @@ interface McpRow {
 	readonly from: "project" | "user";
 	readonly detail: Detail;
 	readonly enabled: boolean;
-	/** The project entry only turns the user's server on or off. */
-	readonly override: boolean;
 }
 
-/** Where a server runs, as a line: its own description, else its command or URL. */
 /** A server's line: its own description as prose, else its URL or command as code. */
 interface Detail {
 	readonly text: string;
@@ -268,10 +265,10 @@ const detailOf = (config: Readonly<Record<string, unknown>>): Detail => {
 	return { text: typeof config.command === "string" ? [config.command, ...args].join(" ") : "", code: true };
 };
 
-const isOverride = (config: Readonly<Record<string, unknown>>) =>
-	config.command === undefined && config.url === undefined && config.type === undefined;
-
-/** The MCP servers sessions in this project connect to: the project's own, and the user's it can turn off. */
+/**
+ * The MCP servers sessions in this project connect to: the project's own, and the user's it can turn off.
+ * Which servers there are and whether each is on come from the server, merged as sessions merge them.
+ */
 export function Mcp({ projectId }: { readonly projectId: string }) {
 	const project = useFile(projectId, "mcp");
 	const user = useFile(undefined, "mcp");
@@ -279,36 +276,16 @@ export function Mcp({ projectId }: { readonly projectId: string }) {
 	if (project === undefined || user === undefined) return null;
 	const own = record(record(project.value).mcpServers);
 	const theirs = record(record(user.value).mcpServers);
-	const servers: Array<McpRow> = [];
-	for (const [name, raw] of Object.entries(theirs)) {
-		const config = record(raw);
-		const local = record(own[name]);
-		const override = name in own && isOverride(local);
-		if (name in own && !override) continue;
-		servers.push({
-			name,
-			from: "user",
-			detail: detailOf(config),
-			enabled: (override ? local.enabled : config.enabled) !== false,
-			override,
-		});
-	}
-	for (const [name, raw] of Object.entries(own)) {
-		const config = record(raw);
-		if (isOverride(config)) continue;
-		servers.push({
-			name,
-			from: "project",
-			detail: detailOf(config),
-			enabled: config.enabled !== false,
-			override: false,
-		});
-	}
+	const servers: Array<McpRow> = (project.servers ?? []).map((server) => ({
+		...server,
+		detail: detailOf(record((server.from === "project" ? own : theirs)[server.name])),
+	}));
 	servers.sort((a, b) => a.name.localeCompare(b.name));
 	const toggle = (server: McpRow, enabled: boolean) => {
-		// Turning a user server back on drops the project's override rather than leaving `enabled: true`.
+		// Back at the user's own value, an override that only held `enabled` is dropped rather than repeated.
 		const keys = Object.keys(record(own[server.name]));
-		if (server.from === "user" && enabled && keys.every((key) => key === "enabled"))
+		const theirsEnabled = record(theirs[server.name]).enabled !== false;
+		if (server.from === "user" && enabled === theirsEnabled && keys.every((key) => key === "enabled"))
 			return void set(["mcpServers", server.name]).catch(() => undefined);
 		void set(["mcpServers", server.name, "enabled"], enabled).catch(() => undefined);
 	};
@@ -354,9 +331,8 @@ export function Mcp({ projectId }: { readonly projectId: string }) {
 				</Link>
 			}
 		>
-			{project.error !== undefined && (
-				<Row title="Errors in mcp.json" description={<span className="text-destructive">{project.error}</span>} />
-			)}
+			{/* Only that it is broken: the Advanced section below shows what is wrong. */}
+			{project.error !== undefined && <Row title={<span className="text-destructive">mcp.json has errors</span>} />}
 			{yours.length > 0 && (
 				<Group label="User" count={yours.length}>
 					{yours.map(row)}

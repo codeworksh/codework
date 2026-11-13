@@ -764,7 +764,12 @@ describe("server", () => {
 				broken: { error: broken.error, fixed: fixed.version === removed.version },
 				mcp: {
 					user: { path: userMcp.path, file: fileOf(userMcp.path) },
-					project: { path: projectMcp.path, source: projectMcp.source, error: projectMcp.error ?? null },
+					project: {
+						path: projectMcp.path,
+						source: projectMcp.source,
+						error: projectMcp.error ?? null,
+						servers: projectMcp.servers,
+					},
 					orphan,
 					borrowed,
 				},
@@ -788,6 +793,8 @@ describe("server", () => {
 			expect(afterRefusals).toBe(afterRemove);
 			expect(broken.error).toContain("retry.maxRetries");
 			expect(projectMcp.error).toBeUndefined();
+			// The user server, as sessions merge it: defined by the user, off through the project override.
+			expect(projectMcp.servers).toEqual([{ name: "echo", from: "user", enabled: false }]);
 			expect(orphan._tag).toBe("SettingsError");
 			expect(borrowed._tag).toBe("SettingsError");
 			expect(missing._tag).toBe("ProjectNotFoundError");
@@ -812,6 +819,53 @@ describe("server", () => {
 			});
 			expect(found.found).toBe(false);
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
+	it("skill.list reads a space's skills as sessions see them, on the host and in a running sandbox", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-skills-")));
+		homes.push(root);
+		const app = join(root, "app");
+		const skill = (dir: string, name: string, extra = "") => {
+			mkdirSync(join(dir, name), { recursive: true });
+			writeFileSync(
+				join(dir, name, "SKILL.md"),
+				`---\nname: ${name}\ndescription: Use for ${name}.\n${extra}---\n\n# ${name}\n`,
+			);
+		};
+		skill(join(app, ".codework", "skills"), "release");
+		skill(join(app, ".agents", "skills"), "deploy");
+		skill(join(app, ".agents", "skills"), "internal", "disable-model-invocation: true\n");
+		// Not a folder the skill plugin reads.
+		skill(join(app, ".claude", "skills"), "ignored");
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const local = yield* rpc["session.create"]({ directory: app });
+			const memory = yield* rpc["session.create"]({ sandbox: { driver: "memory" } });
+			const host = yield* rpc["skill.list"]({ spaceId: local.session.spaceId });
+			const running = yield* rpc["skill.list"]({ spaceId: memory.session.spaceId });
+			const missing = yield* rpc["skill.list"]({ spaceId: "spc_missing" }).pipe(
+				Effect.flip,
+				Effect.map((error) => error._tag),
+			);
+
+			expect(host.sandbox).toBeNull();
+			expect(host.skills?.map(({ name, hidden }) => ({ name, hidden }))).toEqual([
+				{ name: "release", hidden: false },
+				{ name: "deploy", hidden: false },
+				{ name: "internal", hidden: true },
+			]);
+			expect(running.sandbox).toMatchObject({ driver: "memory", status: "online" });
+			expect(running.skills).toEqual([]);
+			expect(missing).toBe("SpaceNotFoundError");
+			return { host, running: running.skills, missing };
+		})
+			.pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t").replaceAll(root, "<root>")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.skills.json",
+				),
+			);
+	});
 });
 
 const websocket = (options: Harness.Options = {}, port = 0) => {

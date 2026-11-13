@@ -1,0 +1,27 @@
+{
+	"host": {
+		"sandbox": null,
+		"skills": [
+			{
+				"name": "release",
+				"description": "Use for release.",
+				"path": "<root>/app/.codework/skills/release/SKILL.md",
+				"hidden": false
+			},
+			{
+				"name": "deploy",
+				"description": "Use for deploy.",
+				"path": "<root>/app/.agents/skills/deploy/SKILL.md",
+				"hidden": false
+			},
+			{
+				"name": "internal",
+				"description": "Use for internal.",
+				"path": "<root>/app/.agents/skills/internal/SKILL.md",
+				"hidden": true
+			}
+		]
+	},
+	"running": [],
+	"missing": "SpaceNotFoundError"
+}

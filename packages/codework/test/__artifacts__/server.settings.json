@@ -48,7 +48,14 @@
 		"project": {
 			"path": "<root>/app/.codework/mcp.json",
 			"source": "{\n\t\"mcpServers\": {\n\t\t\"echo\": {\n\t\t\t\"enabled\": false\n\t\t}\n\t}\n}\n",
-			"error": null
+			"error": null,
+			"servers": [
+				{
+					"name": "echo",
+					"from": "user",
+					"enabled": false
+				}
+			]
 		},
 		"orphan": {
 			"_tag": "SettingsError",
