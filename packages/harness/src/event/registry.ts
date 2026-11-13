@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import type { Plugin } from "../plugin/plugin.ts";
+import * as Daemons from "../daemon/builtin.ts";
 import * as EventList from "./list.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -27,7 +28,10 @@ export class EventRegistrationError extends Schema.TaggedError<EventRegistration
 /** Plugin types are namespaced, which makes a collision with anything else structurally impossible. */
 const namespace = (pluginId: string) => `plugin.${pluginId}.`;
 
-const kernel = new Set<string>(EventList.Definitions.map((definition) => definition.type));
+/** The kernel's events and the builtin space daemons': present whatever plugins load. */
+const builtin: ReadonlyArray<EventSchema.Definition> = [...EventList.Definitions, ...Daemons.definitions];
+
+const kernel = new Set<string>(builtin.map((definition) => definition.type));
 
 /**
  * Collects plugin event definitions into one set with the kernel's.
@@ -65,10 +69,10 @@ export const flatten = Effect.fn("EventRegistry.flatten")(function* (plugins: Re
 			definitions.push(definition);
 		}
 	}
-	return [...EventList.Definitions, ...definitions] as ReadonlyArray<EventSchema.Definition>;
+	return [...builtin, ...definitions] as ReadonlyArray<EventSchema.Definition>;
 });
 
-export const layer = (definitions: ReadonlyArray<EventSchema.Definition> = EventList.Definitions) =>
+export const layer = (definitions: ReadonlyArray<EventSchema.Definition> = builtin) =>
 	Layer.sync(Service, () => {
 		let current = definitions;
 		let latest = EventSchema.latest(current);

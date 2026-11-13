@@ -29,6 +29,10 @@
 			"thread": "<fork>"
 		},
 		{
+			"type": "space.mount.attached",
+			"thread": "<fork>"
+		},
+		{
 			"type": "session.prompt.promoted",
 			"thread": "<fork>"
 		},

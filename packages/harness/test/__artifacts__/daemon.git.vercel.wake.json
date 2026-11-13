@@ -1,0 +1,30 @@
+{
+	"wake": {
+		"borrowable after the handover closed": false,
+		"stopped": "offline",
+		"diff on a stopped sandbox": "served from the cache",
+		"diff with other context on a stopped sandbox": "detached",
+		"provider status after that call": "offline"
+	},
+	"after": {
+		"step": "the next run wakes it and the daemon catches up",
+		"status": {
+			"head": "<commit 1>",
+			"available": true,
+			"files": [
+				{
+					"file": "outside.txt",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				},
+				{
+					"file": "woken.txt",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
+	}
+}

@@ -134,14 +134,16 @@ const migrations = {
 			)
 		`;
 		yield* sql`CREATE INDEX space_project_idx ON space (machine_id, project_id)`;
-		// The last skills read from each space: a stopped sandbox is shown from here, never woken.
+		// What each space's daemons last published (git status, skills), mirrored from CodeWork's event
+		// stream: a stopped sandbox is shown from here, never woken.
 		yield* sql`
-			CREATE TABLE skill (
+			CREATE TABLE space_state (
 				machine_id TEXT NOT NULL,
 				space_id TEXT NOT NULL,
-				skills TEXT NOT NULL,
-				synced_at INTEGER NOT NULL,
-				PRIMARY KEY (machine_id, space_id),
+				type TEXT NOT NULL,
+				data TEXT NOT NULL,
+				observed_at INTEGER NOT NULL,
+				PRIMARY KEY (machine_id, space_id, type),
 				FOREIGN KEY (machine_id, space_id) REFERENCES space(machine_id, id) ON DELETE CASCADE
 			)
 		`;

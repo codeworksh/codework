@@ -14,6 +14,13 @@ This file is the canonical source for unreleased changes and published release n
 - `Runner.NoModelError`, reported as `no-model-error`: a run that has no model, because settings name none and no provider is configured. The CLI prints it with a hint.
 - Queued steers and follow-ups stack above the desktop composer as cards: the newest in front, up to three edges behind, opening into one list on hover or focus without moving the conversation. Parked prompts show a pulsing dot, the lane (Steer or Follow Up) trails each row, and a row is edited in place (Enter saves, Esc cancels).
 - A notice about the session (No Model, Something Went Wrong, Not Sent, Not Forked, a broken settings file) is the front card of that stack, tinted by its tone, with queued prompts behind it.
+- Space daemons: builtin `git` and `skills` daemons keep each space's state current from inside CodeWork. A space's daemons start with the first run there and stop after an hour without one; they read a sandbox only while a run, or a short handover after it, already holds it, so they never wake one.
+- `plugin.git.status` events: a space's branch, head and changed files with line counts, a wholly untracked folder as one entry. `plugin.skills.list` events: the skills sessions in a space see. Both carry `spaceId` and `observedAt`.
+- `daemon.call({ plugin, spaceId, method, input })`. The git daemon's `diff` returns per-file patches; while the space's sandbox is not running it answers from the last read, marked `cached`.
+- `event.subscribe` takes `types`: only those types, and first the last event of each type per space.
+- `space.mount.attached` and `space.mount.detached` events: a run's drain mounting and releasing its space.
+- `@codeworksh/plugin/plugin/daemon`: the daemon plugin contract (space scope).
+- The desktop's project settings list each space's Skills as its skills daemon last published them, kept in `app.db`: they update as runs change them, a stopped sandbox shows its last list and its age, and a space never read says "not synced yet".
 
 ### Changed
 

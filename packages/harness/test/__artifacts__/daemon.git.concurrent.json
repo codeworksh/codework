@@ -1,0 +1,17 @@
+{
+	"files": [
+		{
+			"file": "from-first.txt",
+			"status": "added",
+			"additions": 1,
+			"deletions": 0
+		},
+		{
+			"file": "from-second.txt",
+			"status": "added",
+			"additions": 1,
+			"deletions": 0
+		}
+	],
+	"statuses published": "at most 4"
+}

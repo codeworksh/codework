@@ -380,6 +380,8 @@ export const syncTopics = {
 	delta: (threadId: string) => `sync/delta/${threadId}`,
 	/** `SyncTracking` whenever the user edits a desktop column other than status; stored, in the transaction that wrote it. */
 	tracking: "sync/tracking",
+	/** `SyncState` whenever a space daemon's mirrored state changed (git status, skills); stored. */
+	state: "sync/state",
 };
 
 /**
@@ -402,6 +404,14 @@ export const SyncChanged = Schema.Struct({
 	removed: Schema.Array(Schema.String),
 });
 export type SyncChanged = typeof SyncChanged.Type;
+
+/** A space daemon's last event of `type` for a space was mirrored anew. */
+export const SyncState = Schema.Struct({
+	machineId: Schema.String,
+	spaceId: Schema.String,
+	type: Schema.String,
+});
+export type SyncState = typeof SyncState.Type;
 
 /** A thread's status moved; `at` is the app server's clock. */
 export const SyncStatus = Schema.Struct({

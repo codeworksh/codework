@@ -1,6 +1,7 @@
-import type { SpaceSkills } from "@codeworksh/contract";
+import { type SpaceSkills, SyncState, syncTopics } from "@codeworksh/contract";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
+import { Effect, Option, Schedule, Schema, Stream } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useId, useState } from "react";
 
 import { ChevronDown } from "@/components/vuesax";
@@ -10,7 +11,35 @@ import { useNowMinute } from "@/hooks/now";
 import { ago } from "../time";
 import { Row, Section, Tag, useTilde } from "./config";
 
-const skillsOf = (machineId: string, projectId: string) => Server.query("projects.skills", { machineId, projectId });
+const decodeState = Schema.decodeUnknownOption(SyncState);
+
+/**
+ * A project's skills by `<machine id>/<project id>`: read when subscribed, and again whenever a
+ * skills daemon of that machine published a new list.
+ */
+const skillsAtom = Atom.family((key: string) => {
+	const [machineId = "", projectId = ""] = key.split("/");
+	return Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) =>
+				Effect.succeed(
+					client("event.subscribe", { topics: [syncTopics.state] }).pipe(
+						Stream.filter(
+							(item) =>
+								"_tag" in item ||
+								Option.exists(
+									decodeState(item.payload),
+									(state) => state.machineId === machineId && state.type === "plugin.skills.list",
+								),
+						),
+						Stream.debounce("50 millis"),
+						Stream.mapEffect(() => client("projects.skills", { machineId, projectId })),
+					),
+				),
+			),
+		).pipe(Stream.retry(Schedule.spaced("1 second"))),
+	);
+});
 
 /** A checkout's role, as its group says it; a folder that is not a repository needs none. */
 const roles: Record<SpaceSkills["space"]["kind"], string | undefined> = {
@@ -40,10 +69,10 @@ const capitalized = (value: string) => value.charAt(0).toUpperCase() + value.sli
 
 /**
  * The skills sessions in this project see, one group per space: read-only, since a skill is a file
- * people write. Host checkouts are read each time; a sandbox shows its last read while it is stopped.
+ * people write. Each space's skills daemon keeps them current; a stopped sandbox shows its last list.
  */
 export function Skills({ machineId, projectId }: { readonly machineId: string; readonly projectId: string }) {
-	const result = useAtomValue(skillsOf(machineId, projectId));
+	const result = useAtomValue(skillsAtom(`${machineId}/${projectId}`));
 	const [open, setOpen] = useState(false);
 	if (AsyncResult.isFailure(result)) return null;
 	// A memory sandbox keeps nothing, so there is nothing to show for it.
@@ -122,7 +151,7 @@ function SpaceGroup({ entry }: { readonly entry: SpaceSkills }) {
 			aria-labelledby={id}
 			className="flex flex-col divide-y divide-edge/60 transition-opacity duration-200 ease-out starting:opacity-0"
 		>
-			{/* Where the space is, then its folder; a sandbox says when it was last read. */}
+			{/* Where the space is, then its folder; a sandbox says when it was last read, any space that it never was. */}
 			<div className="flex flex-col gap-0.5 bg-ink/2 px-4 py-2 text-xs text-ink-muted">
 				<div className="flex min-w-0 items-center gap-2">
 					<span id={id} className="shrink-0 text-ink-secondary">
@@ -134,7 +163,7 @@ function SpaceGroup({ entry }: { readonly entry: SpaceSkills }) {
 							{sandboxIdOf(entry)}
 						</span>
 					)}
-					{remote && (
+					{(remote || entry.syncedAt === null) && (
 						<span className="ml-auto shrink-0 pl-2 lowercase">
 							{entry.syncedAt === null ? "not synced yet" : <Synced time={entry.syncedAt} />}
 						</span>

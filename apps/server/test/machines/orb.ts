@@ -55,7 +55,28 @@ export const machine = (name: string) => {
 		cwHome,
 		database,
 		setup: () => script("setup.sh", [checkout], 1_800_000),
-		start: () => script("start.sh", [checkout]),
+		/**
+		 * `env` reaches the server as its environment (credentials a test moves onto the machine). It
+		 * goes through stdin, so it never shows on a command line or in an error.
+		 */
+		start: (env: Readonly<Record<string, string>> = {}) =>
+			orb(
+				[
+					"-m",
+					name,
+					"bash",
+					"-c",
+					'while IFS= read -r line && [ -n "$line" ]; do export "$line"; done; exec bash "$0" "$1"',
+					join(scripts, "start.sh"),
+					checkout,
+				],
+				{
+					input: `${Object.entries(env)
+						.map(([key, value]) => `${key}=${value}\n`)
+						.join("")}\n`,
+					timeout: 120_000,
+				},
+			),
 		/** Sweeps the store's open runs as a start would, without listening. */
 		sweep: () => script("start.sh", [checkout, "sweep"]),
 		stop: (signal: "TERM" | "KILL" = "TERM") => script("stop.sh", [signal]),

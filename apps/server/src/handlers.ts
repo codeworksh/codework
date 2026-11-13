@@ -97,7 +97,8 @@ export const layer = Contract.Api.toLayer(
 
 			"sidebar.list": (input) => Reads.sidebar(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"projects.spaces": (input) => Reads.spaces(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
-			"projects.skills": (input) => Skills.list(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"projects.skills": (input) =>
+				Skills.list(input, sync.client(input.machineId)).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 

@@ -53,6 +53,12 @@
 			"import": "./dist/pack/plugin/prompt.mjs",
 			"default": "./dist/pack/plugin/prompt.mjs"
 		},
+		"./plugin/daemon": {
+			"development": "./src/plugin/daemon.ts",
+			"types": "./dist/pack/plugin/daemon.d.mts",
+			"import": "./dist/pack/plugin/daemon.mjs",
+			"default": "./dist/pack/plugin/daemon.mjs"
+		},
 		"./plugin/mcp": {
 			"development": "./src/plugin/mcp.ts",
 			"types": "./dist/pack/plugin/mcp.d.mts",
