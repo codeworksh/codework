@@ -147,6 +147,7 @@ export type SpaceChanges = typeof SpaceChanges.Type;
 /** One file's patch: a `diff --git` chunk with 3 lines of context. */
 export const FileDiff = Schema.Struct({
 	file: Schema.String,
+	/** Empty when the file was left out (past the caps): read it alone with `files`. */
 	patch: Schema.String,
 	status: ChangeStatus,
 	additions: Schema.Int,
@@ -156,7 +157,7 @@ export type FileDiff = typeof FileDiff.Type;
 
 export const SpaceDiff = Schema.Struct({
 	files: Schema.Array(FileDiff),
-	/** Past the daemon's caps (10 MB of patches, 200 untracked files): the rest are left out. */
+	/** Files were left out: past the daemon's caps (10 MB of patches, 1 MB cached; a 5 MB untracked file), or past 200 untracked files. */
 	truncated: Schema.optionalKey(Schema.Literal(true)),
 	/** The space is not mounted: these are the patches read after its last run, as old as its changes. */
 	cached: Schema.optionalKey(Schema.Literal(true)),

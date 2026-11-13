@@ -66,9 +66,36 @@ export const diffAtom = Atom.family((key: string) => {
 		.pipe(Atom.setIdleTTL(IDLE));
 });
 
+export type Patches = Atom.Type<ReturnType<typeof diffAtom>>;
+
+/**
+ * One file read alone by `[<machine id>/<space id>, file, additions, deletions]`, for a file left out
+ * of a space's patches: its entry as read, and whether it came from the patches kept after the last
+ * run. The counts are the listed row's, so a row that changes reads again.
+ */
+export const fileAtom = Atom.family((key: string) => {
+	const [space, file] = JSON.parse(key) as [string, string];
+	const [machineId = "", spaceId = ""] = space.split("/");
+	return Server.runtime
+		.atom(
+			Server.use((client) => client("changes.diff", { machineId, spaceId, files: [file] })).pipe(
+				Effect.map((diff) => ({
+					entry: diff.files.find((entry) => entry.file === file),
+					cached: diff.cached === true,
+				})),
+				Effect.result,
+			),
+		)
+		.pipe(Atom.setIdleTTL(IDLE));
+});
+
+/** Stands in for a space's patches while its frame is hidden: nothing is read. */
+export const hiddenAtom = Atom.make<Patches>(AsyncResult.initial());
+
 /**
  * A space's folder, environment and threads by `<machine id>/<space id>`: read when subscribed, and
- * again after its machine's sync changes a space, a session or a thread.
+ * again after its machine's sync changed the space, a session or thread placed in it, or one not
+ * seen before (it may be placed in it).
  */
 export const spaceAtom = Atom.family((key: string) => {
 	const [machineId = "", spaceId = ""] = key.split("/");
@@ -76,26 +103,36 @@ export const spaceAtom = Atom.family((key: string) => {
 		.atom(
 			Stream.unwrap(
 				Server.use((client) =>
-					Effect.succeed(
-						client("event.subscribe", { topics: [syncTopics.changed] }).pipe(
-							Stream.filter(
-								(item) =>
-									"_tag" in item ||
-									Option.exists(
-										decodeChanged(item.payload),
-										(notice) =>
-											notice.machineId === machineId &&
-											notice.space.length +
-												notice.session.length +
-												notice.thread.length +
-												notice.removed.length >
-												0,
-									),
+					Effect.sync(() => {
+						const seen = new Set<string>();
+						let placed = new Set<string>();
+						const concerns = (notice: SyncChanged) => {
+							if (notice.machineId !== machineId) return false;
+							const ids = [...notice.session, ...notice.thread, ...notice.removed];
+							const fresh = ids.filter((id) => !seen.has(id));
+							for (const id of fresh) seen.add(id);
+							return (
+								notice.full ||
+								notice.space.includes(spaceId) ||
+								fresh.length > 0 ||
+								ids.some((id) => placed.has(id))
+							);
+						};
+						return client("event.subscribe", { topics: [syncTopics.changed] }).pipe(
+							Stream.filter((item) => "_tag" in item || Option.exists(decodeChanged(item.payload), concerns)),
+							// Debounced, but not the first read.
+							Stream.switchMap((item) =>
+								Stream.fromEffect("_tag" in item ? Effect.void : Effect.sleep("1 second")),
 							),
-							Stream.debounce("50 millis"),
 							Stream.mapEffect(() => client("changes.space", { machineId, spaceId })),
-						),
-					),
+							Stream.tap((space) =>
+								Effect.sync(() => {
+									placed = new Set(space?.threads.flatMap((thread) => [thread.id, thread.sessionId]));
+									for (const id of placed) seen.add(id);
+								}),
+							),
+						);
+					}),
 				),
 			).pipe(Stream.retry(Schedule.spaced("1 second"))),
 		)

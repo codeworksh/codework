@@ -1,5 +1,11 @@
-import { type ChangedFile, ChangesError, type SpaceChanges, type SpaceDiff } from "@codeworksh/contract";
-import { useAtom, useAtomValue } from "@effect/atom-react";
+import {
+	type ChangedFile,
+	ChangesError,
+	type ChangesSpace,
+	type SpaceChanges,
+	type SpaceDiff,
+} from "@codeworksh/contract";
+import { RegistryContext, useAtom, useAtomValue } from "@effect/atom-react";
 import { useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Result } from "effect";
 import { AsyncResult } from "effect/reactivity";
@@ -12,6 +18,7 @@ import {
 	ColumnsIcon,
 	GitDiffIcon,
 	RowsIcon,
+	WarningCircleIcon,
 } from "@phosphor-icons/react";
 import {
 	type ComponentProps,
@@ -20,6 +27,8 @@ import {
 	type MouseEvent,
 	memo,
 	type ReactNode,
+	type RefObject,
+	useContext,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
@@ -32,7 +41,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useNowMinute } from "@/hooks/now";
 import { ago } from "../time";
 import { changesRef } from "./address";
-import { diffAtom, statusAtom } from "./data";
+import { diffAtom, fileAtom, hiddenAtom, type Patches, spaceAtom, statusAtom } from "./data";
 import { Diff, DiffPool, type DiffStyle, diffStyleAtom, LINE } from "./diff";
 import { inView, shown, slide, topOf } from "./fold";
 import { recall, remember } from "./memory";
@@ -51,17 +60,21 @@ export function Changes({ address, instanceId }: WidgetProps<unknown>) {
 }
 
 const unavailable: Record<NonNullable<SpaceChanges["reason"]>, string> = {
-	"not-a-repository": "Not a git repository",
-	"git-missing": "Git is not installed",
-	failed: "Git failed",
+	"not-a-repository": "Not a Git Repository",
+	"git-missing": "Git Is Not Installed",
+	failed: "Git Failed",
 };
 
 /** How long the skeleton takes to leave, in milliseconds, as its classes say. */
 const LEAVE = 200;
 
 function Review({ space, instanceId }: { readonly space: string; readonly instanceId: string }) {
+	const root = useRef<HTMLDivElement>(null);
 	const status = Option.getOrUndefined(AsyncResult.value(useAtomValue(statusAtom(space))));
-	const patches = Option.getOrUndefined(AsyncResult.value(useAtomValue(diffAtom(space))));
+	const where = Option.getOrNull(AsyncResult.value(useAtomValue(spaceAtom(space))));
+	const running = where?.threads.some((thread) => thread.runState !== "idle") === true;
+	const { loaded, retry } = useDiff(space, useShown(root), running);
+	const patches = Option.getOrUndefined(AsyncResult.value(loaded));
 	const listed = status?.available === true && status.files.length > 0;
 	// An untracked folder is one entry until the patches name its files: listed before them, its row
 	// would turn into theirs under the reader's eyes.
@@ -82,22 +95,55 @@ function Review({ space, instanceId }: { readonly space: string; readonly instan
 		return () => clearTimeout(timer);
 	}, [cold, known]);
 	const body = !known ? null : status == null ? (
-		<Message>Not synced yet</Message>
+		<Message>Not Synced Yet</Message>
 	) : !status.available ? (
 		<Message detail={status.message}>{unavailable[status.reason ?? "failed"]}</Message>
 	) : status.files.length === 0 ? (
-		<Message>No changes</Message>
+		<Message>No Changes</Message>
 	) : (
-		<Files space={space} instanceId={instanceId} status={status} />
+		<Files space={space} instanceId={instanceId} status={status} loaded={loaded} retry={retry} where={where} />
 	);
-	if (!cold) return body;
 	return (
-		<div className="relative h-full">
-			{known && <div className="h-full animate-in duration-200 ease-out fade-in">{body}</div>}
-			{!left && <Skeleton leaving={known} />}
+		<div ref={root} className="relative h-full">
+			{!cold ? body : known && <div className="h-full animate-in duration-200 ease-out fade-in">{body}</div>}
+			{cold && !left && <Skeleton leaving={known} />}
 		</div>
 	);
 }
+
+/** Whether the element is on screen: a frame stays mounted, hidden, while overflowed or collapsed. */
+function useShown(ref: RefObject<HTMLElement | null>) {
+	const [shown, setShown] = useState(true);
+	useEffect(() => {
+		const element = ref.current;
+		if (element === null) return;
+		const observer = new IntersectionObserver((entries) => setShown(entries.at(-1)?.isIntersecting === true));
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [ref]);
+	return shown;
+}
+
+/**
+ * A space's patches, read only while its frame is shown; hidden, it keeps what it last showed. A
+ * failed read is tried again each time the frame is shown, and when a run there starts or ends.
+ */
+function useDiff(space: string, visible: boolean, running: boolean) {
+	const atom = diffAtom(space);
+	const live = useAtomValue(visible ? atom : hiddenAtom);
+	const [last, setLast] = useState(live);
+	if (visible && live !== last) setLast(live);
+	const registry = useContext(RegistryContext);
+	useEffect(() => {
+		if (visible && failed(registry.get(atom))) registry.refresh(atom);
+	}, [visible, running, atom, registry]);
+	return { loaded: visible ? live : last, retry: () => registry.refresh(atom) };
+}
+
+const failed = (loaded: Patches) =>
+	!loaded.waiting &&
+	(AsyncResult.isFailure(loaded) ||
+		(AsyncResult.isSuccess(loaded) && loaded.value !== undefined && Result.isFailure(loaded.value)));
 
 const bars = [38, 52, 30, 46, 34, 58, 42];
 
@@ -138,16 +184,30 @@ function Bar({ className = "", style }: { readonly className?: string; readonly 
 	return <span style={style} className={`h-2.5 shrink-0 rounded-sm bg-ink/8 ${className}`} />;
 }
 
-function Files(props: { readonly space: string; readonly instanceId: string; readonly status: SpaceChanges }) {
-	const { space, instanceId, status } = props;
-	const loaded = useAtomValue(diffAtom(space));
+function Files(props: {
+	readonly space: string;
+	readonly instanceId: string;
+	readonly status: SpaceChanges;
+	readonly loaded: Patches;
+	readonly retry: () => void;
+	readonly where: ChangesSpace | null;
+}) {
+	const { space, instanceId, status, loaded } = props;
 	const result = Option.getOrUndefined(AsyncResult.value(loaded));
 	const diff = result !== undefined && Result.isSuccess(result) ? result.success : undefined;
+	const failure =
+		result !== undefined && Result.isFailure(result) ? failureOf(result.failure, props.where) : undefined;
 	const files = expand(status.files, diff);
 	const patches = new Map(diff?.files.map((entry) => [entry.file, entry.patch]));
-	// A file that just changed may be in the patches being read.
+	// Why an unfolded file shows no patch. A file that just changed may be in the patches being read.
 	const absent =
-		diff === undefined || loaded.waiting ? undefined : diff.truncated === true ? "Left out of the diff" : "No diff";
+		failure !== undefined
+			? failure.title
+			: diff === undefined || loaded.waiting
+				? undefined
+				: diff.truncated === true
+					? "Left Out of the Diff"
+					: "No Diff";
 	const { setTitle } = useFrame();
 	useEffect(() => setTitle(`Files Changed ${files.length}`), [files.length, setTitle]);
 	// As this copy last showed the space, while it was off the screen with its workspace.
@@ -309,34 +369,27 @@ function Files(props: { readonly space: string; readonly instanceId: string; rea
 				</div>
 			</div>
 			<Space space={space} status={status} />
-			{result !== undefined && Result.isFailure(result) ? (
-				<Message>{failureOf(result.failure)}</Message>
-			) : (
-				<DiffPool>
-					<div
-						ref={scroller}
-						onScroll={onScroll}
-						onClick={toggle}
-						className="relative min-h-0 flex-1 overflow-auto"
-					>
-						{files.map((file) => (
-							<Entry
-								key={file.file}
-								file={file.file}
-								status={file.status}
-								additions={file.additions}
-								deletions={file.deletions}
-								folded={!opened.has(file.file)}
-								eager={before.visible.has(file.file)}
-								patch={patches.get(file.file)}
-								absent={absent}
-								style={style}
-							/>
-						))}
-					</div>
-					{diff !== undefined && <Notes diff={diff} observedAt={status.observedAt} />}
-				</DiffPool>
-			)}
+			<Problem failure={failure} retrying={loaded.waiting} onRetry={props.retry} />
+			<DiffPool scroller={scroller}>
+				<div ref={scroller} onScroll={onScroll} onClick={toggle} className="relative min-h-0 flex-1 overflow-auto">
+					{files.map((file) => (
+						<Entry
+							key={file.file}
+							space={space}
+							file={file.file}
+							status={file.status}
+							additions={file.additions}
+							deletions={file.deletions}
+							folded={!opened.has(file.file)}
+							eager={before.visible.has(file.file)}
+							patch={patches.get(file.file)}
+							absent={absent}
+							style={style}
+						/>
+					))}
+				</div>
+				{diff !== undefined && <Notes diff={diff} observedAt={status.observedAt} />}
+			</DiffPool>
 		</div>
 	);
 }
@@ -363,6 +416,7 @@ const expand = (files: ReadonlyArray<ChangedFile>, diff: SpaceDiff | undefined):
  * mounted while folded: unfolding shows it as it was.
  */
 const Entry = memo(function Entry(props: {
+	readonly space: string;
 	readonly file: string;
 	readonly status: ChangedFile["status"];
 	readonly additions: number;
@@ -421,7 +475,17 @@ const Entry = memo(function Entry(props: {
 					className={props.folded || !near ? "[content-visibility:hidden]" : undefined}
 				>
 					{folder ? (
-						<Note>Untracked folder</Note>
+						<Note>Untracked Folder</Note>
+					) : props.patch === "" ? (
+						drawn && (
+							<Alone
+								space={props.space}
+								file={props.file}
+								additions={props.additions}
+								deletions={props.deletions}
+								style={props.style}
+							/>
+						)
 					) : props.patch !== undefined ? (
 						drawn && <Diff patch={props.patch} style={props.style} />
 					) : (
@@ -433,20 +497,96 @@ const Entry = memo(function Entry(props: {
 	);
 });
 
+/**
+ * A file left out of the patches for their size, read alone once it is unfolded. Shown only as the
+ * list has it: a read whose counts differ is of a file changed since.
+ */
+function Alone(props: {
+	readonly space: string;
+	readonly file: string;
+	readonly additions: number;
+	readonly deletions: number;
+	readonly style: DiffStyle;
+}) {
+	const loaded = useAtomValue(fileAtom(JSON.stringify([props.space, props.file, props.additions, props.deletions])));
+	const result = Option.getOrUndefined(AsyncResult.value(loaded));
+	if (result === undefined || loaded.waiting) return <Note>Loading…</Note>;
+	if (Result.isFailure(result)) return <Note>{failureOf(result.failure, null).title}</Note>;
+	const { entry, cached } = result.success;
+	if (entry === undefined) return <Note>No Diff</Note>;
+	if (entry.patch === "") return <Note>{cached ? "Left Out of the Last Run’s Diff" : "Too Large to Show"}</Note>;
+	if (entry.additions !== props.additions || entry.deletions !== props.deletions)
+		return <Note>Changed Since It Was Listed</Note>;
+	return <Diff patch={entry.patch} style={props.style} />;
+}
+
 /** Why the patches could not be read. */
-const failureOf = (error: { readonly _tag: string }) => {
-	if (!(error instanceof ChangesError)) return "The CodeWork server is not reachable.";
-	if (error.reason === "detached") return "Changes from the last run are not available while the sandbox is stopped";
-	if (error.reason === "unavailable") return "Changes appear after the next run";
-	return error.message;
+const failureOf = (
+	error: { readonly _tag: string },
+	where: ChangesSpace | null,
+): { readonly title: string; readonly detail?: string } => {
+	if (!(error instanceof ChangesError)) return { title: "The CodeWork Server Is Not Reachable" };
+	if (error.reason === "failed") return { title: "Git Failed", detail: error.message };
+	if (error.reason === "detached" && where?.env?.status === "offline") return { title: "The Sandbox Is Stopped" };
+	return { title: "Diffs Appear During the Next Run" };
 };
+
+/**
+ * Why the patches are not there, in a row under the space that opens when they fail and closes when
+ * they are back. The files stay listed from the status. Already failed on open, it is there at once.
+ */
+function Problem(props: {
+	readonly failure: ReturnType<typeof failureOf> | undefined;
+	readonly retrying: boolean;
+	readonly onRetry: () => void;
+}) {
+	// Kept while it closes, so the row leaves showing what it said.
+	const [last, setLast] = useState(props.failure);
+	if (props.failure !== undefined && (props.failure.title !== last?.title || props.failure.detail !== last.detail))
+		setLast(props.failure);
+	const open = props.failure !== undefined;
+	return (
+		<div
+			aria-hidden={!open}
+			inert={!open}
+			className={`shrink-0 overflow-hidden transition-[height,opacity] duration-200 ease-out motion-reduce:transition-none ${
+				open ? "h-7 opacity-100" : "h-0 opacity-0"
+			}`}
+		>
+			{last !== undefined && (
+				<div
+					role="status"
+					title={last.detail}
+					className="flex h-7 items-center gap-1.5 border-b border-edge bg-warning/8 px-3 text-2xs whitespace-nowrap text-warning"
+				>
+					<WarningCircleIcon className="size-3 shrink-0" weight="bold" aria-hidden />
+					<span className="shrink-0 font-medium">Diffs Unavailable</span>
+					<span aria-hidden>·</span>
+					<span className="min-w-0 truncate">{last.title}</span>
+					<span aria-hidden>·</span>
+					{props.retrying ? (
+						<span className="shrink-0">Retrying…</span>
+					) : (
+						<button
+							type="button"
+							onClick={props.onRetry}
+							className="relative shrink-0 rounded-sm font-medium underline-offset-2 outline-none before:absolute before:-inset-x-1 before:-inset-y-1.5 before:content-[''] hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							Retry
+						</button>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
 
 /** What the patches shown are, when they are not plainly the latest of every file. */
 function Notes({ diff, observedAt }: { readonly diff: SpaceDiff; readonly observedAt: number }) {
 	const span = ago(observedAt, useNowMinute());
 	const notes = [
-		...(diff.cached === true ? [`From the last run, ${span === "now" ? "just now" : `${span} ago`}`] : []),
-		...(diff.truncated === true ? ["Some files are left out"] : []),
+		...(diff.cached === true ? [`From the Last Run, ${span === "now" ? "Just Now" : `${span} Ago`}`] : []),
+		...(diff.truncated === true ? ["Some Files Are Left Out"] : []),
 	];
 	if (notes.length === 0) return null;
 	return (
@@ -456,6 +596,9 @@ function Notes({ diff, observedAt }: { readonly diff: SpaceDiff; readonly observ
 		</div>
 	);
 }
+
+/** Said by letter too, not by colour alone. */
+const letter: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 
 const statusColor: Record<ChangedFile["status"], string> = {
 	added: "text-success",
@@ -474,6 +617,12 @@ function Path({ file, status }: { readonly file: string; readonly status: Change
 	const directory = cut < 0 ? "" : trimmed.slice(0, cut);
 	return (
 		<span title={file} className="flex min-w-0 flex-1 items-baseline gap-1.5">
+			<span
+				aria-hidden
+				className={`w-2 shrink-0 text-center font-mono text-[10px] font-medium ${statusColor[status]}`}
+			>
+				{letter[status]}
+			</span>
 			<span className={`shrink-0 font-medium ${statusColor[status]}`}>{name}</span>
 			<span className="sr-only">{status}</span>
 			{directory !== "" && (
