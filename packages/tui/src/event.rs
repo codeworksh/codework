@@ -10,32 +10,30 @@ use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseEventKind};
 use tokio::sync::mpsc;
 
 use crate::rpc::StreamEvent;
-use crate::types::{HistoryEntry, ModelList, ServerInfo, SessionInfo};
+use crate::types::{ModelList, ServerInfo, ThreadInfo};
 
 /// Asynchronous results arriving from the RPC server.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RpcEvent {
     Stream(StreamEvent),
-    SessionStream {
+    ThreadStream {
         session_id: String,
+        thread_id: String,
         event: StreamEvent,
     },
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
-    SessionsLoaded(Result<Vec<SessionInfo>, String>),
-    SessionHistoryRefresh {
+    ThreadsLoaded(Result<Vec<ThreadInfo>, String>),
+    ThreadInfoLoaded {
         session_id: String,
+        thread_id: String,
+        result: Result<ThreadInfo, String>,
     },
-    SessionHistoryLoaded {
-        session_id: String,
-        request_id: u64,
-        revision: u64,
-        result: Result<Vec<HistoryEntry>, String>,
-    },
-    SessionConfigured(Result<SessionInfo, String>),
+    ThreadConfigured(Result<ThreadInfo, String>),
     PluginsReloaded(Result<(u64, Option<String>), String>),
     PromptDispatched {
         session_id: String,
+        thread_id: String,
         message_id: String,
         result: Result<(), String>,
     },

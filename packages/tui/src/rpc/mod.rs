@@ -1,4 +1,4 @@
 pub mod client;
 pub mod protocol;
 
-pub use client::{RpcClient, StreamEvent};
+pub use client::{RpcClient, StreamEvent, SyncCursor};
