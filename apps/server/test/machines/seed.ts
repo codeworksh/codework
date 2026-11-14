@@ -1,9 +1,9 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- a one-shot script run inside an OrbStack machine. */
 /**
- * Fills every session of a stopped CodeWork store with a history of turns across the past `days`
- * days, through the thread store's own writes, so the usage rollup, thread totals and revisions come
+ * Fills every session of a stopped CodeWork store with a history of turns across the `days`
+ * days up to `until`, through the thread store's own writes, so the usage rollup, thread totals and revisions come
  * out as a live run makes them:
- *   node --conditions=development seed.ts <database> <days> <seed> [<until ms>]
+ *   node --conditions=development seed.ts <database> <days> <seed> <until ms>
  * Each session gets a start day (a little busier recently, quieter at weekends) and 2-14 turns on its days;
  * each turn is a prompt and 1-6 requests to one model of its project's mix, the last answering and
  * the others calling tools. A few requests fail, a few are interrupted (aborted, never timed), and a
@@ -17,10 +17,11 @@ import * as ThreadSchema from "../../../../packages/harness/src/thread/schema.ts
 import * as Thread from "../../../../packages/harness/src/thread/thread.ts";
 import type { ToolStatus } from "../../../../packages/harness/src/db/schema.sql.ts";
 
-const [database, daysArg = "365", seedArg = "1", untilArg] = process.argv.slice(2);
-if (database === undefined) throw new Error("usage: seed.ts <database> <days> <seed> [<until ms>]");
+const [database, daysArg, seedArg, untilArg] = process.argv.slice(2);
+if (database === undefined || untilArg === undefined)
+	throw new Error("usage: seed.ts <database> <days> <seed> <until ms>");
 const DAYS = Number(daysArg);
-const UNTIL = untilArg === undefined ? Date.now() : Number(untilArg);
+const UNTIL = Number(untilArg);
 const DAY = 86_400_000;
 
 // mulberry32: the same seed writes the same history.
@@ -140,7 +141,9 @@ const program = Effect.gen(function* () {
 		for (let turn = 0, turns = int(2, 14); turn < turns && day >= 0; turn++) {
 			// Work hours, 08:00-20:00 UTC, so most zones see a working day.
 			let at = UNTIL - day * DAY - (UNTIL % DAY) + int(8, 19) * 3_600_000 + int(0, 3_599_999);
-			if (at > UNTIL) at = UNTIL - int(60_000, 3_600_000);
+			// Drawn either way, so where `until` falls in its day does not shift the draws after it.
+			const back = int(60_000, 3_600_000);
+			if (at > UNTIL) at = UNTIL - back;
 			const promptId = randomUUID();
 			yield* threads.append({
 				id: promptId,

@@ -44,6 +44,8 @@ const until = () => new Date(Date.now() + 2 * DAY).toISOString().slice(0, 10);
 const everything = (zone = "UTC") => ({ zone, since: "1970-01-01", until: until() });
 const PROJECTS = ["codework", "billing-api", "mobile-app", "infra", "docs-site", "ml-pipeline"];
 const live = { CODEWORK_FIXTURE_HOST_OS: "1", CODEWORK_FIXTURE_NOW: "1" };
+/** Where seeded history ends: fixed, so every run seeds the same history; past, so `until()` covers it. */
+const SEEDED_UNTIL = Date.UTC(2026, 10, 14, 12);
 
 /** The machine's server stopped and its home moved aside: the next start makes a new store. */
 const aside = async (m: Machine) => {
@@ -69,7 +71,7 @@ const seeded = async (m: Machine, count: number, days: number, seed: number) => 
 	}
 	await m.stop("TERM");
 	const wrote = await m.sh(
-		`cd ~/codework && ~/.local/node/bin/node --conditions=development apps/server/test/machines/seed.ts ${m.database} ${days} ${seed}`,
+		`cd ~/codework && ~/.local/node/bin/node --conditions=development apps/server/test/machines/seed.ts ${m.database} ${days} ${seed} ${SEEDED_UNTIL}`,
 	);
 	await m.start(live);
 	return JSON.parse(wrote.trim().split("\n").at(-1)!) as Record<string, number>;
