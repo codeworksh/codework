@@ -85,13 +85,16 @@ const registerInstances = (...ids: ReadonlyArray<string>) =>
 describe("Database", () => {
 	describe("migrations", () => {
 		memoryIt(
-			"applies the one threads migration and creates its tables",
+			"applies the migrations and creates their tables",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const applied = yield* sql<{ migrationId: number; name: string }>`
 					SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
 				`;
-				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual(["202610290001_init"]);
+				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual([
+					"202610290001_init",
+					"202611140001_usage",
+				]);
 				const tables = yield* sql<{ name: string }>`
 					SELECT name FROM sqlite_master
 					WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'effect_sql_migrations'
@@ -111,7 +114,9 @@ describe("Database", () => {
 					"session",
 					"space",
 					"store",
+					"tally",
 					"thread",
+					"usage",
 				]);
 			}),
 		);

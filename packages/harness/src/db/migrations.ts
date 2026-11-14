@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { uuidv7 } from "uuidv7";
+import * as Usage from "../usage/usage.ts";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
 // disk, so they survive bundling and need no runtime path resolution.
@@ -314,6 +315,68 @@ export const migrations = {
 				`);
 			}
 		}
+	}),
+
+	// The usage rollup (usage/usage.ts), backfilled from the entries already finalised.
+	"202611140001_usage": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE usage (
+				hour             INTEGER NOT NULL,
+				thread_id        TEXT NOT NULL,
+				provider         TEXT NOT NULL,
+				model            TEXT NOT NULL,
+				thinking         TEXT NOT NULL,
+				session_id       TEXT NOT NULL,
+				project_id       TEXT NOT NULL,
+				requests         INTEGER NOT NULL,
+				input            INTEGER NOT NULL,
+				output           INTEGER NOT NULL,
+				cache_read       INTEGER NOT NULL,
+				cache_write      INTEGER NOT NULL,
+				reasoning        INTEGER NOT NULL,
+				cost             REAL NOT NULL,
+				cost_input       REAL NOT NULL,
+				cost_output      REAL NOT NULL,
+				cost_cache_read  REAL NOT NULL,
+				cost_cache_write REAL NOT NULL,
+				duration         REAL NOT NULL,
+				timed            INTEGER NOT NULL,
+				durations        TEXT NOT NULL,
+				rev              INTEGER NOT NULL,
+				PRIMARY KEY (hour, thread_id, provider, model, thinking)
+			)
+		`;
+		yield* sql`
+			CREATE TABLE tally (
+				hour       INTEGER NOT NULL,
+				thread_id  TEXT NOT NULL,
+				kind       TEXT NOT NULL,
+				name       TEXT NOT NULL,
+				session_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				count      INTEGER NOT NULL,
+				rev        INTEGER NOT NULL,
+				PRIMARY KEY (hour, thread_id, kind, name)
+			)
+		`;
+		yield* sql`CREATE INDEX usage_rev_idx ON usage (rev)`;
+		yield* sql`CREATE INDEX tally_rev_idx ON tally (rev)`;
+		for (const table of ["usage", "tally"]) {
+			for (const event of ["insert", "update"]) {
+				yield* sql.unsafe(`
+					CREATE TRIGGER ${table}_rev_${event} BEFORE ${event.toUpperCase()} ON ${table}
+					WHEN NEW.rev <> (SELECT rev FROM store)
+					BEGIN SELECT RAISE(ABORT, 'rev is not the current revision'); END
+				`);
+			}
+		}
+		yield* Usage.backfill(
+			sql<{ readonly rev: number }>`UPDATE store SET rev = rev + 1 RETURNING rev`.pipe(
+				Effect.map(([row]) => row!.rev),
+				Effect.orDie,
+			),
+		);
 	}),
 };
 

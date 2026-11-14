@@ -27,6 +27,7 @@ import { SpaceSchema } from "../space/schema.ts";
 import * as Space from "../space/space.ts";
 import * as ThreadSchema from "../thread/schema.ts";
 import * as Thread from "../thread/thread.ts";
+import * as Usage from "../usage/usage.ts";
 import { posix } from "../util/posix.ts";
 import * as Slug from "../util/slug.ts";
 import * as SessionSchema from "./schema.ts";
@@ -486,4 +487,8 @@ export const layer = Layer.effect(
 );
 
 /** The session store with the thread and document stores it is built on. */
-export const storeLayer = layer.pipe(Layer.provideMerge(Thread.layer), Layer.provideMerge(Document.layer));
+export const storeLayer = layer.pipe(
+	Layer.provideMerge(Thread.layer),
+	Layer.provideMerge(Usage.layer),
+	Layer.provideMerge(Document.layer),
+);

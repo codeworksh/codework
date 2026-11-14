@@ -75,8 +75,12 @@ const assistantEntry = (
 	data: JSON.stringify({
 		messageId: id,
 		role: "assistant",
+		provider: { id: "test" },
+		model: "test",
+		thinkingLevel: "off",
 		stopReason: "stop",
 		usage: options?.usage ?? usage(),
+		time: { created: 1, completed: 1 },
 	}),
 	parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "ok" }) }],
 });

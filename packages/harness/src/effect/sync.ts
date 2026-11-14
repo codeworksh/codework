@@ -1,6 +1,6 @@
 import { DateTime, Effect, Option, Schema } from "effect";
 import { SqlClient, SqlSchema, type Statement } from "effect/sql";
-import { InboxRow, ProjectRow, SpaceRow } from "../db/schema.sql.ts";
+import { InboxRow, ProjectRow, SpaceRow, TallyRow, UsageRow } from "../db/schema.sql.ts";
 import * as Inbox from "../inbox/inbox.ts";
 import type { Admitted } from "../inbox/schema.ts";
 import type { ProjectSchema } from "../project/schema.ts";
@@ -166,6 +166,47 @@ export const index = Effect.fn("Sync.index")(function* (from: Cursor, upto: numb
 					items: yield* Effect.forEach(items, change),
 					...(next === undefined ? {} : { next }),
 				} satisfies Page<IndexChange>;
+			}),
+		)
+		.pipe(Effect.orDie);
+});
+
+/** A row of the usage rollup at the revision that last wrote it: running totals, not a delta. */
+export type UsageChange =
+	| { readonly _tag: "Usage"; readonly usage: UsageRow }
+	| { readonly _tag: "Tally"; readonly tally: TallyRow };
+
+/** One page of the `usage` and `tally` rows past `from`, up to revision `upto`, read as one snapshot. */
+export const usage = Effect.fn("Sync.usage")(function* (from: Cursor, upto: number, limit: number) {
+	const sql = yield* SqlClient.SqlClient;
+	const findUsage = SqlSchema.findOne({
+		Request: Schema.String,
+		Result: UsageRow,
+		execute: (id) => sql`SELECT * FROM usage WHERE rowid = ${Number(id)}`,
+	});
+	const findTally = SqlSchema.findOne({
+		Request: Schema.String,
+		Result: TallyRow,
+		execute: (id) => sql`SELECT * FROM tally WHERE rowid = ${Number(id)}`,
+	});
+	// The rows are keyed by several columns, so their rowid names them in the cursor: an upsert keeps
+	// it, nothing deletes them, and nothing vacuums the database.
+	const select = (range: Statement.Fragment) => sql`
+		SELECT 'tally' AS kind, CAST(rowid AS TEXT) AS id, rev FROM tally WHERE ${range}
+		UNION ALL SELECT 'usage', CAST(rowid AS TEXT), rev FROM usage WHERE ${range}
+	`;
+	const change = Effect.fnUntraced(function* ({ kind, id }: Row) {
+		if (kind === "usage") return { _tag: "Usage", usage: yield* findUsage(id) } satisfies UsageChange;
+		return { _tag: "Tally", tally: yield* findTally(id) } satisfies UsageChange;
+	});
+	return yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				const { items, next } = yield* page(select, from, upto, limit);
+				return {
+					items: yield* Effect.forEach(items, change),
+					...(next === undefined ? {} : { next }),
+				} satisfies Page<UsageChange>;
 			}),
 		)
 		.pipe(Effect.orDie);

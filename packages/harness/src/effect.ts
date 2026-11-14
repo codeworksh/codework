@@ -15,6 +15,8 @@ export * as PromptSchema from "./session/prompt/schema.ts";
 export * as SessionStore from "./session/session.ts";
 export * as ThreadStore from "./thread/thread.ts";
 export * as ThreadSchema from "./thread/schema.ts";
+export * as Usage from "./usage/usage.ts";
+export * as UsageSchema from "./usage/schema.ts";
 export * as DocumentSchema from "./document/schema.ts";
 export * as Runner from "./runner/run.ts";
 export * as Git from "./git/git.ts";
