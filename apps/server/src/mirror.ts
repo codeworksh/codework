@@ -18,6 +18,7 @@ import {
 
 type IndexRow = Exclude<Codework.IndexItem, { _tag: "Synced" }>;
 type ThreadRow = Exclude<Codework.ThreadItem, { _tag: "Synced" }>;
+type UsageRow = Exclude<Codework.UsageItem, { _tag: "Synced" }>;
 type Append = (input: Publish) => Effect.Effect<void>;
 
 /** The rows a batch wrote, for its `SyncChanged` notice. */
@@ -273,6 +274,51 @@ export const unseen = (machineId: string, seen: Changes, now: number) =>
 			UPDATE thread SET cursor = NULL WHERE session_id IN (SELECT id FROM session WHERE machine_id = ${machineId})
 		`;
 	});
+
+/** Applies one `usage.sync` batch of a machine's store: each row replaces the one at its key, running totals included. */
+export const usage = (machineId: string, storeId: string, rows: ReadonlyArray<UsageRow>) =>
+	Effect.forEach(
+		rows,
+		(row) => {
+			const owner = {
+				machineId,
+				storeId,
+				hour: row.hour,
+				threadId: row.threadId,
+				sessionId: row.sessionId,
+				projectId: row.projectId,
+				rev: row.rev,
+			};
+			if (row._tag === "Tally")
+				return upsert("tally", ["machine_id", "store_id", "hour", "thread_id", "kind", "name"], {
+					...owner,
+					kind: row.kind,
+					name: row.name,
+					count: row.count,
+				});
+			return upsert("usage", ["machine_id", "store_id", "hour", "thread_id", "provider", "model", "thinking"], {
+				...owner,
+				provider: row.provider,
+				model: row.model,
+				thinking: row.thinking,
+				requests: row.requests,
+				input: row.tokens.input,
+				output: row.tokens.output,
+				cacheRead: row.tokens.cacheRead,
+				cacheWrite: row.tokens.cacheWrite,
+				reasoning: row.tokens.reasoning,
+				cost: row.cost.total,
+				costInput: row.cost.input,
+				costOutput: row.cost.output,
+				costCacheRead: row.cost.cacheRead,
+				costCacheWrite: row.cost.cacheWrite,
+				duration: row.duration,
+				timed: row.timed,
+				durations: JSON.stringify(row.durations),
+			});
+		},
+		{ discard: true },
+	);
 
 /** Stores entries of a thread's line, each under the thread that wrote it, with its parts. */
 export const entries = (list: ReadonlyArray<Codework.HistoryEntry>, changes: Changes) =>

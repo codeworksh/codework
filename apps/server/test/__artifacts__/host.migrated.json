@@ -1,0 +1,30 @@
+{
+	"stored": [
+		{
+			"id": "<id 1>",
+			"kind": "local",
+			"name": null,
+			"host": null
+		},
+		{
+			"id": "<box machine>",
+			"kind": "remote",
+			"name": "Box",
+			"host": null
+		}
+	],
+	"servers": [
+		{
+			"id": "<id 1>",
+			"name": "This Machine",
+			"host": null,
+			"override": null
+		},
+		{
+			"id": "<box machine>",
+			"name": "Box",
+			"host": null,
+			"override": "Box"
+		}
+	]
+}

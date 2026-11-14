@@ -1,0 +1,410 @@
+{
+	"kolkata": {
+		"both": {
+			"2026-03-09": 1,
+			"2026-03-10": 2
+		},
+		"first": {
+			"2026-03-09": 1
+		},
+		"second": {
+			"2026-03-10": 2
+		},
+		"tallies": [
+			{
+				"day": "2026-03-10",
+				"machineId": "local",
+				"sessionId": "india",
+				"kind": "prompt",
+				"name": "",
+				"count": 1
+			}
+		],
+		"hoursFirst": [
+			[
+				23,
+				1
+			]
+		],
+		"hoursSecond": [
+			[
+				0,
+				2
+			]
+		]
+	},
+	"kathmandu": {
+		"both": {
+			"2026-03-09": 1,
+			"2026-03-10": 2
+		},
+		"hours": [
+			[
+				0,
+				2
+			]
+		]
+	},
+	"utc": {
+		"2026-03-09": 3
+	},
+	"losAngeles": {
+		"both": {
+			"2026-03-09": 1,
+			"2026-03-10": 2
+		},
+		"second": {
+			"2026-03-10": 2
+		},
+		"hoursFirst": [
+			[
+				23,
+				1
+			]
+		],
+		"hoursSecond": [
+			[
+				0,
+				2
+			]
+		]
+	},
+	"fallBack": {
+		"days": {
+			"2026-10-31": 1,
+			"2026-11-01": 25,
+			"2026-11-02": 1
+		},
+		"hours": [
+			[
+				0,
+				1
+			],
+			[
+				1,
+				2
+			],
+			[
+				2,
+				1
+			],
+			[
+				3,
+				1
+			],
+			[
+				4,
+				1
+			],
+			[
+				5,
+				1
+			],
+			[
+				6,
+				1
+			],
+			[
+				7,
+				1
+			],
+			[
+				8,
+				1
+			],
+			[
+				9,
+				1
+			],
+			[
+				10,
+				1
+			],
+			[
+				11,
+				1
+			],
+			[
+				12,
+				1
+			],
+			[
+				13,
+				1
+			],
+			[
+				14,
+				1
+			],
+			[
+				15,
+				1
+			],
+			[
+				16,
+				1
+			],
+			[
+				17,
+				1
+			],
+			[
+				18,
+				1
+			],
+			[
+				19,
+				1
+			],
+			[
+				20,
+				1
+			],
+			[
+				21,
+				1
+			],
+			[
+				22,
+				1
+			],
+			[
+				23,
+				1
+			]
+		]
+	},
+	"springForward": {
+		"days": {
+			"2026-03-07": 1,
+			"2026-03-08": 23,
+			"2026-03-09": 1
+		},
+		"hours": [
+			[
+				0,
+				1
+			],
+			[
+				1,
+				1
+			],
+			[
+				3,
+				1
+			],
+			[
+				4,
+				1
+			],
+			[
+				5,
+				1
+			],
+			[
+				6,
+				1
+			],
+			[
+				7,
+				1
+			],
+			[
+				8,
+				1
+			],
+			[
+				9,
+				1
+			],
+			[
+				10,
+				1
+			],
+			[
+				11,
+				1
+			],
+			[
+				12,
+				1
+			],
+			[
+				13,
+				1
+			],
+			[
+				14,
+				1
+			],
+			[
+				15,
+				1
+			],
+			[
+				16,
+				1
+			],
+			[
+				17,
+				1
+			],
+			[
+				18,
+				1
+			],
+			[
+				19,
+				1
+			],
+			[
+				20,
+				1
+			],
+			[
+				21,
+				1
+			],
+			[
+				22,
+				1
+			],
+			[
+				23,
+				1
+			]
+		]
+	},
+	"stores": {
+		"rows": [
+			{
+				"day": "2026-05-01",
+				"machineId": "local",
+				"sessionId": "stores",
+				"provider": "scripted",
+				"model": "model",
+				"thinking": "off",
+				"requests": 7,
+				"tokens": {
+					"input": 70,
+					"output": 35,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 3.5,
+					"input": 1.75,
+					"output": 1.75,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 2100,
+				"timed": 7,
+				"durations": [
+					0,
+					7,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			}
+		],
+		"tallies": [],
+		"threads": [
+			{
+				"day": "2026-05-01",
+				"machineId": "local",
+				"sessionId": "stores",
+				"threads": 2
+			}
+		],
+		"sessions": [
+			{
+				"id": "stores",
+				"machineId": "local",
+				"projectId": "prj_stores",
+				"title": null,
+				"deleted": true
+			}
+		],
+		"projects": [
+			{
+				"id": "prj_stores",
+				"name": null
+			}
+		],
+		"machines": [
+			{
+				"id": "local",
+				"name": "This Machine"
+			}
+		],
+		"edges": [
+			250,
+			374,
+			561,
+			839,
+			1257,
+			1882,
+			2818,
+			4220,
+			6318,
+			9461,
+			14167,
+			21213,
+			31764,
+			47563,
+			71221,
+			106645,
+			159688,
+			239115,
+			358046,
+			536133,
+			802797,
+			1202096,
+			1800000
+		]
+	},
+	"refusals": {
+		"zone": {
+			"tag": "Server.MetricsError",
+			"message": "\"Mars/Olympus\" is not a time zone."
+		},
+		"backwards": {
+			"tag": "Server.MetricsError",
+			"message": "The period ends (2026-03-09) before it starts (2026-03-10)."
+		},
+		"malformed": {
+			"tag": "Server.MetricsError",
+			"message": "\"2026-3-9\" is not a day: expected YYYY-MM-DD."
+		},
+		"impossible": {
+			"tag": "Server.MetricsError",
+			"message": "\"2026-02-30\" is not a day: expected YYYY-MM-DD."
+		},
+		"hoursZone": {
+			"tag": "Server.MetricsError",
+			"message": "\"\" is not a time zone."
+		}
+	}
+}

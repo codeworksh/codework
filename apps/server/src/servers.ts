@@ -20,12 +20,37 @@ export type StoredEnv = typeof StoredEnv.Type;
 export const splitArgs = (input: string) =>
 	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 
+/**
+ * What a machine is called: the user's override, else the name its server reports, else where it is.
+ * The one rule every machine name shown goes through.
+ */
+export const nameOf = (machine: {
+	readonly kind: string;
+	readonly override: string | null;
+	readonly host: string | null;
+	readonly url: string | null;
+}) =>
+	machine.override ??
+	machine.host ??
+	(machine.kind === "remote" && machine.url !== null && URL.canParse(machine.url)
+		? new URL(machine.url).host
+		: "This Machine");
+
+/** How a machine is named, as stored and as shown. */
+interface Naming {
+	/** As shown: {@link nameOf}. */
+	readonly name: string;
+	/** As its server last reported it. */
+	readonly host: string | null;
+	/** As the user named it in Settings. */
+	readonly override: string | null;
+}
+
 /** A local server as stored. A `null` executable or home is the one found. An executable is a path, or a
  * command whose first word is one (`node --conditions=development …/index.ts`, running from source). */
-export interface LocalRow {
+export interface LocalRow extends Naming {
 	readonly id: string;
 	readonly kind: "local";
-	readonly name: string;
 	readonly executable: string | null;
 	readonly home: string | null;
 	readonly args: string;
@@ -34,10 +59,9 @@ export interface LocalRow {
 }
 
 /** A remote server as stored: where the app reaches it. */
-export interface RemoteRow {
+export interface RemoteRow extends Naming {
 	readonly id: string;
 	readonly kind: "remote";
-	readonly name: string;
 	readonly url: string;
 	readonly isDefault: boolean;
 }
@@ -136,6 +160,8 @@ export class Service extends Context.Service<
 		readonly homeChanges: Stream.Stream<string>;
 		/** Every server now, then again after each change to any of them. */
 		readonly watch: Stream.Stream<ReadonlyArray<Row>>;
+		/** Stores the name a server reports, when it is not the one stored. */
+		readonly setHost: (id: string, host: string | null) => Effect.Effect<void>;
 		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError>;
 		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError>;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
@@ -151,23 +177,30 @@ export const layer = Layer.effect(
 		const fallback = yield* cliHome.pipe(Effect.orDie);
 
 		const list = sql<
-			Omit<LocalRow, "kind" | "env" | "isDefault"> & {
+			Omit<LocalRow, "kind" | "env" | "isDefault" | "name"> & {
 				kind: string;
 				env: string;
 				url: string | null;
 				isDefault: number;
 			}
 		>`
-			SELECT id, kind, name, executable, home, args, env, url, is_default FROM machine ORDER BY pos
+			SELECT id, kind, name AS override, host, executable, home, args, env, url, is_default FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
-				Effect.forEach(rows, ({ kind, url, env, isDefault, ...row }) =>
-					kind === "remote" && url !== null
-						? Effect.succeed<Row>({ id: row.id, kind, name: row.name, url, isDefault: isDefault === 1 })
+				Effect.forEach(rows, ({ kind, url, env, isDefault, ...row }) => {
+					const naming = { name: nameOf({ kind, url, ...row }), host: row.host, override: row.override };
+					return kind === "remote" && url !== null
+						? Effect.succeed<Row>({ id: row.id, kind, ...naming, url, isDefault: isDefault === 1 })
 						: decodeEnv(env).pipe(
-								Effect.map((env): Row => ({ ...row, kind: "local", env, isDefault: isDefault === 1 })),
-							),
-				),
+								Effect.map((env): Row => ({
+									...row,
+									...naming,
+									kind: "local",
+									env,
+									isDefault: isDefault === 1,
+								})),
+							);
+				}),
 			),
 			Effect.orDie,
 		);
@@ -218,9 +251,10 @@ export const layer = Layer.effect(
 				}),
 			);
 
-		const name = (input: string) => {
-			const trimmed = input.trim();
-			return trimmed === "" ? Effect.fail(fail("A server needs a name.")) : Effect.succeed(trimmed);
+		/** A name typed in Settings; blank is no override. */
+		const override = (input: string | undefined) => {
+			const trimmed = input?.trim() ?? "";
+			return trimmed === "" ? null : trimmed;
 		};
 
 		const transaction = <A, E>(effect: Effect.Effect<A, E>) =>
@@ -234,6 +268,12 @@ export const layer = Layer.effect(
 			defaultHome,
 			homeChanges: SubscriptionRef.changes(current).pipe(Stream.drop(1)),
 			watch: SubscriptionRef.changes(machines),
+			setHost: Effect.fn("Servers.setHost")(function* (id, host) {
+				const changed = yield* sql`
+					UPDATE machine SET host = ${host} WHERE id = ${id} AND host IS NOT ${host} RETURNING id
+				`.pipe(Effect.orDie);
+				if (changed.length > 0) yield* announce;
+			}),
 
 			add: Effect.fn("Servers.add")(function* (input) {
 				const id = yield* Effect.sync(() => crypto.randomUUID().slice(0, 8));
@@ -250,7 +290,7 @@ export const layer = Layer.effect(
 						yield* sql`INSERT INTO machine ${sql.insert({
 							id,
 							kind: input.kind,
-							name: yield* name(input.name),
+							name: override(input.name),
 							...route,
 							namespace: "codework",
 							pos: (last?.pos ?? 0) + 1,
@@ -267,7 +307,7 @@ export const layer = Layer.effect(
 					Effect.gen(function* () {
 						const row = yield* get(id);
 						const fields: Record<string, string | null> = {};
-						if (patch.name !== undefined) fields.name = yield* name(patch.name);
+						if (patch.name !== undefined) fields.name = override(patch.name);
 						if (row.kind === "remote") {
 							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
 								return yield* fail("A remote server has no executable, home, arguments or variables.");

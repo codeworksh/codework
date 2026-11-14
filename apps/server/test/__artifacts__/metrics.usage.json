@@ -1,0 +1,271 @@
+{
+	"notice": {
+		"machineId": "<id 1>",
+		"storeId": "<store>",
+		"items": 1
+	},
+	"reported": [
+		{
+			"cost": 0,
+			"input": 2,
+			"output": 2,
+			"cacheRead": 0,
+			"cacheWrite": 0
+		},
+		{
+			"cost": 0,
+			"input": 2,
+			"output": 2,
+			"cacheRead": 0,
+			"cacheWrite": 0
+		},
+		{
+			"cost": 0,
+			"input": 2,
+			"output": 2,
+			"cacheRead": 0,
+			"cacheWrite": 0
+		}
+	],
+	"after": {
+		"rows": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"provider": "openai",
+				"model": "gpt-5.6-luna",
+				"thinking": "medium",
+				"requests": 6,
+				"tokens": {
+					"input": 6,
+					"output": 6,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 0,
+				"timed": 6,
+				"durations": [
+					6,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"provider": "openai",
+				"model": "gpt-5.6-luna",
+				"thinking": "medium",
+				"requests": 2,
+				"tokens": {
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 0,
+				"timed": 2,
+				"durations": [
+					2,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			}
+		],
+		"tallies": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"kind": "tool",
+				"name": "bash",
+				"count": 2
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"kind": "tool",
+				"name": "bash",
+				"count": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"kind": "prompt",
+				"name": "",
+				"count": 2
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"kind": "prompt",
+				"name": "",
+				"count": 1
+			}
+		],
+		"threads": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"threads": 3
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"threads": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"threads": 2
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"threads": 1
+			}
+		],
+		"sessions": [
+			{
+				"id": "<ses 1>",
+				"machineId": "<id 1>",
+				"projectId": "<project Alpha>",
+				"title": "bash echo one",
+				"deleted": false
+			},
+			{
+				"id": "<ses 2>",
+				"machineId": "<id 1>",
+				"projectId": "<project Beta>",
+				"title": "bash echo two",
+				"deleted": false
+			}
+		],
+		"projects": [
+			{
+				"id": "<project Alpha>",
+				"name": "Alpha"
+			},
+			{
+				"id": "<project Beta>",
+				"name": "Beta"
+			}
+		],
+		"machines": [
+			{
+				"id": "<id 1>",
+				"name": "Metrics Host"
+			}
+		],
+		"edges": [
+			250,
+			374,
+			561,
+			839,
+			1257,
+			1882,
+			2818,
+			4220,
+			6318,
+			9461,
+			14167,
+			21213,
+			31764,
+			47563,
+			71221,
+			106645,
+			159688,
+			239115,
+			358046,
+			536133,
+			802797,
+			1202096,
+			1800000
+		]
+	},
+	"deleted": {
+		"sessions": [
+			{
+				"id": "<ses 1>",
+				"machineId": "<id 1>",
+				"projectId": "<project Alpha>",
+				"title": "bash echo one",
+				"deleted": false
+			},
+			{
+				"id": "<ses 2>",
+				"machineId": "<id 1>",
+				"projectId": "<project Beta>",
+				"title": null,
+				"deleted": true
+			}
+		]
+	}
+}
