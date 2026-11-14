@@ -138,9 +138,10 @@ it("the built-in server's old seed name is no override after the migration", asy
 	);
 	await stop(first.proc);
 	// app.db as it was before `host`: the seed's name on the built-in server, a name on every row.
+	write(appHome, "ALTER TABLE machine DROP COLUMN boot");
 	write(appHome, "ALTER TABLE machine DROP COLUMN host");
 	write(appHome, "UPDATE machine SET name = 'CodeWork' WHERE id = 'local'");
-	write(appHome, "DELETE FROM effect_sql_migrations WHERE migration_id = 202611140002");
+	write(appHome, "DELETE FROM effect_sql_migrations WHERE migration_id >= 202611140002");
 
 	const second = await app(appHome);
 	const servers = await second.run((rpc) =>

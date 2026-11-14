@@ -81,6 +81,7 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 			const labels = new Map<string, string>([
 				[home, "<home>"],
 				[info.storeId, "<store>"],
+				[last.boot, "<boot>"],
 				[projectId, "<project>"],
 				[created.session.spaceId, "<space>"],
 				[sessionId, "<session>"],
@@ -110,7 +111,7 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 			expect(empty.rev).toBe(0);
 			expect(info.rev).toBe(last.rev);
 			expect(last.storeId).toBe(info.storeId);
-			expect(snapshot.at(-1)).toEqual({ _tag: "Synced", storeId: info.storeId, rev: info.rev });
+			expect(snapshot.at(-1)).toEqual({ _tag: "Synced", storeId: info.storeId, rev: info.rev, boot: last.boot });
 			expect(tags(snapshot).filter((tag) => tag === "Thread")).toHaveLength(2);
 			expect(snapshot.some((item) => item._tag === "Removed" && item.id === doomed.session.id)).toBe(true);
 			expect(resumed.every((item) => item.rev > forked.rev || item._tag === "Synced")).toBe(true);

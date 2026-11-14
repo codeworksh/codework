@@ -400,7 +400,8 @@ it("a restored store is read again in full: returning rows keep their desktop co
 	expect(rows.session!.find((row) => row.id === after.session.id)?.deleted_at).not.toBeNull();
 	expect(rows.thread!.find((row) => row.id === after.id)?.deleted_at).not.toBeNull();
 
-	// Restored again, to the later copy that has the soft-deleted session: past the cursor, so a resume brings it back.
+	// Restored again, to the later copy that has the soft-deleted session: past the cursor, but on
+	// another line than the store the app read, so it is read in full again and brings it back.
 	write(appHome, "UPDATE session SET color = '#0088ff' WHERE id = ?", after.session.id);
 	write(appHome, "UPDATE thread SET priority = 3, color = '#0088ff' WHERE id = ?", after.id);
 	await stop(desk.proc);
@@ -416,7 +417,7 @@ it("a restored store is read again in full: returning rows keep their desktop co
 	await synced(appHome, machineId, server);
 	const again = dump(appHome, "session", "thread");
 	const changedAgain = notices(appHome, Contract.syncTopics.changed, againAt);
-	expect(changedAgain.every((notice) => notice.full === false)).toBe(true);
+	expect(changedAgain.filter((notice) => notice.full === true)).toMatchObject([{ machineId, removed: [] }]);
 	expect(again.session!.find((row) => row.id === after.session.id)).toMatchObject({
 		color: "#0088ff",
 		deleted_at: null,
@@ -440,6 +441,115 @@ it("a restored store is read again in full: returning rows keep their desktop co
 		}),
 	);
 }, 120_000);
+
+it("a restored store is read again in full once its head passed the cursor; an opened thread starts over; a plain restart only resumes", async () => {
+	const cwHome = tempDir("passed-cw");
+	const appHome = tempDir("passed-app");
+	const backup = tempDir("passed-backup");
+	const port = await freePort();
+	// Where the server works while the app must not see it: the app only knows `port`.
+	const aside = await freePort();
+	let server = await codework(cwHome, port);
+	const opened = await session(server, cwHome, "Opened");
+	const kept = await session(server, cwHome, "Kept");
+	await stop(server.proc, "SIGTERM");
+	copyFileSync(server.database, join(backup, "codework.db"));
+	server = await codework(cwHome, port);
+
+	const desk = await app(appHome);
+	const machineId = await addMachine(appHome, server, desk.run);
+	const sessionId = opened.session.id;
+	const ref = { sessionId, threadId: opened.id };
+	await desk.run((rpc) => rpc["sync.open"](ref));
+	const prompt = (text: string) =>
+		server.run((rpc) =>
+			rpc["thread.prompt"]({ sessionId, text }).pipe(Effect.andThen(rpc["thread.wait"]({ sessionId }))),
+		);
+	const entryIds = () =>
+		query(appHome, "SELECT id FROM entry WHERE thread_id = ? ORDER BY seq", opened.id).map((row) => row.id as string);
+	const lineIds = async () =>
+		(await server.run((rpc) => rpc["thread.history"]({ sessionId }))).entries.map((entry) => entry.id);
+	const current = (what: string) =>
+		waitFor(async () => {
+			const line = await lineIds();
+			return entryIds().join() === line.join() ? line : undefined;
+		}, what);
+	const backedUp = entryIds();
+	/** Restarts the server, `restore` the backup first, with `work` done on the side port in between. */
+	const away = async (work: () => Promise<void>, restore = false) => {
+		await stop(server.proc, "SIGTERM");
+		if (restore) {
+			for (const suffix of ["-wal", "-shm"]) rmSync(`${server.database}${suffix}`, { force: true });
+			copyFileSync(join(backup, "codework.db"), server.database);
+		}
+		server = await codework(cwHome, aside);
+		await work();
+		await stop(server.proc, "SIGTERM");
+		server = await codework(cwHome, port);
+	};
+
+	// The timeline the restore loses: a session added, one deleted, and replies in the opened thread.
+	const lost = await session(server, cwHome, "Lost");
+	await server.run((rpc) => rpc["session.delete"]({ sessionId: kept.session.id }));
+	await prompt("Lost reply");
+	await synced(appHome, machineId, server);
+	await current("the opened thread's lost reply");
+
+	// (1) A plain restart of the same store, with work done while the app could not see it: a resume.
+	let moved: Awaited<ReturnType<typeof session>> | undefined;
+	let restartedAt = lastSeq(appHome);
+	await away(async () => {
+		moved = await session(server, cwHome, "Moved");
+		await prompt("Moved reply");
+	});
+	const { rev: passed } = await synced(appHome, machineId, server);
+	await current("the opened thread's resumed replies");
+	const lostEntries = entryIds().filter((id) => !backedUp.includes(id));
+	const resumed = notices(appHome, Contract.syncTopics.changed, restartedAt);
+	expect(resumed.length).toBeGreaterThan(0);
+	expect(resumed.every((notice) => notice.full === false)).toBe(true);
+	expect(query(appHome, "SELECT id FROM session WHERE id = ?", moved!.session.id)).toHaveLength(1);
+
+	// (2) The backup comes back and works past the cursor before the app sees it again: new sessions,
+	// and replies in the opened thread at the seqs the lost ones held.
+	const restoredSessions: Array<string> = [sessionId, kept.session.id];
+	restartedAt = lastSeq(appHome);
+	await away(async () => {
+		await prompt("Restored reply");
+		while ((await server.run((rpc) => rpc["server.info"]({}))).rev < passed)
+			restoredSessions.push((await session(server, cwHome, `Restored ${restoredSessions.length}`)).session.id);
+	}, true);
+	const restored = await server.run((rpc) => rpc["server.info"]({}));
+	expect(restored.rev).toBeGreaterThanOrEqual(passed);
+	await synced(appHome, machineId, server);
+	await current("the opened thread on the restored line");
+
+	const rows = dump(appHome, "session", "thread");
+	const changed = notices(appHome, Contract.syncTopics.changed, restartedAt);
+	const live = (rows.session ?? []).filter((row) => row.deleted_at === null).map((row) => row.id);
+	expect(changed.filter((notice) => notice.full === true)).toMatchObject([
+		{ machineId, removed: expect.arrayContaining([lost.session.id, moved!.session.id]) },
+	]);
+	expect(live).toEqual(restoredSessions);
+	expect(lostEntries.length).toBeGreaterThan(0);
+	expect(entryIds().filter((id) => lostEntries.includes(id))).toEqual([]);
+	expect(desk.lines.filter((line) => line.includes("constraint failed"))).toEqual([]);
+	expect(desk.lines.filter((line) => line.includes("Thread sync stopped"))).toEqual([]);
+
+	await snapshot(
+		"passed",
+		normalizer(
+			[cwHome, appHome],
+			[[restored.storeId, "<store>"]],
+		)({
+			resumed,
+			changed,
+			lost: { entries: lostEntries },
+			restored: { entries: entryIds() },
+			...rows,
+		}),
+	);
+}, 180_000);
 
 it("a new store in the same home is read again in full", async () => {
 	const cwHome = tempDir("store-cw");

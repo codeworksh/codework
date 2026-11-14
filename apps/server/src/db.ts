@@ -343,6 +343,13 @@ const migrations = {
 		yield* sql`ALTER TABLE machine DROP COLUMN name`;
 		yield* sql`ALTER TABLE machine RENAME COLUMN alias TO name`;
 	}),
+
+	// `boot` is the store's latest open while the index was read up to `cursor`, as `rollup_boot` is
+	// to `rollup`.
+	"202611140003_boot": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN boot TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

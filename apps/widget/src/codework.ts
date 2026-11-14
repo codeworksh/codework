@@ -225,8 +225,16 @@ export const IndexItem = Schema.Union([
 	Schema.TaggedStruct("Session", { session: SessionInfo, rev: Schema.Int }),
 	Schema.TaggedStruct("Thread", { thread: ThreadSummary, rev: Schema.Int }),
 	Schema.TaggedStruct("Removed", { kind: Schema.Literal("session"), id: Schema.String, rev: Schema.Int }),
-	/** Every row with a revision up to `rev` has been sent. */
-	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int }),
+	/**
+	 * Every row with a revision up to `rev` has been sent. `boot` is the store's latest open (absent from
+	 * an older server); `reset` marks a re-read from zero after the store left the client's `boot`.
+	 */
+	Schema.TaggedStruct("Synced", {
+		storeId: Schema.String,
+		rev: Schema.Int,
+		boot: Schema.optionalKey(Schema.String),
+		reset: Schema.optionalKey(Schema.Literal(true)),
+	}),
 ]);
 export type IndexItem = typeof IndexItem.Type;
 
@@ -573,10 +581,11 @@ export const Api = RpcGroup.make(
 	}),
 	/**
 	 * Every project, space, session and thread whose revision is past `after`, in revision order,
-	 * then `Synced`; then the same live after each commit. `after: 0` reads the whole index.
+	 * then `Synced`; then the same live after each commit. `after: 0` reads the whole index. With the
+	 * last `Synced`'s `boot`, a store that left that line (a restored backup) reads from zero instead.
 	 */
 	Rpc.make("index.sync", {
-		payload: { after: Schema.Int },
+		payload: { after: Schema.Int, boot: Schema.optionalKey(Schema.String) },
 		success: IndexItem,
 		stream: true,
 	}),

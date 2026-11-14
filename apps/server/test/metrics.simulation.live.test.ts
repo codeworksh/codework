@@ -106,11 +106,11 @@ const warnings = () => {
 };
 
 /** Waits until the app's usage and index cursors for `m` reached its head, which `m` must be serving. */
-const rolled = (m: Machine, { index = true, timeout = 180_000 } = {}) =>
-	caught(m, index, timeout).catch((error: Error) => {
+const rolled = (m: Machine, { timeout = 180_000 } = {}) =>
+	caught(m, timeout).catch((error: Error) => {
 		throw new Error(`${error.message}\n${warnings()}`);
 	});
-const caught = async (m: Machine, index: boolean, timeout: number) => {
+const caught = async (m: Machine, timeout: number) => {
 	const { storeId, rev } = await m.run((rpc) => rpc["server.info"]({}));
 	await waitFor(
 		() => {
@@ -120,15 +120,14 @@ const caught = async (m: Machine, index: boolean, timeout: number) => {
 		`${m.name} rolled up at rev ${rev}`,
 		timeout,
 	);
-	if (index)
-		await waitFor(
-			() => {
-				const row = machineRow(appHome, idOf(m));
-				return row?.store_id === storeId && row.cursor >= rev ? row : undefined;
-			},
-			`${m.name} indexed at rev ${rev}`,
-			timeout,
-		);
+	await waitFor(
+		() => {
+			const row = machineRow(appHome, idOf(m));
+			return row?.store_id === storeId && row.cursor >= rev ? row : undefined;
+		},
+		`${m.name} indexed at rev ${rev}`,
+		timeout,
+	);
 	return { storeId, rev };
 };
 
@@ -357,17 +356,40 @@ describeMachines("metrics simulation across OrbStack machines", () => {
 		await cwA.start(live);
 		const lost = await work(cwA, 2);
 		const { rev: passed } = await rolled(cwA);
+		// Cut while the restored store works past the cursor, so the app first sees it there.
+		await cwA.net("cut");
 		await cwA.stop("TERM");
 		await cwA.sh(
 			`for f in ${cwA.database}-wal ${cwA.database}-shm; do [ -e $f ] && mv $f $f.lost; done; cp ${cwA.cwHome}/backup.db ${cwA.database}`,
 		);
 		await cwA.start(live);
-		while ((await cwA.run((rpc) => rpc["server.info"]({}))).rev < passed) await work(cwA, 1);
-		// The index does not recover from this yet: its resume skips the revisions the restore rewrote
-		// and its batches fail on a thread whose session never came. Usage has its own stream.
-		await rolled(cwA, { index: false });
+		const restored: Array<string> = [];
+		while (((await cwA.sql("SELECT rev FROM store"))[0]!.rev as number) < passed) {
+			const [created] = (await cwA.drive([
+				["session.create", { directory: `${cwA.cwHome}/work/codework`, title: "Restored work" }],
+			])) as [{ session: { id: string } }];
+			const sessionId = created.session.id;
+			await cwA.drive([
+				["thread.prompt", { sessionId, text: "bash echo restored" }],
+				["thread.wait", { sessionId }],
+			]);
+			restored.push(sessionId);
+		}
+		const restartedAt = lastSeq(appHome);
+		await cwA.net("restore");
+		await rolled(cwA);
 		const ghost = query(appHome, "SELECT COUNT(*) AS n FROM usage WHERE session_id = ?", lost.sessionId)[0]!.n;
 		expect(ghost).toBe(0);
+		const deletedAt = (id: string) =>
+			query(appHome, "SELECT deleted_at FROM session WHERE id = ?", id)[0]?.deleted_at;
+		expect(deletedAt(lost.sessionId)).not.toBeNull();
+		for (const id of restored) expect(deletedAt(id)).toBeNull();
+		const full = notices(appHome, Contract.syncTopics.changed, restartedAt).find(
+			(notice) => notice.machineId === idOf(cwA) && notice.full === true,
+		);
+		// A full read's notice also lists the sessions deleted long before.
+		expect(full?.removed).toContain(lost.sessionId);
+		expect(desk.lines.filter((line) => line.includes("constraint failed"))).toEqual([]);
 		cases.restored = await agrees([
 			[cwA, await truth(cwA)],
 			[cwB, await truth(cwB)],

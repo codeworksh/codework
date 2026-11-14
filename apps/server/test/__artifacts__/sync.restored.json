@@ -172,8 +172,8 @@
 		"changed": [
 			{
 				"machineId": "<id 1>",
-				"full": false,
-				"items": 4,
+				"full": true,
+				"items": 6,
 				"project": [
 					"<id 2>"
 				],
@@ -181,9 +181,11 @@
 					"<id 3>"
 				],
 				"session": [
+					"<ses 1>",
 					"<ses 2>"
 				],
 				"thread": [
+					"<thr 1>",
 					"<thr 2>"
 				],
 				"entry": [],
