@@ -4,6 +4,7 @@ import * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
+import { ToolCallArgumentsStream } from "../utils/streamjson.ts";
 import * as Failure from "./failure.ts";
 import { Options, type ProviderOptionBag, type RuntimeOptions } from "./options.ts";
 import * as Pricing from "./pricing.ts";
@@ -27,14 +28,12 @@ import {
 	mapFinishReason,
 	mapUsage,
 	toolCallFromPart,
-	updateToolCallFromInput,
-	type StreamingToolCallBlock,
 } from "./transform.ts";
 
 type TextBlock = Message.TextContent & { streamId?: string };
 type ThinkingBlock = Message.ThinkingContent & { streamId?: string };
 
-type StreamBlock = TextBlock | ThinkingBlock | StreamingToolCallBlock;
+type StreamBlock = TextBlock | ThinkingBlock | Message.ToolCallPendingPart;
 
 function mergeProviderOptions(...sources: Array<ProviderOptionBag | undefined>): ProviderOptionBag {
 	const result: ProviderOptionBag = {};
@@ -148,16 +147,16 @@ function ensureToolCallBlock(
 	name: string,
 	stream: AssistantMessageEventStream,
 	emitStart: boolean,
-): StreamingToolCallBlock {
+): Message.ToolCallPendingPart {
 	const existing = output.parts.find((part) => part.type === "toolCall" && part.callID === id) as
-		| StreamingToolCallBlock
+		| Message.ToolCallPendingPart
 		| undefined;
 	if (existing) {
 		if (!existing.name && name) existing.name = name;
 		return existing;
 	}
 
-	const block: StreamingToolCallBlock = {
+	const block: Message.ToolCallPendingPart = {
 		type: "toolCall",
 		callID: id,
 		name,
@@ -209,11 +208,10 @@ function finishThinkingBlock(
 
 function finishToolInput(output: Message.AssistantMessage, id: string, stream: AssistantMessageEventStream): void {
 	const block = output.parts.find((part) => part.type === "toolCall" && part.callID === id) as
-		| StreamingToolCallBlock
+		| Message.ToolCallPendingPart
 		| undefined;
 	if (!block) return;
 	const index = partIndex(output, block);
-	delete block.partialJson;
 	stream.push({ type: "toolcall.end", partIndex: index, toolCall: block, partial: output });
 }
 
@@ -224,7 +222,7 @@ function finalizeToolCall(
 	stream: AssistantMessageEventStream,
 ): void {
 	const existing = output.parts.find((item) => item.type === "toolCall" && item.callID === part.toolCallId) as
-		| StreamingToolCallBlock
+		| Message.ToolCallPendingPart
 		| undefined;
 	const block = existing ?? toolCallFromPart(part);
 	block.callID = part.toolCallId;
@@ -236,7 +234,6 @@ function finalizeToolCall(
 	if (thoughtSignature) block.thoughtSignature = thoughtSignature;
 	if (typeof namespace === "string") block.namespace = namespace;
 	block.time.end = Date.now();
-	delete block.partialJson;
 
 	if (!existing) {
 		output.parts.push(block);
@@ -263,6 +260,7 @@ function handlePart(
 	model: Model.Info,
 	stream: AssistantMessageEventStream,
 	pricing: Pricing,
+	toolArgs: Map<string, ToolCallArgumentsStream>,
 ): void {
 	switch (part.type) {
 		case "text-start":
@@ -315,11 +313,14 @@ function handlePart(
 		}
 		case "tool-input-start":
 			ensureToolCallBlock(output, part.id, part.toolName, stream, true);
+			toolArgs.set(part.id, new ToolCallArgumentsStream());
 			break;
 		case "tool-input-delta": {
 			const block = ensureToolCallBlock(output, part.id, "", stream, true);
-			const partialJson = (block.partialJson ?? "") + part.delta;
-			updateToolCallFromInput(block, partialJson);
+			let args = toolArgs.get(part.id);
+			if (!args) toolArgs.set(part.id, (args = new ToolCallArgumentsStream()));
+			block.arguments = args.append(part.delta);
+			block.time.end = Date.now();
 			stream.push({
 				type: "toolcall.delta",
 				partIndex: partIndex(output, block),
@@ -329,9 +330,11 @@ function handlePart(
 			break;
 		}
 		case "tool-input-end":
+			toolArgs.delete(part.id);
 			finishToolInput(output, part.id, stream);
 			break;
 		case "tool-call":
+			toolArgs.delete(part.toolCallId);
 			finalizeToolCall(output, part, model, stream);
 			break;
 		case "start-step":
@@ -485,11 +488,12 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 
 			let preferNonStrict = false;
 			let built = await buildParams(preferNonStrict);
+			const toolArgs = new Map<string, ToolCallArgumentsStream>();
 			stream.push({ type: "start", partial: output });
 			for (;;) {
 				try {
 					for await (const part of streamText(built.params).fullStream) {
-						handlePart(part, output, model, stream, pricing);
+						handlePart(part, output, model, stream, pricing, toolArgs);
 					}
 					break;
 				} catch (error) {
@@ -531,7 +535,6 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			for (const block of output.parts) {
 				delete (block as TextBlock).streamId;
 				delete (block as ThinkingBlock).streamId;
-				delete (block as StreamingToolCallBlock).partialJson;
 			}
 			output.time.completed = Date.now();
 			// Only the caller's signal means "stop". An abort from inside the SDK, such as its
