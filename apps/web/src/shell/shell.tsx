@@ -11,7 +11,7 @@ import { settingsShortcut, workspaceShortcut } from "./switcher";
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
  * the desktop: widget order, pins, and per-workspace layout survive navigation.
- * Settings, All Threads and Projects open over the desktop, which stays mounted underneath.
+ * Settings, All Threads, Projects and Metrics open over the desktop, which stays mounted underneath.
  */
 export function Shell() {
 	const { workspaceId } = useParams({ strict: false });
@@ -24,7 +24,8 @@ export function Shell() {
 		select: (location) =>
 			location.pathname.startsWith("/settings") ||
 			location.pathname === "/threads" ||
-			location.pathname === "/projects",
+			location.pathname === "/projects" ||
+			location.pathname === "/metrics",
 	});
 	// An id that no longer exists (a deleted workspace) shows the first one.
 	const shown = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
