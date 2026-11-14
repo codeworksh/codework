@@ -1,5 +1,5 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the E2E suites spawn the real app server and CodeWork servers in temp dirs. */
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 import { type ChildProcess, spawn } from "node:child_process";
@@ -76,9 +76,18 @@ export const waitFor = async <A>(
 	throw new Error(`timed out waiting for ${what}`);
 };
 
-/** A CodeWork server of the fixture in `home` on `port`, with its scripted model. */
-export const codework = async (home: string, port: number) => {
-	const proc = spawn(process.execPath, ["--conditions=development", fixture, home, String(port)], {
+/**
+ * A CodeWork server of the fixture in `home` on `port`, with its scripted model; `older` lacks
+ * `usage.sync` and a host name. `host` is the host name it reports (`null` for none), else `Fixture`.
+ */
+export const codework = async (
+	home: string,
+	port: number,
+	options: { readonly older?: boolean; readonly host?: string | null } = {},
+) => {
+	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
+	const proc = spawn(process.execPath, ["--conditions=development", ...args], {
+		env: options.host === undefined ? process.env : { ...process.env, CODEWORK_FIXTURE_HOST: options.host ?? "" },
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	processes.add(proc);
@@ -108,6 +117,9 @@ export const app = async (home: string) => {
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	processes.add(proc);
+	// Its stdout, the log included, line by line.
+	const lines: Array<string> = [];
+	createInterface({ input: proc.stdout! }).on("line", (line) => lines.push(line));
 	const { port } = await ready(proc);
 	const protocol = RpcClient.layerProtocolSocket().pipe(
 		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
@@ -116,6 +128,7 @@ export const app = async (home: string) => {
 	);
 	return {
 		proc,
+		lines,
 		run: <A, E>(use: (rpc: AppRpc) => Effect.Effect<A, E>) =>
 			Effect.gen(function* () {
 				return yield* use(yield* appClient);
@@ -143,7 +156,8 @@ export const query = (home: string, statement: string, ...params: Array<string |
 	}
 };
 export const write = (home: string, statement: string, ...params: Array<string | number | null>) => {
-	const db = new DatabaseSync(join(home, "app.db"));
+	// Waits out the app's own writes, as a startup's.
+	const db = new DatabaseSync(join(home, "app.db"), { timeout: 5_000 });
 	try {
 		db.prepare(statement).run(...params);
 	} finally {
@@ -172,6 +186,40 @@ export const synced = async (home: string, machineId: string, server: Codework) 
 		return row?.store_id === storeId && row.cursor >= rev ? row : undefined;
 	}, `machine ${machineId} at rev ${rev}`);
 	return { storeId, rev };
+};
+
+export const cursorOf = (home: string, machineId: string) =>
+	query(home, "SELECT rollup, rollup_store FROM machine WHERE id = ?", machineId)[0] as {
+		rollup: number;
+		rollup_store: string | null;
+	};
+
+/** Waits until the app's usage cursor for `machineId` reached the server's head. */
+export const rolled = async (home: string, machineId: string, server: Codework) => {
+	const { storeId, rev } = await server.run((rpc) => rpc["server.info"]({}));
+	await waitFor(() => {
+		const row = cursorOf(home, machineId);
+		return row.rollup_store === storeId && row.rollup >= rev ? row : undefined;
+	}, `usage of machine ${machineId} at rev ${rev}`);
+	return { storeId, rev };
+};
+
+/** Events on `topics` from the moment it resolves, collected until `stop`. */
+export const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>) => {
+	const events: Array<{ topic: string; payload: Row }> = [];
+	let subscribed = false;
+	const background = desk.background((rpc) =>
+		rpc["event.subscribe"]({ topics }).pipe(
+			Stream.runForEach((item) =>
+				Effect.sync(() => {
+					if ("_tag" in item) subscribed = true;
+					else events.push({ topic: item.topic, payload: item.payload as Row });
+				}),
+			),
+		),
+	);
+	await waitFor(() => (subscribed ? true : undefined), `a subscription to ${topics.join(", ")}`);
+	return { events, stop: background.stop };
 };
 
 /** The payloads of the sync's bus events after `after` (an event seq). */

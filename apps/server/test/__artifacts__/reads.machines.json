@@ -3,7 +3,7 @@
 		{
 			"machine": {
 				"id": "<local machine>",
-				"name": "CodeWork"
+				"name": "Fixture"
 			},
 			"id": "<id 1>",
 			"name": "Local",
@@ -30,7 +30,7 @@
 		{
 			"machine": {
 				"id": "<local machine>",
-				"name": "CodeWork"
+				"name": "Fixture"
 			},
 			"id": "<id 1>",
 			"name": "Local",

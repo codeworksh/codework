@@ -46,6 +46,10 @@ export const Badge = ({ tone, children }: { tone: Tone; children: ReactNode }) =
 
 export const Mark = () => <img src={brand} alt="" className="size-5 shrink-0" />;
 
+/** What a server is called without the user's override: as shown while there is none. */
+export const reportedName = (status: LocalServerStatus) =>
+	status.override === null ? status.name : (status.host ?? undefined);
+
 const Version = ({ version }: { version: string }) => (
 	<span className="font-mono text-xs text-ink-muted">v{version}</span>
 );
@@ -87,6 +91,9 @@ export function LocalItem({ status }: { status: LocalServerStatus }) {
 			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 				<span className="flex flex-wrap items-center gap-2">
 					<span className="truncate font-medium">{status.name}</span>
+					{status.host !== null && status.host !== status.name && (
+						<span className="truncate text-xs text-ink-muted">{status.host}</span>
+					)}
 					{cli !== null && "version" in cli && <Version version={cli.version} />}
 					{problem !== undefined && (
 						<WarningIcon className="size-3.5 shrink-0 text-warning" aria-label={problem}>
@@ -172,11 +179,10 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 				<Field title="Name" description="Shown in your provider list.">
 					<SavingInput
 						label="Server name"
-						value={status.name}
+						value={status.override ?? ""}
+						placeholder={reportedName(status)}
 						className={field}
 						onCommit={(next) => {
-							// The server keeps its name when the field is cleared.
-							if (!next) return;
 							setNameError(null);
 							void configure({ name: next }).then((failure) => setNameError(failure ?? null));
 						}}

@@ -1,0 +1,245 @@
+{
+	"edges": 23,
+	"first": [
+		{
+			"_tag": "Tally",
+			"hour": "<prompt hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"kind": "prompt",
+			"name": "",
+			"count": 1,
+			"rev": "<rev 0>"
+		},
+		{
+			"_tag": "Tally",
+			"hour": "<request hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"kind": "tool",
+			"name": "probe",
+			"count": 1,
+			"rev": "<rev 1>"
+		},
+		{
+			"_tag": "Usage",
+			"hour": "<request hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"provider": "openai",
+			"model": "gpt-5.6-luna",
+			"thinking": "medium",
+			"requests": 2,
+			"tokens": {
+				"input": 300,
+				"output": 30,
+				"cacheRead": 3,
+				"cacheWrite": 0,
+				"reasoning": 0
+			},
+			"cost": {
+				"total": 0.75,
+				"input": 0.375,
+				"output": 0.375,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"duration": 900,
+			"timed": 2,
+			"durations": [
+				0,
+				1,
+				0,
+				1,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			],
+			"rev": "<rev 2>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 3>",
+			"boot": "<boot>"
+		}
+	],
+	"second": [
+		{
+			"_tag": "Tally",
+			"hour": "<prompt hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"kind": "prompt",
+			"name": "",
+			"count": 2,
+			"rev": "<rev 4>"
+		},
+		{
+			"_tag": "Usage",
+			"hour": "<request hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"provider": "openai",
+			"model": "gpt-5.6-luna",
+			"thinking": "medium",
+			"requests": 3,
+			"tokens": {
+				"input": 600,
+				"output": 60,
+				"cacheRead": 6,
+				"cacheWrite": 0,
+				"reasoning": 0
+			},
+			"cost": {
+				"total": 1.5,
+				"input": 0.75,
+				"output": 0.75,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"duration": 1800,
+			"timed": 3,
+			"durations": [
+				0,
+				1,
+				0,
+				1,
+				1,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			],
+			"rev": "<rev 5>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 6>",
+			"boot": "<boot>"
+		}
+	],
+	"resumed": [
+		{
+			"_tag": "Tally",
+			"hour": "<prompt hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"kind": "prompt",
+			"name": "",
+			"count": 2,
+			"rev": "<rev 4>"
+		},
+		{
+			"_tag": "Usage",
+			"hour": "<request hour>",
+			"threadId": "<main>",
+			"sessionId": "<session>",
+			"projectId": "<project>",
+			"provider": "openai",
+			"model": "gpt-5.6-luna",
+			"thinking": "medium",
+			"requests": 3,
+			"tokens": {
+				"input": 600,
+				"output": 60,
+				"cacheRead": 6,
+				"cacheWrite": 0,
+				"reasoning": 0
+			},
+			"cost": {
+				"total": 1.5,
+				"input": 0.75,
+				"output": 0.75,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"duration": 1800,
+			"timed": 3,
+			"durations": [
+				0,
+				1,
+				0,
+				1,
+				1,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			],
+			"rev": "<rev 5>"
+		},
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 6>",
+			"boot": "<boot>"
+		}
+	],
+	"idle": [
+		{
+			"_tag": "Synced",
+			"storeId": "<store>",
+			"rev": "<rev 6>",
+			"boot": "<boot>"
+		}
+	],
+	"paged": {
+		"tallies": 600,
+		"rows": 603
+	}
+}

@@ -18,6 +18,7 @@ import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Health } from "./health.ts";
 import { Kv } from "./kv.ts";
+import { Metrics } from "./metrics.ts";
 import { Reads } from "./reads.ts";
 import { Skills } from "./skills.ts";
 import { Servers } from "./servers.ts";
@@ -106,6 +107,8 @@ export const layer = Contract.Api.toLayer(
 			"changes.diff": (input) => Changes.diff(input, sync.client(input.machineId)),
 			"threads.list": (input) => Reads.threads(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"threads.line": (input) => Reads.line(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"metrics.usage": (input) => Metrics.usage(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+			"metrics.hours": (input) => Metrics.hours(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));

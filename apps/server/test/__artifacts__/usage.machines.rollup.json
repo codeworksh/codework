@@ -1,0 +1,550 @@
+{
+	"names": {
+		"reported": [
+			{
+				"stored": {
+					"id": "<id 1>",
+					"kind": "local",
+					"name": null,
+					"host": null
+				},
+				"id": "<id 1>",
+				"name": "This Machine",
+				"host": null,
+				"override": null
+			},
+			{
+				"stored": {
+					"id": "<machine cw-a>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-a"
+				},
+				"id": "<machine cw-a>",
+				"name": "cw-a",
+				"host": "cw-a",
+				"override": null,
+				"sidebar": "cw-a",
+				"allThreads": "cw-a"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-b>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-b"
+				},
+				"id": "<machine cw-b>",
+				"name": "cw-b",
+				"host": "cw-b",
+				"override": null,
+				"sidebar": "cw-b",
+				"allThreads": "cw-b"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-c>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-c"
+				},
+				"id": "<machine cw-c>",
+				"name": "cw-c",
+				"host": "cw-c",
+				"override": null,
+				"sidebar": "cw-c",
+				"allThreads": "cw-c"
+			}
+		],
+		"overridden": [
+			{
+				"stored": {
+					"id": "<id 1>",
+					"kind": "local",
+					"name": null,
+					"host": null
+				},
+				"id": "<id 1>",
+				"name": "This Machine",
+				"host": null,
+				"override": null
+			},
+			{
+				"stored": {
+					"id": "<machine cw-a>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-a"
+				},
+				"id": "<machine cw-a>",
+				"name": "cw-a",
+				"host": "cw-a",
+				"override": null,
+				"sidebar": "cw-a",
+				"allThreads": "cw-a"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-b>",
+					"kind": "remote",
+					"name": "Build Box",
+					"host": "cw-b"
+				},
+				"id": "<machine cw-b>",
+				"name": "Build Box",
+				"host": "cw-b",
+				"override": "Build Box",
+				"sidebar": "Build Box",
+				"allThreads": "Build Box"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-c>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-c"
+				},
+				"id": "<machine cw-c>",
+				"name": "cw-c",
+				"host": "cw-c",
+				"override": null,
+				"sidebar": "cw-c",
+				"allThreads": "cw-c"
+			}
+		],
+		"overriddenMetrics": {
+			"id": "<machine cw-b>",
+			"name": "Build Box"
+		},
+		"cleared": [
+			{
+				"stored": {
+					"id": "<id 1>",
+					"kind": "local",
+					"name": null,
+					"host": null
+				},
+				"id": "<id 1>",
+				"name": "This Machine",
+				"host": null,
+				"override": null
+			},
+			{
+				"stored": {
+					"id": "<machine cw-a>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-a"
+				},
+				"id": "<machine cw-a>",
+				"name": "cw-a",
+				"host": "cw-a",
+				"override": null,
+				"sidebar": "cw-a",
+				"allThreads": "cw-a"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-b>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-b"
+				},
+				"id": "<machine cw-b>",
+				"name": "cw-b",
+				"host": "cw-b",
+				"override": null,
+				"sidebar": "cw-b",
+				"allThreads": "cw-b"
+			},
+			{
+				"stored": {
+					"id": "<machine cw-c>",
+					"kind": "remote",
+					"name": null,
+					"host": "cw-c"
+				},
+				"id": "<machine cw-c>",
+				"name": "cw-c",
+				"host": "cw-c",
+				"override": null,
+				"sidebar": "cw-c",
+				"allThreads": "cw-c"
+			}
+		]
+	},
+	"rollup": {
+		"cw-a": {
+			"threads": 1,
+			"totals": {
+				"requests": 2,
+				"input": 2,
+				"output": 2,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"tallies": {
+				"prompt:": 1,
+				"tool:bash": 1
+			},
+			"usage": [
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 1>",
+					"provider": "openai",
+					"model": "gpt-5.6-luna",
+					"thinking": "medium",
+					"session_id": "<ses 1>",
+					"project_id": "<project work>",
+					"requests": 2,
+					"input": 2,
+					"output": 2,
+					"cache_read": 0,
+					"cache_write": 0,
+					"reasoning": 0,
+					"cost": 0,
+					"cost_input": 0,
+					"cost_output": 0,
+					"cost_cache_read": 0,
+					"cost_cache_write": 0,
+					"duration": 0,
+					"timed": 2,
+					"durations": "[2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]",
+					"rev": "<rev 2>"
+				}
+			],
+			"tally": [
+				{
+					"hour": "<prompt hour>",
+					"thread_id": "<thr 1>",
+					"kind": "prompt",
+					"name": "",
+					"session_id": "<ses 1>",
+					"project_id": "<project work>",
+					"count": 1,
+					"rev": "<rev 0>"
+				},
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 1>",
+					"kind": "tool",
+					"name": "bash",
+					"session_id": "<ses 1>",
+					"project_id": "<project work>",
+					"count": 1,
+					"rev": "<rev 1>"
+				}
+			]
+		},
+		"cw-b": {
+			"threads": 1,
+			"totals": {
+				"requests": 2,
+				"input": 2,
+				"output": 2,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"tallies": {
+				"prompt:": 2
+			},
+			"usage": [
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 2>",
+					"provider": "openai",
+					"model": "gpt-5.6-luna",
+					"thinking": "medium",
+					"session_id": "<ses 2>",
+					"project_id": "<project work>",
+					"requests": 2,
+					"input": 2,
+					"output": 2,
+					"cache_read": 0,
+					"cache_write": 0,
+					"reasoning": 0,
+					"cost": 0,
+					"cost_input": 0,
+					"cost_output": 0,
+					"cost_cache_read": 0,
+					"cost_cache_write": 0,
+					"duration": 0,
+					"timed": 2,
+					"durations": "[2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]",
+					"rev": "<rev 3>"
+				}
+			],
+			"tally": [
+				{
+					"hour": "<prompt hour>",
+					"thread_id": "<thr 2>",
+					"kind": "prompt",
+					"name": "",
+					"session_id": "<ses 2>",
+					"project_id": "<project work>",
+					"count": 2,
+					"rev": "<rev 2>"
+				}
+			]
+		},
+		"cw-c": {
+			"threads": 2,
+			"totals": {
+				"requests": 3,
+				"input": 3,
+				"output": 3,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"tallies": {
+				"prompt:": 2,
+				"tool:bash": 1
+			},
+			"usage": [
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 3>",
+					"provider": "openai",
+					"model": "gpt-5.6-luna",
+					"thinking": "medium",
+					"session_id": "<ses 3>",
+					"project_id": "<project work>",
+					"requests": 2,
+					"input": 2,
+					"output": 2,
+					"cache_read": 0,
+					"cache_write": 0,
+					"reasoning": 0,
+					"cost": 0,
+					"cost_input": 0,
+					"cost_output": 0,
+					"cost_cache_read": 0,
+					"cost_cache_write": 0,
+					"duration": 0,
+					"timed": 2,
+					"durations": "[2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]",
+					"rev": "<rev 2>"
+				},
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 4>",
+					"provider": "openai",
+					"model": "gpt-5.6-luna",
+					"thinking": "medium",
+					"session_id": "<ses 3>",
+					"project_id": "<project work>",
+					"requests": 1,
+					"input": 1,
+					"output": 1,
+					"cache_read": 0,
+					"cache_write": 0,
+					"reasoning": 0,
+					"cost": 0,
+					"cost_input": 0,
+					"cost_output": 0,
+					"cost_cache_read": 0,
+					"cost_cache_write": 0,
+					"duration": 0,
+					"timed": 1,
+					"durations": "[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]",
+					"rev": "<rev 5>"
+				}
+			],
+			"tally": [
+				{
+					"hour": "<prompt hour>",
+					"thread_id": "<thr 3>",
+					"kind": "prompt",
+					"name": "",
+					"session_id": "<ses 3>",
+					"project_id": "<project work>",
+					"count": 1,
+					"rev": "<rev 0>"
+				},
+				{
+					"hour": "<request hour>",
+					"thread_id": "<thr 3>",
+					"kind": "tool",
+					"name": "bash",
+					"session_id": "<ses 3>",
+					"project_id": "<project work>",
+					"count": 1,
+					"rev": "<rev 1>"
+				},
+				{
+					"hour": "<prompt hour>",
+					"thread_id": "<thr 4>",
+					"kind": "prompt",
+					"name": "",
+					"session_id": "<ses 3>",
+					"project_id": "<project work>",
+					"count": 1,
+					"rev": "<rev 4>"
+				}
+			]
+		}
+	},
+	"metrics": {
+		"all": {
+			"totals": {
+				"requests": 7,
+				"input": 7,
+				"output": 7,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"tallies": {
+				"tool:bash": 2,
+				"prompt:": 5
+			},
+			"machines": [
+				{
+					"id": "<machine cw-a>",
+					"name": "cw-a"
+				},
+				{
+					"id": "<machine cw-b>",
+					"name": "cw-b"
+				},
+				{
+					"id": "<machine cw-c>",
+					"name": "cw-c"
+				}
+			]
+		},
+		"perMachine": {
+			"cw-a": {
+				"totals": {
+					"requests": 2,
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"cost": 0
+				},
+				"tallies": {
+					"tool:bash": 1,
+					"prompt:": 1
+				},
+				"machines": [
+					{
+						"id": "<machine cw-a>",
+						"name": "cw-a"
+					}
+				]
+			},
+			"cw-b": {
+				"totals": {
+					"requests": 2,
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"cost": 0
+				},
+				"tallies": {
+					"prompt:": 2
+				},
+				"machines": [
+					{
+						"id": "<machine cw-b>",
+						"name": "cw-b"
+					}
+				]
+			},
+			"cw-c": {
+				"totals": {
+					"requests": 3,
+					"input": 3,
+					"output": 3,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"cost": 0
+				},
+				"tallies": {
+					"tool:bash": 1,
+					"prompt:": 2
+				},
+				"machines": [
+					{
+						"id": "<machine cw-c>",
+						"name": "cw-c"
+					}
+				]
+			}
+		},
+		"requestDays": [
+			"1970-01-01"
+		],
+		"hours": 3,
+		"todayPrompts": 5
+	},
+	"resilience": {
+		"cut": "cw-b",
+		"resumed": {
+			"sent": 3,
+			"pending": 3,
+			"notices": true
+		},
+		"totals": {
+			"cw-a": {
+				"requests": 4,
+				"input": 4,
+				"output": 4,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"cw-b": {
+				"requests": 5,
+				"input": 5,
+				"output": 5,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			},
+			"cw-c": {
+				"requests": 4,
+				"input": 4,
+				"output": 4,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			}
+		},
+		"restart": {
+			"resent": 0,
+			"rowsUnchanged": true,
+			"metrics": {
+				"requests": 13,
+				"input": 13,
+				"output": 13,
+				"cacheRead": 0,
+				"cacheWrite": 0,
+				"cost": 0
+			}
+		}
+	},
+	"deleted": {
+		"session": {
+			"id": "<ses 3>",
+			"machineId": "<machine cw-c>",
+			"projectId": "<project work>",
+			"title": null,
+			"deleted": true
+		},
+		"rows": 1,
+		"totals": {
+			"requests": 3,
+			"input": 3,
+			"output": 3,
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"cost": 0
+		}
+	}
+}

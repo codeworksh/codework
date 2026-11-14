@@ -84,7 +84,7 @@ export function SavingInput({
 }: {
 	value: string;
 	label: string;
-	placeholder?: string;
+	placeholder?: string | undefined;
 	autoFocus?: boolean;
 	className?: string;
 	onCommit: (name: string) => void;

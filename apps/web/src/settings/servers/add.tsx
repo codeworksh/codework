@@ -28,19 +28,20 @@ const STEPS = ["Kind", "Identity", "Config"] as const;
  */
 export function AddServer({
 	onClose,
-	defaultName,
+	placeholder,
 	detected,
 	onAdded,
 }: {
 	onClose: () => void;
-	defaultName: string;
+	/** The name the server is shown by when it is given none. */
+	placeholder: string | undefined;
 	/** The `codework` found without a choice, shown as the executable's default. */
 	detected: string | undefined;
 	onAdded: (id: string) => void;
 }) {
 	const add = useAtomSet(addAtom, { mode: "promise" });
 	const [step, setStep] = useState(0);
-	const [name, setName] = useState(defaultName);
+	const [name, setName] = useState("");
 	const [executable, setExecutable] = useState("");
 	const [home, setHome] = useState("");
 	// A free port, so the new server runs beside the others rather than on the default one.
@@ -62,7 +63,7 @@ export function AddServer({
 			.finally(() => setAdding(false));
 	};
 
-	const canContinue = step === 0 || (step === 1 && name.trim() !== "") || (step === 2 && home.trim() !== "");
+	const canContinue = step !== 2 || home.trim() !== "";
 
 	return (
 		<Dialog open onOpenChange={(next) => !next && onClose()}>
@@ -110,6 +111,7 @@ export function AddServer({
 							<Input
 								aria-label="Name"
 								value={name}
+								placeholder={placeholder}
 								autoFocus
 								className={quietField}
 								onChange={(event) => setName(event.target.value)}

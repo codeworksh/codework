@@ -34,6 +34,12 @@ type IndexSynced = Extract<Wire.IndexItem, { _tag: "Synced" }>;
 type IndexRow = Exclude<Wire.IndexItem, IndexSynced>;
 type ThreadSynced = Extract<Wire.ThreadItem, { _tag: "Synced" }>;
 type ThreadRow = Exclude<Wire.ThreadItem, ThreadSynced>;
+type UsageSynced = Extract<Wire.UsageItem, { _tag: "Synced" }>;
+type UsageRow = Exclude<Wire.UsageItem, UsageSynced>;
+
+/** The RPC server's answer to a call it has no handler for: a server older than `usage.sync`. */
+const unserved = (cause: Cause.Cause<unknown>) =>
+	cause.reasons.some((reason) => Cause.isDieReason(reason) && reason.defect === "Unknown request tag: usage.sync");
 
 /** A machine whose index is current: its connection and the threads whose detail it syncs. */
 interface Live {
@@ -62,7 +68,7 @@ export interface Interface {
 
 /**
  * Keeps app.db a copy of every machine's CodeWork: each machine over its own connection, its index
- * through `index.sync` from `machine.cursor`, and the detail of opened threads through `thread.sync`
+ * through `index.sync` from `machine.cursor`, its usage rollup through `usage.sync` from `machine.rollup`, and the detail of opened threads through `thread.sync`
  * from `thread.cursor`. A new or restored store is read again from zero.
  */
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/server/sync/Service") {}
@@ -303,23 +309,29 @@ export const layer = Layer.effect(
 				Effect.forever,
 			);
 
+		/** Waits forever when another machine already syncs `storeId`: the same server added twice. */
+		const unclaimed = (machineId: string, storeId: string) =>
+			Effect.gen(function* () {
+				const [owner] = yield* sql<{ id: string }>`
+					SELECT id FROM machine WHERE store_id = ${storeId} AND id <> ${machineId}
+				`;
+				if (owner === undefined) return;
+				yield* Effect.logWarning(
+					`Not syncing machine ${machineId}: its store is already synced as machine ${owner.id}`,
+				);
+				return yield* Effect.never;
+			});
+
 		/** One connection's sync: decides between resume and full sync, then follows the index. */
 		const connected = (machineId: string, client: Connection) =>
 			Effect.gen(function* () {
 				const info = yield* client("server.info", {});
+				yield* servers.setHost(machineId, info.host?.name ?? null);
 				const [machine] = yield* sql<{ storeId: string | null; cursor: number; namespace: string }>`
 					SELECT store_id, cursor, namespace FROM machine WHERE id = ${machineId}
 				`;
 				if (machine === undefined) return yield* Effect.never;
-				const [owner] = yield* sql<{ id: string }>`
-					SELECT id FROM machine WHERE store_id = ${info.storeId} AND id <> ${machineId}
-				`;
-				if (owner !== undefined) {
-					yield* Effect.logWarning(
-						`Not syncing machine ${machineId}: its store is already synced as machine ${owner.id}`,
-					);
-					return yield* Effect.never;
-				}
+				yield* unclaimed(machineId, info.storeId);
 				let full = info.storeId !== machine.storeId || info.rev < machine.cursor;
 				const live: Live = { client, threads: yield* FiberMap.make<string>() };
 				yield* Effect.addFinalizer(() =>
@@ -372,6 +384,80 @@ export const layer = Layer.effect(
 				return yield* Effect.fail("The index stream ended");
 			}).pipe(Effect.scoped);
 
+		/**
+		 * One connection's usage rollup: from `machine.rollup` while the store is the one it counts in,
+		 * else from zero. A read from zero is the store's whole state, so its first batch replaces the
+		 * store's rows, in one transaction so a failed re-read leaves the old ones: a restored backup, or
+		 * a removed server added again, leaves nothing stale. A resume that left the store's line (by
+		 * `rollup_boot`) comes back from zero with `reset`; a server older than boots is read from zero
+		 * only while its head is behind the cursor.
+		 */
+		const syncUsage = (machineId: string, client: Connection) =>
+			Effect.gen(function* () {
+				const info = yield* client("server.info", {});
+				const [machine] = yield* sql<{ rollup: number; rollupStore: string | null; rollupBoot: string | null }>`
+					SELECT rollup, rollup_store, rollup_boot FROM machine WHERE id = ${machineId}
+				`;
+				if (machine === undefined) return yield* Effect.never;
+				yield* unclaimed(machineId, info.storeId);
+				const resumed = info.storeId === machine.rollupStore && info.rev >= machine.rollup;
+				let whole = !resumed;
+				yield* batches<UsageRow, UsageSynced>(
+					client("usage.sync", {
+						after: resumed ? machine.rollup : 0,
+						...(resumed && machine.rollupBoot !== null ? { boot: machine.rollupBoot } : {}),
+					}),
+					(item) => item._tag === "Synced",
+					() => Effect.succeed(true),
+					(rows, synced) =>
+						Effect.gen(function* () {
+							if (synced.storeId !== info.storeId) return yield* Effect.fail("The usage stream changed store");
+							const replaced = whole || synced.reset === true;
+							yield* transact((append) =>
+								Effect.gen(function* () {
+									if (replaced) {
+										yield* sql`DELETE FROM usage WHERE store_id = ${synced.storeId}`;
+										yield* sql`DELETE FROM tally WHERE store_id = ${synced.storeId}`;
+									}
+									yield* Mirror.usage(machineId, synced.storeId, rows);
+									yield* sql`
+										UPDATE machine SET rollup = ${synced.rev}, rollup_store = ${synced.storeId},
+											rollup_boot = ${synced.boot ?? null}
+										WHERE id = ${machineId}
+									`;
+									if (rows.length > 0 || replaced)
+										yield* append({
+											topic: syncTopics.usage,
+											source: "sync",
+											payload: { machineId, storeId: synced.storeId, items: rows.length },
+										});
+								}),
+							);
+							whole = false;
+						}),
+				);
+				return yield* Effect.fail("The usage stream ended");
+			});
+
+		/**
+		 * {@link syncUsage} for as long as the connection lasts, apart from the index: either may fail
+		 * and retry without the other. A server older than `usage.sync` is asked again only after a while.
+		 */
+		const followUsage = (machineId: string, client: Connection) =>
+			syncUsage(machineId, client).pipe(
+				Effect.catchCause((cause) =>
+					Cause.hasInterruptsOnly(cause)
+						? Effect.interrupt
+						: unserved(cause)
+							? Effect.logInfo(`Machine ${machineId} does not serve usage.sync`).pipe(
+									Effect.andThen(Effect.sleep("1 minute")),
+								)
+							: Effect.logWarning(`Usage sync of machine ${machineId} stopped`, cause),
+				),
+				Effect.andThen(Effect.sleep("1 second")),
+				Effect.forever,
+			);
+
 		/** A machine for as long as it is configured: connected, and reconnected after any drop. */
 		const follow = (row: Servers.Row) =>
 			Effect.gen(function* () {
@@ -382,6 +468,7 @@ export const layer = Layer.effect(
 				const client = Context.get(context, Client);
 				clients.set(row.id, client);
 				yield* Effect.addFinalizer(() => Effect.sync(() => clients.delete(row.id)));
+				yield* Effect.forkScoped(followUsage(row.id, client));
 				yield* connected(row.id, client).pipe(
 					Effect.catchCause((cause) =>
 						Effect.logWarning("Machine sync stopped; reconnecting", cause).pipe(

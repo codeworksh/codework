@@ -15,11 +15,14 @@ export function Page({
 	instanceId,
 	title,
 	icon: Icon,
+	actions,
 	children,
 }: {
 	readonly instanceId: string;
 	readonly title: string;
 	readonly icon: Icon;
+	/** Controls at the header's end. */
+	readonly actions?: ReactNode;
 	readonly children: ReactNode;
 }) {
 	const registry = useContext(RegistryContext);
@@ -42,9 +45,10 @@ export function Page({
 		<ShellContext value={shell}>
 			<HostContext value={host}>
 				<div className="flex h-full min-h-0 flex-col">
-					<header className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-4">
+					<header className="flex h-11 shrink-0 items-center gap-2 border-b border-edge pr-3 pl-4">
 						<Icon className="size-4 text-ink-muted" aria-hidden />
-						<h1 className="text-ui font-medium text-ink">{title}</h1>
+						<h1 className="mr-auto text-ui font-medium text-ink">{title}</h1>
+						{actions}
 					</header>
 					<div className="min-h-0 flex-1">{children}</div>
 				</div>

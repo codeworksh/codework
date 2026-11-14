@@ -36,6 +36,7 @@ import {
 	type ThreadInfo,
 	type ThreadItem,
 	type ThreadSummary,
+	type UsageItem,
 } from "./contract.ts";
 import * as Envelope from "./envelope.ts";
 import { type EncodingError, type EventEnvelope } from "./envelope.ts";
@@ -110,6 +111,43 @@ const toIndexItem = (change: Sync.IndexChange): IndexItem => {
 		default:
 			return change;
 	}
+};
+
+const toUsageItem = (change: Sync.UsageChange): UsageItem => {
+	if (change._tag === "Tally") {
+		const { hour, threadId, sessionId, projectId, kind, name, count, rev } = change.tally;
+		return { _tag: "Tally", hour, threadId, sessionId, projectId, kind, name, count, rev };
+	}
+	const row = change.usage;
+	return {
+		_tag: "Usage",
+		hour: row.hour,
+		threadId: row.threadId,
+		sessionId: row.sessionId,
+		projectId: row.projectId,
+		provider: row.provider,
+		model: row.model,
+		thinking: row.thinking,
+		requests: row.requests,
+		tokens: {
+			input: row.input,
+			output: row.output,
+			cacheRead: row.cacheRead,
+			cacheWrite: row.cacheWrite,
+			reasoning: row.reasoning,
+		},
+		cost: {
+			total: row.cost,
+			input: row.costInput,
+			output: row.costOutput,
+			cacheRead: row.costCacheRead,
+			cacheWrite: row.costCacheWrite,
+		},
+		duration: row.duration,
+		timed: row.timed,
+		durations: row.durations,
+		rev: row.rev,
+	};
 };
 
 // Wire configs name only the keys they set, so `undefined` never reaches the harness under
@@ -252,7 +290,7 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			"server.info": Effect.fnUntraced(function* () {
 				const head = yield* store.head;
-				return { pid: identity.pid, version: identity.version, storeId: head.id, rev: head.rev };
+				return { ...identity, storeId: head.id, rev: head.rev };
 			}),
 			"index.sync": ({ after }) =>
 				Rows.follow(
@@ -265,6 +303,33 @@ export const layer = Contract.Api.toLayer(
 							})),
 						),
 					(head): IndexItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
+				),
+			"usage.sync": ({ after, boot }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						let reset = after > 0 && boot !== undefined && !(yield* store.onLine(boot, after));
+						return Rows.follow(
+							reset ? 0 : after,
+							(from, upto) =>
+								Sync.usage(from, upto, Rows.batch).pipe(
+									Effect.map(({ items, next }) => ({
+										items: items.map(toUsageItem),
+										...(next === undefined ? {} : { next }),
+									})),
+								),
+							(head): UsageItem => {
+								const synced = {
+									_tag: "Synced" as const,
+									storeId: head.id,
+									rev: head.rev,
+									boot: head.boot,
+									...(reset ? { reset: true as const } : {}),
+								};
+								reset = false;
+								return synced;
+							},
+						);
+					}),
 				),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),

@@ -1,0 +1,415 @@
+{
+	"Host A": {
+		"rows": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"provider": "openai",
+				"model": "gpt-5.6-luna",
+				"thinking": "medium",
+				"requests": 2,
+				"tokens": {
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 0,
+				"timed": 2,
+				"durations": [
+					2,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"provider": "openai",
+				"model": "gpt-5.6-luna",
+				"thinking": "medium",
+				"requests": 2,
+				"tokens": {
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 0,
+				"timed": 2,
+				"durations": [
+					2,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			}
+		],
+		"tallies": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"kind": "tool",
+				"name": "bash",
+				"count": 1
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"kind": "tool",
+				"name": "bash",
+				"count": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"kind": "prompt",
+				"name": "",
+				"count": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"kind": "prompt",
+				"name": "",
+				"count": 1
+			}
+		],
+		"threads": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"threads": 1
+			},
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"threads": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 1>",
+				"threads": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 1>",
+				"sessionId": "<ses 2>",
+				"threads": 1
+			}
+		],
+		"sessions": [
+			{
+				"id": "<ses 1>",
+				"machineId": "<id 1>",
+				"projectId": "<project Alpha>",
+				"title": "bash echo alpha",
+				"deleted": false
+			},
+			{
+				"id": "<ses 2>",
+				"machineId": "<id 1>",
+				"projectId": "<project Beta>",
+				"title": "bash echo beta",
+				"deleted": false
+			}
+		],
+		"projects": [
+			{
+				"id": "<project Alpha>",
+				"name": "Alpha"
+			},
+			{
+				"id": "<project Beta>",
+				"name": "Beta"
+			}
+		],
+		"machines": [
+			{
+				"id": "<id 1>",
+				"name": "Host A"
+			}
+		],
+		"edges": [
+			250,
+			374,
+			561,
+			839,
+			1257,
+			1882,
+			2818,
+			4220,
+			6318,
+			9461,
+			14167,
+			21213,
+			31764,
+			47563,
+			71221,
+			106645,
+			159688,
+			239115,
+			358046,
+			536133,
+			802797,
+			1202096,
+			1800000
+		]
+	},
+	"Host B": {
+		"rows": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 2>",
+				"sessionId": "<ses 3>",
+				"provider": "openai",
+				"model": "gpt-5.6-luna",
+				"thinking": "medium",
+				"requests": 2,
+				"tokens": {
+					"input": 2,
+					"output": 2,
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"reasoning": 0
+				},
+				"cost": {
+					"total": 0,
+					"input": 0,
+					"output": 0,
+					"cacheRead": 0,
+					"cacheWrite": 0
+				},
+				"duration": 0,
+				"timed": 2,
+				"durations": [
+					2,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0
+				]
+			}
+		],
+		"tallies": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 2>",
+				"sessionId": "<ses 3>",
+				"kind": "tool",
+				"name": "bash",
+				"count": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 2>",
+				"sessionId": "<ses 3>",
+				"kind": "prompt",
+				"name": "",
+				"count": 1
+			}
+		],
+		"threads": [
+			{
+				"day": "1970-01-01",
+				"machineId": "<id 2>",
+				"sessionId": "<ses 3>",
+				"threads": 1
+			},
+			{
+				"day": "<today>",
+				"machineId": "<id 2>",
+				"sessionId": "<ses 3>",
+				"threads": 1
+			}
+		],
+		"sessions": [
+			{
+				"id": "<ses 3>",
+				"machineId": "<id 2>",
+				"projectId": "<project Gamma>",
+				"title": "bash echo gamma",
+				"deleted": false
+			}
+		],
+		"projects": [
+			{
+				"id": "<project Gamma>",
+				"name": "Gamma"
+			}
+		],
+		"machines": [
+			{
+				"id": "<id 2>",
+				"name": "Host B"
+			}
+		],
+		"edges": [
+			250,
+			374,
+			561,
+			839,
+			1257,
+			1882,
+			2818,
+			4220,
+			6318,
+			9461,
+			14167,
+			21213,
+			31764,
+			47563,
+			71221,
+			106645,
+			159688,
+			239115,
+			358046,
+			536133,
+			802797,
+			1202096,
+			1800000
+		]
+	},
+	"all": {
+		"rows": 3,
+		"machines": 2,
+		"projects": [
+			{
+				"id": "<project Alpha>",
+				"name": "Alpha"
+			},
+			{
+				"id": "<project Beta>",
+				"name": "Beta"
+			},
+			{
+				"id": "<project Gamma>",
+				"name": "Gamma"
+			}
+		]
+	},
+	"alpha": {
+		"sessions": [
+			{
+				"id": "<ses 1>",
+				"machineId": "<id 1>",
+				"projectId": "<project Alpha>",
+				"title": "bash echo alpha",
+				"deleted": false
+			}
+		],
+		"projects": [
+			{
+				"id": "<project Alpha>",
+				"name": "Alpha"
+			}
+		]
+	},
+	"hoursA": [
+		{
+			"hour": 0,
+			"machineId": "<id 1>",
+			"sessionId": "<ses 1>",
+			"provider": "openai",
+			"model": "gpt-5.6-luna",
+			"requests": 2,
+			"tokens": 4,
+			"cost": 0
+		},
+		{
+			"hour": 0,
+			"machineId": "<id 1>",
+			"sessionId": "<ses 2>",
+			"provider": "openai",
+			"model": "gpt-5.6-luna",
+			"requests": 2,
+			"tokens": 4,
+			"cost": 0
+		}
+	]
+}

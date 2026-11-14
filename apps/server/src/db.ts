@@ -274,6 +274,75 @@ const migrations = {
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
+
+	// Each machine's usage rollup, as `usage.sync` sends it, keyed by store: a recreated store starts
+	// new rows and keeps the old ones as history, and a removed server re-added later replaces its own.
+	// No foreign keys: the rows outlive their machine, project, session and thread; `machine_id` is the
+	// machine that last sent them.
+	"202611140001_usage": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		// `rollup` is the usage cursor, counted in `rollup_store` while `rollup_boot` was its latest open:
+		// it moves apart from `cursor` and `store_id`.
+		yield* sql`ALTER TABLE machine ADD COLUMN rollup INTEGER NOT NULL DEFAULT 0`;
+		yield* sql`ALTER TABLE machine ADD COLUMN rollup_store TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN rollup_boot TEXT`;
+		yield* sql`
+			CREATE TABLE usage (
+				machine_id TEXT NOT NULL,
+				store_id TEXT NOT NULL,
+				hour INTEGER NOT NULL,
+				thread_id TEXT NOT NULL,
+				provider TEXT NOT NULL,
+				model TEXT NOT NULL,
+				thinking TEXT NOT NULL,
+				session_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				requests INTEGER NOT NULL,
+				input INTEGER NOT NULL,
+				output INTEGER NOT NULL,
+				cache_read INTEGER NOT NULL,
+				cache_write INTEGER NOT NULL,
+				reasoning INTEGER NOT NULL,
+				cost REAL NOT NULL,
+				cost_input REAL NOT NULL,
+				cost_output REAL NOT NULL,
+				cost_cache_read REAL NOT NULL,
+				cost_cache_write REAL NOT NULL,
+				duration REAL NOT NULL,
+				timed INTEGER NOT NULL,
+				durations TEXT NOT NULL,
+				rev INTEGER NOT NULL,
+				PRIMARY KEY (store_id, hour, thread_id, provider, model, thinking)
+			)
+		`;
+		yield* sql`
+			CREATE TABLE tally (
+				machine_id TEXT NOT NULL,
+				store_id TEXT NOT NULL,
+				hour INTEGER NOT NULL,
+				thread_id TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				name TEXT NOT NULL,
+				session_id TEXT NOT NULL,
+				project_id TEXT NOT NULL,
+				count INTEGER NOT NULL,
+				rev INTEGER NOT NULL,
+				PRIMARY KEY (store_id, hour, thread_id, kind, name)
+			)
+		`;
+	}),
+
+	// A machine is named by what its server reports (`host`); `name` is only the user's override, so
+	// it becomes nullable. ADD + DROP + RENAME instead of rebuilding the table, which its foreign keys
+	// would cascade into. The built-in server's old seed name is no override.
+	"202611140002_host": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN host TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN alias TEXT`;
+		yield* sql`UPDATE machine SET alias = name WHERE NOT (id = 'local' AND name = 'CodeWork')`;
+		yield* sql`ALTER TABLE machine DROP COLUMN name`;
+		yield* sql`ALTER TABLE machine RENAME COLUMN alias TO name`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

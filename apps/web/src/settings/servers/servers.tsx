@@ -1,6 +1,6 @@
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { DEFAULT_SERVER_HEALTH, type LocalServerStatus } from "@codeworksh/contract";
+import { DEFAULT_SERVER_HEALTH, LOCAL_SERVER, type LocalServerStatus } from "@codeworksh/contract";
 
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
@@ -12,7 +12,7 @@ import { Server } from "../../kernel/rpc";
 import { serversAtom } from "../../kernel/servers";
 import { Group, Page, quietField, Row, SavingInput, Section } from "../blocks";
 import { AddServer } from "./add";
-import { LocalDetail, LocalItem } from "./local";
+import { LocalDetail, LocalItem, reportedName } from "./local";
 
 const checkAtom = Server.mutation("servers.check");
 const healthKey = ["health"];
@@ -35,6 +35,8 @@ export function ServersSettings() {
 	const [adding, setAdding] = useState(false);
 	// The default until one is picked, and again when the picked one is gone.
 	const selected = servers?.find((server) => server.id === selectedId) ?? servers?.find((server) => server.isDefault);
+	// A new local server runs on the same machine, so it reports the built-in one's name.
+	const builtin = servers?.find((server) => server.id === LOCAL_SERVER);
 	// Shown as the new server's executable default: the binary found without a choice.
 	const detected = servers?.flatMap((server) =>
 		server.cli !== null && !server.cli.custom ? [server.cli.path] : [],
@@ -85,7 +87,7 @@ export function ServersSettings() {
 			{adding && (
 				<AddServer
 					onClose={() => setAdding(false)}
-					defaultName={`CodeWork ${(servers?.length ?? 0) + 1}`}
+					placeholder={builtin && reportedName(builtin)}
 					detected={detected}
 					onAdded={setSelectedId}
 				/>

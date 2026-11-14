@@ -18,6 +18,7 @@ import * as DocumentSchema from "../document/schema.ts";
 import * as Event from "../event/event.ts";
 import * as EventList from "../event/list.ts";
 import * as SessionSchema from "../session/schema.ts";
+import * as Usage from "../usage/usage.ts";
 import * as ThreadSchema from "./schema.ts";
 
 /** A host interruption landed on a run the user had asked to stop; see `projectRun`. */
@@ -295,6 +296,7 @@ export const layer = Layer.effect(
 		const store = yield* Store.Service;
 		const events = yield* Event.Service;
 		const documents = yield* Document.Service;
+		const usage = yield* Usage.Service;
 
 		const findThread = SqlSchema.findOneOption({
 			Request: Schema.String,
@@ -628,13 +630,16 @@ export const layer = Layer.effect(
 
 			// The envelope is authoritative; aggregate deltas are never accepted
 			// independently of the data persisted by this transaction.
-			const usage =
+			const billed =
 				input.type === "assistant"
 					? yield* decodeEnvelopeUsage(input.data).pipe(
 							Effect.map((envelope) => envelope.usage),
 							Effect.mapError((error) => invalid(error.message)),
 						)
 					: undefined;
+			// What the rollup reads once the entry is finalised, rejected at every write rather than inside
+			// the commit or abort, where a bad draft would make its turn impossible to end.
+			yield* Usage.validate(input.type, input.data).pipe(Effect.mapError((error) => invalid(error.message)));
 
 			const result: AppendTxResult = yield* store
 				.write(
@@ -675,16 +680,17 @@ export const layer = Layer.effect(
 						yield* writeParts(input.id, input.threadId, parts);
 						yield* addUsage(
 							thread.value,
-							usage === undefined
+							billed === undefined
 								? undefined
 								: {
-										cost: usage.cost.total,
-										input: usage.input,
-										output: usage.output,
-										cacheRead: usage.cacheRead,
-										cacheWrite: usage.cacheWrite,
+										cost: billed.cost.total,
+										input: billed.input,
+										output: billed.output,
+										cacheRead: billed.cacheRead,
+										cacheWrite: billed.cacheWrite,
 									},
 						);
+						yield* usage.record(input.id);
 
 						const stored = yield* findEntry(input.id);
 						if (Option.isNone(stored)) {
@@ -733,6 +739,7 @@ export const layer = Layer.effect(
 		});
 
 		const replaceAssistant = Effect.fn("Thread.replaceAssistant")(function* (input: ReplaceAssistant) {
+			yield* Usage.validate("assistant", input.data);
 			yield* store.write(
 				Effect.gen(function* () {
 					const { entry, thread } = yield* requireDraft(input.id, input.threadId, "replaceAssistant");
@@ -823,12 +830,14 @@ export const layer = Layer.effect(
 				RETURNING id
 			`;
 				if (rows.length !== 1) return yield* Effect.die(`commit requires a fully-settled draft ${input.id}`);
+				yield* usage.record(input.id);
 			},
 			store.write,
 			Effect.orDie,
 		);
 
 		const abort = Effect.fn("Thread.abort")(function* (input: ReplaceAssistant & EndAssistant) {
+			yield* Usage.validate("assistant", input.data);
 			yield* store.write(
 				Effect.gen(function* () {
 					const { entry, thread } = yield* requireDraft(input.id, input.threadId, "abort");
@@ -843,6 +852,7 @@ export const layer = Layer.effect(
 						WHERE id = ${input.id} AND state = 'draft'
 					`;
 					yield* addUsage(thread, delta);
+					yield* usage.record(input.id);
 				}),
 			);
 		}, Effect.orDie);

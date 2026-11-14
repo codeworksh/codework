@@ -90,11 +90,21 @@ const insertTree = (db: DatabaseSync, machine: string, suffix: string, groupingI
 		`INSERT INTO inbox (id, thread_id, delivery, text, admitted_seq, created_at)
 		 VALUES (?, ?, 'followUp', 'next', 2, ?)`,
 	).run(`msg_${suffix}`, `thr_${suffix}`, now);
+	db.prepare(
+		`INSERT INTO usage (machine_id, store_id, hour, thread_id, provider, model, thinking, session_id, project_id,
+		 requests, input, output, cache_read, cache_write, reasoning, cost, cost_input, cost_output, cost_cache_read,
+		 cost_cache_write, duration, timed, durations, rev)
+		 VALUES (?, 'str', 0, ?, 'openai', 'gpt', 'off', ?, 'prj', 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, '[1]', 1)`,
+	).run(machine, `thr_${suffix}`, `ses_${suffix}`);
+	db.prepare(
+		`INSERT INTO tally (machine_id, store_id, hour, thread_id, kind, name, session_id, project_id, count, rev)
+		 VALUES (?, 'str', 0, ?, 'tool', 'bash', ?, 'prj', 1, 1)`,
+	).run(machine, `thr_${suffix}`, `ses_${suffix}`);
 };
 
-const TREE = ["project", "space", "session", "thread", "entry", "part", "inbox"] as const;
+const TREE = ["project", "space", "session", "thread", "entry", "part", "inbox", "usage", "tally"] as const;
 
-it("creates the sync tables, seeds them, and cascades a removed machine", async () => {
+it("creates the sync tables, seeds them, and cascades a removed machine, keeping its usage", async () => {
 	const db = new DatabaseSync(database);
 	db.exec("PRAGMA busy_timeout = 5000");
 	db.exec("PRAGMA foreign_keys = ON");
@@ -169,7 +179,9 @@ it("creates the sync tables, seeds them, and cascades a removed machine", async 
 	db.close();
 
 	const steps = { schema, seeded, servers };
-	expect(servers.cascade.after).toEqual(Object.fromEntries(TREE.map((table) => [table, 1])));
+	expect(servers.cascade.after).toEqual(
+		Object.fromEntries(TREE.map((table) => [table, table === "usage" || table === "tally" ? 2 : 1])),
+	);
 	expect(servers.ungrouped).toEqual([{ id: "thr_local", grouping_id: null }]);
 	const text = JSON.stringify(steps, null, "\t").replaceAll(servers.row.id as string, "<remote>");
 	await expect(`${text}\n`).toMatchFileSnapshot("./__artifacts__/schema.json");

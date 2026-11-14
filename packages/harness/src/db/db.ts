@@ -1,6 +1,7 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Config, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/sql";
+import { uuidv7 } from "uuidv7";
 import * as Global from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
@@ -25,6 +26,7 @@ const setup = Effect.gen(function* () {
 	yield* sql`PRAGMA cache_size = -64000`;
 	yield* sql`PRAGMA foreign_keys = ON`;
 	yield* SqliteMigrator.run({ loader: Migrator.fromRecord(migrations) });
+	yield* sql`INSERT INTO boot (id, rev) SELECT ${uuidv7()}, rev FROM store`;
 });
 
 // Provides `SqlClient` (and `SqliteClient`) for the database at `location`,

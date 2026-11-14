@@ -18,6 +18,7 @@ import {
 	SettingsFile,
 	ThreadSchema,
 	ThreadStore,
+	UsageSchema,
 } from "@codeworksh/harness/effect";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
@@ -176,6 +177,76 @@ export const IndexItem = Schema.Union([
 	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int }),
 ]);
 export type IndexItem = typeof IndexItem.Type;
+
+/**
+ * Upper bounds in ms of the request duration histogram: bucket `i` of `durations` counts durations
+ * below `edges[i]` and at or above `edges[i - 1]`; one more bucket past the last edge is open-ended.
+ */
+export const edges = UsageSchema.edges;
+
+/** Where a `usage.sync` row belongs: a thread's UTC hour. */
+const UsageOwner = {
+	/** Start of the UTC hour, epoch milliseconds. */
+	hour: Schema.Int,
+	threadId: ThreadSchema.ID,
+	/** The thread's session and project when the row was first written. */
+	sessionId: Session.SessionSchema.ID,
+	projectId: Schema.String,
+};
+
+/** A `usage.sync` item: a rollup row with the revision that last wrote it, or progress. */
+export const UsageItem = Schema.Union([
+	/** Requests of one thread in one hour to one provider, model and thinking level, aborted ones included. */
+	Schema.TaggedStruct("Usage", {
+		...UsageOwner,
+		provider: Schema.String,
+		model: Schema.String,
+		thinking: Schema.String,
+		requests: Schema.Int,
+		/** `reasoning` is part of `output`. */
+		tokens: Schema.Struct({
+			input: Schema.Int,
+			output: Schema.Int,
+			cacheRead: Schema.Int,
+			cacheWrite: Schema.Int,
+			reasoning: Schema.Int,
+		}),
+		/** US dollars, from the catalog's prices. */
+		cost: Schema.Struct({
+			total: Schema.Finite,
+			input: Schema.Finite,
+			output: Schema.Finite,
+			cacheRead: Schema.Finite,
+			cacheWrite: Schema.Finite,
+		}),
+		/** Total ms of the `timed` requests: the committed ones; aborted requests are never timed. */
+		duration: Schema.Finite,
+		timed: Schema.Int,
+		/** The `timed` requests per bucket of `edges`, one more than there are edges. */
+		durations: Schema.Array(Schema.Int),
+		rev: Schema.Int,
+	}),
+	/** Committed prompts (`name` is empty), or tool calls that ran by tool name, of one thread in one hour. */
+	Schema.TaggedStruct("Tally", {
+		...UsageOwner,
+		kind: Schema.Literals(UsageSchema.tallyKinds),
+		name: Schema.String,
+		count: Schema.Int,
+		rev: Schema.Int,
+	}),
+	/**
+	 * Every row with a revision up to `rev` has been sent. `boot` is the store's latest open, for the
+	 * next call; `reset` marks the first one after a `boot` off the store's line: every row was sent
+	 * again from zero, and a client drops what it held of this store.
+	 */
+	Schema.TaggedStruct("Synced", {
+		storeId: Schema.String,
+		rev: Schema.Int,
+		boot: Schema.String,
+		reset: optional(Schema.Literal(true)),
+	}),
+]);
+export type UsageItem = typeof UsageItem.Type;
 
 /** A thread of a session: `threadId`, or the session's `main` thread when absent. */
 const ThreadRef = {
@@ -444,6 +515,8 @@ export const Api = RpcGroup.make(
 			storeId: Schema.String,
 			/** The store's head: the last revision taken. */
 			rev: Schema.Int,
+			/** The machine it runs on, by the name its user knows it; absent when the OS names it nothing. */
+			host: optional(Schema.Struct({ name: Schema.String })),
 		}),
 	}),
 	/**
@@ -455,6 +528,19 @@ export const Api = RpcGroup.make(
 	Rpc.make("index.sync", {
 		payload: { after: Schema.Int },
 		success: IndexItem,
+		stream: true,
+	}),
+	/**
+	 * The usage rollup of this machine: every `usage` and `tally` row whose revision is past `after`,
+	 * in revision order, then `Synced` at the head read when the call began; then the same live after
+	 * each commit. `after: 0` reads every row. A row written again moves to a later revision and is
+	 * sent again in full; the latest wins. Rows carry running totals, not deltas: a client replaces a
+	 * row by its key, never adds to it. A deleted session's rows stay. `boot` is the one the last
+	 * `Synced` carried: when the store left that line (a restored backup), it reads from zero instead.
+	 */
+	Rpc.make("usage.sync", {
+		payload: { after: Schema.Int, boot: optional(Schema.String) },
+		success: UsageItem,
 		stream: true,
 	}),
 	Rpc.make("auth.save", {

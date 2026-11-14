@@ -9,6 +9,7 @@ import * as DocumentSchema from "../document/schema.ts";
 import * as SessionSchema from "../session/schema.ts";
 import * as ThreadSchema from "../thread/schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
+import * as UsageSchema from "../usage/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
 
@@ -220,6 +221,48 @@ export class EntryPartRow extends Model.Class<EntryPartRow>("EntryPartRow")({
 	toolName: Model.FieldOption(Schema.String),
 	data: Schema.String,
 	...Timestamps,
+}) {}
+
+// Usage of one thread's finalised assistant entries per UTC hour, provider, model and thinking level.
+// No foreign keys: the rows outlive their session, so its session and project are copied in.
+export class UsageRow extends Model.Class<UsageRow>("UsageRow")({
+	hour: Schema.Int,
+	threadId: ThreadSchema.IDFromDb,
+	provider: Schema.String,
+	model: Schema.String,
+	thinking: Schema.String,
+	sessionId: SessionSchema.IDFromDb,
+	projectId: Schema.String,
+	requests: NonNegativeInt,
+	input: NonNegativeInt,
+	output: NonNegativeInt,
+	cacheRead: NonNegativeInt,
+	cacheWrite: NonNegativeInt,
+	reasoning: NonNegativeInt,
+	cost: Schema.Finite,
+	costInput: Schema.Finite,
+	costOutput: Schema.Finite,
+	costCacheRead: Schema.Finite,
+	costCacheWrite: Schema.Finite,
+	// `timed` counts the committed requests with a usable duration; aborted ones are billed, never timed.
+	// `duration` sums theirs in ms; `durations` counts them per `UsageSchema.edges` bucket.
+	duration: Schema.Finite,
+	timed: NonNegativeInt,
+	durations: UsageSchema.Durations,
+	rev: Rev,
+}) {}
+
+// Small counters of one thread per UTC hour: committed prompts, and tool calls that ran (completed or
+// error) by tool name.
+export class TallyRow extends Model.Class<TallyRow>("TallyRow")({
+	hour: Schema.Int,
+	threadId: ThreadSchema.IDFromDb,
+	kind: Schema.Literals(UsageSchema.tallyKinds),
+	name: Schema.String,
+	sessionId: SessionSchema.IDFromDb,
+	projectId: Schema.String,
+	count: NonNegativeInt,
+	rev: Rev,
 }) {}
 
 // JSON state owned by a session (no thread) or a thread. Every change is a revision.

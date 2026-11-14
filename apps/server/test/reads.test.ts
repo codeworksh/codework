@@ -11,6 +11,7 @@ import {
 	cleanup,
 	type Codework,
 	codework,
+	follow,
 	freePort,
 	normalizer,
 	query,
@@ -76,24 +77,6 @@ const registerLocal = (appHome: string, server: Codework, port: number) => {
 
 const sidebar = (rpc: AppRpc, machines: "default" | "all" = "all") =>
 	rpc["sidebar.list"]({ organizationId: Contract.PERSONAL_ORGANIZATION, machines });
-
-/** Events on `topics` from the moment it resolves, collected until `stop`. */
-const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>) => {
-	const events: Array<{ topic: string; payload: Row }> = [];
-	let subscribed = false;
-	const background = desk.background((rpc) =>
-		rpc["event.subscribe"]({ topics }).pipe(
-			Stream.runForEach((item) =>
-				Effect.sync(() => {
-					if ("_tag" in item) subscribed = true;
-					else events.push({ topic: item.topic, payload: item.payload as Row });
-				}),
-			),
-		),
-	);
-	await waitFor(() => (subscribed ? true : undefined), `a subscription to ${topics.join(", ")}`);
-	return { events, stop: background.stop };
-};
 
 it("the sidebar reads app.db alone: a run started before the app shows running at launch, a fork's activity moves its session up, and it stays while CodeWork is stopped", async () => {
 	const cwHome = tempDir("sidebar-cw");

@@ -171,6 +171,8 @@ export const statuses = Effect.gen(function* () {
 					id: row.id,
 					kind: row.kind,
 					name: row.name,
+					host: row.host,
+					override: row.override,
 					isDefault: row.isDefault,
 					home,
 					cli,

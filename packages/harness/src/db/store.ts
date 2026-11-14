@@ -1,10 +1,11 @@
 import { Clock, Context, Effect, Layer, PubSub, type Scope } from "effect";
 import { SqlClient, type SqlError } from "effect/sql";
 
-/** The store's identity and its last revision taken. */
+/** The store's identity, its last revision taken, and its latest open (`boot`). */
 export interface Head {
 	readonly id: string;
 	readonly rev: number;
+	readonly boot: string;
 }
 
 export interface Interface {
@@ -18,6 +19,12 @@ export interface Interface {
 	/** The enclosing write's revision, taken on first use; every row the write touches is stamped with it. */
 	readonly rev: Effect.Effect<number>;
 	readonly head: Effect.Effect<Head>;
+	/**
+	 * Whether a client that read up to `rev` while `boot` was the latest open is still on this store's
+	 * line: `boot` is known and every open since came at `rev` or later. A restored backup fails it once
+	 * the client had read past the backup.
+	 */
+	readonly onLine: (boot: string, rev: number) => Effect.Effect<boolean>;
 	/**
 	 * A doorbell for the caller's scope, rung after every commit that took a revision. Register it
 	 * before reading `head`, so no commit falls between the read and the first ring.
@@ -83,10 +90,21 @@ export const layer = Layer.effect(
 		}).pipe(Effect.orDie);
 
 		const head = Effect.gen(function* () {
-			const [row] = yield* sql<Head>`SELECT id, rev FROM store`;
+			const [row] = yield* sql<Head>`
+				SELECT id, rev, (SELECT id FROM boot ORDER BY seq DESC LIMIT 1) AS boot FROM store
+			`;
 			if (row === undefined) return yield* Effect.die(new Error("store row is missing"));
 			return row;
 		}).pipe(Effect.orDie);
+
+		const onLine = Effect.fn("Store.onLine")(function* (boot: string, rev: number) {
+			const [own] = yield* sql<{ readonly seq: number }>`SELECT seq FROM boot WHERE id = ${boot}`;
+			if (own === undefined) return false;
+			const [later] = yield* sql<{ readonly since: number | null }>`
+				SELECT MIN(rev) AS since FROM boot WHERE seq > ${own.seq}
+			`;
+			return later === undefined || later.since === null || later.since >= rev;
+		}, Effect.orDie);
 
 		const wake = Effect.gen(function* () {
 			const pubsub = yield* PubSub.sliding<void>(1);
@@ -98,6 +116,6 @@ export const layer = Layer.effect(
 			return subscription;
 		});
 
-		return Service.of({ write, rev, head, wake });
+		return Service.of({ write, rev, head, onLine, wake });
 	}),
 );

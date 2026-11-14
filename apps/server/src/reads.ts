@@ -17,6 +17,7 @@ import {
 	type ThreadStatus,
 } from "@codeworksh/contract";
 import { HistoryEntry, Part, QueuedPrompt, RunError, UNTITLED } from "@codeworksh/widget/codework";
+import { Servers } from "./servers.ts";
 
 /*
  * What the UI reads from app.db: the sidebar and a thread's line. Neither calls CodeWork, so both
@@ -35,6 +36,18 @@ const decodeThread = Schema.decodeUnknownEffect(LineThread);
 const model = (provider: string | null, id: string | null) =>
 	provider === null || id === null ? {} : { model: { provider, id } };
 
+/** The machine columns a read selects to name it by {@link Servers.nameOf}. */
+export const MACHINE =
+	"machine.kind AS machine_kind, machine.name AS machine_override, machine.host AS machine_host, machine.url AS machine_url";
+export interface MachineColumns {
+	readonly machineKind: string;
+	readonly machineOverride: string | null;
+	readonly machineHost: string | null;
+	readonly machineUrl: string | null;
+}
+export const machineName = (row: MachineColumns) =>
+	Servers.nameOf({ kind: row.machineKind, override: row.machineOverride, host: row.machineHost, url: row.machineUrl });
+
 /** The machine filter of `sidebar.list`. */
 const onMachines = (sql: SqlClient.SqlClient, machines: "default" | "all") =>
 	machines === "all" ? sql.literal("") : sql`AND machine.is_default = 1`;
@@ -47,16 +60,17 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 	readonly machines: "default" | "all";
 }) {
 	const sql = yield* SqlClient.SqlClient;
-	const projects = yield* sql<{
-		machineId: string;
-		machineName: string;
-		id: string;
-		name: string;
-		location: string | null;
-		createdAt: number;
-		updatedAt: number;
-	}>`
-		SELECT project.machine_id, machine.name AS machine_name, project.id, project.name, project.created_at, project.updated_at,
+	const projects = yield* sql<
+		MachineColumns & {
+			machineId: string;
+			id: string;
+			name: string;
+			location: string | null;
+			createdAt: number;
+			updatedAt: number;
+		}
+	>`
+		SELECT project.machine_id, ${sql.literal(MACHINE)}, project.id, project.name, project.created_at, project.updated_at,
 			(SELECT location FROM space WHERE space.machine_id = project.machine_id AND space.project_id = project.id
 				ORDER BY space.kind = 'primary' DESC, space.created_at LIMIT 1) AS location
 		FROM project JOIN machine ON machine.id = project.machine_id
@@ -122,7 +136,7 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		.map((project): SidebarProject => {
 			const list = sessionsOf(project);
 			return {
-				machine: { id: project.machineId, name: project.machineName },
+				machine: { id: project.machineId, name: machineName(project) },
 				id: project.id,
 				name: project.name,
 				// A worktree session's folder is not the project's, so new threads start in the primary space.
@@ -177,26 +191,27 @@ export const threads = Effect.fn("Reads.threads")(function* ({
 	readonly by: ThreadsBy;
 }) {
 	const sql = yield* SqlClient.SqlClient;
-	const rows = yield* sql<{
-		id: string;
-		sessionId: string;
-		originKind: ListedThread["originKind"];
-		originThreadId: string | null;
-		title: string | null;
-		machineId: string;
-		machineName: string;
-		projectId: string;
-		projectName: string;
-		runState: ListedThread["runState"];
-		status: ThreadStatus;
-		priority: Priority;
-		groupingId: string | null;
-		ordering: number;
-		color: string | null;
-		updatedAt: number;
-	}>`
+	const rows = yield* sql<
+		MachineColumns & {
+			id: string;
+			sessionId: string;
+			originKind: ListedThread["originKind"];
+			originThreadId: string | null;
+			title: string | null;
+			machineId: string;
+			projectId: string;
+			projectName: string;
+			runState: ListedThread["runState"];
+			status: ThreadStatus;
+			priority: Priority;
+			groupingId: string | null;
+			ordering: number;
+			color: string | null;
+			updatedAt: number;
+		}
+	>`
 		SELECT thread.id, thread.session_id, thread.origin_kind, thread.origin_thread_id, thread.title,
-			machine.id AS machine_id, machine.name AS machine_name, project.id AS project_id, project.name AS project_name, thread.run_state, thread.status, thread.priority,
+			machine.id AS machine_id, ${sql.literal(MACHINE)}, project.id AS project_id, project.name AS project_name, thread.run_state, thread.status, thread.priority,
 			thread.grouping_id, thread.ordering, COALESCE(thread.color, session.color) AS color, thread.updated_at
 		FROM thread
 		JOIN session ON session.id = thread.session_id
@@ -217,7 +232,7 @@ export const threads = Effect.fn("Reads.threads")(function* ({
 		originKind: row.originKind,
 		originThreadId: row.originThreadId,
 		title: titleOf(row) ?? UNTITLED,
-		machine: { id: row.machineId, name: row.machineName },
+		machine: { id: row.machineId, name: machineName(row) },
 		project: { id: row.projectId, name: row.projectName },
 		runState: row.runState,
 		status: row.status,

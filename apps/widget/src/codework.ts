@@ -230,6 +230,78 @@ export const IndexItem = Schema.Union([
 ]);
 export type IndexItem = typeof IndexItem.Type;
 
+/**
+ * Upper bounds in ms of the request duration histogram: bucket `i` of `durations` counts durations
+ * below `edges[i]` and at or above `edges[i - 1]`; one more bucket past the last edge is open-ended.
+ */
+export const edges = [
+	250, 374, 561, 839, 1257, 1882, 2818, 4220, 6318, 9461, 14167, 21213, 31764, 47563, 71221, 106645, 159688, 239115,
+	358046, 536133, 802797, 1202096, 1800000,
+] as const;
+
+/** Where a `usage.sync` row belongs: a thread's UTC hour. */
+const UsageOwner = {
+	/** Start of the UTC hour, epoch milliseconds. */
+	hour: Schema.Int,
+	threadId: Schema.String,
+	/** The thread's session and project when the row was first written. */
+	sessionId: Schema.String,
+	projectId: Schema.String,
+};
+
+/** A `usage.sync` item: a rollup row with the revision that last wrote it, or progress. */
+export const UsageItem = Schema.Union([
+	/** Requests of one thread in one hour to one provider, model and thinking level, aborted ones included. */
+	Schema.TaggedStruct("Usage", {
+		...UsageOwner,
+		provider: Schema.String,
+		model: Schema.String,
+		thinking: Schema.String,
+		requests: Schema.Int,
+		/** `reasoning` is part of `output`. */
+		tokens: Schema.Struct({
+			input: Schema.Int,
+			output: Schema.Int,
+			cacheRead: Schema.Int,
+			cacheWrite: Schema.Int,
+			reasoning: Schema.Int,
+		}),
+		/** US dollars, from the catalog's prices. */
+		cost: Schema.Struct({
+			total: Schema.Finite,
+			input: Schema.Finite,
+			output: Schema.Finite,
+			cacheRead: Schema.Finite,
+			cacheWrite: Schema.Finite,
+		}),
+		/** Total ms of the `timed` requests: the committed ones; aborted requests are never timed. */
+		duration: Schema.Finite,
+		timed: Schema.Int,
+		/** The `timed` requests per bucket of `edges`, one more than there are edges. */
+		durations: Schema.Array(Schema.Int),
+		rev: Schema.Int,
+	}),
+	/** Committed prompts (`name` is empty), or tool calls that ran by tool name, of one thread in one hour. */
+	Schema.TaggedStruct("Tally", {
+		...UsageOwner,
+		kind: Schema.Literals(["prompt", "tool"]),
+		name: Schema.String,
+		count: Schema.Int,
+		rev: Schema.Int,
+	}),
+	/**
+	 * Every row with a revision up to `rev` has been sent. `boot` is the store's latest open (absent from
+	 * an older server); `reset` marks a re-read from zero after the store left the client's `boot`.
+	 */
+	Schema.TaggedStruct("Synced", {
+		storeId: Schema.String,
+		rev: Schema.Int,
+		boot: Schema.optionalKey(Schema.String),
+		reset: Schema.optionalKey(Schema.Literal(true)),
+	}),
+]);
+export type UsageItem = typeof UsageItem.Type;
+
 /** What a client calls a thread its first prompt has not named yet. */
 export const UNTITLED = "Session";
 
@@ -495,6 +567,8 @@ export const Api = RpcGroup.make(
 			storeId: Schema.String,
 			/** The store's head: the last revision taken. */
 			rev: Schema.Int,
+			/** The machine it runs on, by the name its user knows it; absent when the OS names it nothing. */
+			host: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
 		}),
 	}),
 	/**
@@ -504,6 +578,19 @@ export const Api = RpcGroup.make(
 	Rpc.make("index.sync", {
 		payload: { after: Schema.Int },
 		success: IndexItem,
+		stream: true,
+	}),
+	/**
+	 * The usage rollup of this machine: every `usage` and `tally` row whose revision is past `after`,
+	 * in revision order, then `Synced` at the head read when the call began; then the same live after
+	 * each commit. `after: 0` reads every row. A row written again moves to a later revision and is
+	 * sent again in full; the latest wins. Rows carry running totals, not deltas: a client replaces a
+	 * row by its key, never adds to it. A deleted session's rows stay. With the last `Synced`'s `boot`,
+	 * a store that left that line (a restored backup) reads from zero instead.
+	 */
+	Rpc.make("usage.sync", {
+		payload: { after: Schema.Int, boot: Schema.optionalKey(Schema.String) },
+		success: UsageItem,
 		stream: true,
 	}),
 	/**

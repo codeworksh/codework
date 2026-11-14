@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL )"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL , rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, host TEXT, name TEXT)"
 		},
 		{
 			"type": "table",
@@ -152,6 +152,12 @@
 		},
 		{
 			"type": "table",
+			"name": "tally",
+			"tbl_name": "tally",
+			"sql": "CREATE TABLE tally ( machine_id TEXT NOT NULL, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, count INTEGER NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (store_id, hour, thread_id, kind, name) )"
+		},
+		{
+			"type": "table",
 			"name": "thread",
 			"tbl_name": "thread",
 			"sql": "CREATE TABLE thread ( id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organization(id), session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE, origin_kind TEXT NOT NULL, origin_thread_id TEXT, origin_entry_id TEXT, origin_call_id TEXT, origin_committed_seq INTEGER, title TEXT, model_provider TEXT, model_id TEXT, thinking_level TEXT, foundation TEXT, placement_space_id TEXT, placement_dir TEXT, parked INTEGER NOT NULL DEFAULT 0, restarts INTEGER NOT NULL DEFAULT 0, attempt INTEGER, run_state TEXT NOT NULL DEFAULT 'idle', run_state_at INTEGER, run_started_at INTEGER, run_ended_at INTEGER, run_outcome TEXT, run_error TEXT, cost REAL NOT NULL DEFAULT 0, tokens_input INTEGER NOT NULL DEFAULT 0, tokens_output INTEGER NOT NULL DEFAULT 0, tokens_cache_read INTEGER NOT NULL DEFAULT 0, tokens_cache_write INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, status_at INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 0, grouping_id TEXT REFERENCES grouping(id) ON DELETE SET NULL, ordering REAL NOT NULL, color TEXT, cursor INTEGER, floor INTEGER, created_seq INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER )"
@@ -194,6 +200,12 @@
 		},
 		{
 			"type": "table",
+			"name": "usage",
+			"tbl_name": "usage",
+			"sql": "CREATE TABLE usage ( machine_id TEXT NOT NULL, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, thinking TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, requests INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, reasoning INTEGER NOT NULL, cost REAL NOT NULL, cost_input REAL NOT NULL, cost_output REAL NOT NULL, cost_cache_read REAL NOT NULL, cost_cache_write REAL NOT NULL, duration REAL NOT NULL, timed INTEGER NOT NULL, durations TEXT NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (store_id, hour, thread_id, provider, model, thinking) )"
+		},
+		{
+			"type": "table",
 			"name": "widget",
 			"tbl_name": "widget",
 			"sql": "CREATE TABLE widget ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, tags INTEGER NOT NULL, tile_pos INTEGER NOT NULL, focus_pos INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, props TEXT NOT NULL, title TEXT, address TEXT, params TEXT, opened_by TEXT, created INTEGER NOT NULL )"
@@ -210,7 +222,6 @@
 			{
 				"id": "local",
 				"kind": "local",
-				"name": "CodeWork",
 				"executable": null,
 				"home": null,
 				"args": "",
@@ -221,7 +232,12 @@
 				"pos": 0,
 				"store_id": null,
 				"cursor": 0,
-				"created_at": "<time>"
+				"created_at": "<time>",
+				"rollup": 0,
+				"rollup_store": null,
+				"rollup_boot": null,
+				"host": null,
+				"name": null
 			}
 		],
 		"organization": [
@@ -239,13 +255,15 @@
 			{
 				"id": "local",
 				"kind": "local",
-				"name": "CodeWork",
+				"name": "This Machine",
 				"isDefault": true
 			},
 			{
 				"id": "<remote>",
 				"kind": "remote",
 				"name": "Cloud",
+				"host": null,
+				"override": "Cloud",
 				"isDefault": false,
 				"url": "wss://cloud.example.test/rpc"
 			}
@@ -254,13 +272,15 @@
 			{
 				"id": "local",
 				"kind": "local",
-				"name": "CodeWork",
+				"name": "This Machine",
 				"isDefault": true
 			},
 			{
 				"id": "<remote>",
 				"kind": "remote",
 				"name": "Cloud tunnel",
+				"host": null,
+				"override": "Cloud tunnel",
 				"isDefault": false,
 				"url": "wss://tunnel.example.test/rpc"
 			}
@@ -274,7 +294,6 @@
 		"row": {
 			"id": "<remote>",
 			"kind": "remote",
-			"name": "Cloud tunnel",
 			"executable": null,
 			"home": null,
 			"args": "",
@@ -285,7 +304,12 @@
 			"pos": 1,
 			"store_id": null,
 			"cursor": 0,
-			"created_at": "<time>"
+			"created_at": "<time>",
+			"rollup": 0,
+			"rollup_store": null,
+			"rollup_boot": null,
+			"host": null,
+			"name": "Cloud tunnel"
 		},
 		"cascade": {
 			"before": {
@@ -295,7 +319,9 @@
 				"thread": 2,
 				"entry": 2,
 				"part": 2,
-				"inbox": 2
+				"inbox": 2,
+				"usage": 2,
+				"tally": 2
 			},
 			"after": {
 				"project": 1,
@@ -304,7 +330,9 @@
 				"thread": 1,
 				"entry": 1,
 				"part": 1,
-				"inbox": 1
+				"inbox": 1,
+				"usage": 2,
+				"tally": 2
 			},
 			"remoteLeft": 0
 		},
@@ -312,7 +340,7 @@
 			{
 				"id": "local",
 				"kind": "local",
-				"name": "CodeWork",
+				"name": "This Machine",
 				"isDefault": true
 			}
 		],

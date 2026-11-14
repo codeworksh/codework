@@ -32,8 +32,8 @@
 			},
 		},
 		"apps/server": {
-			// The machine simulation runs it on each OrbStack machine by path.
-			"entry": ["test/machines/drive.ts"],
+			// The machine suites run these on each OrbStack machine by path.
+			"entry": ["test/machines/drive.ts", "test/machines/seed.ts"],
 		},
 		"packages/codework": {
 			// bundle.mjs builds the SEA binary from it by path.

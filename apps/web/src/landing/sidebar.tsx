@@ -1,6 +1,7 @@
 import {
 	ArrowsDownUpIcon,
 	CaretRightIcon,
+	ChartBarIcon,
 	ChatsIcon,
 	FolderIcon,
 	FolderOpenIcon,
@@ -255,10 +256,18 @@ export function SessionsSidebar() {
 					</div>
 				)}
 			</SidebarContent>
-			<SidebarFooter className="p-2">
-				<Link to="/settings/workspaces" className={`${NAV_ROW} text-ink-muted`}>
+			<SidebarFooter className="flex-row items-center gap-0.5 p-2">
+				<Link to="/settings/workspaces" className={`${NAV_ROW} min-w-0 flex-1 text-ink-muted`}>
 					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Settings</span>
+				</Link>
+				<Link
+					to="/metrics"
+					aria-label="Metrics"
+					title="Metrics"
+					className="active:scale-[0.97] grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection-current aria-[current=page]:text-ink"
+				>
+					<ChartBarIcon size={15} aria-hidden />
 				</Link>
 			</SidebarFooter>
 			<SidebarRail />

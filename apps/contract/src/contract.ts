@@ -17,6 +17,7 @@ import {
 	Repository,
 	RunState,
 	SpaceInfo,
+	UsageItem,
 } from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
@@ -373,11 +374,21 @@ export const ServerKind = Schema.Literals(["local", "remote"]);
 /** The server the app always has, which cannot be removed. */
 export const LOCAL_SERVER = "local";
 
+/** How a server is named: the user's `override`, else the `host` name its server reports, else where it is. */
+const ServerNaming = {
+	/** As shown. */
+	name: Schema.String,
+	/** As its server last reported it; none from a server that reports no name or was never reached. */
+	host: Schema.NullOr(Schema.String),
+	/** As typed in Settings; none when the user named it nothing. */
+	override: Schema.NullOr(Schema.String),
+};
+
 /** A local server and how it is set up, with its executable and process as found when listed. */
 export const LocalServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("local"),
-	name: Schema.String,
+	...ServerNaming,
 	/** The one the app connects to. */
 	isDefault: Schema.Boolean,
 	/**
@@ -398,7 +409,7 @@ export type LocalServerStatus = typeof LocalServerStatus.Type;
 export const RemoteServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("remote"),
-	name: Schema.String,
+	...ServerNaming,
 	isDefault: Schema.Boolean,
 	url: Schema.String,
 });
@@ -421,23 +432,23 @@ export type CliAction = typeof CliAction.Type;
 
 /**
  * A new server. A local one needs a home of its own, since a home names one server; a remote one
- * needs its WebSocket URL.
+ * needs its WebSocket URL. A blank or absent `name` is no override.
  */
 export const ServerAdd = Schema.Union([
 	Schema.Struct({
 		kind: Schema.Literal("local"),
-		name: Schema.String,
+		name: Schema.optionalKey(Schema.String),
 		executable: Schema.NullOr(Schema.String),
 		home: Schema.String,
 		args: Schema.String,
 	}),
-	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.String, url: Schema.String }),
+	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.optionalKey(Schema.String), url: Schema.String }),
 ]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
+ * a blank `name` removes the override; `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -468,6 +479,8 @@ export const syncTopics = {
 	tracking: "sync/tracking",
 	/** `SyncState` whenever a space daemon's mirrored state changed (git status, skills); stored. */
 	state: "sync/state",
+	/** `SyncUsage` after each applied usage batch that carried rows; stored. */
+	usage: "sync/usage",
 };
 
 /**
@@ -498,6 +511,14 @@ export const SyncState = Schema.Struct({
 	type: Schema.String,
 });
 export type SyncState = typeof SyncState.Type;
+
+/** A machine's usage rows from one of its stores were mirrored anew; `items` counts them. */
+export const SyncUsage = Schema.Struct({
+	machineId: Schema.String,
+	storeId: Schema.String,
+	items: Schema.Int,
+});
+export type SyncUsage = typeof SyncUsage.Type;
 
 /** A thread's status moved; `at` is the app server's clock. */
 export const SyncStatus = Schema.Struct({
@@ -603,12 +624,122 @@ export type AllThreads = typeof AllThreads.Type;
  *   `sync/delta/<thread>` streams its draft between checkpoints.
  * - `threads.list`: `sync/changed` naming a thread or a removed session; every `sync/status` and
  *   `sync/tracking`.
+ * - `metrics.usage` and `metrics.hours`: every `sync/usage`, and every `sync/changed` for the session
+ *   titles, deletions and project names they carry.
  */
 export const readTopics = {
 	sidebar: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	threads: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
+	metrics: [syncTopics.usage, syncTopics.changed],
 };
+
+const [UsageWire, TallyWire] = UsageItem.members;
+
+/** A calendar day in the request's `zone`, `YYYY-MM-DD`. */
+const LocalDay = Schema.String;
+
+/**
+ * What the metrics reads cover: every machine and project unless one is named. `zone` is an IANA
+ * time zone; days and hours are its wall clock. The rollup's resolution is a UTC hour, which counts
+ * whole in the local hour holding its start: in a zone 30 or 45 minutes off the hour, all of it in
+ * the earlier one. A day a clock change shortens has 23 hours, one it lengthens 25, the repeated
+ * hour summed into one.
+ */
+const MetricsScope = {
+	zone: Schema.String,
+	machineId: Schema.optionalKey(Schema.String),
+	projectId: Schema.optionalKey(Schema.String),
+};
+
+/** Requests of one session on one local day to one provider, model and thinking level, summed over its threads. */
+export const MetricsRow = Schema.Struct({
+	day: LocalDay,
+	machineId: Schema.String,
+	sessionId: Schema.String,
+	provider: Schema.String,
+	model: Schema.String,
+	thinking: Schema.String,
+	requests: Schema.Int,
+	tokens: UsageWire.fields.tokens,
+	cost: UsageWire.fields.cost,
+	duration: Schema.Finite,
+	timed: Schema.Int,
+	/** Over `edges`, as `UsageItem`'s. */
+	durations: Schema.Array(Schema.Int),
+});
+export type MetricsRow = typeof MetricsRow.Type;
+
+/** Prompts (`name` empty) or a tool's calls of one session on one local day. */
+export const MetricsTally = Schema.Struct({
+	day: LocalDay,
+	machineId: Schema.String,
+	sessionId: Schema.String,
+	kind: TallyWire.fields.kind,
+	name: Schema.String,
+	count: Schema.Int,
+});
+export type MetricsTally = typeof MetricsTally.Type;
+
+/** How many of a session's threads had requests or tallies on a local day. */
+export const MetricsThreads = Schema.Struct({
+	day: LocalDay,
+	machineId: Schema.String,
+	sessionId: Schema.String,
+	threads: Schema.Int,
+});
+export type MetricsThreads = typeof MetricsThreads.Type;
+
+/**
+ * A session the rows name. `title` is its main thread's, or what an untitled one is called; null
+ * once the session is deleted or gone from the mirror, its rows kept. Which sandbox it ran in is
+ * not mirrored, so it is not here.
+ */
+export const MetricsSession = Schema.Struct({
+	id: Schema.String,
+	machineId: Schema.String,
+	/** As its rows recorded it. */
+	projectId: Schema.String,
+	title: Schema.NullOr(Schema.String),
+	deleted: Schema.Boolean,
+});
+export type MetricsSession = typeof MetricsSession.Type;
+
+/** A period's usage at the grain the Metrics page slices, with the names it shows. */
+export const MetricsUsage = Schema.Struct({
+	rows: Schema.Array(MetricsRow),
+	tallies: Schema.Array(MetricsTally),
+	threads: Schema.Array(MetricsThreads),
+	sessions: Schema.Array(MetricsSession),
+	/**
+	 * A project id is its repo's, so one on several machines is listed once, named as on the machine
+	 * that changed it last; null when no machine has it any more.
+	 */
+	projects: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) })),
+	machines: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	/** The upper bounds in ms of `durations`' buckets. */
+	edges: Schema.Array(Schema.Int),
+});
+export type MetricsUsage = typeof MetricsUsage.Type;
+
+/** Requests of one session in one local hour (0–23) to one provider and model. */
+export const MetricsHour = Schema.Struct({
+	hour: Schema.Int,
+	machineId: Schema.String,
+	sessionId: Schema.String,
+	provider: Schema.String,
+	model: Schema.String,
+	requests: Schema.Int,
+	/** Input, output, cache read and cache write. */
+	tokens: Schema.Int,
+	cost: Schema.Finite,
+});
+export type MetricsHour = typeof MetricsHour.Type;
+
+/** A metrics read refused: an unknown time zone, a malformed day, or a period ending before it starts. */
+export class MetricsError extends Schema.TaggedError<MetricsError>()("Server.MetricsError", {
+	message: Schema.String,
+}) {}
 
 /** A desktop edit refused: a value out of range, or a thread, session, group or organization not found. */
 export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.TrackingError", {
@@ -667,6 +798,18 @@ export const Api = RpcGroup.make(
 	Rpc.make("threads.list", {
 		payload: { organizationId: Schema.String, by: ThreadsBy },
 		success: AllThreads,
+	}),
+	/** Usage from `since` to `until`, both local days included, summed over threads and stores. Read from app.db alone. */
+	Rpc.make("metrics.usage", {
+		payload: { ...MetricsScope, since: LocalDay, until: LocalDay },
+		success: MetricsUsage,
+		error: MetricsError,
+	}),
+	/** One local day's usage by local hour, for its chart; its sessions and threads are in `metrics.usage`. Read from app.db alone. */
+	Rpc.make("metrics.hours", {
+		payload: { ...MetricsScope, day: LocalDay },
+		success: Schema.Array(MetricsHour),
+		error: MetricsError,
 	}),
 	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
 	Rpc.make("models.list", {

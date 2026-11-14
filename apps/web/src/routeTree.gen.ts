@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShellRouteImport } from './routes/_shell'
+import { Route as ShellMetricsRouteImport } from './routes/_shell.metrics'
 import { Route as ShellProjectsRouteImport } from './routes/_shell.projects'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellThreadsRouteImport } from './routes/_shell.threads'
@@ -37,6 +38,11 @@ const IndexRoute = IndexRouteImport.update({
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ShellMetricsRoute = ShellMetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => ShellRoute,
 } as any)
 const ShellProjectsRoute = ShellProjectsRouteImport.update({
   id: '/projects',
@@ -128,6 +134,7 @@ const ShellWorkspacesWorkspaceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/metrics': typeof ShellMetricsRoute
   '/projects': typeof ShellProjectsRoute
   '/settings': typeof ShellSettingsRouteWithChildren
   '/threads': typeof ShellThreadsRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/metrics': typeof ShellMetricsRoute
   '/projects': typeof ShellProjectsRoute
   '/threads': typeof ShellThreadsRoute
   '/settings/archive': typeof ShellSettingsArchiveRoute
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_shell': typeof ShellRouteWithChildren
+  '/_shell/metrics': typeof ShellMetricsRoute
   '/_shell/projects': typeof ShellProjectsRoute
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
   '/_shell/threads': typeof ShellThreadsRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/metrics'
     | '/projects'
     | '/settings'
     | '/threads'
@@ -211,6 +221,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/metrics'
     | '/projects'
     | '/threads'
     | '/settings/archive'
@@ -231,6 +242,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_shell'
+    | '/_shell/metrics'
     | '/_shell/projects'
     | '/_shell/settings'
     | '/_shell/threads'
@@ -270,6 +282,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ShellRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_shell/metrics': {
+      id: '/_shell/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof ShellMetricsRouteImport
+      parentRoute: typeof ShellRoute
     }
     '/_shell/projects': {
       id: '/_shell/projects'
@@ -430,6 +449,7 @@ const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(
 )
 
 interface ShellRouteChildren {
+  ShellMetricsRoute: typeof ShellMetricsRoute
   ShellProjectsRoute: typeof ShellProjectsRoute
   ShellSettingsRoute: typeof ShellSettingsRouteWithChildren
   ShellThreadsRoute: typeof ShellThreadsRoute
@@ -437,6 +457,7 @@ interface ShellRouteChildren {
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
+  ShellMetricsRoute: ShellMetricsRoute,
   ShellProjectsRoute: ShellProjectsRoute,
   ShellSettingsRoute: ShellSettingsRouteWithChildren,
   ShellThreadsRoute: ShellThreadsRoute,
