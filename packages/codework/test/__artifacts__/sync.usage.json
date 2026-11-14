@@ -80,7 +80,8 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 3>"
+			"rev": "<rev 3>",
+			"boot": "<boot>"
 		}
 	],
 	"second": [
@@ -152,7 +153,8 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 6>"
+			"rev": "<rev 6>",
+			"boot": "<boot>"
 		}
 	],
 	"resumed": [
@@ -224,14 +226,16 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 6>"
+			"rev": "<rev 6>",
+			"boot": "<boot>"
 		}
 	],
 	"idle": [
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 6>"
+			"rev": "<rev 6>",
+			"boot": "<boot>"
 		}
 	],
 	"paged": {

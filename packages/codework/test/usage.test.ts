@@ -144,7 +144,7 @@ it("usage.sync sends the rollup in revision order, resends rows with running tot
 			const wholeRows = rowsOf(whole);
 			const revs = (items: ReadonlyArray<UsageItem>) => items.map((item) => item.rev);
 
-			expect(empty).toEqual({ _tag: "Synced", storeId: firstSynced.storeId, rev: 0 });
+			expect(empty).toEqual({ _tag: "Synced", storeId: firstSynced.storeId, rev: 0, boot: firstSynced.boot });
 			expect(first.filter((item) => item._tag === "Usage")).toHaveLength(1);
 			expect(usage1.requests).toBe(2);
 			expect({
@@ -178,6 +178,7 @@ it("usage.sync sends the rollup in revision order, resends rows with running tot
 
 			const labels = new Map<string, string>([
 				[firstSynced.storeId, "<store>"],
+				[firstSynced.boot, "<boot>"],
 				[sessionId, "<session>"],
 				[projectId, "<project>"],
 				[created.id, "<main>"],

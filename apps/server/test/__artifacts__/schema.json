@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL , rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, host TEXT, name TEXT)"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL , rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, host TEXT, name TEXT)"
 		},
 		{
 			"type": "table",
@@ -154,7 +154,7 @@
 			"type": "table",
 			"name": "tally",
 			"tbl_name": "tally",
-			"sql": "CREATE TABLE tally ( machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, count INTEGER NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (machine_id, store_id, hour, thread_id, kind, name) )"
+			"sql": "CREATE TABLE tally ( machine_id TEXT NOT NULL, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, count INTEGER NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (store_id, hour, thread_id, kind, name) )"
 		},
 		{
 			"type": "table",
@@ -202,7 +202,7 @@
 			"type": "table",
 			"name": "usage",
 			"tbl_name": "usage",
-			"sql": "CREATE TABLE usage ( machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, thinking TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, requests INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, reasoning INTEGER NOT NULL, cost REAL NOT NULL, cost_input REAL NOT NULL, cost_output REAL NOT NULL, cost_cache_read REAL NOT NULL, cost_cache_write REAL NOT NULL, duration REAL NOT NULL, timed INTEGER NOT NULL, durations TEXT NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (machine_id, store_id, hour, thread_id, provider, model, thinking) )"
+			"sql": "CREATE TABLE usage ( machine_id TEXT NOT NULL, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, thinking TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, requests INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, reasoning INTEGER NOT NULL, cost REAL NOT NULL, cost_input REAL NOT NULL, cost_output REAL NOT NULL, cost_cache_read REAL NOT NULL, cost_cache_write REAL NOT NULL, duration REAL NOT NULL, timed INTEGER NOT NULL, durations TEXT NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (store_id, hour, thread_id, provider, model, thinking) )"
 		},
 		{
 			"type": "table",
@@ -235,6 +235,7 @@
 				"created_at": "<time>",
 				"rollup": 0,
 				"rollup_store": null,
+				"rollup_boot": null,
 				"host": null,
 				"name": null
 			}
@@ -306,6 +307,7 @@
 			"created_at": "<time>",
 			"rollup": 0,
 			"rollup_store": null,
+			"rollup_boot": null,
 			"host": null,
 			"name": "Cloud tunnel"
 		},
@@ -329,8 +331,8 @@
 				"entry": 1,
 				"part": 1,
 				"inbox": 1,
-				"usage": 1,
-				"tally": 1
+				"usage": 2,
+				"tally": 2
 			},
 			"remoteLeft": 0
 		},

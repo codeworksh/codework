@@ -275,17 +275,20 @@ const migrations = {
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
 
-	// Each machine's usage rollup, as `usage.sync` sends it. Keyed by store too: a machine whose
-	// store is recreated starts a new one, and the old store's rows are then the only history left.
-	// No keys to project, session or thread: the rows outlive them.
+	// Each machine's usage rollup, as `usage.sync` sends it, keyed by store: a recreated store starts
+	// new rows and keeps the old ones as history, and a removed server re-added later replaces its own.
+	// No foreign keys: the rows outlive their machine, project, session and thread; `machine_id` is the
+	// machine that last sent them.
 	"202611140001_usage": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-		// `rollup` is the usage cursor, counted in `rollup_store`: it moves apart from `cursor` and `store_id`.
+		// `rollup` is the usage cursor, counted in `rollup_store` while `rollup_boot` was its latest open:
+		// it moves apart from `cursor` and `store_id`.
 		yield* sql`ALTER TABLE machine ADD COLUMN rollup INTEGER NOT NULL DEFAULT 0`;
 		yield* sql`ALTER TABLE machine ADD COLUMN rollup_store TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN rollup_boot TEXT`;
 		yield* sql`
 			CREATE TABLE usage (
-				machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+				machine_id TEXT NOT NULL,
 				store_id TEXT NOT NULL,
 				hour INTEGER NOT NULL,
 				thread_id TEXT NOT NULL,
@@ -309,12 +312,12 @@ const migrations = {
 				timed INTEGER NOT NULL,
 				durations TEXT NOT NULL,
 				rev INTEGER NOT NULL,
-				PRIMARY KEY (machine_id, store_id, hour, thread_id, provider, model, thinking)
+				PRIMARY KEY (store_id, hour, thread_id, provider, model, thinking)
 			)
 		`;
 		yield* sql`
 			CREATE TABLE tally (
-				machine_id TEXT NOT NULL REFERENCES machine(id) ON DELETE CASCADE,
+				machine_id TEXT NOT NULL,
 				store_id TEXT NOT NULL,
 				hour INTEGER NOT NULL,
 				thread_id TEXT NOT NULL,
@@ -324,7 +327,7 @@ const migrations = {
 				project_id TEXT NOT NULL,
 				count INTEGER NOT NULL,
 				rev INTEGER NOT NULL,
-				PRIMARY KEY (machine_id, store_id, hour, thread_id, kind, name)
+				PRIMARY KEY (store_id, hour, thread_id, kind, name)
 			)
 		`;
 	}),

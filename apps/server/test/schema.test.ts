@@ -104,7 +104,7 @@ const insertTree = (db: DatabaseSync, machine: string, suffix: string, groupingI
 
 const TREE = ["project", "space", "session", "thread", "entry", "part", "inbox", "usage", "tally"] as const;
 
-it("creates the sync tables, seeds them, and cascades a removed machine", async () => {
+it("creates the sync tables, seeds them, and cascades a removed machine, keeping its usage", async () => {
 	const db = new DatabaseSync(database);
 	db.exec("PRAGMA busy_timeout = 5000");
 	db.exec("PRAGMA foreign_keys = ON");
@@ -179,7 +179,9 @@ it("creates the sync tables, seeds them, and cascades a removed machine", async 
 	db.close();
 
 	const steps = { schema, seeded, servers };
-	expect(servers.cascade.after).toEqual(Object.fromEntries(TREE.map((table) => [table, 1])));
+	expect(servers.cascade.after).toEqual(
+		Object.fromEntries(TREE.map((table) => [table, table === "usage" || table === "tally" ? 2 : 1])),
+	);
 	expect(servers.ungrouped).toEqual([{ id: "thr_local", grouping_id: null }]);
 	const text = JSON.stringify(steps, null, "\t").replaceAll(servers.row.id as string, "<remote>");
 	await expect(`${text}\n`).toMatchFileSnapshot("./__artifacts__/schema.json");

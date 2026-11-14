@@ -624,14 +624,14 @@ export type AllThreads = typeof AllThreads.Type;
  *   `sync/delta/<thread>` streams its draft between checkpoints.
  * - `threads.list`: `sync/changed` naming a thread or a removed session; every `sync/status` and
  *   `sync/tracking`.
- * - `metrics.usage` and `metrics.hours`: every `sync/usage`; the titles and names they carry are
- *   read again with it.
+ * - `metrics.usage` and `metrics.hours`: every `sync/usage`, and every `sync/changed` for the session
+ *   titles, deletions and project names they carry.
  */
 export const readTopics = {
 	sidebar: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	threads: [syncTopics.changed, syncTopics.status, syncTopics.tracking],
 	line: (threadId: string) => [syncTopics.changed, syncTopics.delta(threadId)],
-	metrics: [syncTopics.usage],
+	metrics: [syncTopics.usage, syncTopics.changed],
 };
 
 const [UsageWire, TallyWire] = UsageItem.members;

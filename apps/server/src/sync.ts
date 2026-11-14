@@ -386,37 +386,46 @@ export const layer = Layer.effect(
 
 		/**
 		 * One connection's usage rollup: from `machine.rollup` while the store is the one it counts in,
-		 * else from zero. A store that went back (a restored backup) replaces its own rows, in the
-		 * transaction of its first batch so a failed re-read leaves the old ones.
+		 * else from zero. A read from zero is the store's whole state, so its first batch replaces the
+		 * store's rows, in one transaction so a failed re-read leaves the old ones: a restored backup, or
+		 * a removed server added again, leaves nothing stale. A resume that left the store's line (by
+		 * `rollup_boot`) comes back from zero with `reset`; a server older than boots is read from zero
+		 * only while its head is behind the cursor.
 		 */
 		const syncUsage = (machineId: string, client: Connection) =>
 			Effect.gen(function* () {
 				const info = yield* client("server.info", {});
-				const [machine] = yield* sql<{ rollup: number; rollupStore: string | null }>`
-					SELECT rollup, rollup_store FROM machine WHERE id = ${machineId}
+				const [machine] = yield* sql<{ rollup: number; rollupStore: string | null; rollupBoot: string | null }>`
+					SELECT rollup, rollup_store, rollup_boot FROM machine WHERE id = ${machineId}
 				`;
 				if (machine === undefined) return yield* Effect.never;
 				yield* unclaimed(machineId, info.storeId);
-				const same = info.storeId === machine.rollupStore;
-				let restored = same && info.rev < machine.rollup;
+				const resumed = info.storeId === machine.rollupStore && info.rev >= machine.rollup;
+				let whole = !resumed;
 				yield* batches<UsageRow, UsageSynced>(
-					client("usage.sync", { after: same && !restored ? machine.rollup : 0 }),
+					client("usage.sync", {
+						after: resumed ? machine.rollup : 0,
+						...(resumed && machine.rollupBoot !== null ? { boot: machine.rollupBoot } : {}),
+					}),
 					(item) => item._tag === "Synced",
 					() => Effect.succeed(true),
 					(rows, synced) =>
 						Effect.gen(function* () {
 							if (synced.storeId !== info.storeId) return yield* Effect.fail("The usage stream changed store");
+							const replaced = whole || synced.reset === true;
 							yield* transact((append) =>
 								Effect.gen(function* () {
-									if (restored) {
-										yield* sql`DELETE FROM usage WHERE machine_id = ${machineId} AND store_id = ${synced.storeId}`;
-										yield* sql`DELETE FROM tally WHERE machine_id = ${machineId} AND store_id = ${synced.storeId}`;
+									if (replaced) {
+										yield* sql`DELETE FROM usage WHERE store_id = ${synced.storeId}`;
+										yield* sql`DELETE FROM tally WHERE store_id = ${synced.storeId}`;
 									}
 									yield* Mirror.usage(machineId, synced.storeId, rows);
 									yield* sql`
-										UPDATE machine SET rollup = ${synced.rev}, rollup_store = ${synced.storeId} WHERE id = ${machineId}
+										UPDATE machine SET rollup = ${synced.rev}, rollup_store = ${synced.storeId},
+											rollup_boot = ${synced.boot ?? null}
+										WHERE id = ${machineId}
 									`;
-									if (rows.length > 0 || restored)
+									if (rows.length > 0 || replaced)
 										yield* append({
 											topic: syncTopics.usage,
 											source: "sync",
@@ -424,7 +433,7 @@ export const layer = Layer.effect(
 										});
 								}),
 							);
-							restored = false;
+							whole = false;
 						}),
 				);
 				return yield* Effect.fail("The usage stream ended");

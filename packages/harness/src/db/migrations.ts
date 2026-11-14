@@ -378,6 +378,19 @@ export const migrations = {
 			),
 		);
 	}),
+
+	// Each open of the database (db.ts), with the revision it opened at: a client that remembers the
+	// latest one beside its cursor can tell a restored backup from a store that only moved on.
+	"202611140002_boot": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE boot (
+				seq INTEGER PRIMARY KEY,
+				id  TEXT NOT NULL UNIQUE,
+				rev INTEGER NOT NULL
+			)
+		`;
+	}),
 };
 
 /**

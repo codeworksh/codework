@@ -265,6 +265,49 @@ it("a new store's rows accumulate beside the old store's", async () => {
 	);
 }, 120_000);
 
+it("a removed server's usage stays, and the server added again replaces its rows, stale ones included", async () => {
+	const cwHome = tempDir("usage-removed-cw");
+	const appHome = tempDir("usage-removed-app");
+	const server = await codework(cwHome, await freePort());
+	const desk = await app(appHome);
+	const removedId = await addMachine(appHome, server, desk.run);
+	await session(server, cwHome, "echo kept");
+	const { storeId } = await rolled(appHome, removedId, server);
+	const before = mirrored(appHome);
+
+	await desk.run((rpc) => rpc["servers.remove"]({ id: removedId }));
+	expect(query(appHome, "SELECT id FROM machine WHERE id = ?", removedId)).toEqual([]);
+	expect(mirrored(appHome)).toEqual(before);
+
+	// A row the store no longer has, as a backup restored while the server was away would leave.
+	query(
+		appHome,
+		`INSERT INTO tally (machine_id, store_id, hour, thread_id, kind, name, session_id, project_id, count, rev)
+		 VALUES (?, ?, 0, 'thr_gone', 'tool', 'bash', 'ses_gone', 'prj_gone', 1, 1) RETURNING hour`,
+		removedId,
+		storeId,
+	);
+
+	const addedId = await addMachine(appHome, server, desk.run);
+	await rolled(appHome, addedId, server);
+	const now = await catchUp(server);
+	const rows = mirrored(appHome);
+	expect(sorted(rows)).toEqual(expected(addedId, storeId, now.rows));
+	expect(requestsOf(rows.usage)).toBe(requestsOf(before.usage));
+
+	await snapshot(
+		"removed",
+		normalizer(
+			[cwHome, appHome],
+			[
+				[storeId, "<store>"],
+				[removedId, "<removed machine>"],
+				[addedId, "<added machine>"],
+			],
+		)(hours({ before, after: rows })),
+	);
+}, 120_000);
+
 it("a restored store replaces its own rows", async () => {
 	const cwHome = tempDir("usage-restored-cw");
 	const appHome = tempDir("usage-restored-app");
@@ -309,6 +352,60 @@ it("a restored store replaces its own rows", async () => {
 		normalizer([cwHome, appHome], [[restored.storeId, "<store>"]])(hours({ changed, ...rows })),
 	);
 }, 120_000);
+
+it("a restored store is replaced even once its head passed the cursor; a plain restart only resumes", async () => {
+	const cwHome = tempDir("usage-passed-cw");
+	const appHome = tempDir("usage-passed-app");
+	const backup = tempDir("usage-passed-backup");
+	const port = await freePort();
+	let server = await codework(cwHome, port);
+	await session(server, cwHome, "echo kept");
+	await stop(server.proc, "SIGTERM");
+	copyFileSync(server.database, join(backup, "codework.db"));
+	server = await codework(cwHome, port);
+
+	let desk = await app(appHome);
+	const machineId = await addMachine(appHome, server, desk.run);
+	const lost = await session(server, cwHome, "echo lost");
+	const { rev: head } = await rolled(appHome, machineId, server);
+
+	// (1) A restart of the same store moves on from the cursor: only the new rows come.
+	await stop(desk.proc);
+	await stop(server.proc, "SIGTERM");
+	server = await codework(cwHome, port);
+	await session(server, cwHome, "echo moved");
+	const moved = await catchUp(server, head);
+	let restartedAt = lastSeq(appHome);
+	desk = await app(appHome);
+	await rolled(appHome, machineId, server);
+	expect(itemsOf(notices(appHome, Contract.syncTopics.usage, restartedAt))).toBe(moved.rows.length);
+	expect(sorted(mirrored(appHome))).toEqual(expected(machineId, moved.synced.storeId, (await catchUp(server)).rows));
+	const { rev: passed } = await rolled(appHome, machineId, server);
+
+	// (2) The backup comes back and works past the cursor before the app sees it again.
+	await stop(desk.proc);
+	await stop(server.proc, "SIGTERM");
+	for (const suffix of ["-wal", "-shm"]) rmSync(`${server.database}${suffix}`, { force: true });
+	copyFileSync(join(backup, "codework.db"), server.database);
+	server = await codework(cwHome, port);
+	for (const command of ["echo one", "echo two", "echo three"]) await session(server, cwHome, command);
+	const restored = await server.run((rpc) => rpc["server.info"]({}));
+	expect(restored.rev).toBeGreaterThanOrEqual(passed);
+
+	restartedAt = lastSeq(appHome);
+	desk = await app(appHome);
+	await rolled(appHome, machineId, server);
+	const now = await catchUp(server);
+	const rows = mirrored(appHome);
+	expect(sorted(rows)).toEqual(expected(machineId, restored.storeId, now.rows));
+	expect(rows.usage.some((row) => row.thread_id === lost.id)).toBe(false);
+	expect(itemsOf(notices(appHome, Contract.syncTopics.usage, restartedAt))).toBe(now.rows.length);
+
+	await snapshot(
+		"passed",
+		normalizer([cwHome, appHome], [[restored.storeId, "<store>"]])(hours({ moved: moved.rows.length, ...rows })),
+	);
+}, 180_000);
 
 it("a server without usage.sync keeps its index synced and its usage empty, asked again only after a while", async () => {
 	const cwHome = tempDir("usage-older-cw");

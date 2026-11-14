@@ -94,6 +94,7 @@ describe("Database", () => {
 				expect(applied.map((row) => `${row.migrationId}_${row.name}`)).toEqual([
 					"202610290001_init",
 					"202611140001_usage",
+					"202611140002_boot",
 				]);
 				const tables = yield* sql<{ name: string }>`
 					SELECT name FROM sqlite_master
@@ -101,6 +102,7 @@ describe("Database", () => {
 					ORDER BY name
 				`;
 				expect(tables.map((row) => row.name)).toEqual([
+					"boot",
 					"document",
 					"entry",
 					"event",

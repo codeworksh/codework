@@ -289,8 +289,16 @@ export const UsageItem = Schema.Union([
 		count: Schema.Int,
 		rev: Schema.Int,
 	}),
-	/** Every row with a revision up to `rev` has been sent. */
-	Schema.TaggedStruct("Synced", { storeId: Schema.String, rev: Schema.Int }),
+	/**
+	 * Every row with a revision up to `rev` has been sent. `boot` is the store's latest open (absent from
+	 * an older server); `reset` marks a re-read from zero after the store left the client's `boot`.
+	 */
+	Schema.TaggedStruct("Synced", {
+		storeId: Schema.String,
+		rev: Schema.Int,
+		boot: Schema.optionalKey(Schema.String),
+		reset: Schema.optionalKey(Schema.Literal(true)),
+	}),
 ]);
 export type UsageItem = typeof UsageItem.Type;
 
@@ -577,10 +585,11 @@ export const Api = RpcGroup.make(
 	 * in revision order, then `Synced` at the head read when the call began; then the same live after
 	 * each commit. `after: 0` reads every row. A row written again moves to a later revision and is
 	 * sent again in full; the latest wins. Rows carry running totals, not deltas: a client replaces a
-	 * row by its key, never adds to it. A deleted session's rows stay.
+	 * row by its key, never adds to it. A deleted session's rows stay. With the last `Synced`'s `boot`,
+	 * a store that left that line (a restored backup) reads from zero instead.
 	 */
 	Rpc.make("usage.sync", {
-		payload: { after: Schema.Int },
+		payload: { after: Schema.Int, boot: Schema.optionalKey(Schema.String) },
 		success: UsageItem,
 		stream: true,
 	}),

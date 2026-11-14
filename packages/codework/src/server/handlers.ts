@@ -304,17 +304,32 @@ export const layer = Contract.Api.toLayer(
 						),
 					(head): IndexItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
 				),
-			"usage.sync": ({ after }) =>
-				Rows.follow(
-					after,
-					(from, upto) =>
-						Sync.usage(from, upto, Rows.batch).pipe(
-							Effect.map(({ items, next }) => ({
-								items: items.map(toUsageItem),
-								...(next === undefined ? {} : { next }),
-							})),
-						),
-					(head): UsageItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
+			"usage.sync": ({ after, boot }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						let reset = after > 0 && boot !== undefined && !(yield* store.onLine(boot, after));
+						return Rows.follow(
+							reset ? 0 : after,
+							(from, upto) =>
+								Sync.usage(from, upto, Rows.batch).pipe(
+									Effect.map(({ items, next }) => ({
+										items: items.map(toUsageItem),
+										...(next === undefined ? {} : { next }),
+									})),
+								),
+							(head): UsageItem => {
+								const synced = {
+									_tag: "Synced" as const,
+									storeId: head.id,
+									rev: head.rev,
+									boot: head.boot,
+									...(reset ? { reset: true as const } : {}),
+								};
+								reset = false;
+								return synced;
+							},
+						);
+					}),
 				),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),

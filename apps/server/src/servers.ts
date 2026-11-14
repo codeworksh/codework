@@ -332,7 +332,7 @@ export const layer = Layer.effect(
 				yield* announce;
 			}),
 
-			// Everything synced from the server goes with it: its rows cascade.
+			// What was synced from the server goes with it, its rows cascading, except its usage: history.
 			remove: Effect.fn("Servers.remove")(function* (id) {
 				const row = yield* get(id);
 				if (row.id === LOCAL_SERVER) return yield* fail("The built-in local server cannot be removed.");

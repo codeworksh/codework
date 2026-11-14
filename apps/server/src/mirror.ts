@@ -290,13 +290,13 @@ export const usage = (machineId: string, storeId: string, rows: ReadonlyArray<Us
 				rev: row.rev,
 			};
 			if (row._tag === "Tally")
-				return upsert("tally", ["machine_id", "store_id", "hour", "thread_id", "kind", "name"], {
+				return upsert("tally", ["store_id", "hour", "thread_id", "kind", "name"], {
 					...owner,
 					kind: row.kind,
 					name: row.name,
 					count: row.count,
 				});
-			return upsert("usage", ["machine_id", "store_id", "hour", "thread_id", "provider", "model", "thinking"], {
+			return upsert("usage", ["store_id", "hour", "thread_id", "provider", "model", "thinking"], {
 				...owner,
 				provider: row.provider,
 				model: row.model,
