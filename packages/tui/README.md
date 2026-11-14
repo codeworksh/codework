@@ -2,12 +2,10 @@
 
 A fast and lightweight terminal interface for [CodeWork](https://www.codework.sh), written in **Rust**.
 
-The TUI is an early skeleton. Today it opens one screen: the landing site's hero — its wordmark over
-the same hairline lattice the site draws it on, with a prompt line under it that takes typing. A
-leading slash on an empty line opens a menu of the app's commands, as a chat prompt does; as this is
-written there are two, `theme`, which lists every palette the site ships, and `exit`. The prompt
-cannot be sent, and model selection and the session view are not built yet; the launcher and the RPC
-transport they will need are already in place.
+The TUI connects to the CodeWork server to send prompts and follow conversations through
+`thread.sync`. It supports a multiline composer, saved per-thread drafts, a live thread browser,
+model and thinking selection, queued prompt management,
+collapsible work logs, conversation forks, Git review, clipboard copying, and older history on demand.
 
 ---
 
@@ -81,20 +79,94 @@ pnpm start
 
 ## Keyboard Shortcuts
 
-| Shortcut             | Action                                         |
-| :------------------- | :--------------------------------------------- |
-| _any character_      | Type it into the prompt                        |
-| `←` `→`              | Move the prompt's caret                        |
-| `Home` `End`         | Jump to the start or the end of the prompt     |
-| `Backspace` `Delete` | Erase a character                              |
-| _paste_              | Insert the clipboard at the caret, on one line |
-| `/`                  | Ask for the command menu                       |
-| `↑` `↓`              | Move through a menu                            |
-| `Enter`              | Take the entry a menu is on                    |
-| `Esc`                | Close the menu, or exit the app                |
-| `Ctrl+C`             | Exit the app                                   |
-| `Ctrl+D`             | Exit the app                                   |
-| `<leader>q`          | Exit the app (`Ctrl+X`, then `q`)              |
+| Shortcut | Action |
+| --- | --- |
+| `Enter` | Send, or steer a running thread |
+| `Shift+Enter` / `Ctrl+J` | Insert a newline; pasted code keeps its indentation |
+| `↑` / `↓` while typing | Move between composer lines |
+| `Home` / `End` | Move to the start/end of the current line |
+| `Ctrl+Home` / `Ctrl+End` | Move to the start/end of the whole draft |
+| `Ctrl+P` / `/session` | Open the live thread browser; Ctrl+P preserves the current draft |
+| `Alt+Enter` | Queue a follow-up |
+| `Shift+↑` / `Shift+↓`, mouse wheel, `PageUp` / `PageDown` | Scroll; fetch older history at the top (plain arrows also scroll when the composer is empty) |
+| `/queue`, `Alt+↑` / `Alt+↓` | Focus and navigate queued prompts above the composer |
+| `l` / `Enter` in queue | Switch steer/follow-up lane, or Send Now when parked/idle |
+| `e` in queue | Edit in place; Enter saves, Escape cancels |
+| `w` in queue | Cancel and prepend to the composer when cancellation succeeds, preserving the existing draft |
+| `Delete` / `d` in queue | Cancel without restoring |
+| `Ctrl+G`, `/git`, `/diff` | Review the active thread's Git changes |
+| `Ctrl+O` | Toggle the focused turn's work log, or the latest turn |
+| `Ctrl+↑` / `Ctrl+↓` | Focus a turn; Space or Enter toggles its work log |
+| `/fork` | Pick a committed message; Enter forks after it, `b` forks before a user message and restores its text |
+| `/copy`, `Ctrl+Y` | Copy the selected or last assistant answer via OSC 52 |
+| `/model`, `/thinking`, `/session`, `/theme` | Open the corresponding picker (`/session` lists threads) |
+| `/new`, `/reload` | Start a new session or reload plugins |
+| `Esc` | Close editing/focus/menu, interrupt a running thread, clear the composer, or exit |
+| `Ctrl+C`, `Ctrl+D`, `Ctrl+X` then `q` | Exit |
+
+The composer grows to six visible text rows and scrolls to keep the caret visible. Drafts
+are saved after 400 ms of inactivity and when switching threads or exiting. They live in
+`<CodeWork home>/tui/drafts/`, separated by server endpoint and thread; the default home is
+`~/.codework` and can be changed with `CODEWORK_HOME_DIR`. Empty drafts are removed.
+Scroll position and work-log choices are remembered while this TUI stays open.
+
+The browser groups threads by project and session, with main/fork/subagent labels and
+idle/starting/running/parked states. It watches `index.sync` and refreshes `thread.list`
+without losing the current filter or selection. Closing it stops the subscription.
+
+OSC 52 sends clipboard content through the terminal, including over SSH. Clipboard access
+must be enabled in the terminal (and forwarded by any terminal multiplexer).
+
+## Git Review
+
+Open a thread, then press `Ctrl+G` or run `/git` or `/diff`. The session header shows its
+branch and changed-file count once the server publishes Git status. The review screen shows
+branch/HEAD, added/modified/deleted files, line counts, and patches fetched on demand.
+It resolves the thread's placement first, then the session's space, including remote spaces.
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, mouse wheel | Select files, or scroll when the patch has focus |
+| `Enter` / `Tab` | Focus the patch / switch focus between files and patch |
+| `[` / `]`, `←` / `→` | Previous/next file |
+| `n` / `p` | Next/previous hunk |
+| `PageUp` / `PageDown`, `Home` / `End` | Navigate the patch |
+| `v` | Cycle auto, unified, and split layout (split needs sufficient width) |
+| `r` | Fetch the selected patch again |
+| `Esc` | Return to files, then conversation |
+| `Ctrl+G` | Return directly to the conversation |
+
+Wide terminals show files and patch together; narrow terminals show the focused pane.
+Inline tool diffs retain their compact preview. The review screen reuses the same renderer
+with the preview line cap removed. It labels cached and truncated server responses and
+reports binary/metadata-only or omitted text patches explicitly.
+
+The existing Git daemon reports the combined working-tree difference against HEAD, with
+untracked files included within its limits. This interface uses `plugin.git.status` and
+`daemon.call` (`git` / `diff`); it does not run Git on the client. Status appears after the
+server mounts the space. Git staging, committing, pushing, and separate staged/unstaged
+views are not exposed by the current RPC contract.
+
+## Verification
+
+```bash
+cd packages/tui
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+The terminal integration test launches the real binary in a Python 3 standard-library PTY
+against a deterministic local WebSocket peer; it does not need provider credentials.
+The restart test also launches the binary twice, checks a live browser update, and verifies
+that multiline text survives switching threads, restarting, and sending. Its artifact is
+`__artifacts__/composer.json`.
+The Git integration test creates a real temporary repository and launches the real binary
+against a deterministic RPC peer serving that repository's patches. Its request artifact is
+`__artifacts__/git.json`; `__artifacts__/git.txt` checks the review screen, including cached
+and truncated states.
+The suite records the queue, fork, and paging RPCs in `__artifacts__/terminal.json` and checks
+rendered conversation output in `__artifacts__/conversation.txt`. Regenerate intentional
+changes with `UPDATE_ARTIFACTS=1 cargo test`, then rerun `cargo test` without that variable.
 
 ---
 

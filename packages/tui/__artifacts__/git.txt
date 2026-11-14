@@ -1,0 +1,18 @@
+Git Changes · main · 01234567
+2 files · +2 -2 · working tree vs HEAD
+┌ Files ────────────────────────┐┌ notes with spaces.txt · auto ───────────────────────────────────┐
+│❯ M notes with spaces.txt +1 -1││ 1  + New notes                                                  │
+│  M src/a.rs +1 -1             ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+│                               ││                                                                 │
+└───────────────────────────────┘└─────────────────────────────────────────────────────────────────┘
+cached · server snapshot; the space is not mounted
+truncated · some patches or files were omitted by the server
+↑↓ move/scroll · tab focus · [] files · n/p hunks · v view · r refresh · esc back

@@ -48,8 +48,8 @@ impl Entry {
     ) -> Self {
         Self {
             id: Cow::Owned(id.into()),
-            name: Cow::Owned(name.into()),
-            detail: Cow::Owned(detail.into()),
+            name: Cow::Owned(name.into().replace(['\r', '\n', '\t'], " ")),
+            detail: Cow::Owned(detail.into().replace(['\r', '\n', '\t'], " ")),
             preview: None,
         }
     }

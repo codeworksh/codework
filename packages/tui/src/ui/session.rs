@@ -17,9 +17,9 @@ use crate::app::{App, Popup, TurnState};
 use crate::diff::{self, DEFAULT_MAX_DIFF_LINES};
 use crate::tool::{self, ToolRow, ToolStatus};
 
-const IDLE_HINTS: &str = "enter send · ↑↓/wheel scroll · / commands · esc quit";
+const IDLE_HINTS: &str = "enter send · ctrl+j newline · ctrl+p threads · alt+↑ queue · ctrl+o work";
 const BUSY_HINTS: &str =
-    "enter steer · alt+enter follow-up · ↑↓/wheel scroll · / commands · esc interrupt";
+    "enter steer · alt+enter follow-up · ctrl+j newline · ctrl+p threads · esc stop";
 const COMMAND_HINTS: &str = "↑↓ move · enter choose · esc close";
 const SEARCH_HINTS: &str = "↑↓ move · type to search · enter choose · esc close";
 
@@ -36,11 +36,20 @@ pub fn draw(app: &App, frame: &mut Frame) {
         return;
     }
 
-    let [header, rule, body, prompt, hint] = Layout::vertical([
+    let tray_height = (app.queued_prompts.len() + usize::from(!app.queued_prompts.is_empty()))
+        .min(6)
+        .min(area.height.saturating_sub(7) as usize) as u16;
+    let [header, rule, body, tray, prompt, hint] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Fill(1),
-        Constraint::Length(input::HEIGHT),
+        Constraint::Length(tray_height),
+        Constraint::Length(input::height(
+            &app.prompt,
+            area.width
+                .saturating_sub(if area.width < 44 { 2 } else { 4 }),
+            area.height.saturating_sub(tray_height + 5),
+        )),
         Constraint::Length(1),
     ])
     .areas(area);
@@ -75,6 +84,15 @@ pub fn draw(app: &App, frame: &mut Frame) {
         },
     );
 
+    draw_queue(
+        app,
+        frame,
+        Rect {
+            x: column.x,
+            width: column.width,
+            ..tray
+        },
+    );
     let prompt_box = Rect {
         x: column.x,
         y: prompt.y,
@@ -106,15 +124,23 @@ pub fn draw(app: &App, frame: &mut Frame) {
         );
     }
 
-    if let Some(caret) = menu_caret.or(prompt_caret) {
+    if let Some(caret) = menu_caret
+        .or(prompt_caret)
+        .filter(|_| app.queue_edit.is_none())
+    {
         frame.set_cursor_position(caret);
     }
 
     let hints = match (&app.notice, &app.popup) {
         (Some(notice), _) => notice.as_str(),
+        (None, Some(Popup::Fork(_))) => "↑↓ message · enter fork at · b before user · esc close",
         (None, Some(Popup::Commands(_) | Popup::Thinking(_))) => COMMAND_HINTS,
         (None, Some(Popup::Themes { .. } | Popup::Models { .. } | Popup::Sessions { .. })) => {
             SEARCH_HINTS
+        }
+        (None, None) if app.queue_edit.is_some() => "enter save · esc cancel edit",
+        (None, None) if app.queue_focus.is_some() => {
+            "↑↓ move · l lane/send now · e edit · w withdraw · del remove · esc composer"
         }
         (None, None) if app.busy => BUSY_HINTS,
         (None, None) => IDLE_HINTS,
@@ -137,7 +163,7 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
     let title = app
         .session
         .as_ref()
-        .map(|s| s.title.as_str())
+        .map(|s| s.display_title())
         .filter(|t| !t.is_empty())
         .unwrap_or("session");
 
@@ -148,13 +174,25 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
             meta.push_str(&thinking);
         }
     }
-    if app.usage.total_tokens > 0 {
+    if let Some(usage) = app
+        .session
+        .as_ref()
+        .map(|t| &t.usage)
+        .filter(|u| u.total_tokens() > 0)
+    {
         meta.push_str(&format!(
             " · {} tok · ${:.4}",
-            app.usage.total_tokens, app.usage.cost
+            usage.total_tokens(),
+            usage.cost
         ));
     }
 
+    if let Some(branch) = app.git.branch_label() {
+        meta = elide(
+            &format!("{branch} · {meta}"),
+            area.width.saturating_sub(12).min(area.width / 2) as usize,
+        );
+    }
     let meta_width = text::width(&meta) as u16;
     let right_x = if meta_width + 6 <= area.width {
         let x = area.right() - meta_width;
@@ -177,7 +215,7 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
     // On wider terminals, show the session's working directory beside its title.
     if area.width >= 64 {
         if let Some(session) = &app.session {
-            let dir = session.host_dir.as_deref().unwrap_or(&session.directory);
+            let dir = session.working_directory();
             let title_cols = text::width(fitted_title) as u16;
             let dir_x = area.x + 2 + title_cols + 2;
             if dir_x + 8 < right_x {
@@ -224,163 +262,204 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
             ]));
         }
 
-        // Reasoning / thinking
-        if !turn.thinking.is_empty() {
-            for (line_idx, chunk) in wrap(turn.thinking.trim(), wrap_width.saturating_sub(2))
-                .into_iter()
-                .enumerate()
-            {
-                let prefix = if line_idx == 0 { "  ◌ " } else { "    " };
-                lines.push(Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(palette.text_muted)),
-                    Span::styled(chunk, Style::default().fg(palette.text_muted)),
-                ]));
-            }
+        if turn.prompt_id.is_some() && turn.created_at > 0 {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", clock_time(turn.created_at)),
+                Style::default().fg(palette.text_muted),
+            )));
         }
+        if turn.has_work() || turn.working() || turn.answer_present {
+            let icon = if turn.working() {
+                "●"
+            } else if turn.work_expanded() {
+                "▾"
+            } else {
+                "▸"
+            };
+            let label = if turn.working() {
+                format!("{} working…", app.model_label())
+            } else {
+                format!("{} worked for {}", app.model_label(), turn.duration())
+            };
+            let focused = if app.focused_turn == Some(idx) {
+                ">"
+            } else {
+                " "
+            };
+            lines.push(Line::from(Span::styled(
+                format!("{focused} {icon} {label}"),
+                Style::default().fg(palette.text_muted),
+            )));
+        }
+        if turn.work_expanded() {
+            // Reasoning / thinking
+            if !turn.thinking.is_empty() {
+                for (line_idx, chunk) in wrap(turn.thinking.trim(), wrap_width.saturating_sub(2))
+                    .into_iter()
+                    .enumerate()
+                {
+                    let prefix = if line_idx == 0 { "  ◌ " } else { "    " };
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix, Style::default().fg(palette.text_muted)),
+                        Span::styled(chunk, Style::default().fg(palette.text_muted)),
+                    ]));
+                }
+            }
 
-        // Tool calls (grouped when 3+ identical non-diff calls settle in a row)
-        for row in tool::group(&turn.tools) {
-            match row {
-                ToolRow::Single(tool) => {
-                    if let Some(patch) = &tool.patch {
-                        let counts = diff::counts(patch);
-                        let path = tool
-                            .target
-                            .clone()
-                            .or_else(|| diff::patch_path(patch))
-                            .unwrap_or_else(|| tool.name.clone());
-                        let spans = vec![
-                            Span::styled("  ← ", Style::default().fg(palette.brand)),
-                            Span::styled("Edit ", Style::default().fg(palette.text)),
-                            Span::styled(path, Style::default().fg(palette.text_secondary)),
-                            Span::styled(" (", Style::default().fg(palette.text_muted)),
-                            Span::styled(
-                                format!("+{}", counts.added),
-                                Style::default().fg(palette.success()),
-                            ),
-                            Span::raw(" "),
-                            Span::styled(
-                                format!("-{}", counts.removed),
-                                Style::default().fg(palette.error()),
-                            ),
-                            Span::styled(")", Style::default().fg(palette.text_muted)),
+            if !turn.notes.is_empty() {
+                for mut line in markdown::render(&turn.notes, wrap_width.saturating_sub(2), palette)
+                {
+                    line.spans.insert(0, Span::raw("    "));
+                    lines.push(line);
+                }
+            }
+            // Tool calls (grouped when 3+ identical non-diff calls settle in a row)
+            for row in tool::group(&turn.tools) {
+                match row {
+                    ToolRow::Single(tool) => {
+                        if let Some(patch) = &tool.patch {
+                            let counts = diff::counts(patch);
+                            let path = tool
+                                .target
+                                .clone()
+                                .or_else(|| diff::patch_path(patch))
+                                .unwrap_or_else(|| tool.name.clone());
+                            let spans = vec![
+                                Span::styled("  ← ", Style::default().fg(palette.brand)),
+                                Span::styled("Edit ", Style::default().fg(palette.text)),
+                                Span::styled(path, Style::default().fg(palette.text_secondary)),
+                                Span::styled(" (", Style::default().fg(palette.text_muted)),
+                                Span::styled(
+                                    format!("+{}", counts.added),
+                                    Style::default().fg(palette.success()),
+                                ),
+                                Span::raw(" "),
+                                Span::styled(
+                                    format!("-{}", counts.removed),
+                                    Style::default().fg(palette.error()),
+                                ),
+                                Span::styled(")", Style::default().fg(palette.text_muted)),
+                            ];
+                            lines.push(Line::from(spans));
+
+                            let diff_width = wrap_width.saturating_sub(4).max(16);
+                            let (diff_lines, _) = diff::render_diff(
+                                patch,
+                                diff_width,
+                                DEFAULT_MAX_DIFF_LINES,
+                                palette,
+                            );
+                            for mut dline in diff_lines {
+                                dline.spans.insert(0, Span::raw("    "));
+                                lines.push(dline);
+                            }
+                            continue;
+                        }
+
+                        let (icon, icon_color) = match tool.status {
+                            ToolStatus::Running => ("  ⚙ ", palette.brand),
+                            ToolStatus::Completed => ("  ✓ ", palette.success()),
+                            ToolStatus::Failed => ("  ✗ ", palette.error()),
+                        };
+                        let mut spans = vec![
+                            Span::styled(icon, Style::default().fg(icon_color)),
+                            Span::styled(tool.name.clone(), Style::default().fg(palette.text)),
                         ];
+                        let mut used = 4 + text::width(&tool.name);
+                        if let Some(target) = &tool.target {
+                            let room = wrap_width.saturating_sub(used + 1);
+                            if room > 4 {
+                                let shown = elide(target, room);
+                                used += 1 + text::width(&shown);
+                                spans.push(Span::styled(
+                                    format!(" {shown}"),
+                                    Style::default().fg(palette.text_secondary),
+                                ));
+                            }
+                        }
+                        if let Some(summary) = &tool.summary {
+                            let room = wrap_width.saturating_sub(used + 3);
+                            if room > 4 {
+                                let shown = elide(summary, room);
+                                spans.push(Span::styled(
+                                    format!(" · {shown}"),
+                                    Style::default().fg(if tool.status == ToolStatus::Failed {
+                                        palette.error()
+                                    } else {
+                                        palette.text_muted
+                                    }),
+                                ));
+                            }
+                        }
                         lines.push(Line::from(spans));
 
-                        let diff_width = wrap_width.saturating_sub(4).max(16);
-                        let (diff_lines, _) =
-                            diff::render_diff(patch, diff_width, DEFAULT_MAX_DIFF_LINES, palette);
-                        for mut dline in diff_lines {
-                            dline.spans.insert(0, Span::raw("    "));
-                            lines.push(dline);
-                        }
-                        continue;
-                    }
-
-                    let (icon, icon_color) = match tool.status {
-                        ToolStatus::Running => ("  ⚙ ", palette.brand),
-                        ToolStatus::Completed => ("  ✓ ", palette.success()),
-                        ToolStatus::Failed => ("  ✗ ", palette.error()),
-                    };
-                    let mut spans = vec![
-                        Span::styled(icon, Style::default().fg(icon_color)),
-                        Span::styled(tool.name.clone(), Style::default().fg(palette.text)),
-                    ];
-                    let mut used = 4 + text::width(&tool.name);
-                    if let Some(target) = &tool.target {
-                        let room = wrap_width.saturating_sub(used + 1);
-                        if room > 4 {
-                            let shown = elide(target, room);
-                            used += 1 + text::width(&shown);
-                            spans.push(Span::styled(
-                                format!(" {shown}"),
-                                Style::default().fg(palette.text_secondary),
-                            ));
-                        }
-                    }
-                    if let Some(summary) = &tool.summary {
-                        let room = wrap_width.saturating_sub(used + 3);
-                        if room > 4 {
-                            let shown = elide(summary, room);
-                            spans.push(Span::styled(
-                                format!(" · {shown}"),
-                                Style::default().fg(if tool.status == ToolStatus::Failed {
-                                    palette.error()
-                                } else {
-                                    palette.text_muted
-                                }),
-                            ));
-                        }
-                    }
-                    lines.push(Line::from(spans));
-
-                    if tool.status == ToolStatus::Running {
-                        if let Some(output) = &tool.output {
-                            let mut preview: Vec<&str> = output
-                                .lines()
-                                .rev()
-                                .filter(|line| !line.trim().is_empty())
-                                .take(3)
-                                .collect();
-                            preview.reverse();
-                            for out_line in preview {
-                                lines.push(Line::from(vec![
-                                    Span::raw("    "),
-                                    Span::styled(
-                                        elide(out_line, wrap_width.saturating_sub(2)),
-                                        Style::default().fg(palette.text_muted),
-                                    ),
-                                ]));
+                        if tool.status == ToolStatus::Running {
+                            if let Some(output) = &tool.output {
+                                let mut preview: Vec<&str> = output
+                                    .lines()
+                                    .rev()
+                                    .filter(|line| !line.trim().is_empty())
+                                    .take(3)
+                                    .collect();
+                                preview.reverse();
+                                for out_line in preview {
+                                    lines.push(Line::from(vec![
+                                        Span::raw("    "),
+                                        Span::styled(
+                                            elide(out_line, wrap_width.saturating_sub(2)),
+                                            Style::default().fg(palette.text_muted),
+                                        ),
+                                    ]));
+                                }
                             }
-                        }
-                    } else if tool.status == ToolStatus::Failed {
-                        if let Some(output) = &tool.output {
-                            for err_line in output.lines().take(3) {
-                                lines.push(Line::from(vec![
-                                    Span::raw("    "),
-                                    Span::styled(
-                                        elide(err_line, wrap_width.saturating_sub(2)),
-                                        Style::default().fg(palette.error()),
-                                    ),
-                                ]));
+                        } else if tool.status == ToolStatus::Failed {
+                            if let Some(output) = &tool.output {
+                                for err_line in output.lines().take(3) {
+                                    lines.push(Line::from(vec![
+                                        Span::raw("    "),
+                                        Span::styled(
+                                            elide(err_line, wrap_width.saturating_sub(2)),
+                                            Style::default().fg(palette.error()),
+                                        ),
+                                    ]));
+                                }
                             }
                         }
                     }
-                }
-                ToolRow::Run {
-                    name,
-                    members,
-                    failed,
-                } => {
-                    let (icon, icon_color) = if failed > 0 {
-                        ("  ✗ ", palette.error())
-                    } else {
-                        ("  ✓ ", palette.success())
-                    };
-                    let heading = format!("{name} ×{}", members.len());
-                    let targets = tool::run_targets(&members);
-                    let room = wrap_width.saturating_sub(4 + text::width(&heading) + 3);
-                    let mut spans = vec![
-                        Span::styled(icon, Style::default().fg(icon_color)),
-                        Span::styled(heading, Style::default().fg(palette.text)),
-                    ];
-                    if !targets.is_empty() && room > 4 {
-                        spans.push(Span::styled(
-                            format!(" · {}", elide(&targets, room)),
-                            Style::default().fg(palette.text_muted),
-                        ));
+                    ToolRow::Run {
+                        name,
+                        members,
+                        failed,
+                    } => {
+                        let (icon, icon_color) = if failed > 0 {
+                            ("  ✗ ", palette.error())
+                        } else {
+                            ("  ✓ ", palette.success())
+                        };
+                        let heading = format!("{name} ×{}", members.len());
+                        let targets = tool::run_targets(&members);
+                        let room = wrap_width.saturating_sub(4 + text::width(&heading) + 3);
+                        let mut spans = vec![
+                            Span::styled(icon, Style::default().fg(icon_color)),
+                            Span::styled(heading, Style::default().fg(palette.text)),
+                        ];
+                        if !targets.is_empty() && room > 4 {
+                            spans.push(Span::styled(
+                                format!(" · {}", elide(&targets, room)),
+                                Style::default().fg(palette.text_muted),
+                            ));
+                        }
+                        if failed > 0 {
+                            spans.push(Span::styled(
+                                format!(" · {failed} failed"),
+                                Style::default().fg(palette.error()),
+                            ));
+                        }
+                        lines.push(Line::from(spans));
                     }
-                    if failed > 0 {
-                        spans.push(Span::styled(
-                            format!(" · {failed} failed"),
-                            Style::default().fg(palette.error()),
-                        ));
-                    }
-                    lines.push(Line::from(spans));
                 }
             }
         }
-
         // Plugin / runtime notices
         for notice in &turn.notices {
             for (line_idx, chunk) in wrap(notice, wrap_width.saturating_sub(2))
@@ -404,6 +483,12 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
             }
         }
 
+        if turn.state != TurnState::Running && turn.updated_at > 0 {
+            lines.push(Line::from(Span::styled(
+                format!("  {} · /fork · ctrl+y copy", clock_time(turn.updated_at)),
+                Style::default().fg(palette.text_muted),
+            )));
+        }
         // Retry backoff status (`session.retry.scheduled`)
         if let Some(retry) = &turn.retry {
             let delay = if retry.delay_ms >= 1_000 && retry.delay_ms % 1_000 == 0 {
@@ -477,30 +562,6 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
         }
     }
 
-    // Queued prompts (`session.prompt.admitted` / pending steer & follow-up inputs)
-    for queued in &app.queued_prompts {
-        if !lines.is_empty() {
-            lines.push(Line::default());
-        }
-        let status = if queued.admitted { "queued" } else { "sending" };
-        let badge = format!("  ↳ [{} · {status}] ", queued.delivery.label());
-        let badge_width = text::width(&badge);
-        let first_width = wrap_width.saturating_sub(badge_width).max(8);
-        for (line_idx, chunk) in wrap(&queued.prompt, first_width).into_iter().enumerate() {
-            if line_idx == 0 {
-                lines.push(Line::from(vec![
-                    Span::styled(badge.clone(), Style::default().fg(palette.brand)),
-                    Span::styled(chunk, Style::default().fg(palette.text_secondary)),
-                ]));
-            } else {
-                lines.push(Line::from(vec![
-                    Span::raw(" ".repeat(badge_width)),
-                    Span::styled(chunk, Style::default().fg(palette.text_secondary)),
-                ]));
-            }
-        }
-    }
-
     let total_lines = lines.len();
     let visible = area.height as usize;
     let max_scroll = total_lines.saturating_sub(visible);
@@ -539,11 +600,9 @@ fn draw_scrollbar(
     let thumb_h = ((visible * track_h) / total_lines).clamp(1, track_h);
     let max_start = total_lines.saturating_sub(visible);
     let max_thumb_top = track_h.saturating_sub(thumb_h);
-    let thumb_top = if max_start == 0 {
-        0
-    } else {
-        (start * max_thumb_top + (max_start / 2)) / max_start
-    };
+    let thumb_top = (start * max_thumb_top + max_start / 2)
+        .checked_div(max_start)
+        .unwrap_or(0);
 
     let x = area.right().saturating_sub(1);
     let buffer = frame.buffer_mut();
@@ -556,6 +615,85 @@ fn draw_scrollbar(
             buffer[(x, y)].set_char('┃').set_style(thumb_style);
         } else {
             buffer[(x, y)].set_char('│').set_style(track_style);
+        }
+    }
+}
+
+fn clock_time(ms: u64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms.min(i64::MAX as u64) as i64)
+        .map(|date| {
+            date.with_timezone(&chrono::Local)
+                .format("%H:%M")
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+fn draw_queue(app: &App, frame: &mut Frame, area: Rect) {
+    if area.height == 0 {
+        return;
+    }
+    let parked = app.session.as_ref().is_some_and(|t| t.parked);
+    let heading = if parked {
+        "Queued · parked · l Send Now"
+    } else {
+        "Queued · alt+↑ to manage"
+    };
+    frame.render_widget(
+        Paragraph::new(heading).style(Style::default().fg(app.theme.text_muted)),
+        Rect { height: 1, ..area },
+    );
+    let rows = area.height.saturating_sub(1) as usize;
+    let selected = app
+        .queue_focus
+        .as_ref()
+        .and_then(|id| app.queued_prompts.iter().position(|q| &q.message_id == id))
+        .unwrap_or(0);
+    let start = selected.saturating_sub(rows.saturating_sub(1));
+    for (row, q) in app.queued_prompts.iter().skip(start).take(rows).enumerate() {
+        let focused = app.queue_focus.as_ref() == Some(&q.message_id);
+        let prefix = format!(
+            "{} [{}{}] ",
+            if focused { "❯" } else { "↳" },
+            q.delivery.label(),
+            if app.queue_pending.contains(&q.message_id) {
+                " · saving"
+            } else if !q.admitted {
+                " · sending"
+            } else {
+                ""
+            }
+        );
+        let rect = Rect {
+            y: area.y + 1 + row as u16,
+            height: 1,
+            ..area
+        };
+        if let Some(edit) = app.queue_edit.as_ref().filter(|e| e.id == q.message_id) {
+            let prefix_width = text::width(&prefix);
+            let usable = (rect.width as usize).saturating_sub(prefix_width + 1);
+            let (line, before) = edit.text.current_line();
+            let (shown, offset) = text::scrolled(line, before, usable);
+            frame.render_widget(
+                Paragraph::new(format!("{prefix}{shown}"))
+                    .style(Style::default().fg(app.theme.brand)),
+                rect,
+            );
+            frame.set_cursor_position((
+                rect.x + (prefix_width as u16 + offset).min(rect.width.saturating_sub(1)),
+                rect.y,
+            ));
+        } else {
+            frame.render_widget(
+                Paragraph::new(format!("{prefix}{}", q.prompt.replace('\n', " ↵ "))).style(
+                    Style::default().fg(if focused {
+                        app.theme.brand
+                    } else {
+                        app.theme.text_secondary
+                    }),
+                ),
+                rect,
+            );
         }
     }
 }

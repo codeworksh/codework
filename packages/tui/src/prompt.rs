@@ -12,10 +12,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 ///
 /// The caret is a UTF-8 byte offset into `text`, kept on a character boundary by every operation
 /// that moves it so slicing before or after the caret is direct.
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct Prompt {
     text: String,
     caret: usize,
+    preferred_column: Option<usize>,
 }
 
 impl Prompt {
@@ -33,18 +34,30 @@ impl Prompt {
     pub fn clear(&mut self) {
         self.text.clear();
         self.caret = 0;
+        self.preferred_column = None;
     }
 
     /// Apply one key. Reports whether the prompt changed, which is the redraw.
     pub fn edit(&mut self, key: KeyEvent) -> bool {
         match (key.code, key.modifiers) {
-            (KeyCode::Char('a'), KeyModifiers::CONTROL) | (KeyCode::Home, _) => self.jump(0),
-            (KeyCode::Char('e'), KeyModifiers::CONTROL) | (KeyCode::End, _) => {
-                self.jump(self.text.len())
+            (KeyCode::Enter, KeyModifiers::SHIFT) | (KeyCode::Char('j'), KeyModifiers::CONTROL) => {
+                self.insert_text("\n")
             }
-            (KeyCode::Char('u'), KeyModifiers::CONTROL) => self.remove_range(0..self.caret),
+            (KeyCode::Home, KeyModifiers::CONTROL) => self.jump(0),
+            (KeyCode::End, KeyModifiers::CONTROL) => self.jump(self.text.len()),
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) | (KeyCode::Home, _) => {
+                self.jump(self.line_start())
+            }
+            (KeyCode::Char('e'), KeyModifiers::CONTROL) | (KeyCode::End, _) => {
+                self.jump(self.line_end())
+            }
+            (KeyCode::Up, KeyModifiers::NONE) => self.vertical(-1),
+            (KeyCode::Down, KeyModifiers::NONE) => self.vertical(1),
+            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                self.remove_range(self.line_start()..self.caret)
+            }
             (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                self.remove_range(self.caret..self.text.len())
+                self.remove_range(self.caret..self.line_end())
             }
             (KeyCode::Char('w'), KeyModifiers::CONTROL)
             | (KeyCode::Backspace, KeyModifiers::ALT) => {
@@ -89,8 +102,7 @@ impl Prompt {
 
     /// Insert text at the caret, as a paste arrives.
     ///
-    /// Line breaks and tabs are turned into spaces so pasted lines do not run together, and any
-    /// other control characters are dropped.
+    /// Preserve newlines and indentation; normalize CRLF/CR and drop terminal control bytes.
     pub fn insert_text(&mut self, text: &str) -> bool {
         let mut clean = String::with_capacity(text.len());
         let mut chars = text.chars().peekable();
@@ -100,9 +112,9 @@ impl Prompt {
                     if chars.peek() == Some(&'\n') {
                         chars.next();
                     }
-                    clean.push(' ');
+                    clean.push('\n');
                 }
-                '\n' | '\t' => clean.push(' '),
+                '\n' | '\t' => clean.push(ch),
                 ch if !ch.is_control() => clean.push(ch),
                 _ => {}
             }
@@ -112,7 +124,121 @@ impl Prompt {
         }
         self.text.insert_str(self.caret, &clean);
         self.caret += clean.len();
+        self.preferred_column = None;
         true
+    }
+
+    pub fn insert_inline(&mut self, text: &str) -> bool {
+        self.insert_text(&text.replace(['\r', '\n', '\t'], " "))
+    }
+
+    pub fn caret(&self) -> usize {
+        self.caret
+    }
+    pub fn restore(text: &str, caret: usize) -> Self {
+        let mut prompt = Self::default();
+        prompt.insert_text(text);
+        let mut at = caret.min(prompt.text.len());
+        while !prompt.text.is_char_boundary(at) {
+            at -= 1;
+        }
+        prompt.caret = at;
+        prompt
+    }
+    fn line_start(&self) -> usize {
+        self.text[..self.caret].rfind('\n').map_or(0, |at| at + 1)
+    }
+    fn line_end(&self) -> usize {
+        self.text[self.caret..]
+            .find('\n')
+            .map_or(self.text.len(), |at| self.caret + at)
+    }
+    pub fn current_line(&self) -> (&str, &str) {
+        let start = self.line_start();
+        (
+            &self.text[start..self.line_end()],
+            &self.text[start..self.caret],
+        )
+    }
+
+    fn vertical(&mut self, direction: isize) -> bool {
+        let start = self.line_start();
+        let end = self.line_end();
+        let desired = self
+            .preferred_column
+            .unwrap_or_else(|| columns(&self.text[start..self.caret]));
+        let target = if direction < 0 {
+            if start == 0 {
+                return false;
+            }
+            let end = start - 1;
+            let start = self.text[..end].rfind('\n').map_or(0, |at| at + 1);
+            start..end
+        } else {
+            if end == self.text.len() {
+                return false;
+            }
+            let start = end + 1;
+            let end = self.text[start..]
+                .find('\n')
+                .map_or(self.text.len(), |at| start + at);
+            start..end
+        };
+        let mut column = 0;
+        let mut at = target.start;
+        for (offset, ch) in self.text[target.clone()].char_indices() {
+            let width = cell_width(ch, column);
+            if column + width > desired {
+                break;
+            }
+            column += width;
+            at = target.start + offset + ch.len_utf8();
+        }
+        let changed = self.jump(at);
+        self.preferred_column = Some(desired);
+        changed
+    }
+
+    /// Character wrapping preserves indentation and shares caret geometry with rendering.
+    pub fn layout(&self, width: usize) -> PromptLayout {
+        let width = width.max(1);
+        let mut lines = vec![String::new()];
+        let mut column = 0;
+        let mut caret = (0, 0);
+        for (at, ch) in self.text.char_indices() {
+            let cells = cell_width(ch, column);
+            if ch != '\n' && (column >= width || (ch != '\t' && column + cells > width)) {
+                lines.push(String::new());
+                column = 0;
+            }
+            if at == self.caret {
+                caret = (column.min(width - 1), lines.len() - 1);
+            }
+            if ch == '\n' {
+                lines.push(String::new());
+                column = 0;
+            } else if ch == '\t' {
+                for _ in 0..cell_width(ch, column) {
+                    if column >= width {
+                        lines.push(String::new());
+                        column = 0;
+                    }
+                    lines.last_mut().unwrap().push(' ');
+                    column += 1;
+                }
+            } else {
+                lines.last_mut().unwrap().push(ch);
+                column += cell_width(ch, column);
+            }
+        }
+        if self.caret == self.text.len() {
+            if column >= width {
+                lines.push(String::new());
+                column = 0;
+            }
+            caret = (column, lines.len() - 1);
+        }
+        PromptLayout { lines, caret }
     }
 
     fn remove_range(&mut self, range: Range<usize>) -> bool {
@@ -122,6 +248,7 @@ impl Prompt {
         let start = range.start;
         self.text.replace_range(range, "");
         self.caret = start;
+        self.preferred_column = None;
         true
     }
 
@@ -130,6 +257,7 @@ impl Prompt {
             return false;
         }
         self.caret = caret;
+        self.preferred_column = None;
         true
     }
 
@@ -166,4 +294,20 @@ impl Prompt {
             .peek()
             .map_or(self.text.len(), |(idx, _)| self.caret + idx)
     }
+}
+
+pub struct PromptLayout {
+    pub lines: Vec<String>,
+    pub caret: (usize, usize),
+}
+fn cell_width(ch: char, column: usize) -> usize {
+    if ch == '\t' {
+        4 - column % 4
+    } else {
+        unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0)
+    }
+}
+fn columns(text: &str) -> usize {
+    text.chars()
+        .fold(0, |column, ch| column + cell_width(ch, column))
 }
