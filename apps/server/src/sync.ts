@@ -187,6 +187,9 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				const [row] = yield* sql<{ cursor: number | null }>`SELECT cursor FROM thread WHERE id = ${threadId}`;
 				if (row === undefined) return;
+				// A first open is the thread's line as the store has it now, so its first batch replaces the
+				// thread's own detail: after a restored store, entries of the lost line would hold its seqs.
+				let first = row.cursor === null;
 				yield* batches<ThreadRow, ThreadSynced>(
 					live.client("thread.sync", {
 						sessionId,
@@ -201,21 +204,30 @@ export const layer = Layer.effect(
 								? noteEntry(threadId, item.entry).pipe(Effect.as(true))
 								: Effect.succeed(true),
 					(rows, synced) =>
-						transact((append) =>
-							Effect.gen(function* () {
-								const changes = yield* Mirror.thread(threadId, rows);
-								yield* sql`
+						Effect.gen(function* () {
+							const whole = first;
+							yield* transact((append) =>
+								Effect.gen(function* () {
+									if (whole) {
+										yield* sql`DELETE FROM entry WHERE thread_id = ${threadId}`;
+										yield* sql`DELETE FROM inbox WHERE thread_id = ${threadId}`;
+									}
+									const changes = yield* Mirror.thread(threadId, rows);
+									yield* sql`
 										UPDATE thread SET cursor = ${synced.rev}, floor = COALESCE(${synced.floor ?? null}, floor)
 										WHERE id = ${threadId}
 									`;
-								if (rows.length > 0 || synced.floor !== undefined)
-									yield* append({
-										topic: syncTopics.changed,
-										source: "sync",
-										payload: changes.notice({ machineId, threadId, full: false, items: rows.length }),
-									});
-							}),
-						).pipe(Effect.andThen(Effect.suspend(() => readyOf(threadId)))),
+									if (rows.length > 0 || synced.floor !== undefined)
+										yield* append({
+											topic: syncTopics.changed,
+											source: "sync",
+											payload: changes.notice({ machineId, threadId, full: false, items: rows.length }),
+										});
+								}),
+							);
+							first = false;
+							yield* readyOf(threadId);
+						}),
 				);
 			}).pipe(
 				Effect.catchCause((cause) =>
@@ -322,17 +334,28 @@ export const layer = Layer.effect(
 				return yield* Effect.never;
 			});
 
-		/** One connection's sync: decides between resume and full sync, then follows the index. */
+		/**
+		 * One connection's sync: decides between resume and full sync, then follows the index. A read
+		 * from zero is a full sync, whose first batch also sweeps what it did not send. A resume that left
+		 * the store's line (by `boot`) comes back from zero with `reset`; a server older than boots is
+		 * read from zero only while its head is behind the cursor.
+		 */
 		const connected = (machineId: string, client: Connection) =>
 			Effect.gen(function* () {
 				const info = yield* client("server.info", {});
 				yield* servers.setHost(machineId, info.host?.name ?? null);
-				const [machine] = yield* sql<{ storeId: string | null; cursor: number; namespace: string }>`
-					SELECT store_id, cursor, namespace FROM machine WHERE id = ${machineId}
+				const [machine] = yield* sql<{
+					storeId: string | null;
+					cursor: number;
+					boot: string | null;
+					namespace: string;
+				}>`
+					SELECT store_id, cursor, boot, namespace FROM machine WHERE id = ${machineId}
 				`;
 				if (machine === undefined) return yield* Effect.never;
 				yield* unclaimed(machineId, info.storeId);
-				let full = info.storeId !== machine.storeId || info.rev < machine.cursor;
+				const resumed = info.storeId === machine.storeId && info.rev >= machine.cursor;
+				let full = !resumed;
 				const live: Live = { client, threads: yield* FiberMap.make<string>() };
 				yield* Effect.addFinalizer(() =>
 					Effect.sync(() => {
@@ -342,13 +365,16 @@ export const layer = Layer.effect(
 				const daemons = yield* FiberHandle.make<never>();
 				let following = false;
 				yield* batches<IndexRow, IndexSynced>(
-					client("index.sync", { after: full ? 0 : machine.cursor }),
+					client("index.sync", {
+						after: resumed ? machine.cursor : 0,
+						...(resumed && machine.boot !== null ? { boot: machine.boot } : {}),
+					}),
 					(item) => item._tag === "Synced",
 					() => Effect.succeed(true),
 					(rows, synced) =>
 						Effect.gen(function* () {
 							const now = yield* Clock.currentTimeMillis;
-							const wasFull = full;
+							const wasFull = full || synced.reset === true;
 							let spaces = false;
 							yield* transact((append) =>
 								Effect.gen(function* () {
@@ -361,7 +387,9 @@ export const layer = Layer.effect(
 									if (wasFull) yield* Mirror.unseen(machineId, changes, now);
 									spaces = changes.space.size > 0;
 									yield* sql`
-										UPDATE machine SET cursor = ${synced.rev}, store_id = ${synced.storeId} WHERE id = ${machineId}
+										UPDATE machine SET cursor = ${synced.rev}, store_id = ${synced.storeId},
+											boot = ${synced.boot ?? null}
+										WHERE id = ${machineId}
 									`;
 									if (rows.length > 0 || wasFull)
 										yield* append({

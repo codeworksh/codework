@@ -229,6 +229,15 @@ const toDeltaItem = (envelope: EventEnvelope): ThreadItem | undefined => {
 	});
 };
 
+/** The `Synced` of `index.sync` and `usage.sync`. */
+const resynced = (head: Store.Head, reset: boolean) => ({
+	_tag: "Synced" as const,
+	storeId: head.id,
+	rev: head.rev,
+	boot: head.boot,
+	...(reset ? { reset: true as const } : {}),
+});
+
 /** Bytes of entries a first `thread.sync` or a `thread.page` sends when the client names no budget. */
 const defaultBudget = 1024 * 1024;
 
@@ -292,9 +301,10 @@ export const layer = Contract.Api.toLayer(
 				const head = yield* store.head;
 				return { ...identity, storeId: head.id, rev: head.rev };
 			}),
-			"index.sync": ({ after }) =>
-				Rows.follow(
+			"index.sync": ({ after, boot }) =>
+				Rows.resume(
 					after,
+					boot,
 					(from, upto) =>
 						Sync.index(from, upto, Rows.batch).pipe(
 							Effect.map(({ items, next }) => ({
@@ -302,34 +312,20 @@ export const layer = Contract.Api.toLayer(
 								...(next === undefined ? {} : { next }),
 							})),
 						),
-					(head): IndexItem => ({ _tag: "Synced", storeId: head.id, rev: head.rev }),
+					resynced,
 				),
 			"usage.sync": ({ after, boot }) =>
-				Stream.unwrap(
-					Effect.gen(function* () {
-						let reset = after > 0 && boot !== undefined && !(yield* store.onLine(boot, after));
-						return Rows.follow(
-							reset ? 0 : after,
-							(from, upto) =>
-								Sync.usage(from, upto, Rows.batch).pipe(
-									Effect.map(({ items, next }) => ({
-										items: items.map(toUsageItem),
-										...(next === undefined ? {} : { next }),
-									})),
-								),
-							(head): UsageItem => {
-								const synced = {
-									_tag: "Synced" as const,
-									storeId: head.id,
-									rev: head.rev,
-									boot: head.boot,
-									...(reset ? { reset: true as const } : {}),
-								};
-								reset = false;
-								return synced;
-							},
-						);
-					}),
+				Rows.resume(
+					after,
+					boot,
+					(from, upto) =>
+						Sync.usage(from, upto, Rows.batch).pipe(
+							Effect.map(({ items, next }) => ({
+								items: items.map(toUsageItem),
+								...(next === undefined ? {} : { next }),
+							})),
+						),
+					resynced,
 				),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),

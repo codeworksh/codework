@@ -51,3 +51,26 @@ export const follow = <A, R>(
 	page: Pages<A, R>,
 	synced: (head: Store.Head) => A,
 ): Stream.Stream<A, never, R | Store.Service> => watch((head) => range(after, head, page, synced), page, synced);
+
+/**
+ * `follow` from `after` on the line of `boot`, the one the client's last `synced` carried: when the
+ * store left that line (a restored backup), it reads from zero instead and the first `synced` is told
+ * so by `reset`.
+ */
+export const resume = <A, R>(
+	after: number,
+	boot: string | undefined,
+	page: Pages<A, R>,
+	synced: (head: Store.Head, reset: boolean) => A,
+): Stream.Stream<A, never, R | Store.Service> =>
+	Stream.unwrap(
+		Effect.gen(function* () {
+			const store = yield* Store.Service;
+			let reset = after > 0 && boot !== undefined && !(yield* store.onLine(boot, after));
+			return follow(reset ? 0 : after, page, (head) => {
+				const item = synced(head, reset);
+				reset = false;
+				return item;
+			});
+		}),
+	);

@@ -145,7 +145,8 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 3>"
+			"rev": "<rev 3>",
+			"boot": "<boot>"
 		}
 	],
 	"resumed": [
@@ -182,7 +183,8 @@
 		{
 			"_tag": "Synced",
 			"storeId": "<store>",
-			"rev": "<rev 3>"
+			"rev": "<rev 3>",
+			"boot": "<boot>"
 		}
 	]
 }
