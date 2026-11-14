@@ -1,4 +1,13 @@
-import { type MouseEvent, type ReactNode, type Ref, useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+	type MouseEvent,
+	type ReactNode,
+	type Ref,
+	useCallback,
+	useLayoutEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 
 /* Chart pieces and the card they sit in. Marks carry color; text stays in ink tokens. */
 
@@ -153,29 +162,55 @@ interface Tip {
 	readonly content: ReactNode;
 }
 
+interface TipStore {
+	readonly get: () => Tip | null;
+	readonly set: (tip: Tip | null) => void;
+	readonly subscribe: (listener: () => void) => () => void;
+}
+
+const tipStore = (): TipStore => {
+	let tip: Tip | null = null;
+	const listeners = new Set<() => void>();
+	return {
+		get: () => tip,
+		set: (next) => {
+			if (next === tip) return;
+			tip = next;
+			for (const listener of listeners) listener();
+		},
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+	};
+};
+
+/** The tooltip lives in its own store, so following the pointer re-renders only the tooltip, never the chart. */
 function useTip() {
-	const [tip, setTip] = useState<Tip | null>(null);
+	const [store] = useState(tipStore);
 	const show = useCallback(
-		(event: MouseEvent, content: ReactNode) => setTip({ x: event.clientX, y: event.clientY, content }),
-		[],
+		(event: MouseEvent, content: ReactNode) => store.set({ x: event.clientX, y: event.clientY, content }),
+		[store],
 	);
-	const hide = useCallback(() => setTip(null), []);
-	const flip = tip !== null && tip.x > window.innerWidth - 260;
-	const element =
-		tip === null ? null : (
-			<div
-				role="tooltip"
-				className="pointer-events-none fixed z-50 max-w-60 rounded-lg border border-edge bg-popover px-2.5 py-2 text-2xs text-ink shadow-[var(--cw-menu-shadow)]"
-				style={{
-					left: tip.x,
-					top: tip.y,
-					transform: `translate(${flip ? "calc(-100% - 12px)" : "12px"}, 12px)`,
-				}}
-			>
-				{tip.content}
-			</div>
-		);
-	return { show, hide, element };
+	const hide = useCallback(() => store.set(null), [store]);
+	return { show, hide, element: <TipLayer store={store} /> };
+}
+
+function TipLayer({ store }: { readonly store: TipStore }) {
+	const tip = useSyncExternalStore(store.subscribe, store.get);
+	if (tip === null) return null;
+	const flip = tip.x > window.innerWidth - 260;
+	return (
+		<div
+			role="tooltip"
+			className="pointer-events-none fixed top-0 left-0 z-50 max-w-60 rounded-lg border border-edge bg-popover px-2.5 py-2 text-2xs text-ink shadow-[var(--cw-menu-shadow)]"
+			style={{
+				transform: `translate(${tip.x}px, ${tip.y}px) translate(${flip ? "calc(-100% - 12px)" : "12px"}, 12px)`,
+			}}
+		>
+			{tip.content}
+		</div>
+	);
 }
 
 /** A tooltip's body: a title, then one row per value with its swatch. */

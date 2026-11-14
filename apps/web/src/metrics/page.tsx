@@ -1,8 +1,8 @@
 import { MetricsError, type MetricsUsage } from "@codeworksh/contract";
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { ChartBarIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { Option } from "effect";
-import { AsyncResult } from "effect/reactivity";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { useMemo, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,9 @@ import { MachineSelect, ProjectSelect } from "./filters";
 import { MetricsBody } from "./metrics";
 
 const EVERYTHING: Scope = { machineId: null, projectId: null };
+
+/** The period and filters, kept across navigation so coming back shows the same view. */
+const viewAtom = Atom.make<Scope & { readonly range: RangeKey }>({ range: "30d", ...EVERYTHING }).pipe(Atom.keepAlive);
 
 /**
  * The year of usage for `scope`, read again on every change to it. A new scope or day keeps the last
@@ -53,14 +56,18 @@ function useYear(scope: Scope, today: string) {
 
 /** Usage across machines and projects; the header's filters and period scope everything below. */
 export function MetricsPage() {
-	const [range, setRange] = useState<RangeKey>("30d");
-	const [machineId, setMachineId] = useState<string | null>(null);
-	const [projectId, setProjectId] = useState<string | null>(null);
+	const [{ range, machineId: picked, projectId }, setView] = useAtom(viewAtom);
+	const setRange = (next: RangeKey) => setView((view) => ({ ...view, range: next }));
+	const setMachineId = (next: string | null) => setView((view) => ({ ...view, machineId: next }));
+	const setProjectId = (next: string | null) => setView((view) => ({ ...view, projectId: next }));
 	const today = localDay(new Date(useSyncExternalStore(minuteTick.subscribe, minuteTick.getSnapshot)));
+	// Filtered reads name only what they cover, so the filters list from the unfiltered year: the same read when nothing is filtered.
+	const unfiltered = useYear(EVERYTHING, today).year;
+	// A machine removed since it was picked is no longer listed: every machine shows instead.
+	const machineId = unfiltered?.machines.some((machine) => machine.id === picked) === false ? null : picked;
 	const scope = useMemo(() => ({ machineId, projectId }), [machineId, projectId]);
 	const { year, failure, retry } = useYear(scope, today);
-	// Filtered reads name only what they cover, so the filters list from the unfiltered year: the same read when nothing is filtered.
-	const everything = useYear(EVERYTHING, today).year ?? year;
+	const everything = unfiltered ?? year;
 	const metrics = useMemo(() => (year === undefined ? undefined : query(year, range)), [year, range]);
 	const whole = useMemo(() => (year === undefined ? undefined : query(year, "1y")), [year]);
 	const projects = useMemo(

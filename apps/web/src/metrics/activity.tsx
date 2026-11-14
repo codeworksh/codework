@@ -140,15 +140,17 @@ function Calendar({
 			const room = box.clientWidth - (labels.current?.offsetWidth ?? 0) - LABEL_GAP;
 			setCell(Math.min(MAX_CELL, Math.max(MIN_CELL, Math.floor((room - (columns - 1) * GAP) / columns))));
 		};
+		// Fitted before the first paint, so the calendar never paints at the minimum and then grows.
+		fit();
 		const observer = new ResizeObserver(fit);
 		observer.observe(box);
 		return () => observer.disconnect();
 	}, [columns]);
-	// Open on the latest weeks when the calendar is wider than the card.
+	// Open on the latest weeks when the calendar is wider than the card; a refresh of the data keeps the scroll.
 	useLayoutEffect(() => {
 		const box = scroller.current;
 		if (box !== null) box.scrollLeft = box.scrollWidth;
-	}, [days, cell]);
+	}, [cell]);
 
 	const width = columns * cell + (columns - 1) * GAP;
 	const months = useMemo(() => {

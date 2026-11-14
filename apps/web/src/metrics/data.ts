@@ -57,17 +57,22 @@ interface Request {
 	readonly projectId?: string;
 }
 
-/** `read` when subscribed, and again after each change to usage; a failure ends it until refreshed. */
+/**
+ * `read` when subscribed, and again after each change to usage; a failure ends it until refreshed.
+ * It outlives the page for a minute, so leaving and coming back shows the last read at once.
+ */
 const follow = <A, E>(read: Effect.Effect<A, E, Server>) =>
-	Server.runtime.atom(
-		Stream.unwrap(
-			Server.use((client) => Effect.succeed(client("event.subscribe", { topics: readTopics.metrics }))),
-		).pipe(
-			// `Synced` first, once subscribed: the first read can miss no change.
-			Stream.debounce("50 millis"),
-			Stream.mapEffect(() => read),
-		),
-	);
+	Server.runtime
+		.atom(
+			Stream.unwrap(
+				Server.use((client) => Effect.succeed(client("event.subscribe", { topics: readTopics.metrics }))),
+			).pipe(
+				// `Synced` first, once subscribed: the first read can miss no change.
+				Stream.debounce("50 millis"),
+				Stream.mapEffect(() => read),
+			),
+		)
+		.pipe(Atom.setIdleTTL("1 minute"));
 
 export const usageAtom = Atom.family((key: string) => {
 	const request = JSON.parse(key) as Request & { readonly since: string; readonly until: string };
@@ -653,12 +658,15 @@ export function responseOf(
 	};
 }
 
-/** Names a model by its id, adding its provider when the id occurs under more than one provider in `rows`. */
+/**
+ * Names a model by its id, led by its provider when the id occurs under more than one provider in
+ * `rows`: the provider is what tells those apart, so a truncated label must keep it.
+ */
 export function modelNamer(rows: ReadonlyArray<{ readonly provider: string; readonly model: string }>) {
 	const providers = new Map<string, Set<string>>();
 	for (const row of rows) providers.set(row.model, (providers.get(row.model) ?? new Set()).add(row.provider));
 	return (row: { readonly provider: string; readonly model: string }) =>
-		(providers.get(row.model)?.size ?? 0) > 1 ? `${row.model} · ${row.provider}` : row.model;
+		(providers.get(row.model)?.size ?? 0) > 1 ? `${row.provider} · ${row.model}` : row.model;
 }
 
 /** A free or preview model reports tokens but no cost; "$0" would read as a bargain. */
@@ -723,8 +731,11 @@ export function change(now: number, before: number | undefined) {
 	if (before === undefined || before === 0) return undefined;
 	return (now - before) / before;
 }
+/** Unsigned: the badge's arrow carries the direction. */
 export const formatChange = (ratio: number) =>
-	`${ratio >= 0 ? "+" : "−"}${Math.abs(ratio) >= 10 ? "999+" : Math.round(Math.abs(ratio) * 100)}%`;
+	Math.abs(ratio) >= 10 ? ">999%" : `${Math.round(Math.abs(ratio) * 100)}%`;
+/** A change between two rates, unsigned: "10 pts". */
+export const formatPoints = (difference: number) => `${Math.round(Math.abs(difference) * 100)} pts`;
 /**
  * Share of input served from cache, or null with no input. A cache write counts as a miss: that
  * input was processed in full.

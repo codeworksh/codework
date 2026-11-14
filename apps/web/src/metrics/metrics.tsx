@@ -30,6 +30,7 @@ import {
 	formatDay,
 	formatDuration,
 	formatPercent,
+	formatPoints,
 	formatQuantile,
 	formatSpeed,
 	formatTokens,
@@ -86,8 +87,7 @@ export function MetricsBody({
 		});
 	}, [models]);
 	const period = RANGES.find(({ key }) => key === metrics.range)?.label.toLowerCase() ?? "";
-	if (metrics.totals.steps === 0 && year.totals.steps === 0)
-		return <Empty projectName={projectName} period={period} />;
+	if (year.totals.steps === 0) return <Empty projectName={projectName} period="year" />;
 	return (
 		<div className="mx-auto flex max-w-[1100px] flex-col gap-4 px-6 py-6">
 			<Stats metrics={metrics} period={period} />
@@ -148,11 +148,19 @@ const hitLabel = (totals: Pick<Totals, "input" | "cacheRead" | "cacheWrite">) =>
 };
 
 /** A change badge in neutral ink, or nothing when there is nothing to compare. */
-function Delta({ ratio, period }: { readonly ratio: number | undefined; readonly period: string }) {
+function Delta({
+	ratio,
+	period,
+	format = formatChange,
+}: {
+	readonly ratio: number | undefined;
+	readonly period: string;
+	readonly format?: (ratio: number) => string;
+}) {
 	if (ratio === undefined) return null;
 	return (
 		<span title={`vs previous ${period}`} className="shrink-0 text-2xs text-ink-secondary tabular-nums">
-			{ratio >= 0 ? "↑" : "↓"} {formatChange(ratio)}
+			{ratio >= 0 ? "↑" : "↓"} {format(ratio)}
 		</span>
 	);
 }
@@ -863,7 +871,11 @@ function Cache({ metrics }: { readonly metrics: Metrics }) {
 						<span className="text-[22px] leading-7 font-semibold tracking-tight text-ink tabular-nums">
 							{hit === null ? "–" : formatPercent(hit)}
 						</span>
-						<Delta ratio={hit === null ? undefined : change(hit, before)} period={period} />
+						<Delta
+							ratio={hit === null || before === undefined ? undefined : hit - before}
+							period={period}
+							format={formatPoints}
+						/>
 					</div>
 					<Spark values={hitTrend(metrics)} className="mt-2 h-8 w-full" />
 					<dl className="mt-3 flex flex-col gap-0.5 text-2xs">
