@@ -1,0 +1,176 @@
+{
+	"seeded": {
+		"cw-a": {
+			"sessions": 300,
+			"prompts": 2277,
+			"requests": 7321,
+			"aborted": 196,
+			"failed": 137,
+			"calls": 7778
+		},
+		"cw-b": {
+			"sessions": 120,
+			"prompts": 881,
+			"requests": 2839,
+			"aborted": 98,
+			"failed": 60,
+			"calls": 3042
+		}
+	},
+	"connected": {
+		"before": {
+			"all": {
+				"requests": 10160,
+				"tokens": 496714759,
+				"cost": 228.254801875,
+				"timed": 9866,
+				"prompts": 3158,
+				"tools": 10315
+			},
+			"sessions": 420,
+			"deleted": 0
+		},
+		"after": {
+			"all": {
+				"requests": 10160,
+				"tokens": 496714759,
+				"cost": 228.254801875,
+				"timed": 9866,
+				"prompts": 3158,
+				"tools": 10315
+			},
+			"sessions": 420,
+			"deleted": 7
+		}
+	},
+	"live": {
+		"all": {
+			"requests": 10166,
+			"tokens": 496714771,
+			"cost": 228.254801875,
+			"timed": 9872,
+			"prompts": 3161,
+			"tools": 10318
+		},
+		"sessions": 421,
+		"deleted": 7
+	},
+	"resumed": {
+		"applied": [
+			3,
+			3
+		],
+		"totals": {
+			"all": {
+				"requests": 10178,
+				"tokens": 496714795,
+				"cost": 228.254801875,
+				"timed": 9884,
+				"prompts": 3167,
+				"tools": 10324
+			},
+			"sessions": 423,
+			"deleted": 7
+		}
+	},
+	"paused": {
+		"paused": {
+			"all": {
+				"requests": 10182,
+				"tokens": 496714803,
+				"cost": 228.254801875,
+				"timed": 9888,
+				"prompts": 3169,
+				"tools": 10326
+			},
+			"sessions": 424,
+			"deleted": 7
+		},
+		"resumed": {
+			"all": {
+				"requests": 10182,
+				"tokens": 496714803,
+				"cost": 228.254801875,
+				"timed": 9888,
+				"prompts": 3169,
+				"tools": 10326
+			},
+			"sessions": 424,
+			"deleted": 7
+		}
+	},
+	"restartedAway": {
+		"all": {
+			"requests": 10186,
+			"tokens": 496714811,
+			"cost": 228.254801875,
+			"timed": 9892,
+			"prompts": 3171,
+			"tools": 10328
+		},
+		"sessions": 425,
+		"deleted": 7
+	},
+	"cut": {
+		"all": {
+			"requests": 10188,
+			"tokens": 496714815,
+			"cost": 228.254801875,
+			"timed": 9894,
+			"prompts": 3172,
+			"tools": 10329
+		},
+		"sessions": 426,
+		"deleted": 7
+	},
+	"restored": {
+		"all": {
+			"requests": 10192,
+			"tokens": 496714823,
+			"cost": 228.254801875,
+			"timed": 9898,
+			"prompts": 3174,
+			"tools": 10331
+		},
+		"sessions": 428,
+		"deleted": 9
+	},
+	"readded": {
+		"kept": {
+			"all": {
+				"requests": 10192,
+				"tokens": 496714823,
+				"cost": 228.254801875,
+				"timed": 9898,
+				"prompts": 3174,
+				"tools": 10331
+			},
+			"sessions": 428,
+			"deleted": 130
+		},
+		"again": {
+			"all": {
+				"requests": 10192,
+				"tokens": 496714823,
+				"cost": 228.254801875,
+				"timed": 9898,
+				"prompts": 3174,
+				"tools": 10331
+			},
+			"sessions": 428,
+			"deleted": 9
+		}
+	},
+	"recreated": {
+		"all": {
+			"requests": 10196,
+			"tokens": 496714831,
+			"cost": 228.254801875,
+			"timed": 9902,
+			"prompts": 3176,
+			"tools": 10333
+		},
+		"sessions": 429,
+		"deleted": 130
+	}
+}

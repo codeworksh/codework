@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { assistant } from "../../../../packages/harness/test/fixtures/llm.ts";
+import { assistant as scriptedAssistant } from "../../../../packages/harness/test/fixtures/llm.ts";
 import { testModel } from "../../../../packages/harness/test/fixtures/model.ts";
 import type * as LLM from "../../../../packages/harness/src/runner/llm.ts";
 import * as Clones from "../../../../packages/codework/src/server/clones.ts";
@@ -78,6 +78,16 @@ const bashOf = (input: LLM.Input) => {
 	if (messages.slice(last + 1).some((message) => message.role === "assistant")) return undefined;
 	return /^bash (.+)$/s.exec(promptOf(input))?.[1];
 };
+
+// With `CODEWORK_FIXTURE_NOW=1` a reply took the last 1.5 s of real time, so usage lands in today's
+// hours; otherwise its times are its index, in the first hour of 1970, the same on every run.
+const assistant: typeof scriptedAssistant = (input, index, overrides) =>
+	scriptedAssistant(input, index, {
+		...(process.env.CODEWORK_FIXTURE_NOW === "1"
+			? { time: { created: Date.now() - 1_500, completed: Date.now() } }
+			: {}),
+		...overrides,
+	});
 
 // Ids unique across restarts of this process: entry ids are the reply's message ids.
 let count = 0;
