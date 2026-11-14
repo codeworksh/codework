@@ -521,6 +521,132 @@ impl RpcClient {
         Ok(reply.entries)
     }
 
+    pub async fn git_diff(&self, space_id: &str, file: &str) -> Result<crate::git::Diff, String> {
+        self.request(
+            "daemon.call",
+            GitDiffPayload {
+                plugin: "git",
+                space_id,
+                method: "diff",
+                input: GitDiffInput {
+                    files: [file],
+                    context: 3,
+                },
+            },
+        )
+        .await
+    }
+
+    /// Space daemons have no threadId: request their type without a thread filter,
+    /// then select the active space from the replay and every subsequent live event.
+    pub async fn watch_git(
+        &self,
+        space_id: String,
+        tx: mpsc::UnboundedSender<AppEvent>,
+        generation: u64,
+    ) {
+        for attempt in 0..30 {
+            if let Err(error) = self.git_events_once(&space_id, &tx, generation).await {
+                if tx.is_closed() {
+                    return;
+                }
+                let _ = tx.send(AppEvent::rpc(RpcEvent::Git {
+                    space_id: space_id.clone(),
+                    generation,
+                    event: crate::git::GitEvent::Disconnected(error),
+                }));
+            }
+            if attempt < 29 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    }
+    async fn git_events_once(
+        &self,
+        space_id: &str,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+        generation: u64,
+    ) -> Result<(), String> {
+        let (mut ws, _) = connect_async(&self.url).await.map_err(|e| e.to_string())?;
+        let id = self.next_request_id();
+        let payload = EventSubscribePayload {
+            thread_id: None,
+            types: Some(vec!["plugin.git.status".into()]),
+        };
+        ws.send(Message::Text(
+            serde_json::to_string(&RpcRequest::new(id, "event.subscribe", payload))
+                .map_err(|e| e.to_string())?
+                + "\n",
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+        let send = |event| {
+            tx.send(AppEvent::rpc(RpcEvent::Git {
+                space_id: space_id.to_string(),
+                generation,
+                event,
+            }))
+            .map_err(|_| "UI closed".to_string())
+        };
+        while let Some(message) = ws.next().await {
+            match message.map_err(|e| e.to_string())? {
+                Message::Text(text) => {
+                    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+                        match serde_json::from_str::<ServerMessage>(line)
+                            .map_err(|e| e.to_string())?
+                        {
+                            ServerMessage::Chunk { request_id, values }
+                                if as_request_id(&request_id) == Some(id) =>
+                            {
+                                for value in values {
+                                    let envelope: EventEnvelope =
+                                        serde_json::from_value(value).map_err(|e| e.to_string())?;
+                                    if envelope.event_type == "server.connected" {
+                                        send(crate::git::GitEvent::Connected)?;
+                                    } else if envelope.event_type == "plugin.git.status" {
+                                        if let Some(data) =
+                                            envelope.data.filter(|data| data["spaceId"] == space_id)
+                                        {
+                                            let status = serde_json::from_value(data)
+                                                .map_err(|e| e.to_string())?;
+                                            send(crate::git::GitEvent::Status(status))?;
+                                        }
+                                    }
+                                }
+                                ws.send(Message::Text(
+                                    serde_json::to_string(&RpcAck::new(id))
+                                        .map_err(|e| e.to_string())?
+                                        + "\n",
+                                ))
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            }
+                            ServerMessage::Exit { request_id, exit }
+                                if as_request_id(&request_id) == Some(id) =>
+                            {
+                                return Err(match exit {
+                                    ExitPayload::Failure { cause } => format_cause(cause.as_ref()),
+                                    _ => "Git subscription ended".into(),
+                                })
+                            }
+                            ServerMessage::Defect { defect } => {
+                                return Err(format_cause(defect.as_ref()))
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Message::Ping(bytes) => ws
+                    .send(Message::Pong(bytes))
+                    .await
+                    .map_err(|e| e.to_string())?,
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        Err("Git status connection closed".into())
+    }
+
     /// Owns a resumable subscription. The app cancels this task when switching threads.
     /// Metadata is refreshed on sync commits; queue/entry/delta ordering stays on one channel.
     pub async fn follow_thread(

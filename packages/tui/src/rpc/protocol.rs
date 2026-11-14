@@ -258,3 +258,17 @@ pub struct ForkResponse {
     #[serde(default)]
     pub text: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+pub struct GitDiffPayload<'a> {
+    pub plugin: &'static str,
+    #[serde(rename = "spaceId")]
+    pub space_id: &'a str,
+    pub method: &'static str,
+    pub input: GitDiffInput<'a>,
+}
+#[derive(Debug, Serialize)]
+pub struct GitDiffInput<'a> {
+    pub files: [&'a str; 1],
+    pub context: u64,
+}

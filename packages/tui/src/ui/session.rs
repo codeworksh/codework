@@ -187,6 +187,12 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         ));
     }
 
+    if let Some(branch) = app.git.branch_label() {
+        meta = elide(
+            &format!("{branch} · {meta}"),
+            area.width.saturating_sub(12).min(area.width / 2) as usize,
+        );
+    }
     let meta_width = text::width(&meta) as u16;
     let right_x = if meta_width + 6 <= area.width {
         let x = area.right() - meta_width;

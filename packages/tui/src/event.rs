@@ -21,6 +21,18 @@ pub enum RpcEvent {
         generation: u64,
         result: Result<Vec<ThreadInfo>, String>,
     },
+    Git {
+        space_id: String,
+        generation: u64,
+        event: crate::git::GitEvent,
+    },
+    GitDiff {
+        space_id: String,
+        generation: u64,
+        request_id: u64,
+        file: String,
+        result: Result<crate::git::Diff, String>,
+    },
     Created {
         result: Result<ThreadInfo, String>,
         text: String,

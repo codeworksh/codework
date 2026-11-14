@@ -5,7 +5,7 @@ A fast and lightweight terminal interface for [CodeWork](https://www.codework.sh
 The TUI connects to the CodeWork server to send prompts and follow conversations through
 `thread.sync`. It supports a multiline composer, saved per-thread drafts, a live thread browser,
 model and thinking selection, queued prompt management,
-collapsible work logs, conversation forks, clipboard copying, and older history on demand.
+collapsible work logs, conversation forks, Git review, clipboard copying, and older history on demand.
 
 ---
 
@@ -94,6 +94,7 @@ pnpm start
 | `e` in queue | Edit in place; Enter saves, Escape cancels |
 | `w` in queue | Cancel and prepend to the composer when cancellation succeeds, preserving the existing draft |
 | `Delete` / `d` in queue | Cancel without restoring |
+| `Ctrl+G`, `/git`, `/diff` | Review the active thread's Git changes |
 | `Ctrl+O` | Toggle the focused turn's work log, or the latest turn |
 | `Ctrl+↑` / `Ctrl+↓` | Focus a turn; Space or Enter toggles its work log |
 | `/fork` | Pick a committed message; Enter forks after it, `b` forks before a user message and restores its text |
@@ -116,6 +117,36 @@ without losing the current filter or selection. Closing it stops the subscriptio
 OSC 52 sends clipboard content through the terminal, including over SSH. Clipboard access
 must be enabled in the terminal (and forwarded by any terminal multiplexer).
 
+## Git Review
+
+Open a thread, then press `Ctrl+G` or run `/git` or `/diff`. The session header shows its
+branch and changed-file count once the server publishes Git status. The review screen shows
+branch/HEAD, added/modified/deleted files, line counts, and patches fetched on demand.
+It resolves the thread's placement first, then the session's space, including remote spaces.
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, mouse wheel | Select files, or scroll when the patch has focus |
+| `Enter` / `Tab` | Focus the patch / switch focus between files and patch |
+| `[` / `]`, `←` / `→` | Previous/next file |
+| `n` / `p` | Next/previous hunk |
+| `PageUp` / `PageDown`, `Home` / `End` | Navigate the patch |
+| `v` | Cycle auto, unified, and split layout (split needs sufficient width) |
+| `r` | Fetch the selected patch again |
+| `Esc` | Return to files, then conversation |
+| `Ctrl+G` | Return directly to the conversation |
+
+Wide terminals show files and patch together; narrow terminals show the focused pane.
+Inline tool diffs retain their compact preview. The review screen reuses the same renderer
+with the preview line cap removed. It labels cached and truncated server responses and
+reports binary/metadata-only or omitted text patches explicitly.
+
+The existing Git daemon reports the combined working-tree difference against HEAD, with
+untracked files included within its limits. This interface uses `plugin.git.status` and
+`daemon.call` (`git` / `diff`); it does not run Git on the client. Status appears after the
+server mounts the space. Git staging, committing, pushing, and separate staged/unstaged
+views are not exposed by the current RPC contract.
+
 ## Verification
 
 ```bash
@@ -129,6 +160,10 @@ against a deterministic local WebSocket peer; it does not need provider credenti
 The restart test also launches the binary twice, checks a live browser update, and verifies
 that multiline text survives switching threads, restarting, and sending. Its artifact is
 `__artifacts__/composer.json`.
+The Git integration test creates a real temporary repository and launches the real binary
+against a deterministic RPC peer serving that repository's patches. Its request artifact is
+`__artifacts__/git.json`; `__artifacts__/git.txt` checks the review screen, including cached
+and truncated states.
 The suite records the queue, fork, and paging RPCs in `__artifacts__/terminal.json` and checks
 rendered conversation output in `__artifacts__/conversation.txt`. Regenerate intentional
 changes with `UPDATE_ARTIFACTS=1 cargo test`, then rerun `cargo test` without that variable.

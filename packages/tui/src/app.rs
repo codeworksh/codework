@@ -31,6 +31,8 @@ const COMMANDS: &[Entry] = &[
     Entry::item("queue", "manage queued prompts"),
     Entry::item("fork", "pick a committed message; b to re-edit"),
     Entry::item("copy", "copy last assistant answer"),
+    Entry::item("git", "review working-tree changes"),
+    Entry::item("diff", "review working-tree patches"),
     Entry::item("reload", "reload plugins"),
     Entry::item("theme", "pick a palette"),
     Entry::item("exit", "close the app"),
@@ -277,6 +279,10 @@ pub struct App {
     pub queue_edit: Option<QueueEdit>,
     pub focused_turn: Option<usize>,
     pub queue_pending: BTreeSet<String>,
+    pub git: crate::git::Git,
+    git_generation: u64,
+    git_stream: Option<tokio::task::AbortHandle>,
+    git_patch: Option<tokio::task::AbortHandle>,
     drafts: DraftStore,
     remembered: BTreeMap<String, Remembered>,
     work_restore: BTreeMap<String, bool>,
@@ -306,6 +312,7 @@ impl Drop for App {
     fn drop(&mut self) {
         self.stop_stream();
         self.stop_browser();
+        self.stop_git();
         if let Some(timer) = self.draft_timer.take() {
             timer.abort();
         }
@@ -345,6 +352,10 @@ impl App {
             queue_edit: None,
             focused_turn: None,
             queue_pending: BTreeSet::new(),
+            git: crate::git::Git::default(),
+            git_generation: 0,
+            git_stream: None,
+            git_patch: None,
             drafts,
             remembered: BTreeMap::new(),
             work_restore: BTreeMap::new(),
@@ -502,12 +513,15 @@ impl App {
             .map(|m| (m.provider.clone(), m.id.clone()));
         self.thinking = info.thinking_level.clone();
         self.session = Some(info);
+        self.ensure_git();
         self.rebuild();
     }
     pub fn switch_thread(&mut self, info: ThreadInfo) {
         self.remember();
         self.stop_browser();
         self.popup = None;
+        self.git.open = false;
+        self.git.patch_focus = false;
         self.stop_stream();
         self.generation += 1;
         self.entries.clear();
@@ -559,7 +573,14 @@ impl App {
         let redraw = match event {
             AppEvent::Key(key) => self.handle_key(key),
             AppEvent::Scroll(delta) => {
-                if self.popup.is_some() {
+                if self.git.open {
+                    if self.git.patch_focus {
+                        self.git.scroll_by(-delta);
+                    } else {
+                        self.select_git_file(if delta > 0 { -1 } else { 1 });
+                    }
+                    true
+                } else if self.popup.is_some() {
                     self.step_menu(if delta > 0 { -1 } else { 1 })
                 } else {
                     self.scroll_by(delta)
@@ -697,6 +718,9 @@ impl App {
         true
     }
     fn paste(&mut self, text: &str) -> bool {
+        if self.git.open {
+            return false;
+        }
         if let Some(edit) = &mut self.queue_edit {
             return edit.text.insert_text(text);
         }
@@ -725,6 +749,17 @@ impl App {
             }
             Resolution::Consumed => return false,
             Resolution::Unbound => {}
+        }
+        if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::CONTROL {
+            if self.git.open {
+                self.git.open = false;
+            } else {
+                self.open_git();
+            }
+            return true;
+        }
+        if self.git.open {
+            return self.git_key(key);
         }
         if key.code == KeyCode::Char('p') && key.modifiers == KeyModifiers::CONTROL {
             self.open_browser();
@@ -1002,10 +1037,13 @@ impl App {
             "fork" => self.open_fork(),
             "copy" => self.copy_reply(),
             "session" => self.open_browser(),
+            "git" | "diff" => self.open_git(),
             "new" => {
                 self.remember();
                 self.stop_browser();
                 self.stop_stream();
+                self.stop_git();
+                self.git = crate::git::Git::default();
                 self.generation += 1;
                 self.session = None;
                 self.entries.clear();
@@ -1032,6 +1070,144 @@ impl App {
             "exit" => self.should_quit = true,
             _ => {}
         }
+    }
+    fn stop_git(&mut self) {
+        if let Some(task) = self.git_stream.take() {
+            task.abort();
+        }
+        if let Some(task) = self.git_patch.take() {
+            task.abort();
+        }
+    }
+    fn ensure_git(&mut self) {
+        let space = self.session.as_ref().map(|thread| {
+            thread
+                .placement
+                .as_ref()
+                .map(|p| p.space_id.clone())
+                .unwrap_or_else(|| thread.session.space_id.clone())
+        });
+        if self.git.space_id == space {
+            return;
+        }
+        let open = self.git.open;
+        let view = self.git.view;
+        self.stop_git();
+        self.git_generation += 1;
+        self.git = space
+            .clone()
+            .map(crate::git::Git::for_space)
+            .unwrap_or_default();
+        self.git.open = open;
+        self.git.view = view;
+        let Some(space) = space else {
+            return;
+        };
+        let client = self.client.clone();
+        let tx = self.tx.clone();
+        let generation = self.git_generation;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            self.git_stream = Some(
+                handle
+                    .spawn(async move {
+                        client.watch_git(space, tx, generation).await;
+                    })
+                    .abort_handle(),
+            );
+        }
+    }
+    fn open_git(&mut self) {
+        if self.session.is_none() {
+            self.notice = Some("Open a thread before reviewing its Git changes".into());
+            return;
+        }
+        self.stop_browser();
+        self.popup = None;
+        self.ensure_git();
+        self.git.open = true;
+        self.git.patch_focus = false;
+        self.load_git_diff();
+    }
+    fn load_git_diff(&mut self) {
+        if let Some(task) = self.git_patch.take() {
+            task.abort();
+        }
+        self.git.request += 1;
+        self.git.error = None;
+        let Some((space, file)) = self.git.space_id.clone().zip(self.git.selected.clone()) else {
+            self.git.loading = false;
+            return;
+        };
+        self.git.loading = true;
+        let client = self.client.clone();
+        let tx = self.tx.clone();
+        let generation = self.git_generation;
+        let request_id = self.git.request;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            self.git_patch = Some(
+                handle
+                    .spawn(async move {
+                        let result = client.git_diff(&space, &file).await;
+                        let _ = tx.send(AppEvent::rpc(RpcEvent::GitDiff {
+                            space_id: space,
+                            generation,
+                            request_id,
+                            file,
+                            result,
+                        }));
+                    })
+                    .abort_handle(),
+            );
+        }
+    }
+    fn select_git_file(&mut self, delta: isize) {
+        let previous = self.git.selected.clone();
+        self.git.select(delta);
+        if self.git.selected != previous {
+            self.load_git_diff();
+        }
+    }
+    fn git_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            KeyCode::Esc => {
+                if self.git.patch_focus {
+                    self.git.patch_focus = false;
+                } else {
+                    self.git.open = false;
+                }
+            }
+            KeyCode::Tab => self.git.patch_focus = !self.git.patch_focus,
+            KeyCode::Enter => self.git.patch_focus = true,
+            KeyCode::Char('r') => self.load_git_diff(),
+            KeyCode::Char('v') => {
+                self.git.view = self.git.view.next();
+                self.git.scroll = 0;
+            }
+            KeyCode::Char('n') => self.git.jump_hunk(true, self.theme),
+            KeyCode::Char('p') => self.git.jump_hunk(false, self.theme),
+            KeyCode::Home => self.git.scroll = 0,
+            KeyCode::End => self.git.scroll = self.git.max_scroll.get(),
+            KeyCode::PageDown => self.git.scroll_by(12),
+            KeyCode::PageUp => self.git.scroll_by(-12),
+            KeyCode::Up if self.git.patch_focus => self.git.scroll_by(-1),
+            KeyCode::Down if self.git.patch_focus => self.git.scroll_by(1),
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Char('[')
+            | KeyCode::Char(']') => {
+                self.select_git_file(
+                    if matches!(key.code, KeyCode::Up | KeyCode::Left | KeyCode::Char('[')) {
+                        -1
+                    } else {
+                        1
+                    },
+                );
+            }
+            _ => {}
+        }
+        true
     }
     fn configure(&self) {
         let model = self.model.clone();
@@ -1309,6 +1485,54 @@ impl App {
                         self.notice = None;
                     }
                     Err(error) => self.notice = Some(error),
+                }
+            }
+            RpcEvent::Git {
+                space_id,
+                generation,
+                event,
+            } => {
+                if self.git.space_id.as_ref() != Some(&space_id)
+                    || generation != self.git_generation
+                {
+                    return false;
+                }
+                match event {
+                    crate::git::GitEvent::Connected => self.git.connection_error = None,
+                    crate::git::GitEvent::Disconnected(error) => {
+                        self.git.connection_error = Some(error)
+                    }
+                    crate::git::GitEvent::Status(status) => {
+                        if self.git.apply_status(status) && self.git.open {
+                            self.load_git_diff();
+                        }
+                    }
+                }
+            }
+            RpcEvent::GitDiff {
+                space_id,
+                generation,
+                request_id,
+                file,
+                result,
+            } => {
+                if self.git.space_id.as_ref() != Some(&space_id)
+                    || generation != self.git_generation
+                    || request_id != self.git.request
+                    || self.git.selected.as_ref() != Some(&file)
+                {
+                    return false;
+                }
+                self.git.loading = false;
+                match result {
+                    Ok(diff) => {
+                        self.git.diff = Some(diff);
+                        self.git.error = None;
+                    }
+                    Err(error) => {
+                        self.git.diff = None;
+                        self.git.error = Some(error);
+                    }
                 }
             }
             RpcEvent::Created {

@@ -5,6 +5,7 @@
 
 mod badge;
 mod field;
+mod git;
 mod glyphs;
 mod input;
 mod markdown;
@@ -32,6 +33,10 @@ const THEME_HINTS: &str = "↑↓ move · type to search · enter choose · esc 
 
 /// Draw the active screen.
 pub fn view(app: &App, frame: &mut Frame) {
+    if app.git.open {
+        git::draw(app, frame);
+        return;
+    }
     match app.screen {
         Screen::Welcome => view_welcome(app, frame),
         Screen::Session => session::draw(app, frame),

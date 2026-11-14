@@ -1,0 +1,46 @@
+[
+  {
+    "input": {
+      "context": 3,
+      "files": [
+        "notes with spaces.txt"
+      ]
+    },
+    "method": "diff",
+    "plugin": "git",
+    "spaceId": "space"
+  },
+  {
+    "input": {
+      "context": 3,
+      "files": [
+        "obsolete.txt"
+      ]
+    },
+    "method": "diff",
+    "plugin": "git",
+    "spaceId": "space"
+  },
+  {
+    "input": {
+      "context": 3,
+      "files": [
+        "src/main.rs"
+      ]
+    },
+    "method": "diff",
+    "plugin": "git",
+    "spaceId": "space"
+  },
+  {
+    "input": {
+      "context": 3,
+      "files": [
+        "src/main.rs"
+      ]
+    },
+    "method": "diff",
+    "plugin": "git",
+    "spaceId": "space"
+  }
+]
