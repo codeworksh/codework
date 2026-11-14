@@ -94,7 +94,7 @@ fn view_welcome(app: &App, frame: &mut Frame) {
         let searchable = popup.search().is_some();
         let wanted = menu::height(popup.menu(), searchable);
         let room = area.bottom().saturating_sub(prompt.bottom());
-        let reserve = if room >= wanted + GAP + 1 { GAP + 1 } else { 2 };
+        let reserve = if room > wanted + GAP { GAP + 1 } else { 2 };
         let room_with_hint = room.saturating_sub(reserve);
         let min_rows = if searchable { 5 } else { 3 };
         let max_height = if room_with_hint >= min_rows {
@@ -129,7 +129,7 @@ fn view_welcome(app: &App, frame: &mut Frame) {
     // repainting the lattice behind the line in the hint's colour instead of the grid's.
     let hints = match (&app.notice, &app.popup) {
         (Some(notice), _) => notice.as_str(),
-        (None, Some(Popup::Commands(_) | Popup::Thinking(_))) => COMMAND_HINTS,
+        (None, Some(Popup::Commands(_) | Popup::Thinking(_) | Popup::Fork(_))) => COMMAND_HINTS,
         (None, Some(Popup::Themes { .. } | Popup::Models { .. } | Popup::Sessions { .. })) => {
             THEME_HINTS
         }

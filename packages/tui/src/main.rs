@@ -5,6 +5,8 @@ mod event;
 mod menu;
 mod prompt;
 mod rpc;
+#[cfg(test)]
+mod tests;
 mod theme;
 mod tool;
 mod tui;

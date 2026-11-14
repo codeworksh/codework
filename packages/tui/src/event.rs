@@ -15,27 +15,24 @@ use crate::types::{ModelList, ServerInfo, ThreadInfo};
 /// Asynchronous results arriving from the RPC server.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RpcEvent {
-    Stream(StreamEvent),
-    ThreadStream {
-        session_id: String,
-        thread_id: String,
-        event: StreamEvent,
-    },
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
     ThreadsLoaded(Result<Vec<ThreadInfo>, String>),
-    ThreadInfoLoaded {
-        session_id: String,
-        thread_id: String,
+    Created {
         result: Result<ThreadInfo, String>,
+        text: String,
+        delivery: crate::types::PromptDelivery,
+        id: String,
     },
-    ThreadConfigured(Result<ThreadInfo, String>),
-    PluginsReloaded(Result<(u64, Option<String>), String>),
-    PromptDispatched {
-        session_id: String,
-        thread_id: String,
-        message_id: String,
-        result: Result<(), String>,
+    ThreadStream {
+        address: crate::rpc::protocol::ThreadRefPayload,
+        generation: u64,
+        event: StreamEvent,
+    },
+    Operation {
+        address: crate::rpc::protocol::ThreadRefPayload,
+        generation: u64,
+        result: Result<crate::app::OperationResult, String>,
     },
 }
 
@@ -57,7 +54,13 @@ pub enum AppEvent {
     /// stale copy in state would be one more thing to keep in sync.
     Resize,
     /// An event or response from the CodeWork RPC server.
-    Rpc(RpcEvent),
+    Rpc(Box<RpcEvent>),
+}
+
+impl AppEvent {
+    pub fn rpc(event: RpcEvent) -> Self {
+        Self::Rpc(Box::new(event))
+    }
 }
 
 pub struct EventHandler {
@@ -75,17 +78,14 @@ impl EventHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let reader_tx = tx.clone();
-        std::thread::spawn(move || loop {
-            match crossterm::event::read() {
-                Ok(event) => {
-                    let Some(event) = translate(event) else {
-                        continue;
-                    };
-                    if reader_tx.send(event).is_err() {
-                        break;
-                    }
+        std::thread::spawn(move || {
+            while let Ok(event) = crossterm::event::read() {
+                let Some(event) = translate(event) else {
+                    continue;
+                };
+                if reader_tx.send(event).is_err() {
+                    break;
                 }
-                Err(_) => break,
             }
         });
         Self { tx, rx }

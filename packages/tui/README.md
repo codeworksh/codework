@@ -2,12 +2,9 @@
 
 A fast and lightweight terminal interface for [CodeWork](https://www.codework.sh), written in **Rust**.
 
-The TUI is an early skeleton. Today it opens one screen: the landing site's hero — its wordmark over
-the same hairline lattice the site draws it on, with a prompt line under it that takes typing. A
-leading slash on an empty line opens a menu of the app's commands, as a chat prompt does; as this is
-written there are two, `theme`, which lists every palette the site ships, and `exit`. The prompt
-cannot be sent, and model selection and the session view are not built yet; the launcher and the RPC
-transport they will need are already in place.
+The TUI connects to the CodeWork server to send prompts and follow conversations through
+`thread.sync`. It supports model and thinking selection, queued prompt management,
+collapsible work logs, conversation forks, clipboard copying, and older history on demand.
 
 ---
 
@@ -81,20 +78,41 @@ pnpm start
 
 ## Keyboard Shortcuts
 
-| Shortcut             | Action                                         |
-| :------------------- | :--------------------------------------------- |
-| _any character_      | Type it into the prompt                        |
-| `←` `→`              | Move the prompt's caret                        |
-| `Home` `End`         | Jump to the start or the end of the prompt     |
-| `Backspace` `Delete` | Erase a character                              |
-| _paste_              | Insert the clipboard at the caret, on one line |
-| `/`                  | Ask for the command menu                       |
-| `↑` `↓`              | Move through a menu                            |
-| `Enter`              | Take the entry a menu is on                    |
-| `Esc`                | Close the menu, or exit the app                |
-| `Ctrl+C`             | Exit the app                                   |
-| `Ctrl+D`             | Exit the app                                   |
-| `<leader>q`          | Exit the app (`Ctrl+X`, then `q`)              |
+| Shortcut | Action |
+| --- | --- |
+| `Enter` | Send, or steer a running thread |
+| `Alt+Enter` | Queue a follow-up |
+| `↑` / `↓`, mouse wheel, `PageUp` / `PageDown` | Scroll (arrows when composer is empty); fetch older history at the top |
+| `/queue`, `Alt+↑` / `Alt+↓` | Focus and navigate queued prompts above the composer |
+| `l` / `Enter` in queue | Switch steer/follow-up lane, or Send Now when parked/idle |
+| `e` in queue | Edit in place; Enter saves, Escape cancels |
+| `w` in queue | Cancel and restore to composer when cancellation succeeds |
+| `Delete` / `d` in queue | Cancel without restoring |
+| `Ctrl+O` | Toggle the focused turn's work log, or the latest turn |
+| `Ctrl+↑` / `Ctrl+↓` | Focus a turn; Space or Enter toggles its work log |
+| `/fork` | Pick a committed message; Enter forks after it, `b` forks before a user message and restores its text |
+| `/copy`, `Ctrl+Y` | Copy the selected or last assistant answer via OSC 52 |
+| `/model`, `/thinking`, `/session`, `/theme` | Open the corresponding picker (`/session` lists threads) |
+| `/new`, `/reload` | Start a new session or reload plugins |
+| `Esc` | Close editing/focus/menu, interrupt a running thread, clear the composer, or exit |
+| `Ctrl+C`, `Ctrl+D`, `Ctrl+X` then `q` | Exit |
+
+OSC 52 sends clipboard content through the terminal, including over SSH. Clipboard access
+must be enabled in the terminal (and forwarded by any terminal multiplexer).
+
+## Verification
+
+```bash
+cd packages/tui
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+The terminal integration test launches the real binary in a Python 3 standard-library PTY
+against a deterministic local WebSocket peer; it does not need provider credentials.
+It records the queue, fork, and paging RPCs in `__artifacts__/terminal.json` and checks
+rendered conversation output in `__artifacts__/conversation.txt`. Regenerate intentional
+changes with `UPDATE_ARTIFACTS=1 cargo test`, then rerun `cargo test` without that variable.
 
 ---
 

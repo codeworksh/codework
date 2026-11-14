@@ -98,7 +98,7 @@ pub struct DurableMeta {
     pub version: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct EventEnvelope {
     pub id: Option<String>,
     #[serde(rename = "type")]
@@ -208,8 +208,53 @@ pub struct ThreadHistoryResponse {
     pub entries: Vec<HistoryEntry>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UpdatePromptPayload {
+    #[serde(flatten)]
+    pub address: ThreadRefPayload,
+    #[serde(rename = "messageId")]
+    pub message_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<crate::types::PromptDelivery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ThreadMessageResponse {
+#[serde(rename_all = "lowercase")]
+pub enum ForkMode {
+    At,
+    Before,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ForkThreadPayload {
+    #[serde(flatten)]
+    pub address: ThreadRefPayload,
+    #[serde(rename = "entryId")]
+    pub entry_id: String,
+    pub mode: ForkMode,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PageThreadPayload {
+    #[serde(flatten)]
+    pub address: ThreadRefPayload,
+    pub before: u64,
+    pub limit: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CancelledResponse {
+    pub cancelled: bool,
+}
+#[derive(Debug, Deserialize)]
+pub struct UpdatedResponse {
+    pub updated: bool,
+}
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ForkResponse {
+    pub thread: ThreadInfo,
     #[serde(default)]
-    pub found: bool,
+    pub text: Option<String>,
 }
