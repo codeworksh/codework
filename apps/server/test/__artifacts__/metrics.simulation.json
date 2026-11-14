@@ -2,42 +2,42 @@
 	"seeded": {
 		"cw-a": {
 			"sessions": 300,
-			"prompts": 2245,
-			"requests": 7273,
-			"aborted": 209,
-			"failed": 140,
-			"calls": 7827
+			"prompts": 2125,
+			"requests": 6815,
+			"aborted": 193,
+			"failed": 160,
+			"calls": 7251
 		},
 		"cw-b": {
 			"sessions": 120,
-			"prompts": 881,
-			"requests": 2839,
-			"aborted": 98,
-			"failed": 60,
-			"calls": 3042
+			"prompts": 878,
+			"requests": 2835,
+			"aborted": 94,
+			"failed": 50,
+			"calls": 3036
 		}
 	},
 	"connected": {
 		"before": {
 			"all": {
-				"requests": 10112,
-				"tokens": 490774644,
-				"cost": 221.19770285,
-				"timed": 9805,
-				"prompts": 3126,
-				"tools": 10347
+				"requests": 9650,
+				"tokens": 455262754,
+				"cost": 173.70565119999998,
+				"timed": 9363,
+				"prompts": 3003,
+				"tools": 9791
 			},
 			"sessions": 420,
 			"deleted": 0
 		},
 		"after": {
 			"all": {
-				"requests": 10112,
-				"tokens": 490774644,
-				"cost": 221.19770285,
-				"timed": 9805,
-				"prompts": 3126,
-				"tools": 10347
+				"requests": 9650,
+				"tokens": 455262754,
+				"cost": 173.70565119999998,
+				"timed": 9363,
+				"prompts": 3003,
+				"tools": 9791
 			},
 			"sessions": 420,
 			"deleted": 7
@@ -45,12 +45,12 @@
 	},
 	"live": {
 		"all": {
-			"requests": 10118,
-			"tokens": 490774656,
-			"cost": 221.19770285,
-			"timed": 9811,
-			"prompts": 3129,
-			"tools": 10350
+			"requests": 9656,
+			"tokens": 455262766,
+			"cost": 173.70565119999998,
+			"timed": 9369,
+			"prompts": 3006,
+			"tools": 9794
 		},
 		"sessions": 421,
 		"deleted": 7
@@ -62,12 +62,12 @@
 		],
 		"totals": {
 			"all": {
-				"requests": 10130,
-				"tokens": 490774680,
-				"cost": 221.19770285,
-				"timed": 9823,
-				"prompts": 3135,
-				"tools": 10356
+				"requests": 9668,
+				"tokens": 455262790,
+				"cost": 173.70565119999998,
+				"timed": 9381,
+				"prompts": 3012,
+				"tools": 9800
 			},
 			"sessions": 423,
 			"deleted": 7
@@ -76,24 +76,24 @@
 	"paused": {
 		"paused": {
 			"all": {
-				"requests": 10134,
-				"tokens": 490774688,
-				"cost": 221.19770285,
-				"timed": 9827,
-				"prompts": 3137,
-				"tools": 10358
+				"requests": 9672,
+				"tokens": 455262798,
+				"cost": 173.70565119999998,
+				"timed": 9385,
+				"prompts": 3014,
+				"tools": 9802
 			},
 			"sessions": 424,
 			"deleted": 7
 		},
 		"resumed": {
 			"all": {
-				"requests": 10134,
-				"tokens": 490774688,
-				"cost": 221.19770285,
-				"timed": 9827,
-				"prompts": 3137,
-				"tools": 10358
+				"requests": 9672,
+				"tokens": 455262798,
+				"cost": 173.70565119999998,
+				"timed": 9385,
+				"prompts": 3014,
+				"tools": 9802
 			},
 			"sessions": 424,
 			"deleted": 7
@@ -101,36 +101,36 @@
 	},
 	"restartedAway": {
 		"all": {
-			"requests": 10138,
-			"tokens": 490774696,
-			"cost": 221.19770285,
-			"timed": 9831,
-			"prompts": 3139,
-			"tools": 10360
+			"requests": 9676,
+			"tokens": 455262806,
+			"cost": 173.70565119999998,
+			"timed": 9389,
+			"prompts": 3016,
+			"tools": 9804
 		},
 		"sessions": 425,
 		"deleted": 7
 	},
 	"cut": {
 		"all": {
-			"requests": 10140,
-			"tokens": 490774700,
-			"cost": 221.19770285,
-			"timed": 9833,
-			"prompts": 3140,
-			"tools": 10361
+			"requests": 9678,
+			"tokens": 455262810,
+			"cost": 173.70565119999998,
+			"timed": 9391,
+			"prompts": 3017,
+			"tools": 9805
 		},
 		"sessions": 426,
 		"deleted": 7
 	},
 	"restored": {
 		"all": {
-			"requests": 10144,
-			"tokens": 490774708,
-			"cost": 221.19770285,
-			"timed": 9837,
-			"prompts": 3142,
-			"tools": 10363
+			"requests": 9682,
+			"tokens": 455262818,
+			"cost": 173.70565119999998,
+			"timed": 9395,
+			"prompts": 3019,
+			"tools": 9807
 		},
 		"sessions": 428,
 		"deleted": 7
@@ -138,24 +138,24 @@
 	"readded": {
 		"kept": {
 			"all": {
-				"requests": 10144,
-				"tokens": 490774708,
-				"cost": 221.19770285,
-				"timed": 9837,
-				"prompts": 3142,
-				"tools": 10363
+				"requests": 9682,
+				"tokens": 455262818,
+				"cost": 173.70565119999998,
+				"timed": 9395,
+				"prompts": 3019,
+				"tools": 9807
 			},
 			"sessions": 428,
 			"deleted": 128
 		},
 		"again": {
 			"all": {
-				"requests": 10144,
-				"tokens": 490774708,
-				"cost": 221.19770285,
-				"timed": 9837,
-				"prompts": 3142,
-				"tools": 10363
+				"requests": 9682,
+				"tokens": 455262818,
+				"cost": 173.70565119999998,
+				"timed": 9395,
+				"prompts": 3019,
+				"tools": 9807
 			},
 			"sessions": 428,
 			"deleted": 7
@@ -163,12 +163,12 @@
 	},
 	"recreated": {
 		"all": {
-			"requests": 10148,
-			"tokens": 490774716,
-			"cost": 221.19770285,
-			"timed": 9841,
-			"prompts": 3144,
-			"tools": 10365
+			"requests": 9686,
+			"tokens": 455262826,
+			"cost": 173.70565119999998,
+			"timed": 9399,
+			"prompts": 3021,
+			"tools": 9809
 		},
 		"sessions": 429,
 		"deleted": 128
