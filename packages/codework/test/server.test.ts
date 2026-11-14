@@ -9,7 +9,7 @@ import { HttpServer } from "effect/http";
 import { RpcTest } from "effect/rpc";
 import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -76,6 +76,17 @@ afterAll(() => {
 });
 
 describe("server", () => {
+	it("server.info names the host as its user sees it", async () => {
+		const name =
+			process.platform === "darwin"
+				? (await exec("scutil", ["--get", "ComputerName"])).stdout.trim()
+				: hostname().trim();
+		await Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			expect((yield* rpc["server.info"]({})).host).toEqual({ name });
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
+
 	it("sandbox.drivers returns the core drivers", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);

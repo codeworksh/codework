@@ -89,7 +89,13 @@ const announce = Layer.unwrap(
 	}),
 );
 
-export const layer = (options: { host: string; port: number; harness: Harness.Options }) => {
+export const layer = (options: {
+	host: string;
+	port: number;
+	harness: Harness.Options;
+	/** Who the server says it is; tests name its host. */
+	identity?: Layer.Layer<Identity.Service>;
+}) => {
 	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: Contract.path, protocol: "websocket" }).pipe(
 		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
 	);
@@ -104,7 +110,7 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provideMerge(announce),
 		Layer.provideMerge(NodeHttpServer.layer(createServer, { host: options.host, port: options.port })),
 		Layer.provide(RpcSerialization.layerNdjson),
-		Layer.provide(Identity.layer),
+		Layer.provide(options.identity ?? Identity.layer),
 		// Built after the harness and before everything above it, the listener included.
 		Layer.provide(sweep),
 		Layer.provide(Harness.layer(options.harness)),
