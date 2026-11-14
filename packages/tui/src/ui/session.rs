@@ -134,12 +134,7 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
     let palette = app.theme;
     let buffer = frame.buffer_mut();
 
-    let title = app
-        .session
-        .as_ref()
-        .map(|s| s.title.as_str())
-        .filter(|t| !t.is_empty())
-        .unwrap_or("session");
+    let title = app.header_title();
 
     let mut meta = app.model_label();
     if let Some(thinking) = app.thinking_label() {
@@ -148,11 +143,9 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
             meta.push_str(&thinking);
         }
     }
-    if app.usage.total_tokens > 0 {
-        meta.push_str(&format!(
-            " · {} tok · ${:.4}",
-            app.usage.total_tokens, app.usage.cost
-        ));
+    let (total_tokens, cost) = app.active_usage();
+    if total_tokens > 0 {
+        meta.push_str(&format!(" · {} tok · ${:.4}", total_tokens, cost));
     }
 
     let meta_width = text::width(&meta) as u16;
@@ -174,10 +167,15 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         Style::default().fg(palette.text),
     );
 
-    // On wider terminals, show the session's working directory beside its title.
+    // On wider terminals, show the thread's working directory beside its title.
     if area.width >= 64 {
-        if let Some(session) = &app.session {
-            let dir = session.host_dir.as_deref().unwrap_or(&session.directory);
+        if let Some(thread) = &app.thread {
+            let dir = thread
+                .session
+                .host_dir
+                .as_deref()
+                .or_else(|| thread.placement.as_ref().map(|p| p.directory.as_str()))
+                .unwrap_or(&thread.session.directory);
             let title_cols = text::width(fitted_title) as u16;
             let dir_x = area.x + 2 + title_cols + 2;
             if dir_x + 8 < right_x {

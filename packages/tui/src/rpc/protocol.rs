@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
-pub use crate::types::{HistoryEntry, Part, ToolResult, ToolResultContent, ToolTime};
+pub use crate::types::{
+    DeltaKind, HistoryEntry, InboxState, LiveDelta, Part, QueuedPrompt, ThreadInfo, ThreadItem,
+    ToolResult, ToolResultContent, ToolTime,
+};
 
 #[derive(Debug, Serialize)]
 pub struct RpcRequest<T> {
@@ -69,7 +72,7 @@ pub enum ServerMessage {
     Chunk {
         #[serde(rename = "requestId")]
         request_id: serde_json::Value,
-        values: Vec<EventEnvelope>,
+        values: Vec<serde_json::Value>,
     },
     Defect {
         #[allow(dead_code)]
@@ -152,10 +155,26 @@ pub struct CreateSessionPayload {
     pub runtime: Option<RuntimePayload>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ConfigureSessionPayload {
+#[derive(Debug, Default, Serialize)]
+pub struct ListThreadsPayload {
+    #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThreadRefPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    #[serde(rename = "threadId", skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConfigureThreadPayload {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "threadId", skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
     pub runtime: RuntimePayload,
 }
 
@@ -174,36 +193,36 @@ pub struct ModelRefPayload {
 }
 
 #[derive(Debug, Serialize)]
-pub struct PromptSessionPayload {
+pub struct PromptThreadPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    #[serde(rename = "threadId", skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
     pub text: String,
-    pub delivery: &'static str, // "followUp"
+    pub delivery: &'static str,
     pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SessionIdPayload {
+pub struct ThreadMessagePayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SessionMessagePayload {
-    #[serde(rename = "sessionId")]
-    pub session_id: String,
+    #[serde(rename = "threadId", skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
     #[serde(rename = "messageId")]
     pub message_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SessionLogPayload {
+pub struct ThreadSyncPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    #[serde(rename = "threadId")]
+    pub thread_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub follow: Option<bool>,
+    pub budget: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -213,13 +232,13 @@ pub struct ListModelsPayload<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionHistoryResponse {
+pub struct ThreadHistoryResponse {
     #[serde(default)]
     pub entries: Vec<HistoryEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionMessageResponse {
+pub struct ThreadMessageResponse {
     #[serde(default)]
     pub found: bool,
 }
