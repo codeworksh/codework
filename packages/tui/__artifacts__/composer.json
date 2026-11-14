@@ -1,0 +1,14 @@
+{
+  "savedDrafts": [
+    {
+      "caret": 10,
+      "text": "fork draft"
+    }
+  ],
+  "sent": {
+    "delivery": "followUp",
+    "sessionId": "session",
+    "text": "fn main() {\n    🦀\n}\ntail",
+    "threadId": "main"
+  }
+}

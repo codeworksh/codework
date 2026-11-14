@@ -1,6 +1,7 @@
 //! The thread projection and keyboard interactions. Network tasks return scoped events;
 //! only this module mutates conversation state.
 use crate::action::{Action, Keymap, Resolution};
+use crate::draft::DraftStore;
 use crate::event::{AppEvent, RpcEvent};
 use crate::menu::{Entry, Menu, Preview};
 use crate::prompt::Prompt;
@@ -247,6 +248,11 @@ pub struct QueueEdit {
     pub id: String,
     pub text: Prompt,
 }
+struct Remembered {
+    prompt: Prompt,
+    scroll: usize,
+    work: BTreeMap<String, bool>,
+}
 pub struct App {
     pub screen: Screen,
     pub theme: &'static Palette,
@@ -271,6 +277,13 @@ pub struct App {
     pub queue_edit: Option<QueueEdit>,
     pub focused_turn: Option<usize>,
     pub queue_pending: BTreeSet<String>,
+    drafts: DraftStore,
+    remembered: BTreeMap<String, Remembered>,
+    work_restore: BTreeMap<String, bool>,
+    draft_revision: u64,
+    draft_timer: Option<tokio::task::AbortHandle>,
+    browser_generation: u64,
+    browser_stream: Option<tokio::task::AbortHandle>,
     info_revision: u64,
     paging: bool,
     creating: bool,
@@ -292,11 +305,23 @@ impl Default for App {
 impl Drop for App {
     fn drop(&mut self) {
         self.stop_stream();
+        self.stop_browser();
+        if let Some(timer) = self.draft_timer.take() {
+            timer.abort();
+        }
+        let _ = self.drafts.save(&self.draft_key(), &self.prompt);
     }
 }
 impl App {
     pub fn with_client(tx: mpsc::UnboundedSender<AppEvent>, client: RpcClient) -> Self {
-        Self {
+        Self::with_storage(tx, client, DraftStore::default())
+    }
+    pub fn with_storage(
+        tx: mpsc::UnboundedSender<AppEvent>,
+        client: RpcClient,
+        drafts: DraftStore,
+    ) -> Self {
+        let mut app = Self {
             screen: Screen::Welcome,
             theme: theme::default_palette(),
             prompt: Prompt::default(),
@@ -320,6 +345,13 @@ impl App {
             queue_edit: None,
             focused_turn: None,
             queue_pending: BTreeSet::new(),
+            drafts,
+            remembered: BTreeMap::new(),
+            work_restore: BTreeMap::new(),
+            draft_revision: 0,
+            draft_timer: None,
+            browser_generation: 0,
+            browser_stream: None,
             info_revision: 0,
             paging: false,
             creating: false,
@@ -331,10 +363,16 @@ impl App {
             keymap: Keymap::new(),
             client: Arc::new(client),
             tx,
-        }
+        };
+        app.restore_draft();
+        app
     }
     pub fn new(tx: mpsc::UnboundedSender<AppEvent>) -> Self {
-        let app = Self::with_client(tx, RpcClient::default());
+        let client = RpcClient::default();
+        let drafts = crate::rpc::client::codework_home_dir()
+            .map(|home| DraftStore::at(&home, client.url()))
+            .unwrap_or_default();
+        let app = Self::with_storage(tx, client, drafts);
         let tx = app.tx.clone();
         let client = app.client.clone();
         tokio::spawn(async move {
@@ -467,6 +505,9 @@ impl App {
         self.rebuild();
     }
     pub fn switch_thread(&mut self, info: ThreadInfo) {
+        self.remember();
+        self.stop_browser();
+        self.popup = None;
         self.stop_stream();
         self.generation += 1;
         self.entries.clear();
@@ -486,6 +527,7 @@ impl App {
         self.screen = Screen::Session;
         self.reconnecting = false;
         self.apply_info(info);
+        self.restore_draft();
         self.follow();
         self.spawn_list_models();
     }
@@ -513,7 +555,8 @@ impl App {
     }
 
     pub fn update(&mut self, event: AppEvent) -> bool {
-        match event {
+        let before = self.prompt.clone();
+        let redraw = match event {
             AppEvent::Key(key) => self.handle_key(key),
             AppEvent::Scroll(delta) => {
                 if self.popup.is_some() {
@@ -524,7 +567,112 @@ impl App {
             }
             AppEvent::Paste(text) => self.paste(&text),
             AppEvent::Resize => true,
+            AppEvent::SaveDraft { revision } => {
+                if revision == self.draft_revision {
+                    self.save_draft();
+                    return self.notice.is_some();
+                }
+                false
+            }
             AppEvent::Rpc(event) => self.handle_rpc(*event),
+        };
+        if self.prompt != before {
+            self.schedule_draft();
+        }
+        redraw
+    }
+    fn draft_key(&self) -> String {
+        self.address()
+            .map(|a| format!("{}/{}", a.session_id, a.thread_id))
+            .unwrap_or_else(|| {
+                format!(
+                    "new:{}",
+                    std::env::current_dir().unwrap_or_default().display()
+                )
+            })
+    }
+    fn save_draft(&mut self) {
+        if let Err(error) = self.drafts.save(&self.draft_key(), &self.prompt) {
+            self.notice = Some(error);
+        }
+    }
+    fn schedule_draft(&mut self) {
+        self.draft_revision += 1;
+        if let Some(timer) = self.draft_timer.take() {
+            timer.abort();
+        }
+        let revision = self.draft_revision;
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            self.draft_timer = Some(
+                handle
+                    .spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                        let _ = tx.send(AppEvent::SaveDraft { revision });
+                    })
+                    .abort_handle(),
+            );
+        }
+    }
+    fn remember(&mut self) {
+        self.save_draft();
+        let work = self
+            .turns
+            .iter()
+            .filter_map(|turn| Some((turn.prompt_id.clone()?, turn.work_open?)))
+            .collect();
+        self.remembered.insert(
+            self.draft_key(),
+            Remembered {
+                prompt: self.prompt.clone(),
+                scroll: self.scroll,
+                work,
+            },
+        );
+    }
+    fn restore_draft(&mut self) {
+        self.prompt = Prompt::default();
+        self.scroll = 0;
+        self.work_restore.clear();
+        let key = self.draft_key();
+        if let Some(saved) = self.remembered.remove(&key) {
+            self.prompt = saved.prompt;
+            self.scroll = saved.scroll;
+            self.work_restore = saved.work;
+        } else {
+            match self.drafts.load(&key) {
+                Ok(Some(prompt)) => self.prompt = prompt,
+                Ok(None) => {}
+                Err(error) => self.notice = Some(error),
+            }
+        }
+        self.draft_revision += 1;
+    }
+    fn stop_browser(&mut self) {
+        self.browser_generation += 1;
+        if let Some(task) = self.browser_stream.take() {
+            task.abort();
+        }
+    }
+    fn open_browser(&mut self) {
+        self.stop_browser();
+        let generation = self.browser_generation;
+        self.popup = Some(Popup::Sessions {
+            search: Prompt::default(),
+            menu: Menu::new(Vec::new()),
+            sessions: Vec::new(),
+        });
+        self.notice = None;
+        let tx = self.tx.clone();
+        let client = self.client.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            self.browser_stream = Some(
+                handle
+                    .spawn(async move {
+                        client.watch_threads(tx, generation).await;
+                    })
+                    .abort_handle(),
+            );
         }
     }
     fn scroll_by(&mut self, delta: isize) -> bool {
@@ -558,7 +706,7 @@ impl App {
                 | Popup::Sessions { search, .. }
                 | Popup::Themes { search, .. },
             ) => {
-                search.insert_text(text);
+                search.insert_inline(text);
                 self.filter_popup();
             }
             Some(Popup::Thinking(_) | Popup::Fork(_)) => return false,
@@ -578,6 +726,20 @@ impl App {
             Resolution::Consumed => return false,
             Resolution::Unbound => {}
         }
+        if key.code == KeyCode::Char('p') && key.modifiers == KeyModifiers::CONTROL {
+            self.open_browser();
+            return true;
+        }
+        let newline = (key.code == KeyCode::Enter && key.modifiers == KeyModifiers::SHIFT)
+            || (key.code == KeyCode::Char('j') && key.modifiers == KeyModifiers::CONTROL);
+        if newline && self.popup.is_none() {
+            if let Some(edit) = &mut self.queue_edit {
+                edit.text.insert_text("\n");
+            } else {
+                self.prompt.insert_text("\n");
+            }
+            return true;
+        }
         if self.queue_edit.is_some() {
             if key.code == KeyCode::Esc {
                 self.queue_edit = None;
@@ -595,6 +757,9 @@ impl App {
         }
         if key.code == KeyCode::Esc {
             if let Some(popup) = self.popup.take() {
+                if matches!(popup, Popup::Sessions { .. }) {
+                    self.stop_browser();
+                }
                 match popup {
                     Popup::Themes { initial, .. } => self.theme = initial,
                     Popup::Commands(_) => self.prompt.clear(),
@@ -746,12 +911,16 @@ impl App {
                 menu,
                 initial,
             }) => self.theme = filter_themes(search.text(), menu, initial),
-            Some(Popup::Sessions { search, menu, .. }) => {
-                let needle = search.text().to_lowercase();
-                menu.filter(|e| {
-                    e.name.to_lowercase().contains(&needle)
-                        || e.detail.to_lowercase().contains(&needle)
-                });
+            Some(Popup::Sessions {
+                search,
+                menu,
+                sessions,
+            }) => {
+                *menu = crate::browser::menu(
+                    sessions,
+                    search.text(),
+                    menu.selected().map(|e| e.id.as_ref()),
+                );
             }
             _ => {}
         }
@@ -832,18 +1001,10 @@ impl App {
             "queue" => self.focus_queue(-1),
             "fork" => self.open_fork(),
             "copy" => self.copy_reply(),
-            "session" => {
-                let tx = self.tx.clone();
-                let client = self.client.clone();
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    handle.spawn(async move {
-                        let _ = tx.send(AppEvent::rpc(RpcEvent::ThreadsLoaded(
-                            client.list_threads().await,
-                        )));
-                    });
-                }
-            }
+            "session" => self.open_browser(),
             "new" => {
+                self.remember();
+                self.stop_browser();
                 self.stop_stream();
                 self.generation += 1;
                 self.session = None;
@@ -860,6 +1021,7 @@ impl App {
                 self.scroll = 0;
                 self.busy = false;
                 self.screen = Screen::Welcome;
+                self.restore_draft();
             }
             "reload" => self.spawn_operation(|client, _| async move {
                 let (count, error) = client.reload_plugins().await?;
@@ -1122,23 +1284,33 @@ impl App {
                 Ok(models) => self.models = Some(models),
                 Err(error) => self.notice = Some(error),
             },
-            RpcEvent::ThreadsLoaded(result) => match result {
-                Ok(mut sessions) => {
-                    sessions.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
-                    let entries = sessions
-                        .iter()
-                        .map(|t| {
-                            Entry::owned(t.id.clone(), t.display_title(), t.working_directory())
-                        })
-                        .collect();
-                    self.popup = Some(Popup::Sessions {
-                        search: Prompt::default(),
-                        menu: Menu::new(entries),
-                        sessions,
-                    });
+            RpcEvent::ThreadsLoaded { generation, result } => {
+                if generation != self.browser_generation
+                    || !matches!(self.popup, Some(Popup::Sessions { .. }))
+                {
+                    return false;
                 }
-                Err(error) => self.notice = Some(error),
-            },
+                match result {
+                    Ok(threads) => {
+                        if let Some(Popup::Sessions {
+                            search,
+                            menu,
+                            sessions,
+                        }) = &mut self.popup
+                        {
+                            let selected = menu
+                                .selected()
+                                .map(|e| e.id.to_string())
+                                .or_else(|| self.session.as_ref().map(|t| t.id.clone()));
+                            *menu =
+                                crate::browser::menu(&threads, search.text(), selected.as_deref());
+                            *sessions = threads;
+                        }
+                        self.notice = None;
+                    }
+                    Err(error) => self.notice = Some(error),
+                }
+            }
             RpcEvent::Created {
                 result,
                 text,
@@ -1222,8 +1394,13 @@ impl App {
                         if cancelled {
                             self.queued_prompts.retain(|q| q.message_id != id);
                             if let Some(text) = restore {
-                                self.prompt.clear();
-                                self.prompt.insert_text(&text);
+                                let current = self.prompt.text().to_string();
+                                self.prompt = Prompt::default();
+                                self.prompt.insert_text(&if current.trim().is_empty() {
+                                    text
+                                } else {
+                                    format!("{text}\n\n{current}")
+                                });
                                 self.queue_focus = None;
                             }
                         } else {
@@ -1485,6 +1662,13 @@ impl App {
             }
         }
         for turn in &mut turns {
+            if let Some(open) = turn
+                .prompt_id
+                .as_ref()
+                .and_then(|id| self.work_restore.remove(id))
+            {
+                turn.work_open = Some(open);
+            }
             if let Some(previous) = self
                 .turns
                 .iter()

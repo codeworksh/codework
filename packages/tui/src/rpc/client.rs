@@ -297,6 +297,93 @@ impl RpcClient {
             .await
     }
 
+    /// Index commits invalidate the browser's complete thread list, including removals.
+    /// Reopening from zero on reconnect avoids maintaining a second index projection.
+    pub async fn watch_threads(&self, tx: mpsc::UnboundedSender<AppEvent>, generation: u64) {
+        for _ in 0..30 {
+            let result = self.watch_index_once(&tx, generation).await;
+            if tx.is_closed() {
+                return;
+            }
+            if let Err(error) = result {
+                let _ = tx.send(AppEvent::rpc(RpcEvent::ThreadsLoaded {
+                    generation,
+                    result: Err(format!("Thread browser reconnecting: {error}")),
+                }));
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    async fn watch_index_once(
+        &self,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+        generation: u64,
+    ) -> Result<(), String> {
+        let (mut ws, _) = connect_async(&self.url).await.map_err(|e| e.to_string())?;
+        let id = self.next_request_id();
+        ws.send(Message::Text(
+            serde_json::to_string(&RpcRequest::new(
+                id,
+                "index.sync",
+                serde_json::json!({"after":0}),
+            ))
+            .map_err(|e| e.to_string())?
+                + "\n",
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+        while let Some(message) = ws.next().await {
+            match message.map_err(|e| e.to_string())? {
+                Message::Text(text) => {
+                    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+                        match serde_json::from_str::<ServerMessage>(line)
+                            .map_err(|e| e.to_string())?
+                        {
+                            ServerMessage::Chunk { request_id, values }
+                                if as_request_id(&request_id) == Some(id) =>
+                            {
+                                if values.iter().any(|value| value["_tag"] == "Synced") {
+                                    let threads = self.list_threads().await?;
+                                    tx.send(AppEvent::rpc(RpcEvent::ThreadsLoaded {
+                                        generation,
+                                        result: Ok(threads),
+                                    }))
+                                    .map_err(|_| "UI closed".to_string())?;
+                                }
+                                ws.send(Message::Text(
+                                    serde_json::to_string(&RpcAck::new(id))
+                                        .map_err(|e| e.to_string())?
+                                        + "\n",
+                                ))
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            }
+                            ServerMessage::Exit { request_id, exit }
+                                if as_request_id(&request_id) == Some(id) =>
+                            {
+                                return Err(match exit {
+                                    ExitPayload::Failure { cause } => format_cause(cause.as_ref()),
+                                    _ => "Index subscription ended".into(),
+                                })
+                            }
+                            ServerMessage::Defect { defect } => {
+                                return Err(format_cause(defect.as_ref()))
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Message::Ping(bytes) => ws
+                    .send(Message::Pong(bytes))
+                    .await
+                    .map_err(|e| e.to_string())?,
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        Err("Index connection closed".into())
+    }
+
     pub async fn list_models(&self, host_dir: Option<&str>) -> Result<ModelList, String> {
         self.request("model.list", ListModelsPayload { host_dir })
             .await

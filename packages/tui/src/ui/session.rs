@@ -17,8 +17,9 @@ use crate::app::{App, Popup, TurnState};
 use crate::diff::{self, DEFAULT_MAX_DIFF_LINES};
 use crate::tool::{self, ToolRow, ToolStatus};
 
-const IDLE_HINTS: &str = "enter send · alt+↑ queue · ctrl+o work · ctrl+y copy · / commands";
-const BUSY_HINTS: &str = "enter steer · alt+enter follow-up · alt+↑ queue · ctrl+o work · esc stop";
+const IDLE_HINTS: &str = "enter send · ctrl+j newline · ctrl+p threads · alt+↑ queue · ctrl+o work";
+const BUSY_HINTS: &str =
+    "enter steer · alt+enter follow-up · ctrl+j newline · ctrl+p threads · esc stop";
 const COMMAND_HINTS: &str = "↑↓ move · enter choose · esc close";
 const SEARCH_HINTS: &str = "↑↓ move · type to search · enter choose · esc close";
 
@@ -43,7 +44,12 @@ pub fn draw(app: &App, frame: &mut Frame) {
         Constraint::Length(1),
         Constraint::Fill(1),
         Constraint::Length(tray_height),
-        Constraint::Length(input::HEIGHT),
+        Constraint::Length(input::height(
+            &app.prompt,
+            area.width
+                .saturating_sub(if area.width < 44 { 2 } else { 4 }),
+            area.height.saturating_sub(tray_height + 5),
+        )),
         Constraint::Length(1),
     ])
     .areas(area);
@@ -660,8 +666,8 @@ fn draw_queue(app: &App, frame: &mut Frame, area: Rect) {
         if let Some(edit) = app.queue_edit.as_ref().filter(|e| e.id == q.message_id) {
             let prefix_width = text::width(&prefix);
             let usable = (rect.width as usize).saturating_sub(prefix_width + 1);
-            let (shown, offset) =
-                text::scrolled(edit.text.text(), edit.text.before_caret(), usable);
+            let (line, before) = edit.text.current_line();
+            let (shown, offset) = text::scrolled(line, before, usable);
             frame.render_widget(
                 Paragraph::new(format!("{prefix}{shown}"))
                     .style(Style::default().fg(app.theme.brand)),
@@ -673,13 +679,13 @@ fn draw_queue(app: &App, frame: &mut Frame, area: Rect) {
             ));
         } else {
             frame.render_widget(
-                Paragraph::new(format!("{prefix}{}", q.prompt)).style(Style::default().fg(
-                    if focused {
+                Paragraph::new(format!("{prefix}{}", q.prompt.replace('\n', " ↵ "))).style(
+                    Style::default().fg(if focused {
                         app.theme.brand
                     } else {
                         app.theme.text_secondary
-                    },
-                )),
+                    }),
+                ),
                 rect,
             );
         }

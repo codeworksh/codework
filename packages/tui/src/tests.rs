@@ -155,13 +155,13 @@ async fn queue_keyboard_actions_obey_server_results_and_preserve_composer() {
     key(&mut app, KeyCode::Up, KeyModifiers::NONE);
     key(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
     receive(&mut app, &mut rx).await;
-    assert_eq!(app.prompt.text(), "rewritten");
+    assert_eq!(app.prompt.text(), "rewritten\n\nunsent draft");
     assert_eq!(app.queued_prompts.len(), 2);
     key(&mut app, KeyCode::Up, KeyModifiers::ALT);
     key(&mut app, KeyCode::Down, KeyModifiers::NONE);
     key(&mut app, KeyCode::Delete, KeyModifiers::NONE);
     receive(&mut app, &mut rx).await;
-    assert_eq!(app.prompt.text(), "rewritten");
+    assert_eq!(app.prompt.text(), "rewritten\n\nunsent draft");
     assert_eq!(app.queued_prompts.len(), 1);
     assert_eq!(app.queued_prompts[0].message_id, "promoted");
     assert_eq!(server.calls.lock().await.len(), 5);

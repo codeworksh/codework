@@ -1,6 +1,10 @@
 mod action;
 mod app;
+mod browser;
+#[cfg(test)]
+mod conversation;
 mod diff;
+mod draft;
 mod event;
 mod menu;
 mod prompt;

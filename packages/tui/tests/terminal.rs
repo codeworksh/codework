@@ -49,6 +49,7 @@ async fn terminal_conversation_queue_fork_copy_and_page() {
                                 "server.info"=>json!({"pid":1,"version":"test","storeId":"store","rev":10}),
                                 "model.list"=>json!({"providers":[]}),
                                 "thread.list"=>json!([thread]),
+                                "index.sync"=>{tx.send(json!({"_tag":"Chunk","requestId":id,"values":[{"_tag":"Synced","storeId":"store","rev":10}]})).unwrap();continue;},
                                 "thread.info"=>thread.clone(),
                                 "thread.sync"=>{
                                     subscribers.lock().await.push(tx.clone());
@@ -92,7 +93,7 @@ def wait(text):
     while text not in output and time.monotonic()<end: drain(.05)
     assert text in output, ('missing',text,bytes(output[-3000:]))
 try:
-    drain()
+    wait(b'\x1b[?2026l')
     send(b'/session\r'); wait(b'Terminal test'); send(b'\r'); wait(b'Terminal answer')
     send(b'\x19'); wait(b'\x1b]52;c;VGVybWluYWwgYW5zd2Vy\x07')
     send(b'\x1b[5~'); drain() # PageUp loads older history even when it fits the viewport
@@ -105,6 +106,15 @@ finally:
     if child.poll() is None: child.kill(); child.wait()
     os.close(master)
 "#;
+    let home = std::env::temp_dir().join(format!(
+        "codework-tui-terminal-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let test_home = home.clone();
     let binary = env!("CARGO_BIN_EXE_codework-tui");
     let outcome = tokio::task::spawn_blocking(move || {
         Command::new("python3")
@@ -112,6 +122,7 @@ finally:
             .arg(script)
             .arg(binary)
             .env("CODEWORK_RPC_SERVER", url)
+            .env("CODEWORK_HOME_DIR", test_home)
             .env("TERM", "xterm-256color")
             .stdin(Stdio::null())
             .output()
@@ -127,6 +138,7 @@ finally:
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    std::fs::remove_dir_all(home).unwrap();
     let calls = calls.lock().await;
     for tag in [
         "thread.sync",

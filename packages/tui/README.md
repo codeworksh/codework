@@ -3,7 +3,8 @@
 A fast and lightweight terminal interface for [CodeWork](https://www.codework.sh), written in **Rust**.
 
 The TUI connects to the CodeWork server to send prompts and follow conversations through
-`thread.sync`. It supports model and thinking selection, queued prompt management,
+`thread.sync`. It supports a multiline composer, saved per-thread drafts, a live thread browser,
+model and thinking selection, queued prompt management,
 collapsible work logs, conversation forks, clipboard copying, and older history on demand.
 
 ---
@@ -81,12 +82,17 @@ pnpm start
 | Shortcut | Action |
 | --- | --- |
 | `Enter` | Send, or steer a running thread |
+| `Shift+Enter` / `Ctrl+J` | Insert a newline; pasted code keeps its indentation |
+| `↑` / `↓` while typing | Move between composer lines |
+| `Home` / `End` | Move to the start/end of the current line |
+| `Ctrl+Home` / `Ctrl+End` | Move to the start/end of the whole draft |
+| `Ctrl+P` / `/session` | Open the live thread browser; Ctrl+P preserves the current draft |
 | `Alt+Enter` | Queue a follow-up |
-| `↑` / `↓`, mouse wheel, `PageUp` / `PageDown` | Scroll (arrows when composer is empty); fetch older history at the top |
+| `Shift+↑` / `Shift+↓`, mouse wheel, `PageUp` / `PageDown` | Scroll; fetch older history at the top (plain arrows also scroll when the composer is empty) |
 | `/queue`, `Alt+↑` / `Alt+↓` | Focus and navigate queued prompts above the composer |
 | `l` / `Enter` in queue | Switch steer/follow-up lane, or Send Now when parked/idle |
 | `e` in queue | Edit in place; Enter saves, Escape cancels |
-| `w` in queue | Cancel and restore to composer when cancellation succeeds |
+| `w` in queue | Cancel and prepend to the composer when cancellation succeeds, preserving the existing draft |
 | `Delete` / `d` in queue | Cancel without restoring |
 | `Ctrl+O` | Toggle the focused turn's work log, or the latest turn |
 | `Ctrl+↑` / `Ctrl+↓` | Focus a turn; Space or Enter toggles its work log |
@@ -96,6 +102,16 @@ pnpm start
 | `/new`, `/reload` | Start a new session or reload plugins |
 | `Esc` | Close editing/focus/menu, interrupt a running thread, clear the composer, or exit |
 | `Ctrl+C`, `Ctrl+D`, `Ctrl+X` then `q` | Exit |
+
+The composer grows to six visible text rows and scrolls to keep the caret visible. Drafts
+are saved after 400 ms of inactivity and when switching threads or exiting. They live in
+`<CodeWork home>/tui/drafts/`, separated by server endpoint and thread; the default home is
+`~/.codework` and can be changed with `CODEWORK_HOME_DIR`. Empty drafts are removed.
+Scroll position and work-log choices are remembered while this TUI stays open.
+
+The browser groups threads by project and session, with main/fork/subagent labels and
+idle/starting/running/parked states. It watches `index.sync` and refreshes `thread.list`
+without losing the current filter or selection. Closing it stops the subscription.
 
 OSC 52 sends clipboard content through the terminal, including over SSH. Clipboard access
 must be enabled in the terminal (and forwarded by any terminal multiplexer).
@@ -110,7 +126,10 @@ cargo clippy --all-targets -- -D warnings
 
 The terminal integration test launches the real binary in a Python 3 standard-library PTY
 against a deterministic local WebSocket peer; it does not need provider credentials.
-It records the queue, fork, and paging RPCs in `__artifacts__/terminal.json` and checks
+The restart test also launches the binary twice, checks a live browser update, and verifies
+that multiline text survives switching threads, restarting, and sending. Its artifact is
+`__artifacts__/composer.json`.
+The suite records the queue, fork, and paging RPCs in `__artifacts__/terminal.json` and checks
 rendered conversation output in `__artifacts__/conversation.txt`. Regenerate intentional
 changes with `UPDATE_ARTIFACTS=1 cargo test`, then rerun `cargo test` without that variable.
 

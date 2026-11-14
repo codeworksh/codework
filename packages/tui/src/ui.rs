@@ -26,7 +26,7 @@ const GAP: u16 = 2;
 
 /// The line under the prompt, for each thing that can have the keyboard. Only keys the app answers
 /// are listed, so nothing here promises something that does not happen.
-const HINTS: &str = "←→ move · / commands · esc quit";
+const HINTS: &str = "enter send · shift+enter/ctrl+j newline · ctrl+p threads · / commands";
 const COMMAND_HINTS: &str = "↑↓ move · enter choose · esc close";
 const THEME_HINTS: &str = "↑↓ move · type to search · enter choose · esc close";
 
@@ -57,14 +57,19 @@ fn view_welcome(app: &App, frame: &mut Frame) {
     //
     // On a frame too short for the whole column it is the wordmark that goes first: the line you
     // type into outranks the word above it.
-    let below = GAP + input::HEIGHT + GAP + 1;
+    let prompt_height = input::height(
+        &app.prompt,
+        area.width.min(input::WIDTH),
+        area.height.saturating_sub(GAP * 2 + 1),
+    );
+    let below = GAP + prompt_height + GAP + 1;
     let art_rows = wordmark::rows(area.width)
         .unwrap_or(0)
         .min(area.height.saturating_sub(below));
     let [art, _, prompt, _, mut hint] = Layout::vertical([
         Constraint::Length(art_rows),
         Constraint::Length(GAP),
-        Constraint::Length(input::HEIGHT),
+        Constraint::Length(prompt_height),
         Constraint::Length(GAP),
         Constraint::Length(1),
     ])

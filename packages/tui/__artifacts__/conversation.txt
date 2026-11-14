@@ -15,4 +15,4 @@
   ┌────────────────────────────────────────────────────────────────────────── alpha ─┐
   │❯ build me flappy bird                                                            │
   └──────────────────────────────────────────────────────────────────────────────────┘
-            enter send · alt+↑ queue · ctrl+o work · ctrl+y copy · / commands
+        enter send · ctrl+j newline · ctrl+p threads · alt+↑ queue · ctrl+o work

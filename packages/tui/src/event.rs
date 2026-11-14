@@ -17,7 +17,10 @@ use crate::types::{ModelList, ServerInfo, ThreadInfo};
 pub enum RpcEvent {
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
-    ThreadsLoaded(Result<Vec<ThreadInfo>, String>),
+    ThreadsLoaded {
+        generation: u64,
+        result: Result<Vec<ThreadInfo>, String>,
+    },
     Created {
         result: Result<ThreadInfo, String>,
         text: String,
@@ -53,6 +56,9 @@ pub enum AppEvent {
     /// view reads its own dimensions from the frame it is drawing into, so a
     /// stale copy in state would be one more thing to keep in sync.
     Resize,
+    SaveDraft {
+        revision: u64,
+    },
     /// An event or response from the CodeWork RPC server.
     Rpc(Box<RpcEvent>),
 }
