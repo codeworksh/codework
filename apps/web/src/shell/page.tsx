@@ -7,8 +7,8 @@ import { makeHost } from "../kernel/host";
 import { useOpenElsewhere } from "../wm/open";
 
 /**
- * A page of its own, outside any workspace, with a widget's host so a widget's view can run on it:
- * `instanceId` keeps its saved state apart from any frame's, and what it opens goes to a workspace
+ * A page of its own, outside any tab, with a widget's host so a widget's view can run on it:
+ * `instanceId` keeps its saved state apart from any frame's, and what it opens goes to a tab
  * as the sidebar opens sessions.
  */
 export function Page({

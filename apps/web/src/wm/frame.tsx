@@ -32,7 +32,7 @@ import { MENU_ROW } from "@/components/menu";
 import { shortcutLabel } from "../shell/switcher";
 import { Title } from "./title";
 
-/** A workspace a frame can move to. */
+/** A tab a frame can move to. */
 export interface Destination {
 	readonly id: string;
 	readonly name: string;
@@ -60,13 +60,13 @@ interface FrameProps {
 	readonly offset: { readonly deltaX: number; readonly deltaY: number } | null;
 	/** Ease into new slots; off while the column divider is dragged so frames track the pointer. */
 	readonly animate: boolean;
-	/** The other workspaces, listed by the move menu. */
+	/** The other tabs, listed by the move menu. */
 	readonly destinations: readonly Destination[];
 	readonly onFocus: () => void;
 	readonly onPin: () => void;
 	readonly onMaximize: () => void;
-	readonly onMove: (workspaceId: string) => void;
-	/** Moves the frame to a new workspace; unset while all workspaces are in use. */
+	readonly onMove: (tabId: string) => void;
+	/** Moves the frame to a new tab; unset while all tabs are in use. */
 	readonly onMoveNew: (() => void) | undefined;
 	/** The widget's own rows in the frame menu, below Move. */
 	readonly menu?: ReactNode;
@@ -164,7 +164,7 @@ function More({
 	children,
 }: {
 	readonly destinations: readonly Destination[];
-	readonly onMove: (workspaceId: string) => void;
+	readonly onMove: (tabId: string) => void;
 	readonly onMoveNew: (() => void) | undefined;
 	readonly children?: ReactNode;
 }) {

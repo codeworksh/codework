@@ -1,6 +1,6 @@
 /**
  * What a placed copy last showed of a space, kept while the app runs: a frame leaves the screen with
- * its workspace, and returns as it was left.
+ * its tab, and returns as it was left.
  */
 export interface Memory {
 	readonly space: string;

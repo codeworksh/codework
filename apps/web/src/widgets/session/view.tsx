@@ -544,10 +544,10 @@ function Conversation({
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
 		setTitle(title, projectName);
-		// The project's folder icon, as in the sessions sidebar. The run's state shows on the workspace's tab
+		// The project's folder icon, as in the sessions sidebar. The run's state shows on the tab
 		// just above, so the frame does not repeat it.
 		if (projectName !== undefined) setIcon(<FolderIcon size={14} className="shrink-0 text-ink-muted" aria-hidden />);
-		// While focused, the workspace's tab reads as this session: its project, then its title.
+		// While focused, the tab reads as this session: its project, then its title.
 		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
 	}, [settings, title, projectName, setTitle, setIcon, setTab]);
 

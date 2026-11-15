@@ -54,7 +54,7 @@ export interface WidgetDefinition<Props> extends Navigation {
 	/** "one" allows a single instance (the shell hides duplicate). */
 	readonly cardinality: "one" | "many";
 	/**
-	 * This widget sets its workspace tab (the frame's `setTab`), possibly once it has loaded. Until it
+	 * This widget sets its tab's label (the frame's `setTab`), possibly once it has loaded. Until it
 	 * does, the tab keeps what it showed rather than flashing this frame's default title.
 	 */
 	readonly ownsTab?: boolean;

@@ -14,7 +14,7 @@ export interface Instance {
 	readonly id: string;
 	/** Registered widget kind; an unknown kind renders a "missing widget" frame. */
 	readonly kind: string;
-	/** webwm tag mask: the workspaces this instance appears on. */
+	/** webwm tag mask: the tabs this instance appears on. */
 	readonly tags: number;
 	/** Saved settings, decoded by the widget's own schema before it renders. */
 	readonly props: unknown;
@@ -35,7 +35,7 @@ export interface Desk {
 	readonly order: WidgetOrder;
 }
 
-/** The workspaces delete names this key too: the server drops the deleted workspace's widgets. */
+/** The tabs delete names this key too: the server drops the deleted tab's widgets. */
 export const deskKey = ["desk"];
 
 export const deskQueryAtom = Server.query("desk.get", undefined, { reactivityKeys: deskKey });
@@ -82,7 +82,7 @@ export const loadedDeskAtom = Atom.make((get) => {
 	return AsyncResult.isSuccess(result) ? fromSaved(result.value) : undefined;
 });
 
-// Local edits, tied to the server desk they were made on: a refetch (a workspace deleted) replaces them.
+// Local edits, tied to the server desk they were made on: a refetch (a tab deleted) replaces them.
 const editsAtom = Atom.make<{ readonly base: Desk; readonly desk: Desk } | undefined>(undefined).pipe(Atom.keepAlive);
 
 /** The desk the UI edits, empty until it loads; the client owns it from then on and saves it back. */
@@ -114,7 +114,7 @@ export const remove = (desk: Desk, id: string): Desk => ({
 	order: detachWidget(desk.order, id),
 });
 
-/** Instances that appear only on the workspace with this tag mask. */
+/** Instances that appear only on the tab with this tag mask. */
 export const only = (desk: Desk, tag: number) => desk.instances.filter((instance) => instance.tags === tag);
 
 export const focus = (desk: Desk, id: string): Desk => ({ ...desk, order: focusWidget(desk.order, id) });

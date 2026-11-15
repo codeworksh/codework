@@ -89,7 +89,7 @@ export function ArchiveSettings() {
 					<EmptyState
 						icon={<ArchiveIcon className="size-6" />}
 						title="No archived sessions"
-						description="Sessions you archive from a workspace or the threads list appear here."
+						description="Sessions you archive from a tab or the threads list appear here."
 					/>
 				) : (
 					<Group>

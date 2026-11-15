@@ -126,7 +126,7 @@ function createMainWindow(): BrowserWindow {
 		// Wider than the web app's 768px narrow breakpoint, so the sidebar always sits beside the content.
 		minWidth: 840,
 		minHeight: 620,
-		// The web shell draws its own title bar (workspace switcher) beside the
+		// The web shell draws its own title bar (the tab bar) beside the
 		// inset traffic lights, which sit centered in its 40px height.
 		...(process.platform === "darwin" && {
 			titleBarStyle: "hiddenInset",

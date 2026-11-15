@@ -22,7 +22,7 @@ const decodeCreated = Schema.decodeUnknownOption(Json.Created);
 
 /**
  * The start page: pick where to work and send the first prompt. The Session backend creates the
- * session and sends the prompt; the new session then opens in a workspace. On failure the text stays.
+ * session and sends the prompt; the new session then opens in a tab. On failure the text stays.
  */
 export function Landing() {
 	const registry = useContext(RegistryContext);

@@ -28,9 +28,9 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		defaultOther: "Ctrl+K",
 	},
 	{
-		id: "workspaces",
+		id: "tabs",
 		group: "Navigation",
-		label: "Switch to workspace 1–9",
+		label: "Switch to tab 1–9",
 		when: "Always",
 		defaultMac: "⌘1 … ⌘9",
 		defaultOther: "Ctrl+1 … Ctrl+9",
@@ -122,7 +122,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		id: "layout-toggle",
 		group: "Window Layout",
 		label: "Toggle Tiled / Focused view",
-		when: "Workspace active",
+		when: "Tab active",
 		defaultMac: "⌘⇧L",
 		defaultOther: "Ctrl+Shift+L",
 	},
@@ -130,7 +130,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		id: "panel-next",
 		group: "Window Layout",
 		label: "Focus next panel",
-		when: "Workspace active",
+		when: "Tab active",
 		defaultMac: "⌘]",
 		defaultOther: "Ctrl+]",
 	},
@@ -138,7 +138,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		id: "panel-prev",
 		group: "Window Layout",
 		label: "Focus previous panel",
-		when: "Workspace active",
+		when: "Tab active",
 		defaultMac: "⌘[",
 		defaultOther: "Ctrl+[",
 	},
@@ -146,7 +146,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		id: "panel-pin",
 		group: "Window Layout",
 		label: "Pin or unpin focused panel",
-		when: "Workspace active",
+		when: "Tab active",
 		defaultMac: "⌘⇧I",
 		defaultOther: "Ctrl+Shift+I",
 	},
@@ -154,7 +154,7 @@ const SHORTCUTS: readonly ShortcutItem[] = [
 		id: "panel-close",
 		group: "Window Layout",
 		label: "Close focused panel",
-		when: "Workspace active",
+		when: "Tab active",
 		defaultMac: "⌘W",
 		defaultOther: "Ctrl+W",
 	},
@@ -197,7 +197,7 @@ export function KeybindingsSettings() {
 	return (
 		<Page
 			title="Keybindings"
-			description="Every keyboard shortcut handled across workspaces, conversations, and the command palette."
+			description="Every keyboard shortcut handled across tabs, conversations, and the command palette."
 			actions={
 				hasCustom ? (
 					<Button size="sm" variant="secondary" onClick={() => setCustom({})}>

@@ -8,7 +8,7 @@ const decodeState = Schema.decodeUnknownOption(SyncState);
 const decodeChanged = Schema.decodeUnknownOption(SyncChanged);
 
 /**
- * How long a space's reads outlive their last view: its frame leaves the screen with its workspace,
+ * How long a space's reads outlive their last view: its frame leaves the screen with its tab,
  * and returning shows what was there at once, still current, instead of loading it again.
  */
 const IDLE = "5 minutes";

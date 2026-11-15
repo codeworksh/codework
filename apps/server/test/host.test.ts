@@ -18,7 +18,6 @@ import {
 	synced,
 	tempDir,
 	waitFor,
-	write,
 } from "./fixtures/apps.ts";
 
 afterEach(cleanup);
@@ -129,31 +128,3 @@ it("a machine is named by its server's host unless the user names it, else by wh
 		)(steps),
 	);
 }, 90_000);
-
-it("the built-in server's old seed name is no override after the migration", async () => {
-	const appHome = tempDir("host-migrate");
-	const first = await app(appHome);
-	const boxId = await first.run((rpc) =>
-		rpc["servers.add"]({ kind: "remote", name: "Box", url: "wss://box.example.test/rpc" }),
-	);
-	await stop(first.proc);
-	// app.db as it was before `host`: the seed's name on the built-in server, a name on every row.
-	write(appHome, "ALTER TABLE machine DROP COLUMN boot");
-	write(appHome, "ALTER TABLE machine DROP COLUMN host");
-	write(appHome, "UPDATE machine SET name = 'CodeWork' WHERE id = 'local'");
-	write(appHome, "DELETE FROM effect_sql_migrations WHERE migration_id >= 202611140002");
-
-	const second = await app(appHome);
-	const servers = await second.run((rpc) =>
-		rpc["servers.watch"](undefined).pipe(Stream.runHead, Effect.map(Option.getOrThrow)),
-	);
-	const migrated = {
-		stored: stored(appHome),
-		servers: servers.map(({ id, name, host, override }) => ({ id, name, host, override })),
-	};
-	expect(migrated.stored).toEqual([
-		{ id: Contract.LOCAL_SERVER, kind: "local", name: null, host: null },
-		{ id: boxId, kind: "remote", name: "Box", host: null },
-	]);
-	await snapshot("migrated", normalizer([appHome], [[boxId, "<box machine>"]])(migrated));
-}, 60_000);

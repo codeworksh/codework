@@ -23,8 +23,8 @@ import { Reads } from "./reads.ts";
 import { Skills } from "./skills.ts";
 import { Servers } from "./servers.ts";
 import { Sync } from "./sync.ts";
+import { Tabs } from "./tabs.ts";
 import { Tracking } from "./tracking.ts";
-import { Workspaces } from "./workspaces.ts";
 
 type SettingsRefusal =
 	| Mirror.SettingsError
@@ -56,7 +56,7 @@ const refusal = (error: SettingsRefusal) => {
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
-		const workspaces = yield* Workspaces.handlers;
+		const tabs = yield* Tabs.handlers;
 		const desk = yield* Desk.handlers;
 		const tracking = yield* Tracking.handlers;
 		const events = yield* Event.Service;
@@ -93,7 +93,7 @@ export const layer = Contract.Api.toLayer(
 			});
 
 		return Contract.Api.of({
-			...workspaces,
+			...tabs,
 			...desk,
 			...tracking,
 

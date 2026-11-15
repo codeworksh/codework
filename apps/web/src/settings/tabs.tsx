@@ -19,17 +19,17 @@ import { isMac } from "@codeworksh/widget/view";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, deskKey, only } from "../wm/instances";
 import {
-	deleteWorkspace,
-	reorderWorkspaces,
-	lastWorkspaceAtom,
-	MAX_WORKSPACES,
-	updateWorkspace,
-	useCreateWorkspace,
-	useWorkspaces,
-	type Workspace,
-	workspacesKey,
-	workspaceTag,
-} from "../wm/workspaces";
+	deleteTab,
+	reorderTabs,
+	lastTabAtom,
+	MAX_TABS,
+	updateTab,
+	useCreateTab,
+	useTabs,
+	type Tab,
+	tabsKey,
+	tabTag,
+} from "../wm/tabs";
 import { Group, Keys, SavingInput, Page, Row, Section } from "./blocks";
 
 /** Move one id to its final position, shared by drag and keyboard reordering. */
@@ -40,39 +40,39 @@ function moveTo(ids: readonly string[], from: number, to: number): string[] {
 	return next;
 }
 
-const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
-	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
+const sameOrder = (ids: readonly string[], tabs: readonly Tab[]) =>
+	ids.length === tabs.length && ids.every((id, index) => tabs[index]?.id === id);
 
-/** List, create, rename, reorder (drag the grip), and delete workspaces. */
-export function WorkspacesSettings() {
-	const workspaces = useWorkspaces();
-	const create = useCreateWorkspace();
+/** List, create, rename, reorder (drag the grip), and delete tabs. */
+export function TabsSettings() {
+	const tabs = useTabs();
+	const create = useCreateTab();
 	const desk = useAtomValue(deskAtom);
-	const current = useAtomValue(lastWorkspaceAtom);
+	const current = useAtomValue(lastTabAtom);
 	const [adding, setAdding] = useState(false);
-	const reorder = useAtomSet(reorderWorkspaces, { mode: "promise" });
+	const reorder = useAtomSet(reorderTabs, { mode: "promise" });
 	const [error, setError] = useState<string | null>(null);
-	// The new workspace, whose name field takes focus.
+	// The new tab, whose name field takes focus.
 	const [created, setCreated] = useState<string | null>(null);
 	// Order while dragging and until the server's list catches up with it.
 	const [order, setOrder] = useState<readonly string[] | null>(null);
 	const [dragging, setDragging] = useState<string | null>(null);
-	if (order !== null && dragging === null && sameOrder(order, workspaces)) setOrder(null);
+	if (order !== null && dragging === null && sameOrder(order, tabs)) setOrder(null);
 
-	const byId = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-	const listed = order === null ? workspaces : order.flatMap((id) => byId.get(id) ?? []);
+	const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+	const listed = order === null ? tabs : order.flatMap((id) => byId.get(id) ?? []);
 
 	const run = (action: () => Promise<unknown>) => {
 		setError(null);
 		action().catch((cause: unknown) => setError(messageOf(cause)));
 	};
 
-	const addWorkspace = () => {
+	const addTab = () => {
 		setAdding(true);
 		run(async () => {
 			try {
-				const workspace = await create({ name: `Workspace ${workspaces.length + 1}` });
-				setCreated(workspace.id);
+				const tab = await create({ name: `Tab ${tabs.length + 1}` });
+				setCreated(tab.id);
 			} finally {
 				setAdding(false);
 			}
@@ -83,7 +83,7 @@ export function WorkspacesSettings() {
 		setOrder(ids);
 		run(async () => {
 			try {
-				await reorder({ payload: { ids }, reactivityKeys: workspacesKey });
+				await reorder({ payload: { ids }, reactivityKeys: tabsKey });
 			} catch (cause) {
 				setOrder(null);
 				throw cause;
@@ -93,46 +93,44 @@ export function WorkspacesSettings() {
 
 	const dragOver = (overId: string) => {
 		if (dragging === null || dragging === overId) return;
-		const ids = listed.map((workspace) => workspace.id);
+		const ids = listed.map((tab) => tab.id);
 		setOrder(moveTo(ids, ids.indexOf(dragging), ids.indexOf(overId)));
 	};
 
 	const dragEnd = () => {
 		setDragging(null);
-		if (order !== null && !sameOrder(order, workspaces)) saveOrder(order);
+		if (order !== null && !sameOrder(order, tabs)) saveOrder(order);
 	};
 
 	return (
 		<Page
-			title="Workspaces"
-			description="Keep related sessions together, with a tab and panel layout for each workspace."
+			title="Tabs"
+			description="Keep related sessions together, each tab with its own panel layout."
 			actions={
 				<Button
 					size="sm"
 					variant="secondary"
-					disabled={adding || workspaces.length >= MAX_WORKSPACES}
-					title={workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : undefined}
-					onClick={addWorkspace}
+					disabled={adding || tabs.length >= MAX_TABS}
+					title={tabs.length >= MAX_TABS ? `All ${MAX_TABS} tabs are in use` : undefined}
+					onClick={addTab}
 				>
 					<PlusIcon aria-hidden />
-					{adding ? "Creating…" : "New workspace"}
+					{adding ? "Creating…" : "New"}
 				</Button>
 			}
 		>
-			<Section title="Your workspaces">
+			<Section title="Your tabs">
 				<Group>
-					{listed.map((workspace, index) => {
-						const panels = desk.instances.filter(
-							(instance) => (instance.tags & workspaceTag(workspace)) !== 0,
-						).length;
+					{listed.map((tab, index) => {
+						const panels = desk.instances.filter((instance) => (instance.tags & tabTag(tab)) !== 0).length;
 						return (
 							<div
-								key={workspace.id}
-								data-workspace={workspace.id}
-								className={`group/workspace flex items-center gap-3 px-4 py-3 ${dragging === workspace.id ? "bg-selection-subtle opacity-50" : ""}`}
+								key={tab.id}
+								data-tab={tab.id}
+								className={`group/tab flex items-center gap-3 px-4 py-3 ${dragging === tab.id ? "bg-selection-subtle opacity-50" : ""}`}
 								onDragOver={(event) => {
 									event.preventDefault();
-									dragOver(workspace.id);
+									dragOver(tab.id);
 								}}
 								onDrop={(event) => event.preventDefault()}
 							>
@@ -140,9 +138,9 @@ export function WorkspacesSettings() {
 									type="button"
 									draggable={listed.length > 1}
 									disabled={listed.length < 2}
-									aria-label={`Reorder ${workspace.name}`}
+									aria-label={`Reorder ${tab.name}`}
 									title="Drag to reorder, or use the up and down arrow keys"
-									aria-describedby="workspace-order-help"
+									aria-describedby="tab-order-help"
 									className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-brand active:cursor-grabbing disabled:cursor-default disabled:opacity-30"
 									onKeyDown={(event) => {
 										if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
@@ -161,7 +159,7 @@ export function WorkspacesSettings() {
 										event.dataTransfer.effectAllowed = "move";
 										const row = event.currentTarget.parentElement;
 										if (row) event.dataTransfer.setDragImage(row, 16, row.offsetHeight / 2);
-										setDragging(workspace.id);
+										setDragging(tab.id);
 									}}
 									onDragEnd={dragEnd}
 								>
@@ -173,12 +171,12 @@ export function WorkspacesSettings() {
 								<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 									<div className="flex min-w-0 items-center gap-2">
 										<NameField
-											key={workspace.id === created ? "created" : workspace.id}
-											workspace={workspace}
-											autoFocus={workspace.id === created}
+											key={tab.id === created ? "created" : tab.id}
+											tab={tab}
+											autoFocus={tab.id === created}
 											onError={setError}
 										/>
-										{workspace.id === current && (
+										{tab.id === current && (
 											<span className="hidden shrink-0 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand @min-[560px]:inline">
 												Current
 											</span>
@@ -186,29 +184,29 @@ export function WorkspacesSettings() {
 									</div>
 									<p className="px-2 text-xs text-ink-muted">
 										{panels} {panels === 1 ? "panel" : "panels"} ·{" "}
-										{workspace.layout === "monocle" ? "Focused view" : "Tiled view"}
+										{tab.layout === "monocle" ? "Focused view" : "Tiled view"}
 									</p>
 								</div>
 								<Keys>{shortcutLabel(index + 1)}</Keys>
-								<DeleteButton workspace={workspace} onError={setError} />
+								<DeleteButton tab={tab} onError={setError} />
 							</div>
 						);
 					})}
 					{listed.length === 0 && (
 						<div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
 							<StackIcon className="mb-1 size-6 text-ink-muted" aria-hidden />
-							<p className="font-medium">No Workspaces Yet</p>
-							<p className="text-ink-muted">Create a workspace to organize your sessions.</p>
+							<p className="font-medium">No Tabs Yet</p>
+							<p className="text-ink-muted">Create a tab to organize your sessions.</p>
 						</div>
 					)}
 				</Group>
 				<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-1 text-xs text-ink-muted">
-					<p id="workspace-order-help" className="max-w-sm leading-relaxed">
+					<p id="tab-order-help" className="max-w-sm leading-relaxed">
 						Rename inline; changes save automatically. Drag the handles or use ↑ ↓ while a handle is focused to
 						reorder tabs and shortcuts.
 					</p>
 					<span className="shrink-0 tabular-nums">
-						{workspaces.length} of {MAX_WORKSPACES} workspaces
+						{tabs.length} of {MAX_TABS} tabs
 					</span>
 				</div>
 				{error !== null && (
@@ -219,15 +217,15 @@ export function WorkspacesSettings() {
 			</Section>
 			<Section title="Shortcuts">
 				<Group>
-					<Row title="Switch workspace" description="Jump to a tab by its position in your list.">
+					<Row title="Switch tab" description="Jump to a tab by its position in your list.">
 						<Keys>
-							{shortcutLabel(1)}–{MAX_WORKSPACES}
+							{shortcutLabel(1)}–{MAX_TABS}
 						</Keys>
 					</Row>
 					<Row title="Open settings">
 						<Keys>{isMac ? "⌘," : "Ctrl+,"}</Keys>
 					</Row>
-					<Row title="Close settings" description="Return to your last workspace.">
+					<Row title="Close settings" description="Return to your last tab.">
 						<Keys>Esc</Keys>
 					</Row>
 				</Group>
@@ -237,24 +235,24 @@ export function WorkspacesSettings() {
 }
 
 interface RowProps {
-	readonly workspace: Workspace;
+	readonly tab: Tab;
 	readonly onError: (message: string) => void;
 }
 
 /** Renames in place: commits on Enter or blur, Escape restores the saved name. */
-function NameField({ workspace, autoFocus, onError }: RowProps & { readonly autoFocus: boolean }) {
-	const save = useAtomSet(updateWorkspace, { mode: "promise" });
+function NameField({ tab, autoFocus, onError }: RowProps & { readonly autoFocus: boolean }) {
+	const save = useAtomSet(updateTab, { mode: "promise" });
 	return (
 		<SavingInput
-			label={`Name for ${workspace.name}`}
-			value={workspace.name}
+			label={`Name for ${tab.name}`}
+			value={tab.name}
 			autoFocus={autoFocus}
 			// Reads as plain text in the row until hovered or focused.
 			className="h-7 min-w-0 flex-1 rounded-md border-transparent bg-transparent px-2 font-medium shadow-none hover:border-edge hover:bg-ink/3 focus-visible:border-edge-focus dark:bg-transparent"
 			onCommit={(name) => {
-				// A workspace keeps its name when the field is cleared.
+				// A tab keeps its name when the field is cleared.
 				if (!name) return;
-				save({ payload: { id: workspace.id, name }, reactivityKeys: workspacesKey }).catch((cause: unknown) =>
+				save({ payload: { id: tab.id, name }, reactivityKeys: tabsKey }).catch((cause: unknown) =>
 					onError(messageOf(cause)),
 				);
 			}}
@@ -263,10 +261,10 @@ function NameField({ workspace, autoFocus, onError }: RowProps & { readonly auto
 }
 
 /** Deletes after a confirm that says which widgets close with it. */
-function DeleteButton({ workspace, onError }: RowProps) {
-	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
+function DeleteButton({ tab, onError }: RowProps) {
+	const remove = useAtomSet(deleteTab, { mode: "promise" });
 	const desk = useAtomValue(deskAtom);
-	const tag = workspaceTag(workspace);
+	const tag = tabTag(tab);
 	const closing = only(desk, tag).length;
 	return (
 		<AlertDialog>
@@ -275,19 +273,19 @@ function DeleteButton({ workspace, onError }: RowProps) {
 					variant="ghost"
 					size="icon"
 					className="size-8 text-ink-muted hover:text-destructive"
-					aria-label={`Delete ${workspace.name}`}
-					title={`Delete ${workspace.name}`}
+					aria-label={`Delete ${tab.name}`}
+					title={`Delete ${tab.name}`}
 				>
 					<TrashIcon />
 				</Button>
 			</AlertDialogTrigger>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete {workspace.name}?</AlertDialogTitle>
+					<AlertDialogTitle>Delete {tab.name}?</AlertDialogTitle>
 					<AlertDialogDescription>
-						Its tab and shortcut go away.{" "}
+						Its shortcut goes away.{" "}
 						{closing === 0
-							? "Panels shared with other workspaces stay open."
+							? "Panels shared with other tabs stay open."
 							: `${closing} ${closing === 1 ? "panel" : "panels"} open only here will close; shared panels stay.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
@@ -296,8 +294,8 @@ function DeleteButton({ workspace, onError }: RowProps) {
 					<AlertDialogAction
 						variant="destructive"
 						onClick={() =>
-							// The server drops the workspace's widgets, so the desk reloads with the list.
-							remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
+							// The server drops the tab's widgets, so the desk reloads with the list.
+							remove({ payload: { id: tab.id }, reactivityKeys: [...tabsKey, ...deskKey] }).catch(
 								(cause: unknown) => onError(messageOf(cause)),
 							)
 						}

@@ -3,13 +3,7 @@ import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@t
 
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { isMac } from "@codeworksh/widget/view";
-import {
-	MAX_WORKSPACES,
-	useCreateWorkspace,
-	useWorkspaces,
-	useWorkspaceReturn,
-	workspaceRoute,
-} from "../wm/workspaces";
+import { MAX_TABS, useCreateTab, useTabs, useTabReturn, tabRoute } from "../wm/tabs";
 import { Switcher } from "./switcher";
 
 // The window has no native title bar on macOS; a title bar is its drag region and leaves room for the
@@ -20,14 +14,14 @@ const insetTitleBar = window.desktopBridge?.platform === "darwin";
 const chromeButton =
 	"grid size-7 shrink-0 place-items-center rounded-md text-ink-muted [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
-/** Window-level navigation remains available on Home, workspaces, and settings. */
+/** Window-level navigation remains available on Home, tabs, and settings. */
 export function NavigationControls() {
 	const { open, isMobile } = useSidebar();
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
 	const withSidebar = open && !isMobile;
-	const { workspaceId } = useParams({ strict: false });
-	const workspaces = useWorkspaces();
-	const active = workspaces.find((workspace) => workspace.id === workspaceId);
+	const { tabId } = useParams({ strict: false });
+	const tabs = useTabs();
+	const active = tabs.find((tab) => tab.id === tabId);
 	const router = useRouter();
 	const canGoBack = useCanGoBack();
 	const index = useLocation({ select: (location) => location.state.__TSR_index });
@@ -70,8 +64,8 @@ export function NavigationControls() {
 				<CloseSettings />
 			) : (
 				<>
-					<Switcher workspaces={workspaces} active={active} />
-					<NewWorkspaceButton />
+					<Switcher tabs={tabs} active={active} />
+					<NewTabButton />
 				</>
 			)}
 		</header>
@@ -80,7 +74,7 @@ export function NavigationControls() {
 
 function CloseSettings() {
 	const navigate = useNavigate();
-	const back = useWorkspaceReturn();
+	const back = useTabReturn();
 	return (
 		<button
 			type="button"
@@ -94,21 +88,21 @@ function CloseSettings() {
 	);
 }
 
-/** Adds a workspace and goes to it; pushed to the bar's right edge. */
-function NewWorkspaceButton() {
-	const workspaces = useWorkspaces();
+/** Adds a tab and goes to it; pushed to the bar's right edge. */
+function NewTabButton() {
+	const tabs = useTabs();
 	const navigate = useNavigate();
-	const create = useCreateWorkspace();
-	const full = workspaces.length >= MAX_WORKSPACES;
+	const create = useCreateTab();
+	const full = tabs.length >= MAX_TABS;
 	const add = async () => {
-		const workspace = await create({ name: `Workspace ${workspaces.length + 1}` });
-		void navigate(workspaceRoute(workspace));
+		const tab = await create({ name: `Tab ${tabs.length + 1}` });
+		void navigate(tabRoute(tab));
 	};
 	return (
 		<button
 			type="button"
-			aria-label="New workspace"
-			title={full ? `All ${MAX_WORKSPACES} workspaces are in use` : "New workspace"}
+			aria-label="New tab"
+			title={full ? `All ${MAX_TABS} tabs are in use` : "New tab"}
 			disabled={full}
 			onClick={() => void add()}
 			className={`${chromeButton} ml-1`}

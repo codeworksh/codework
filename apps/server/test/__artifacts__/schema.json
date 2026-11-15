@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL , rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, host TEXT, name TEXT, boot TEXT)"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL )"
 		},
 		{
 			"type": "table",
@@ -152,6 +152,12 @@
 		},
 		{
 			"type": "table",
+			"name": "tab",
+			"tbl_name": "tab",
+			"sql": "CREATE TABLE tab ( id TEXT PRIMARY KEY, bit INTEGER NOT NULL UNIQUE, pos INTEGER NOT NULL, name TEXT NOT NULL, layout TEXT NOT NULL, mfact REAL NOT NULL, auto INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, label TEXT )"
+		},
+		{
+			"type": "table",
 			"name": "tally",
 			"tbl_name": "tally",
 			"sql": "CREATE TABLE tally ( machine_id TEXT NOT NULL, store_id TEXT NOT NULL, hour INTEGER NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, session_id TEXT NOT NULL, project_id TEXT NOT NULL, count INTEGER NOT NULL, rev INTEGER NOT NULL, PRIMARY KEY (store_id, hour, thread_id, kind, name) )"
@@ -209,12 +215,6 @@
 			"name": "widget",
 			"tbl_name": "widget",
 			"sql": "CREATE TABLE widget ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, tags INTEGER NOT NULL, tile_pos INTEGER NOT NULL, focus_pos INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, props TEXT NOT NULL, title TEXT, address TEXT, params TEXT, opened_by TEXT, created INTEGER NOT NULL )"
-		},
-		{
-			"type": "table",
-			"name": "workspaces",
-			"tbl_name": "workspaces",
-			"sql": "CREATE TABLE workspaces ( id TEXT PRIMARY KEY, bit INTEGER NOT NULL UNIQUE, pos INTEGER NOT NULL, name TEXT NOT NULL, layout TEXT NOT NULL, mfact REAL NOT NULL, auto INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, tab TEXT )"
 		}
 	],
 	"seeded": {
@@ -222,6 +222,8 @@
 			{
 				"id": "local",
 				"kind": "local",
+				"name": null,
+				"host": null,
 				"executable": null,
 				"home": null,
 				"args": "",
@@ -232,13 +234,11 @@
 				"pos": 0,
 				"store_id": null,
 				"cursor": 0,
-				"created_at": "<time>",
+				"boot": null,
 				"rollup": 0,
 				"rollup_store": null,
 				"rollup_boot": null,
-				"host": null,
-				"name": null,
-				"boot": null
+				"created_at": "<time>"
 			}
 		],
 		"organization": [
@@ -295,6 +295,8 @@
 		"row": {
 			"id": "<remote>",
 			"kind": "remote",
+			"name": "Cloud tunnel",
+			"host": null,
 			"executable": null,
 			"home": null,
 			"args": "",
@@ -305,13 +307,11 @@
 			"pos": 1,
 			"store_id": null,
 			"cursor": 0,
-			"created_at": "<time>",
+			"boot": null,
 			"rollup": 0,
 			"rollup_store": null,
 			"rollup_boot": null,
-			"host": null,
-			"name": "Cloud tunnel",
-			"boot": null
+			"created_at": "<time>"
 		},
 		"cascade": {
 			"before": {

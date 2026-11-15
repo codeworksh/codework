@@ -36,7 +36,7 @@ const TERMINALS = [
 const RELEASE_HIGHLIGHTS = [
 	"Streamable HTTP and stdio MCP server support with OAuth 2.1 sign-in and deferred tool search.",
 	"Thread forking at any committed message with inherited conversation history.",
-	"Multi-workspace tiling and monocle window layouts with keyboard navigation.",
+	"Tabbed tiling and monocle window layouts with keyboard navigation.",
 	"Local and cloud sandbox drivers for isolated session execution.",
 ] as const;
 

@@ -17,13 +17,13 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar";
 import { search } from "./sections";
-import { useWorkspaceReturn } from "../wm/workspaces";
+import { useTabReturn } from "../wm/tabs";
 
 /** Settings replaces the sessions list within the same app shell and sidebar controls. */
 export function SettingsSidebar() {
 	const matchRoute = useMatchRoute();
 	const navigate = useNavigate();
-	const back = useWorkspaceReturn();
+	const back = useTabReturn();
 	const [query, setQuery] = useState("");
 	const matches = search(query);
 	const groups = [...new Set(matches.map((section) => section.group))];

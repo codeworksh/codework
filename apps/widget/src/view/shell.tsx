@@ -26,7 +26,7 @@ export interface OpenOptions {
 export interface Shell {
 	/**
 	 * Shows an address with the best widget for it. Focusing an open address
-	 * switches workspace if needed.
+	 * switches tab if needed.
 	 */
 	open(address: string, options?: OpenOptions): void;
 	/** Focuses an instance; the calling widget by default. */
@@ -48,8 +48,8 @@ export interface Frame {
 	/** Replaces the default icon. */
 	readonly setIcon: (icon: FrameIcon) => void;
 	/**
-	 * What the workspace's tab reads while this frame is the workspace's focused one, as
-	 * "Project / Title" say; the tab shortens it to fit. Without it the tab reads the workspace's name
+	 * What the tab reads while this frame is its focused one, as
+	 * "Project / Title" say; the tab shortens it to fit. Without it the tab reads the tab's name
 	 * and this frame's title.
 	 */
 	readonly setTab: (title: string) => void;

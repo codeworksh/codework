@@ -30,17 +30,7 @@ import { Overflow } from "./overflow";
 import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import { useSaveDesk } from "./save";
-import {
-	deleteWorkspace,
-	MAX_WORKSPACES,
-	updateWorkspace,
-	useCreateWorkspace,
-	useWorkspaces,
-	type Workspace,
-	workspaceRoute,
-	workspacesKey,
-	workspaceTag,
-} from "./workspaces";
+import { deleteTab, MAX_TABS, updateTab, useCreateTab, useTabs, type Tab, tabRoute, tabsKey, tabTag } from "./tabs";
 
 const nmaster = 1;
 
@@ -124,7 +114,7 @@ function Host({ instanceId, kind, shellFor, decorate, children }: HostProps) {
 	);
 }
 
-/** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split, saved with it. */
+/** Per-tab view settings, like dwm's pertag: each tab keeps its own split, saved with it. */
 interface View {
 	readonly layout: "tile" | "monocle";
 	readonly mfact: number;
@@ -138,18 +128,18 @@ interface Drag {
 }
 
 interface DesktopProps {
-	readonly workspace: Workspace;
+	readonly tab: Tab;
 }
 
-export function Desktop({ workspace }: DesktopProps) {
+export function Desktop({ tab }: DesktopProps) {
 	const [desk, setDesk] = useAtom(deskAtom);
-	const workspaces = useWorkspaces();
+	const tabs = useTabs();
 	const navigate = useNavigate();
-	const saveWorkspace = useAtomSet(updateWorkspace);
-	const removeWorkspace = useAtomSet(deleteWorkspace, { mode: "promise" });
-	const createWorkspace = useCreateWorkspace();
+	const saveTab = useAtomSet(updateTab);
+	const removeTab = useAtomSet(deleteTab, { mode: "promise" });
+	const createTab = useCreateTab();
 	const { open: requested, mode: requestedMode } = useSearch({ strict: false });
-	const { workspaceId: routed } = useParams({ strict: false });
+	const { tabId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
 	const [chrome, setChrome] = useAtom(chromeAtom);
@@ -160,7 +150,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	// A window resize must not tween: frames would trail the window edge by the transition's length.
 	const resized = useChanged(size);
 	const surfaceRef = useRef<HTMLDivElement>(null);
-	const activeTags = workspaceTag(workspace);
+	const activeTags = tabTag(tab);
 	const { instances, order } = desk;
 	// webwm only needs identity, tags, and minimum sizes; those come from the
 	// widget's definition so the layout respects what each widget can shrink to.
@@ -169,37 +159,33 @@ export function Desktop({ workspace }: DesktopProps) {
 		return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
 	});
 	const byId = new Map(instances.map((instance) => [instance.id, instance]));
-	const saved: View = { layout: workspace.layout, mfact: workspace.mfact };
-	const view = views.get(workspace.id) ?? saved;
+	const saved: View = { layout: tab.layout, mfact: tab.mfact };
+	const view = views.get(tab.id) ?? saved;
 	const { layout, mfact } = view;
 	const setView = (patch: Partial<View>) =>
-		setViews((current) => new Map(current).set(workspace.id, { ...(current.get(workspace.id) ?? saved), ...patch }));
+		setViews((current) => new Map(current).set(tab.id, { ...(current.get(tab.id) ?? saved), ...patch }));
 
 	// Writes the view back once it settles; mid-drag splits stay local.
 	useEffect(() => {
-		if (resizing || (view.layout === workspace.layout && view.mfact === workspace.mfact)) return;
-		saveWorkspace({ payload: { id: workspace.id, ...view }, reactivityKeys: workspacesKey });
-	}, [resizing, view, workspace, saveWorkspace]);
+		if (resizing || (view.layout === tab.layout && view.mfact === tab.mfact)) return;
+		saveTab({ payload: { id: tab.id, ...view }, reactivityKeys: tabsKey });
+	}, [resizing, view, tab, saveTab]);
 	const setLayout = (next: View["layout"]) => setView({ layout: next });
 	const setMfact = (next: number) => setView({ mfact: next });
-	// Focus is the most recently focused widget that is visible on this workspace.
+	// Focus is the most recently focused widget that is visible on this tab.
 	const focusedId = focus(widgets, order, activeTags).widget?.id;
 	const setFocused = useAtomSet(focusedAtom);
 	useEffect(() => {
 		if (focusedId === undefined) return;
-		setFocused((current) =>
-			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
-		);
-	}, [workspace.id, focusedId, setFocused]);
+		setFocused((current) => (current.get(tab.id) === focusedId ? current : new Map(current).set(tab.id, focusedId)));
+	}, [tab.id, focusedId, setFocused]);
 	// The focused frame takes the tab once it has one to show, which may be after it loads.
 	const focusedTab = focusedId === undefined ? undefined : chrome.get(focusedId)?.tab;
 	const setTabOwner = useAtomSet(tabOwnerAtom);
 	useEffect(() => {
 		if (focusedId === undefined || focusedTab === undefined) return;
-		setTabOwner((current) =>
-			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
-		);
-	}, [workspace.id, focusedId, focusedTab, setTabOwner]);
+		setTabOwner((current) => (current.get(tab.id) === focusedId ? current : new Map(current).set(tab.id, focusedId)));
+	}, [tab.id, focusedId, focusedTab, setTabOwner]);
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
 	const tiled = order.tileOrder.flatMap((id) =>
 		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),
@@ -236,12 +222,12 @@ export function Desktop({ workspace }: DesktopProps) {
 	const focusWidget = (widgetId: WidgetId) =>
 		setDesk((current) => ({ ...current, order: focus(widgets, current.order, activeTags, widgetId).order }));
 
-	// Focuses an instance, switching to a workspace that shows it when this one does not.
+	// Focuses an instance, switching to a tab that shows it when this one does not.
 	const reveal = (instance: Instance) => {
 		setDesk((current) => raise(current, instance.id));
 		if ((instance.tags & activeTags) !== 0) return;
-		const home = workspaces.find((candidate) => (instance.tags & workspaceTag(candidate)) !== 0);
-		if (home !== undefined) void navigate(workspaceRoute(home));
+		const home = tabs.find((candidate) => (instance.tags & tabTag(candidate)) !== 0);
+		if (home !== undefined) void navigate(tabRoute(home));
 	};
 
 	const decorate = (instanceId: string, patch: Chrome) =>
@@ -267,14 +253,14 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
-	// Applies `change`, which takes the frame off this workspace. An auto workspace exists to show what
+	// Applies `change`, which takes the frame off this tab. An auto tab exists to show what
 	// was opened into it, so it goes with its last frame, quietly: the app goes to `to` with the desk at
 	// `bridge` (the frame still on screen) and changes it only then, so nothing passes through an empty
-	// workspace. The desk is saved before the delete, which drops widgets the workspace alone held.
+	// tab. The desk is saved before the delete, which drops widgets the tab alone held.
 	const leave = (
 		instanceId: string,
 		change: (desk: Desk) => Desk,
-		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
+		to: { readonly to: "/" } | ReturnType<typeof tabRoute>,
 		bridge: (desk: Desk) => Desk = unchanged,
 	) => {
 		const leaver = byId.get(instanceId);
@@ -282,14 +268,14 @@ export function Desktop({ workspace }: DesktopProps) {
 			leaver !== undefined &&
 			(leaver.tags & activeTags) !== 0 &&
 			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
-		if (!workspace.auto || !emptied) return setDesk(change);
+		if (!tab.auto || !emptied) return setDesk(change);
 		setDesk(bridge);
 		void navigate(to)
 			.then(() => {
 				setDesk(change);
 				return flushDesk();
 			})
-			.then(() => removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }))
+			.then(() => removeTab({ payload: { id: tab.id }, reactivityKeys: tabsKey }))
 			.catch(() => undefined);
 	};
 
@@ -302,29 +288,29 @@ export function Desktop({ workspace }: DesktopProps) {
 		undecorate(instanceId);
 	};
 
-	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen
+	// Moves a frame off this tab onto another, focused there; this tab stays on screen
 	// unless the frame was all it showed.
-	const move = (instanceId: string, destination: Workspace) => {
-		const tag = workspaceTag(destination);
+	const move = (instanceId: string, destination: Tab) => {
+		const tag = tabTag(destination);
 		const retag = (tags: number) => (current: Desk) => raise(update(current, instanceId, { tags }), instanceId);
 		setDrag(null);
-		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
+		leave(instanceId, retag(tag), tabRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
 	};
 
-	// A new workspace is auto, so it goes once the frame leaves it; it is named for what the frame belongs
+	// A new tab is auto, so it goes once the frame leaves it; it is named for what the frame belongs
 	// to (a session's project), else for the frame.
 	const moveNew = async (instanceId: string) => {
 		const instance = byId.get(instanceId);
 		if (instance === undefined) return;
 		const { lead, title } = chromeOf(instance, chrome.get(instanceId));
 		const name = lead ?? title;
-		const created = await createWorkspace({ name, auto: true }).catch(() => undefined);
+		const created = await createTab({ name, auto: true }).catch(() => undefined);
 		if (created !== undefined) move(instanceId, created);
 	};
 
-	// Numbered by switcher position (the Cmd+N key), so same-named workspaces still tell apart.
-	const destinations = workspaces.flatMap(({ id, name }, index) =>
-		id === workspace.id ? [] : [{ id, name, position: index + 1 }],
+	// Numbered by tab bar position (the Cmd+N key), so same-named tabs still tell apart.
+	const destinations = tabs.flatMap(({ id, name }, index) =>
+		id === tab.id ? [] : [{ id, name, position: index + 1 }],
 	);
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
@@ -391,11 +377,11 @@ export function Desktop({ workspace }: DesktopProps) {
 			handled.current = undefined;
 			return;
 		}
-		// A workspace just created may not be listed yet, and the shell shows another meanwhile.
-		if (handled.current === requested || routed !== workspace.id) return;
+		// A tab just created may not be listed yet, and the shell shows another meanwhile.
+		if (handled.current === requested || routed !== tab.id) return;
 		handled.current = requested;
 		shellFor(SHELL).open(requested, { placement: "end", mode: requestedMode ?? "replace" });
-		void navigate({ ...workspaceRoute(workspace), search: {}, replace: true });
+		void navigate({ ...tabRoute(tab), search: {}, replace: true });
 	});
 
 	const toggleMax = (widgetId: WidgetId) => {
@@ -413,7 +399,7 @@ export function Desktop({ workspace }: DesktopProps) {
 
 	const mainClass = "box-border h-full overflow-auto";
 	// Measured around the scrolling main, so a scrollbar that shows for one layout pass (frames still at
-	// their old width as the sidebar opens) never reaches the arrangement as a narrower workspace.
+	// their old width as the sidebar opens) never reaches the arrangement as a narrower desktop.
 	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
 	if (size.width === 0 || size.height === 0)
 		return (
@@ -422,7 +408,7 @@ export function Desktop({ workspace }: DesktopProps) {
 			</div>
 		);
 
-	// Frames meet the workspace edges; the divider supplies its own resize hit area.
+	// Frames meet the desktop edges; the divider supplies its own resize hit area.
 	return (
 		<div className="h-full" ref={ref}>
 			<main className={mainClass}>
@@ -461,11 +447,11 @@ export function Desktop({ workspace }: DesktopProps) {
 								onPin={() => togglePin(instance)}
 								onMaximize={() => toggleMax(widget.id)}
 								destinations={destinations}
-								onMove={(workspaceId) => {
-									const destination = workspaces.find((candidate) => candidate.id === workspaceId);
+								onMove={(tabId) => {
+									const destination = tabs.find((candidate) => candidate.id === tabId);
 									if (destination !== undefined) move(widget.id, destination);
 								}}
-								onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
+								onMoveNew={tabs.length < MAX_TABS ? () => void moveNew(widget.id) : undefined}
 								menu={
 									instance.kind === session.kind ? (
 										<ThreadMenu

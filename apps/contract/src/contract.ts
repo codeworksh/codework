@@ -270,10 +270,10 @@ export const Layout = Schema.Literals(["tile", "monocle"]);
 export type Layout = typeof Layout.Type;
 
 /**
- * A workspace. `bit` is its webwm tag bit, fixed for life so reordering never
- * rewrites widget masks; `pos` is its place in the switcher and its Cmd+N key.
+ * A tab. `bit` is its webwm tag bit, fixed for life so reordering never
+ * rewrites widget masks; `pos` is its place in the tab bar and its Cmd+N key.
  */
-export const Workspace = Schema.Struct({
+export const Tab = Schema.Struct({
 	id: Schema.String,
 	bit: Schema.Number,
 	pos: Schema.Number,
@@ -283,31 +283,31 @@ export const Workspace = Schema.Struct({
 	mfact: Schema.Number,
 	/** Created to show something the user opened (a session); removed once it shows nothing. */
 	auto: Schema.Boolean,
-	/** What its tab last read, as its focused widget set it; absent until a widget has. */
-	tab: Schema.optionalKey(Schema.String),
+	/** What it last read, as its focused widget set it; absent until a widget has. */
+	label: Schema.optionalKey(Schema.String),
 });
-export type Workspace = typeof Workspace.Type;
+export type Tab = typeof Tab.Type;
 
-export const WorkspaceCreate = Schema.Struct({
+export const TabCreate = Schema.Struct({
 	name: Schema.String,
 	auto: Schema.optionalKey(Schema.Boolean),
 });
-export const WorkspaceUpdate = Schema.Struct({
+export const TabUpdate = Schema.Struct({
 	id: Schema.String,
 	name: Schema.optional(Schema.String),
 	layout: Schema.optional(Layout),
 	mfact: Schema.optional(Schema.Number),
-	tab: Schema.optional(Schema.String),
+	label: Schema.optional(Schema.String),
 });
-export const WorkspaceOrder = Schema.Struct({ ids: Schema.Array(Schema.String) });
-export const WorkspaceId = Schema.Struct({ id: Schema.String });
+export const TabOrder = Schema.Struct({ ids: Schema.Array(Schema.String) });
+export const TabId = Schema.Struct({ id: Schema.String });
 
-export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server.WorkspaceError", {
+export class TabError extends Schema.TaggedError<TabError>()("Server.TabError", {
 	message: Schema.String,
 }) {}
 
 /**
- * One placed widget on the desk. `tags` is its webwm mask: the workspaces it shows on, by their
+ * One placed widget on the desk. `tags` is its webwm mask: the tabs it shows on, by their
  * bits. `props` and `params` are the widget's own JSON; the server keeps them as given.
  */
 export const Instance = Schema.Struct({
@@ -323,7 +323,7 @@ export const Instance = Schema.Struct({
 });
 export type Instance = typeof Instance.Type;
 
-/** Every widget on every workspace, with the desk-wide tile and focus order over their ids. */
+/** Every widget on every tab, with the desk-wide tile and focus order over their ids. */
 export const Desk = Schema.Struct({
 	instances: Schema.Array(Instance),
 	tileOrder: Schema.Array(Schema.String),
@@ -918,29 +918,29 @@ export const Api = RpcGroup.make(
 		success: Repository,
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
-	Rpc.make("workspaces.list", {
-		success: Schema.Array(Workspace),
+	Rpc.make("tabs.list", {
+		success: Schema.Array(Tab),
 	}),
-	Rpc.make("workspaces.create", {
-		payload: WorkspaceCreate,
-		success: Workspace,
-		error: WorkspaceError,
+	Rpc.make("tabs.create", {
+		payload: TabCreate,
+		success: Tab,
+		error: TabError,
 	}),
-	Rpc.make("workspaces.update", {
-		payload: WorkspaceUpdate,
+	Rpc.make("tabs.update", {
+		payload: TabUpdate,
 		success: Schema.Void,
-		error: WorkspaceError,
+		error: TabError,
 	}),
-	/** Puts the workspaces in this order; `ids` must name every workspace once. */
-	Rpc.make("workspaces.reorder", {
-		payload: WorkspaceOrder,
+	/** Puts the tabs in this order; `ids` must name every tab once. */
+	Rpc.make("tabs.reorder", {
+		payload: TabOrder,
 		success: Schema.Void,
-		error: WorkspaceError,
+		error: TabError,
 	}),
-	Rpc.make("workspaces.delete", {
-		payload: WorkspaceId,
+	Rpc.make("tabs.delete", {
+		payload: TabId,
 		success: Schema.Void,
-		error: WorkspaceError,
+		error: TabError,
 	}),
 	Rpc.make("desk.get", {
 		success: Desk,

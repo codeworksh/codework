@@ -17,7 +17,7 @@ import {
 export interface SettingsSection {
 	readonly to:
 		| "/settings/general"
-		| "/settings/workspaces"
+		| "/settings/tabs"
 		| "/settings/themes"
 		| "/settings/servers"
 		| "/settings/keybindings"
@@ -45,8 +45,8 @@ const sections: readonly SettingsSection[] = [
 		keywords: ["notifications", "sounds", "alerts", "quick", "composer", "editor", "terminal", "version", "updates"],
 	},
 	{
-		to: "/settings/workspaces",
-		label: "Workspaces",
+		to: "/settings/tabs",
+		label: "Tabs",
 		icon: StackIcon,
 		group: "App",
 		keywords: ["tabs", "shortcuts", "reorder", "rename", "delete"],

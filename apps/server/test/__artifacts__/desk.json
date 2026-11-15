@@ -13,8 +13,8 @@
 		"mfact": 0.6,
 		"auto": false
 	},
-	"workspace": {
-		"id": "<workspace>",
+	"tab": {
+		"id": "<tab>",
 		"bit": 1,
 		"pos": 1,
 		"name": "Scratch",
@@ -136,7 +136,7 @@
 		}
 	],
 	"afterRestart": {
-		"workspaces": [
+		"tabs": [
 			{
 				"name": "Other",
 				"auto": false,
@@ -146,7 +146,7 @@
 				"name": "Kept",
 				"auto": true,
 				"pos": 1,
-				"tab": "Kept / A session"
+				"label": "Kept / A session"
 			}
 		],
 		"desk": {

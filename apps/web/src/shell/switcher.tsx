@@ -12,27 +12,20 @@ import { runStatesAtom } from "../widgets/session/projects";
 import { RunMark } from "../widgets/session/run";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom, deskKey } from "../wm/instances";
-import {
-	deleteWorkspace,
-	updateWorkspace,
-	type Workspace,
-	workspaceRoute,
-	workspacesKey,
-	workspaceTag,
-} from "../wm/workspaces";
+import { deleteTab, updateTab, type Tab, tabRoute, tabsKey, tabTag } from "../wm/tabs";
 
 interface SwitcherProps {
-	readonly workspaces: readonly Workspace[];
-	/** The workspace on screen; none while settings is open. */
-	readonly active: Workspace | undefined;
+	readonly tabs: readonly Tab[];
+	/** The tab on screen; none while settings is open. */
+	readonly active: Tab | undefined;
 }
 
 /**
- * Workspace tabs, like a browser's: a title that the workspace's focused frame decides (its
- * `setTab`), shortened at its end when the bar runs out of room. The active workspace is the URL, so a tab is a link.
- * A frame's title is saved with its workspace, so after a restart a workspace not opened yet still names what it shows.
+ * Tabs, like a browser's: a label that the tab's focused frame decides (its
+ * `setTab`), shortened at its end when the bar runs out of room. The active tab is the URL, so a tab is a link.
+ * The label is saved with its tab, so after a restart a tab not opened yet still names what it shows.
  */
-export function Switcher({ workspaces, active }: SwitcherProps) {
+export function Switcher({ tabs, active }: SwitcherProps) {
 	// `shown` is written while rendering the tabs and read back by later renders, which the compiler cannot memoize.
 	"use no memo";
 	const { instances, order } = useAtomValue(deskAtom);
@@ -46,90 +39,87 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	};
 	const runStates = useAtomValue(runStatesAtom(instances.map((instance) => keyOf(instance.address)).join("\n")));
 	const navigate = useNavigate();
-	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
+	const remove = useAtomSet(deleteTab, { mode: "promise" });
 	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
-	const close = async (workspace: Workspace, index: number) => {
-		if (workspace.id === active?.id) {
-			const next = workspaces[index + 1] ?? workspaces[index - 1];
-			await navigate(next === undefined ? { to: "/" } : workspaceRoute(next));
+	const close = async (tab: Tab, index: number) => {
+		if (tab.id === active?.id) {
+			const next = tabs[index + 1] ?? tabs[index - 1];
+			await navigate(next === undefined ? { to: "/" } : tabRoute(next));
 		}
-		// The server drops the workspace's widgets, so the desk reloads with the list.
-		await remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
-			() => undefined,
-		);
+		// The server drops the tab's widgets, so the desk reloads with the list.
+		await remove({ payload: { id: tab.id }, reactivityKeys: [...tabsKey, ...deskKey] }).catch(() => undefined);
 	};
 	// What each tab showed last, kept while a frame that will set the tab is still loading.
 	const shown = useRef(new Map<string, string>());
-	const showing = (workspace: Workspace) => {
-		const { text } = tabOf(workspace);
-		shown.current.set(workspace.id, text);
+	const showing = (tab: Tab) => {
+		const { text } = labelOf(tab);
+		shown.current.set(tab.id, text);
 		return text;
 	};
-	/** The tab's text, and whether a frame set it just now (and so it is worth saving). */
-	const tabOf = (workspace: Workspace): { readonly text: string; readonly live: boolean } => {
-		const tag = workspaceTag(workspace);
-		const onWorkspace = (instance: (typeof instances)[number] | undefined) =>
+	/** The tab's label, and whether a frame set it just now (and so it is worth saving). */
+	const labelOf = (tab: Tab): { readonly text: string; readonly live: boolean } => {
+		const tag = tabTag(tab);
+		const onTab = (instance: (typeof instances)[number] | undefined) =>
 			instance !== undefined && (instance.tags & tag) !== 0;
-		// The frame that claimed the tab keeps it while it is still on this workspace.
-		const owner = instances.find((instance) => instance.id === owners.get(workspace.id));
-		const claimed = owner !== undefined && onWorkspace(owner) ? chrome.get(owner.id)?.tab : undefined;
+		// The frame that claimed the label keeps it while it is still on this tab.
+		const owner = instances.find((instance) => instance.id === owners.get(tab.id));
+		const claimed = owner !== undefined && onTab(owner) ? chrome.get(owner.id)?.tab : undefined;
 		if (claimed !== undefined) return { text: claimed, live: true };
 		// Its own last focus once it has been on screen, else its main frame (first in tile order), so
-		// focusing a frame shared with another workspace never relabels a tab not yet visited.
-		const remembered = instances.find((instance) => instance.id === focusedOn.get(workspace.id));
-		const focused = onWorkspace(remembered)
+		// focusing a frame shared with another tab never relabels a tab not yet visited.
+		const remembered = instances.find((instance) => instance.id === focusedOn.get(tab.id));
+		const focused = onTab(remembered)
 			? remembered
-			: order.tileOrder.map((id) => instances.find((instance) => instance.id === id)).find(onWorkspace);
-		if (focused === undefined) return { text: workspace.name, live: false };
+			: order.tileOrder.map((id) => instances.find((instance) => instance.id === id)).find(onTab);
+		if (focused === undefined) return { text: tab.name, live: false };
 		const frame = chrome.get(focused.id);
-		// The focused frame decides what the tab says; without a say, the workspace's name and its title.
+		// The focused frame decides what the tab says; without a say, the tab's name and its title.
 		if (frame?.tab !== undefined) return { text: frame.tab, live: true };
 		// Before its frame has said anything since a restart, what it said last time.
-		if (workspace.tab !== undefined) return { text: workspace.tab, live: false };
-		const kept = shown.current.get(workspace.id);
+		if (tab.label !== undefined) return { text: tab.label, live: false };
+		const kept = shown.current.get(tab.id);
 		if (registry.get(focused.kind)?.ownsTab === true && kept !== undefined) return { text: kept, live: false };
 		const title = chromeOf(focused, frame).title;
-		// A frame named like its workspace adds nothing to the tab.
-		const text =
-			title.toLowerCase() === workspace.name.toLowerCase() ? workspace.name : `${workspace.name} / ${title}`;
+		// A frame named like its tab adds nothing to the label.
+		const text = title.toLowerCase() === tab.name.toLowerCase() ? tab.name : `${tab.name} / ${title}`;
 		return { text, live: false };
 	};
 
 	// Saves a tab a frame set once it differs from the stored one; the last value sent is remembered,
 	// so the list refetch it triggers does not send it again.
-	const save = useAtomSet(updateWorkspace);
+	const save = useAtomSet(updateTab);
 	const sent = useRef(new Map<string, string>());
 	// oxlint-disable-next-line react/refs -- see "use no memo" above.
-	const changed = workspaces.flatMap((workspace) => {
-		const { text, live } = tabOf(workspace);
-		return live && text !== workspace.tab ? [[workspace.id, text] as const] : [];
+	const changed = tabs.flatMap((tab) => {
+		const { text, live } = labelOf(tab);
+		return live && text !== tab.label ? [[tab.id, text] as const] : [];
 	});
 	useEffect(() => {
-		for (const [id, tab] of changed) {
-			if (sent.current.get(id) === tab) continue;
-			sent.current.set(id, tab);
-			save({ payload: { id, tab }, reactivityKeys: workspacesKey });
+		for (const [id, label] of changed) {
+			if (sent.current.get(id) === label) continue;
+			sent.current.set(id, label);
+			save({ payload: { id, label }, reactivityKeys: tabsKey });
 		}
 	});
 
 	return (
-		<nav aria-label="Workspaces" className="flex min-w-0 items-center gap-1 [-webkit-app-region:no-drag]">
+		<nav aria-label="Tabs" className="flex min-w-0 items-center gap-1 [-webkit-app-region:no-drag]">
 			{/* oxlint-disable-next-line react/refs -- see "use no memo" above. */}
-			{workspaces.map((workspace, index) => {
-				const current = workspace.id === active?.id;
-				const tab = showing(workspace);
+			{tabs.map((tab, index) => {
+				const current = tab.id === active?.id;
+				const label = showing(tab);
 				const threads = instances.flatMap((instance) => {
 					const key = keyOf(instance.address);
-					return key !== "" && (instance.tags & workspaceTag(workspace)) !== 0
+					return key !== "" && (instance.tags & tabTag(tab)) !== 0
 						? [{ key, runState: runStates.get(key) ?? "idle" }]
 						: [];
 				});
 				return (
-					<div key={workspace.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
+					<div key={tab.id} className="group/tab relative flex h-tab w-56 min-w-16 shrink basis-56">
 						<Link
-							{...workspaceRoute(workspace)}
+							{...tabRoute(tab)}
 							aria-current={current ? "page" : undefined}
-							title={`${tab}\n${shortcutLabel(index + 1)}`}
+							title={`${label}\n${shortcutLabel(index + 1)}`}
 							className={`flex size-full min-w-0 items-center gap-2 rounded-md pr-8 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 								current
 									? "bg-selection-current text-ink"
@@ -137,13 +127,13 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							}`}
 						>
 							<TabIcon threads={threads} current={current} />
-							<span className="truncate text-xs font-medium">{tab}</span>
+							<span className="truncate text-xs font-medium">{label}</span>
 						</Link>
 						<button
 							type="button"
-							aria-label={`Close ${workspace.name}`}
-							title={`Close ${workspace.name}`}
-							onClick={() => void close(workspace, index)}
+							aria-label={`Close ${tab.name}`}
+							title={`Close ${tab.name}`}
+							onClick={() => void close(tab, index)}
 							className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover/tab:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
 						>
 							<XIcon className="size-3.5" aria-hidden />
@@ -155,7 +145,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	);
 }
 
-/** A tab's icon: the run of the threads on its workspace that says most, else a window. */
+/** A tab's icon: the run of the threads on its tab that says most, else a window. */
 function TabIcon({
 	threads,
 	current,
@@ -175,10 +165,10 @@ export const shortcutLabel = (position: number) => `${isMac ? "⌘" : "Ctrl+"}${
 
 const modifier = (event: KeyboardEvent) => !event.altKey && !event.shiftKey && (isMac ? event.metaKey : event.ctrlKey);
 
-/** Cmd+N on macOS, Ctrl+N elsewhere, like switching browser tabs: the Nth workspace in order. */
-export function workspaceShortcut(event: KeyboardEvent, workspaces: readonly Workspace[]): Workspace | undefined {
+/** Cmd+N on macOS, Ctrl+N elsewhere, like switching browser tabs: the Nth tab in order. */
+export function tabShortcut(event: KeyboardEvent, tabs: readonly Tab[]): Tab | undefined {
 	if (!modifier(event) || !/^[1-9]$/.test(event.key)) return undefined;
-	return workspaces[Number(event.key) - 1];
+	return tabs[Number(event.key) - 1];
 }
 
 /** Cmd+, on macOS, Ctrl+, elsewhere: the platform's settings shortcut. */

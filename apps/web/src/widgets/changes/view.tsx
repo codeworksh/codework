@@ -210,7 +210,7 @@ function Files(props: {
 					: "No Diff";
 	const { setTitle } = useFrame();
 	useEffect(() => setTitle(`Files Changed ${files.length}`), [files.length, setTitle]);
-	// As this copy last showed the space, while it was off the screen with its workspace.
+	// As this copy last showed the space, while it was off the screen with its tab.
 	const [before] = useState(() => recall(instanceId, space));
 	// Both kept by path, so a refresh that reorders the list keeps the same file current and unfolded.
 	// Folded unless unfolded: hundreds of files open as a list to pick from, and a new file joins it folded.

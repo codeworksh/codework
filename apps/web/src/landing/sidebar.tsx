@@ -34,7 +34,7 @@ import { sessionAddress, threadRef } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
-import { useWorkspaces, workspaceTag } from "../wm/workspaces";
+import { useTabs, tabTag } from "../wm/tabs";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
@@ -77,18 +77,18 @@ export function SessionsSidebar() {
 	const [place, setPlace] = useAtom(placeAtom);
 	const addProject = useAddProject();
 	const navigate = useNavigate();
-	// The session in front on the workspace on screen reads as current; the others it shows, as open.
-	const { workspaceId } = useParams({ strict: false });
+	// The session in front on the tab on screen reads as current; the others it shows, as open.
+	const { tabId } = useParams({ strict: false });
 	const { instances } = useAtomValue(deskAtom);
 	const focusedOn = useAtomValue(focusedAtom);
-	const workspace = useWorkspaces().find((candidate) => candidate.id === workspaceId);
-	const focusedId = workspace === undefined ? undefined : focusedOn.get(workspace.id);
+	const tab = useTabs().find((candidate) => candidate.id === tabId);
+	const focusedId = tab === undefined ? undefined : focusedOn.get(tab.id);
 	const current = threadRef(instances.find((instance) => instance.id === focusedId)?.address)?.sessionId;
 	const shown = new Set(
-		workspace === undefined
+		tab === undefined
 			? []
 			: instances.flatMap((instance) =>
-					(instance.tags & workspaceTag(workspace)) === 0 ? [] : (threadRef(instance.address)?.sessionId ?? []),
+					(instance.tags & tabTag(tab)) === 0 ? [] : (threadRef(instance.address)?.sessionId ?? []),
 				),
 	);
 	// A new session starts on the start page, in the current session's project when one is in front.
@@ -100,7 +100,7 @@ export function SessionsSidebar() {
 		void navigate({ to: "/" });
 	};
 	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
-	// browser's new window, asks for a workspace of its own.
+	// browser's new window, asks for a tab of its own.
 	// Read through a ref, so rows keep one handler and skip re-rendering when the desk changes.
 	const opener = useRef(openElsewhere);
 	useLayoutEffect(() => {
@@ -108,7 +108,7 @@ export function SessionsSidebar() {
 	});
 	const open = useCallback((sessionId: string, projectName: string, event: MouseEvent) => {
 		if (event.button > 1) return;
-		const placement = event.shiftKey ? "workspace" : openMode(event);
+		const placement = event.shiftKey ? "tab" : openMode(event);
 		void opener.current(sessionAddress(sessionId), projectName, placement);
 	}, []);
 
@@ -257,7 +257,7 @@ export function SessionsSidebar() {
 				)}
 			</SidebarContent>
 			<SidebarFooter className="flex-row items-center gap-0.5 p-2">
-				<Link to="/settings/workspaces" className={`${NAV_ROW} min-w-0 flex-1 text-ink-muted`}>
+				<Link to="/settings/tabs" className={`${NAV_ROW} min-w-0 flex-1 text-ink-muted`}>
 					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
 					<span>Settings</span>
 				</Link>
@@ -293,9 +293,9 @@ function GroupSection({
 }: {
 	readonly group: Group;
 	readonly expanded: boolean;
-	/** The session id in front on the workspace on screen. */
+	/** The session id in front on the tab on screen. */
 	readonly current: string | undefined;
-	/** Every session id the workspace on screen shows. */
+	/** Every session id the tab on screen shows. */
 	readonly shown: ReadonlySet<string>;
 	readonly onToggle: () => void;
 	/** A project's new thread; other groups have none. */
@@ -377,7 +377,7 @@ const SessionRow = memo(function SessionRow({
 	readonly session: SidebarSession;
 	readonly projectName: string;
 	readonly machineName: string;
-	/** In front on the workspace on screen, or shown there in another frame. */
+	/** In front on the tab on screen, or shown there in another frame. */
 	readonly state: "current" | "shown" | undefined;
 	readonly onOpen: (sessionId: string, projectName: string, event: MouseEvent) => void;
 }) {
@@ -387,7 +387,7 @@ const SessionRow = memo(function SessionRow({
 		<li className="[contain-intrinsic-size:auto_26px] [content-visibility:auto]">
 			<button
 				type="button"
-				title={`${session.path} on ${machineName}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
+				title={`${session.path} on ${machineName}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new tab`}
 				aria-current={state === "current" ? "true" : undefined}
 				data-state={state}
 				// One weight in every state: a bolder current row would shift its title as focus moves.

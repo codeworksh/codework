@@ -83,7 +83,7 @@ const keyOf = (patch: string) => {
 /**
  * Highlights the diffs inside off the main thread, and draws the long ones by the rows near `scroller`'s
  * view. The workers and what they highlighted are kept for the app's run: a diff shown again, as when
- * its frame returns with its workspace, comes back in colour.
+ * its frame returns with its tab, comes back in colour.
  */
 export function DiffPool({
 	scroller,

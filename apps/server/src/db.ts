@@ -17,9 +17,9 @@ const migrations = {
 				PRIMARY KEY (package, key)
 			)
 		`;
-		// `tab` is what the workspace's tab last read, so a workspace not yet opened since a restart names what it shows.
+		// `label` is what the tab last read, so a tab not yet opened since a restart names what it shows.
 		yield* sql`
-			CREATE TABLE workspaces (
+			CREATE TABLE tab (
 				id TEXT PRIMARY KEY,
 				bit INTEGER NOT NULL UNIQUE,
 				pos INTEGER NOT NULL,
@@ -28,7 +28,7 @@ const migrations = {
 				mfact REAL NOT NULL,
 				auto INTEGER NOT NULL DEFAULT 0,
 				created INTEGER NOT NULL,
-				tab TEXT
+				label TEXT
 			)
 		`;
 		// AUTOINCREMENT so a seq is never reused, even after the newest rows are deleted.
@@ -63,12 +63,16 @@ const migrations = {
 		`;
 
 		// The sync's copy of each machine's CodeWork: core columns are written only by the sync,
-		// desktop columns only by this app.
+		// desktop columns only by this app. A machine is named by what its server reports (`host`);
+		// `name` is only the user's override. `cursor` is how far the index was read while `boot` was
+		// the store's latest open; `rollup` is the usage cursor, counted in `rollup_store` while
+		// `rollup_boot` was its latest open: it moves apart from `cursor` and `store_id`.
 		yield* sql`
 			CREATE TABLE machine (
 				id TEXT PRIMARY KEY,
 				kind TEXT NOT NULL,
-				name TEXT NOT NULL,
+				name TEXT,
+				host TEXT,
 				executable TEXT,
 				home TEXT,
 				args TEXT NOT NULL DEFAULT '',
@@ -79,6 +83,10 @@ const migrations = {
 				pos INTEGER NOT NULL,
 				store_id TEXT UNIQUE,
 				cursor INTEGER NOT NULL DEFAULT 0,
+				boot TEXT,
+				rollup INTEGER NOT NULL DEFAULT 0,
+				rollup_store TEXT,
+				rollup_boot TEXT,
 				created_at INTEGER NOT NULL
 			)
 		`;
@@ -259,33 +267,10 @@ const migrations = {
 			)
 		`;
 		yield* sql`CREATE UNIQUE INDEX inbox_thread_idx ON inbox (thread_id, admitted_seq)`;
-
-		const now = yield* Clock.currentTimeMillis;
-		// The built-in local machine runs the CLI home's CodeWork: a null executable and home are the ones found.
-		yield* sql`INSERT INTO machine ${sql.insert({
-			id: "local",
-			kind: "local",
-			name: "CodeWork",
-			namespace: "codework",
-			isDefault: 1,
-			pos: 0,
-			createdAt: now,
-		})}`;
-		// The one organization the UI uses until auth exists.
-		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
-	}),
-
-	// Each machine's usage rollup, as `usage.sync` sends it, keyed by store: a recreated store starts
-	// new rows and keeps the old ones as history, and a removed server re-added later replaces its own.
-	// No foreign keys: the rows outlive their machine, project, session and thread; `machine_id` is the
-	// machine that last sent them.
-	"202611140001_usage": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		// `rollup` is the usage cursor, counted in `rollup_store` while `rollup_boot` was its latest open:
-		// it moves apart from `cursor` and `store_id`.
-		yield* sql`ALTER TABLE machine ADD COLUMN rollup INTEGER NOT NULL DEFAULT 0`;
-		yield* sql`ALTER TABLE machine ADD COLUMN rollup_store TEXT`;
-		yield* sql`ALTER TABLE machine ADD COLUMN rollup_boot TEXT`;
+		// Each machine's usage rollup, as `usage.sync` sends it, keyed by store: a recreated store starts
+		// new rows and keeps the old ones as history, and a removed server re-added later replaces its own.
+		// No foreign keys: the rows outlive their machine, project, session and thread; `machine_id` is the
+		// machine that last sent them.
 		yield* sql`
 			CREATE TABLE usage (
 				machine_id TEXT NOT NULL,
@@ -330,25 +315,19 @@ const migrations = {
 				PRIMARY KEY (store_id, hour, thread_id, kind, name)
 			)
 		`;
-	}),
 
-	// A machine is named by what its server reports (`host`); `name` is only the user's override, so
-	// it becomes nullable. ADD + DROP + RENAME instead of rebuilding the table, which its foreign keys
-	// would cascade into. The built-in server's old seed name is no override.
-	"202611140002_host": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`ALTER TABLE machine ADD COLUMN host TEXT`;
-		yield* sql`ALTER TABLE machine ADD COLUMN alias TEXT`;
-		yield* sql`UPDATE machine SET alias = name WHERE NOT (id = 'local' AND name = 'CodeWork')`;
-		yield* sql`ALTER TABLE machine DROP COLUMN name`;
-		yield* sql`ALTER TABLE machine RENAME COLUMN alias TO name`;
-	}),
-
-	// `boot` is the store's latest open while the index was read up to `cursor`, as `rollup_boot` is
-	// to `rollup`.
-	"202611140003_boot": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`ALTER TABLE machine ADD COLUMN boot TEXT`;
+		const now = yield* Clock.currentTimeMillis;
+		// The built-in local machine runs the CLI home's CodeWork: a null executable and home are the ones found.
+		yield* sql`INSERT INTO machine ${sql.insert({
+			id: "local",
+			kind: "local",
+			namespace: "codework",
+			isDefault: 1,
+			pos: 0,
+			createdAt: now,
+		})}`;
+		// The one organization the UI uses until auth exists.
+		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
 };
 
