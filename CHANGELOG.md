@@ -4,46 +4,122 @@ This file is the canonical source for unreleased changes and published release n
 
 ## Format
 
-- Add in-progress work under `## [Unreleased]`.
+- Add in-progress work under `## [Unreleased]
 
-## [Unreleased]
+## [@codeworksh/desktop@0.5.0] - 2026-11-15
+
+### Added
+
+- A Metrics page, from the chart button beside Settings: cost, tokens, sessions and prompts by day and hour across every machine, with project and range filters, an activity calendar and work over time by model or provider. Usage is mirrored per machine and store, so history survives a recreated CodeWork database. Response time is an estimate from a duration histogram, and the page says so.
+- A Git Changes widget, opened from a thread's ⋯ menu: the working-tree changes of the thread's space, every file folded by default, inline or split diffs, a file list with arrow navigation, and a Space line naming the folder, branch, environment, freshness and the threads sharing it. A stopped sandbox shows its last read and is never woken; large diffs are virtualized.
+- Every frame has a ⋯ menu: Move (to a tab by ⌘N, or a new tab), and for a session Status, Priority, Group, Color and Settings.
+- Project settings open in the session frame from ⋯ › Settings: rename the project, see its remote and host folder, set its default model, reasoning and retries, turn user MCP servers on or off for the project, add connectors, edit `settings.jsonc` and `mcp.json` in place, and list each space's Skills as its skills daemon last published them.
+- The sidebar groups threads by project, status or priority and orders them by last update or creation. Thread statuses follow Linear: enqueued and working follow the runs; review, settled and cancelled are set by you.
+- Queued steers and follow-ups stack above the composer as cards: the newest in front, up to three edges behind, opening into one list on hover or focus without moving the conversation. Parked prompts show a pulsing dot, the lane (Steer or Follow Up) trails each row, and a row is edited in place (Enter saves, Esc cancels).
+- A notice about the session (No Model, Something Went Wrong, Not Sent, Not Forked, a broken settings file) is the front card of that stack, tinted by its tone, with queued prompts behind it.
+- A stop CodeWork accepted shows as "Stopping", and a parked queue reads "Parked · Runs with your next message".
+
+### Changed
+
+- Workspaces are Tabs: the tab bar, Settings › Tabs and the frame's Move menu say "tab".
+- `app.db` lives in the CodeWork home under `desktop/<channel>`, beside the CLI's data. A run from the repo is named "CodeWork Local", and each build keeps Electron's data in a folder of its own.
+- A machine is named by what its server reports; the name in Settings is an optional override.
+- All Threads is Threads. Icons are Phosphor, and the sidebar slides open and closed.
+- Notice titles are title case, and a failed reply's error no longer repeats as a notice.
+
+### Fixed
+
+- In the composer, a prompt typed while another was still sending was cleared when that send landed, and could not be sent until it did.
+- A new session shows its first prompt at once, and streaming renders less.
+- A machine whose store was restored and then written past the app's cursor is read again in full, instead of mixing two timelines.
+
+### Breaking Changes
+
+- An `app.db` from an earlier build is not upgraded, and it has moved; delete it.
+
+## [@codeworksh/cli@0.9.0] - 2026-11-15
+
+### Added
+
+- `daemon.call({ plugin, spaceId, method, input })`. The git daemon's `diff` returns per-file patches; while the space's sandbox is not running it answers from the last read, marked `cached`. A call on a local space starts its daemons.
+- `event.subscribe` takes `types`: only those types, and first the last event of each type per space.
+- `usage.sync` streams a machine's usage rollup in revision order, then live. `server.info` reports the machine's own name.
+- `settings.read`, `settings.write` and `settings.set` read and edit a project's or the user's `settings.jsonc` and `mcp.json`, keeping comments and formatting; a write is refused when the file changed on disk or the runtime would reject it. `project.remote` reads `origin` of a project's main checkout, without credentials.
+- `index.sync` takes `boot`: a store that left that boot line is streamed again from zero, and the first `Synced` carries `reset: true`.
+- A thread summary reports `parked`: idle, nothing owed a run, and a prompt pending.
+
+### Changed
+
+- `model.list` leaves out `default` when there is no model to run; otherwise `default` is the model a session would run. A run with no model fails with `no-model-error`, which the CLI prints with a hint, and ACP refuses a new session.
+- The CLI's settings edits go through the same module as the RPC: no empty temp directory is left beside the file, and removals are formatted.
+
+### Fixed
+
+- ACP's `prompt` and `codework run --server` waited forever on a run that ended in `session.run.failed`.
+
+### Breaking Changes
+
+- A `codework.db` from 0.8.0 is refused with `database-outdated`; delete it, with its `-wal` and `-shm` files.
+
+## [@codeworksh/harness@0.9.0] - 2026-11-15
 
 ### Added
 
 - `ModelCatalog.selected(settings, hostDir)` in `@codeworksh/harness/effect`: the model a session runs when nothing at runtime names one.
-- `Runner.NoModelError`, reported as `no-model-error`: a run that has no model, because settings name none and no provider is configured. The CLI prints it with a hint.
-- Queued steers and follow-ups stack above the desktop composer as cards: the newest in front, up to three edges behind, opening into one list on hover or focus without moving the conversation. Parked prompts show a pulsing dot, the lane (Steer or Follow Up) trails each row, and a row is edited in place (Enter saves, Esc cancels).
-- A notice about the session (No Model, Something Went Wrong, Not Sent, Not Forked, a broken settings file) is the front card of that stack, tinted by its tone, with queued prompts behind it.
+- `Runner.NoModelError`, reported as `no-model-error`: a run that has no model, because settings name none and no provider is configured.
 - Space daemons: builtin `git` and `skills` daemons keep each space's state current from inside CodeWork. A space's daemons start with the first run there and stop after an hour without one; they read a sandbox only while a run, or a short handover after it, already holds it, so they never wake one.
 - `plugin.git.status` events: a space's branch, head and changed files with line counts, a wholly untracked folder as one entry. `plugin.skills.list` events: the skills sessions in a space see. Both carry `spaceId` and `observedAt`.
-- `daemon.call({ plugin, spaceId, method, input })`. The git daemon's `diff` returns per-file patches; while the space's sandbox is not running it answers from the last read, marked `cached`.
-- `event.subscribe` takes `types`: only those types, and first the last event of each type per space.
 - `space.mount.attached` and `space.mount.detached` events: a run's drain mounting and releasing its space.
-- `@codeworksh/plugin/plugin/daemon`: the daemon plugin contract (space scope).
-- The desktop's project settings list each space's Skills as its skills daemon last published them, kept in `app.db`: they update as runs change them, a stopped sandbox shows its last list and its age, and a space never read says "not synced yet".
+- A durable usage rollup: per hour, thread, provider, model and thinking level, the requests, tokens, reasoning, cost and a response-time histogram, plus user messages and tool calls that ran. It is written in the same transaction that finalises an entry and backfilled from existing entries; aborted and failed requests are counted but never timed.
+- `session.execution.stopping`: a user stop is recorded before the run is interrupted.
 
 ### Changed
 
 - With no model in settings, a session runs the first preferred model a configured provider has, else that provider's first model, in place of `openai/gpt-5.6-luna`. With no provider configured either, the run fails with `no-model-error`.
-- `model.list` leaves out `default` when there is no model to run; otherwise `default` is the model a session would run, picked the same way.
-- ACP refuses a new session when there is no model to run.
-- The GitHub Copilot missing-key message ends with "or authenticate with GitHub Copilot".
-- Desktop notice titles are title case, and a failed reply's error no longer repeats as a notice.
-- `vp run knip:check` reports unused exports in `packages/aikit`, `packages/codework`, `packages/harness` and `packages/plugin` as well as the apps. Modules other than a package's entry points no longer re-export themselves as a namespace (`export * as X from "./x.ts"`); their importers use `import * as X`, so knip sees which members are used.
+- What runs is derived from two positions on the session log: a prompt runs when its admission or latest move to steer comes after the last unanswered run end. A run that ends without an answer, or a user stop, parks the queue until your next prompt; asking for the steer lane runs a parked steer.
+- Recovery after a crash or shutdown is decided by the drain that reaches the thread first. A shutdown resends the same attempt without charging it; a crash before the request counts as a failed attempt; a crash while asleep in retry backoff does not count toward the restart limit.
+- A project that is not a repository has a main checkout.
+- `vp run knip:check` reports unused exports in `packages/aikit`, `packages/codework`, `packages/harness` and `packages/plugin` as well as the apps. Modules other than a package's entry points no longer re-export themselves as a namespace; their importers use `import * as X`.
 
 ### Removed
 
-- Internal exports nothing imported, across aikit, codework, harness and plugin. Those also unused inside their own module are deleted, among them harness's `PluginStore.remove` and `PluginStore.all`, the `ToolRegistry` service and its layer, `Space.layerWith`, `Worktree.layerWith` and `Worktree.defaultLayer`. Package entry points are unchanged except as below.
+- Internal exports nothing imported. Those also unused inside their own module are deleted, among them `PluginStore.remove` and `PluginStore.all`, the `ToolRegistry` service and its layer, `Space.layerWith`, `Worktree.layerWith` and `Worktree.defaultLayer`.
 - `@codeworksh/harness/effect`: `Global.defaultLayer`, a duplicate of `Global.layer`.
+- The thread `execution` recovery mark, replaced by the log positions above.
 
 ### Fixed
 
-- In the desktop composer, a prompt typed while another was still sending was cleared when that send landed, and could not be sent until it did.
+- A stop survives a crash: a host killed while a stop winds down ends the run as interrupted by the user, not as a crash.
+- One thread failing to resume no longer cancels every other thread's resume.
+- A stop arriving while a drain settled, or before a cut-off thread was claimed at startup, was dropped.
+- Partial text after a crash is marked `aborted`, not `error`.
+- A lifecycle event racing a session delete could recreate the session's log.
 
 ### Breaking Changes
 
-- `@codeworksh/plugin`: `Settings.defaults.model` names no model, and `Settings.Info.model.provider` and `.id` are optional.
 - `@codeworksh/harness/effect`: `State.layer` requires `ModelCatalog.Credentials`.
+- The database adds `thread.head` and `inbox.tail`; one from 0.8.0 is refused as outdated.
+
+## [@codeworksh/plugin@0.5.0] - 2026-11-15
+
+### Added
+
+- `@codeworksh/plugin/plugin/daemon`: the daemon plugin contract (space scope): `Daemon.define`, methods, events, work, and the `Detached` and `BudgetExceeded` errors.
+- `SandboxNotHeldError`: a sandbox's I/O was asked for while no drain or handover holds it.
+
+### Breaking Changes
+
+- `Settings.defaults.model` names no model, and `Settings.Info.model.provider` and `.id` are optional.
+
+## [@codeworksh/aikit@0.14.1] - 2026-11-15
+
+### Changed
+
+- The GitHub Copilot missing-key message ends with "or authenticate with GitHub Copilot".
+
+### Removed
+
+- Internal exports nothing imported. Entry points are unchanged.
 
 ## [@codeworksh/desktop@0.4.0] - 2026-11-06
 
