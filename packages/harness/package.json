@@ -109,7 +109,7 @@
 		"effect": "4.0.5"
 	},
 	"peerDependencies": {
-		"@daytona/sdk": "*",
+		"@daytona/sdk": "<1",
 		"@vercel/sandbox": "*",
 		"effect": "4.0.5"
 	},
