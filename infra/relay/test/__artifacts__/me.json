@@ -1,0 +1,29 @@
+{
+	"missingToken": {
+		"status": 401,
+		"tag": "Unauthorized"
+	},
+	"forgedToken": {
+		"status": 401,
+		"tag": "Unauthorized"
+	},
+	"me": {
+		"account": {
+			"id": "<account>",
+			"email": "relay-e2e-<run>+clerk_test@example.com",
+			"name": "Ada Lovelace"
+		},
+		"workspaces": [
+			{
+				"id": "<workspace-0>",
+				"name": "Ada's Workspace",
+				"role": "owner"
+			}
+		]
+	},
+	"rows": {
+		"account": 1,
+		"workspace": 1,
+		"member": 1
+	}
+}

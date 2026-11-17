@@ -1,0 +1,24 @@
+{
+	"name": "@codeworksh/relay",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The relay: the cloud API for accounts, workspaces and machines, at relay.codework.sh.",
+	"type": "module",
+	"scripts": {
+		"db": "docker compose up -d --wait",
+		"start": "node src/main.ts",
+		"test": "vp test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@clerk/backend": "3.27.0",
+		"@effect/platform-node": "4.0.5",
+		"@effect/sql-pg": "4.0.5",
+		"effect": "4.0.5"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}
