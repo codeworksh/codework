@@ -1,0 +1,53 @@
+{
+	"connect": {
+		"exitCode": 0,
+		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\n",
+		"approveStatus": 200,
+		"approved": {
+			"id": "e2e-box",
+			"source": "flag",
+			"ownerIsApprover": true,
+			"online": false
+		},
+		"reusedCode": {
+			"status": 404,
+			"tag": "Relay.NotFound"
+		}
+	},
+	"machineFile": {
+		"id": "e2e-box",
+		"source": "flag",
+		"mode": "600",
+		"workspaces": [
+			"<workspace>"
+		],
+		"link": {
+			"name": "Ada's Workspace",
+			"ownerName": "Ada Lovelace",
+			"keyKty": "OKP",
+			"keyCrv": "Ed25519"
+		}
+	},
+	"machinesBeforeServe": [
+		{
+			"id": "e2e-box",
+			"online": false
+		}
+	],
+	"online": {
+		"id": "e2e-box",
+		"online": true,
+		"version": true
+	},
+	"forgedHeartbeat": {
+		"status": 401,
+		"tag": "Relay.Unauthorized"
+	},
+	"disconnect": {
+		"exitCode": 0,
+		"output": "Disconnected from Ada's Workspace\n",
+		"machineFileWorkspaces": [],
+		"machinesAfter": 0,
+		"revokedRows": 1
+	}
+}

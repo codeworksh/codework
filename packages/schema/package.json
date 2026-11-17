@@ -1,0 +1,19 @@
+{
+	"name": "@codeworksh/schema",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Shared wire schemas: the relay API and the signed machine requests. Bundled into its consumers.",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"effect": "4.0.5"
+	},
+	"devDependencies": {
+		"typescript": "catalog:"
+	}
+}

@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"@clerk/backend": "3.27.0",
+		"@codeworksh/schema": "workspace:*",
 		"@effect/platform-node": "4.0.5",
 		"@effect/sql-pg": "4.0.5",
 		"effect": "4.0.5"

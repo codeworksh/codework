@@ -6,6 +6,7 @@ import * as NetAddress from "effect/net/NetAddress";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
+import * as Heartbeat from "../machine/heartbeat.ts";
 import * as Clones from "./clones.ts";
 import * as Contract from "./contract.ts";
 import * as EventFeed from "./feed.ts";
@@ -102,6 +103,7 @@ export const layer = (options: {
 	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
 		Layer.provideMerge(managedShutdown),
 		Layer.provideMerge(resumeUnfinished),
+		Layer.provideMerge(Heartbeat.layer),
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 		Layer.provide(Host.layer),
 		Layer.provide(Clones.layer),

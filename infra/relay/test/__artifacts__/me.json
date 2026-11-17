@@ -1,11 +1,11 @@
 {
 	"missingToken": {
 		"status": 401,
-		"tag": "Unauthorized"
+		"tag": "Relay.Unauthorized"
 	},
 	"forgedToken": {
 		"status": 401,
-		"tag": "Unauthorized"
+		"tag": "Relay.Unauthorized"
 	},
 	"me": {
 		"account": {

@@ -1,6 +1,6 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
 import { Config, Context, Effect, Layer, Redacted } from "effect";
-import { Unauthorized } from "./api.ts";
+import { Relay } from "@codeworksh/schema";
 
 export interface Profile {
 	readonly email: string;
@@ -13,7 +13,7 @@ export class Clerk extends Context.Service<
 	Clerk,
 	{
 		/** The verified subject (`auth_id`) of a session token. */
-		readonly verify: (token: string) => Effect.Effect<string, Unauthorized>;
+		readonly verify: (token: string) => Effect.Effect<string, Relay.Unauthorized>;
 		readonly profile: (authId: string) => Effect.Effect<Profile>;
 	}
 >()("relay/Clerk") {
@@ -26,7 +26,7 @@ export class Clerk extends Context.Service<
 				verify: Effect.fn("Clerk.verify")(function* (token) {
 					// The package's verifyToken resolves to the claims and rejects on any verification failure.
 					const claims: unknown = yield* Effect.tryPromise(() => verifyToken(token, { secretKey })).pipe(
-						Effect.mapError(() => new Unauthorized({ message: "Invalid or expired session token" })),
+						Effect.mapError(() => new Relay.Unauthorized({ message: "Invalid or expired session token" })),
 					);
 					if (
 						typeof claims !== "object" ||
@@ -34,7 +34,7 @@ export class Clerk extends Context.Service<
 						!("sub" in claims) ||
 						typeof claims.sub !== "string"
 					) {
-						return yield* new Unauthorized({ message: "Invalid or expired session token" });
+						return yield* new Relay.Unauthorized({ message: "Invalid or expired session token" });
 					}
 					return claims.sub;
 				}),

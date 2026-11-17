@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import { Account, Me, Workspace } from "./api.ts";
+import { Relay } from "@codeworksh/schema";
 import { Clerk } from "./clerk.ts";
 
 /** People and the workspaces they belong to. */
@@ -8,7 +8,7 @@ export class Accounts extends Context.Service<
 	Accounts,
 	{
 		/** The person's account and workspaces, creating the account and its default workspace on first sight. */
-		readonly ensure: (authId: string) => Effect.Effect<Me>;
+		readonly ensure: (authId: string) => Effect.Effect<Relay.Me>;
 	}
 >()("relay/Accounts") {
 	static readonly layer = Layer.effect(
@@ -57,16 +57,16 @@ export class Accounts extends Context.Service<
 					const workspaces = yield* sql<{
 						readonly id: string;
 						readonly name: string;
-						readonly role: Workspace["role"];
+						readonly role: typeof Relay.Role.Type;
 					}>`
 							SELECT w.id, w.name, m.role
 							FROM member m JOIN workspace w ON w.id = m.workspace_id
 							WHERE m.account_id = ${account.id}
 							ORDER BY w.created_at, w.id
 						`;
-					return new Me({
-						account: new Account(account),
-						workspaces: workspaces.map((row) => new Workspace(row)),
+					return new Relay.Me({
+						account: new Relay.Account(account),
+						workspaces: workspaces.map((row) => new Relay.Workspace(row)),
 					});
 				}, Effect.orDie),
 			});

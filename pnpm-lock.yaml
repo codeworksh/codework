@@ -506,6 +506,9 @@ importers:
       '@clerk/backend':
         specifier: 3.27.0
         version: 3.27.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@codeworksh/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@effect/platform-node':
         specifier: 4.0.5
         version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
@@ -617,6 +620,9 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@codeworksh/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
@@ -743,6 +749,16 @@ importers:
       effect:
         specifier: 4.0.5
         version: 4.0.5
+
+  packages/schema:
+    dependencies:
+      effect:
+        specifier: 4.0.5
+        version: 4.0.5
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   sites/www:
     dependencies:
