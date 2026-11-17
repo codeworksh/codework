@@ -43,6 +43,7 @@ export function Auth({ children }: { readonly children: ReactNode }) {
 			publishableKey={publishableKey}
 			signInUrl={SIGN_IN}
 			signUpUrl={SIGN_UP}
+			afterSignOutUrl={SIGN_IN}
 			routerPush={navigate(false)}
 			routerReplace={navigate(true)}
 		>
@@ -58,28 +59,36 @@ function Gate({ signingUp, children }: { readonly signingUp: boolean; readonly c
 	setSessionToken(getToken);
 	// Clerk unreachable (offline): local work keeps running; only cloud features wait for it.
 	if (clerk.status === "error") return children;
-	if (!isLoaded) return null;
+	// Clerk is briefly not loaded while it signs out too, after the splash is gone: the screen's backdrop
+	// holds the window instead of an empty page.
+	if (!isLoaded) return <Screen />;
 	return isSignedIn ? children : <SignInScreen signingUp={signingUp} />;
+}
+
+function Screen({ children }: { readonly children?: ReactNode }) {
+	return (
+		<div className="flex h-full flex-col bg-desktop">
+			<div className="h-titlebar shrink-0 [-webkit-app-region:drag]" />
+			<div className="flex flex-1 items-center justify-center overflow-auto pb-titlebar">{children}</div>
+		</div>
+	);
 }
 
 function SignInScreen({ signingUp }: { readonly signingUp: boolean }) {
 	useEffect(reveal, []);
 	return (
-		<div className="flex h-full flex-col bg-desktop">
-			<div className="h-titlebar shrink-0 [-webkit-app-region:drag]" />
-			<div className="flex flex-1 items-center justify-center overflow-auto pb-titlebar">
-				{signingUp ? (
-					<SignUp routing="path" path={SIGN_UP} signInUrl={SIGN_IN} forceRedirectUrl={HOME} />
-				) : (
-					<SignIn
-						routing="path"
-						path={SIGN_IN}
-						signUpUrl={SIGN_UP}
-						forceRedirectUrl={HOME}
-						signUpForceRedirectUrl={HOME}
-					/>
-				)}
-			</div>
-		</div>
+		<Screen>
+			{signingUp ? (
+				<SignUp routing="path" path={SIGN_UP} signInUrl={SIGN_IN} forceRedirectUrl={HOME} />
+			) : (
+				<SignIn
+					routing="path"
+					path={SIGN_IN}
+					signUpUrl={SIGN_UP}
+					forceRedirectUrl={HOME}
+					signUpForceRedirectUrl={HOME}
+				/>
+			)}
+		</Screen>
 	);
 }
