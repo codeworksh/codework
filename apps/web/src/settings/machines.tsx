@@ -26,7 +26,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { messageOf } from "@/lib/utils";
-import { approveAtom, declineAtom, machinesAtom, meAtom, pairingsAtom, removeMachineAtom } from "../kernel/relay";
+import {
+	approveAtom,
+	declineAtom,
+	machinesAtom,
+	meAtom,
+	pairingsAtom,
+	relayFailure,
+	removeMachineAtom,
+} from "../kernel/relay";
 import { Server } from "../kernel/rpc";
 import { disconnectAtom, machineAtom } from "../shell/connect";
 import { Ago } from "../widgets/time";
@@ -162,7 +170,7 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 				refreshPairings();
 				refreshMachines();
 			})
-			.catch((cause: unknown) => setError(messageOf(cause)))
+			.catch((cause: unknown) => setError(relayFailure(cause)))
 			.finally(() =>
 				setBusy((codes) => {
 					const next = new Set(codes);
@@ -196,7 +204,7 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 								title={pairing.machine.givenName ?? pairing.machine.localHostName}
 								description={
 									<>
-										{pairing.machine.os} {pairing.machine.arch} · Code{" "}
+										{pairing.machine.os} {pairing.machine.arch} · {pairing.machine.id} · Code{" "}
 										<code className="font-mono tracking-wider text-ink">{pairing.userCode}</code>
 									</>
 								}
@@ -257,7 +265,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 				setCode("");
 				onAdded();
 			})
-			.catch((cause: unknown) => setError(messageOf(cause)))
+			.catch((cause: unknown) => setError(relayFailure(cause)))
 			.finally(() => {
 				setBusy(false);
 				input.current?.focus();
@@ -342,6 +350,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 	const machines = useAtomValue(machinesAtom(workspace.id));
 	const refresh = useAtomRefresh(machinesAtom(workspace.id));
 	const local = useAtomValue(machineAtom);
+	const refreshLocal = useAtomRefresh(machineAtom);
 	const me = useAtomValue(meAtom);
 	const localId = AsyncResult.isSuccess(local) ? local.value.id : null;
 	const accountId = AsyncResult.isSuccess(me) ? me.value.account.id : null;
@@ -351,6 +360,13 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 		const timer = setInterval(refresh, REFRESH_MS);
 		return () => clearInterval(timer);
 	}, [refresh]);
+	// This machine's own record of its links lags the relay: removed elsewhere, it forgets the link on its
+	// next heartbeat. Read it again with each refresh until the two agree.
+	const linked = AsyncResult.isSuccess(local) && local.value.workspaces.some((option) => option.id === workspace.id);
+	const listed = AsyncResult.isSuccess(machines) && machines.value.some((machine) => machine.id === localId);
+	useEffect(() => {
+		if (AsyncResult.isSuccess(machines) && linked !== listed) refreshLocal();
+	}, [machines, linked, listed, refreshLocal]);
 
 	if (AsyncResult.isInitial(machines)) {
 		return (
@@ -362,7 +378,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 	if (AsyncResult.isFailure(machines)) {
 		return (
 			<Section title={`In ${workspace.name}`}>
-				<EmptyState title="Unavailable" description={messageOf(machines.cause)} />
+				<EmptyState title="Unavailable" description={relayFailure(machines.cause)} />
 			</Section>
 		);
 	}
@@ -501,14 +517,14 @@ function MachineMenu({
 				setAsking(false);
 				onDone();
 			})
-			.catch((cause: unknown) => setError(messageOf(cause)))
+			.catch((cause: unknown) => setError(relayFailure(cause)))
 			.finally(() => setBusy(false));
 	};
 	return (
 		<>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<Button size="icon-sm" variant="ghost" aria-label={`Actions for ${name}`}>
+					<Button size="icon-sm" variant="ghost" aria-label={`Actions for ${name} (${machineId})`}>
 						<DotsThreeIcon weight="bold" aria-hidden />
 					</Button>
 				</DropdownMenuTrigger>

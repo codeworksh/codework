@@ -1,7 +1,7 @@
-import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { CaretRightIcon, CheckIcon, CircleNotchIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { CopyCommand } from "@/components/copyable";
@@ -32,8 +32,9 @@ const putOff = (workspaceId: string) => {
 	}
 };
 
-// Once per launch: after that, the app stays where the person goes.
-let checked = false;
+// Once per sign-in: after that, the app stays where the person goes. The atom registry is mounted inside
+// the auth gate, so it starts over for each account that signs in.
+const checkedAtom = Atom.make(false).pipe(Atom.keepAlive);
 
 /**
  * Opens setup when this machine isn't set up for the workspace the app opens in: the CLI missing, its
@@ -42,6 +43,7 @@ let checked = false;
  */
 export function SetupGate() {
 	const navigate = useNavigate();
+	const [checked, setChecked] = useAtom(checkedAtom);
 	const current = useAtomValue(workspaceAtom);
 	const status = useAtomValue(defaultServerAtom);
 	const machine = useAtomValue(machineAtom);
@@ -57,7 +59,7 @@ export function SetupGate() {
 					: undefined;
 	useEffect(() => {
 		if (checked || !isSignedInApp || workspace === undefined || needs === undefined) return;
-		checked = true;
+		setChecked(true);
 		if (needs && !putOff(workspace.id)) {
 			void navigate({
 				to: "/workspaces/$workspaceId/settings/machines/setup",
@@ -65,7 +67,7 @@ export function SetupGate() {
 				replace: true,
 			});
 		}
-	}, [needs, workspace, navigate]);
+	}, [checked, setChecked, needs, workspace, navigate]);
 	return null;
 }
 
@@ -138,18 +140,18 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 						<Step
 							index={0}
 							current={current}
-							title="Install Code Work CLI"
+							title="Install the CodeWork CLI"
 							summary={version === undefined ? "" : `v${version} installed`}
 							line={
 								cli !== null && "failure" in cli
 									? `codework at ${cli.path} fails to run: ${cli.failure}`
-									: "Code Work runs your sessions on this Mac."
+									: "It runs your sessions on this Machine."
 							}
 							command={INSTALL}
 							error={current === 0 ? error : null}
 						>
 							<Button disabled={busy !== null || status === undefined} onClick={() => run("install")}>
-								<BusyLabel busy={busy === "install"} idle="Install codework CLI" working="Installing…" />
+								<BusyLabel busy={busy === "install"} idle="Install CLI" working="Installing…" />
 							</Button>
 						</Step>
 						<Step
@@ -175,7 +177,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							title={`Connect to ${workspaceName}`}
 							summary={`Connected to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
-							command="codework connect"
+							command={`codework connect --workspace ${workspaceId}`}
 							error={null}
 						>
 							{connecting ? (

@@ -21,20 +21,23 @@ let relay: Awaited<ReturnType<typeof startRelay>>;
 let user: Awaited<ReturnType<typeof clerkUser>>;
 const children: Array<ChildProcess> = [];
 
-const codework = (args: ReadonlyArray<string>) => {
+/** `stderr` pipes it for {@link finished} to read; a long-running server leaves it inherited. */
+const codework = (args: ReadonlyArray<string>, options: { readonly stderr?: boolean } = {}) => {
 	const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "--home", home], {
 		env: { ...process.env, CODEWORK_RELAY_URL: relay.base },
-		stdio: ["ignore", "pipe", "inherit"],
+		stdio: ["ignore", "pipe", options.stderr === true ? "pipe" : "inherit"],
 	});
 	children.push(child);
 	return child;
 };
 
 const finished = (child: ChildProcess) =>
-	new Promise<{ code: number | null; out: string }>((resolve) => {
+	new Promise<{ code: number | null; out: string; err: string }>((resolve) => {
 		let out = "";
+		let err = "";
 		child.stdout!.on("data", (chunk) => (out += chunk));
-		child.once("exit", (code) => resolve({ code, out }));
+		child.stderr?.on("data", (chunk) => (err += chunk));
+		child.once("exit", (code) => resolve({ code, out, err }));
 	});
 
 const asPerson = async (path: string, init: RequestInit = {}) =>
@@ -144,5 +147,69 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			},
 		};
 		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/connect.json");
+	});
+
+	it("declines a connect, accepts a code typed without its dash, and removes a machine", async () => {
+		const me = decodeMe(await (await asPerson("/v1/me")).json());
+		const workspace = me.workspaces[0]!;
+		const pending = async () =>
+			Schema.decodeUnknownSync(Schema.Array(Relay.PendingPairing))(
+				await (await asPerson(`/v1/workspaces/${workspace.id}/pairings`)).json(),
+			);
+
+		// A connect that names the workspace waits in its list; declining it stops the CLI with "declined".
+		const asked = codework(["connect", "--workspace", workspace.id], { stderr: true });
+		const askedDone = finished(asked);
+		const askedCode = await waitForLine(asked, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+		const listed = await pending();
+		const decline = await asPerson("/v1/pairings/decline", {
+			method: "POST",
+			body: JSON.stringify({ userCode: askedCode, workspaceId: workspace.id }),
+		});
+		const declined = await askedDone;
+		const afterDecline = await pending();
+
+		// The code as a person may type it: lower case, no dash.
+		const connect = codework(["connect", "--workspace", workspace.id]);
+		const connectDone = finished(connect);
+		const code = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+		const approve = await asPerson("/v1/pairings/approve", {
+			method: "POST",
+			body: JSON.stringify({ userCode: code.replace("-", "").toLowerCase(), workspaceId: workspace.id }),
+		});
+		const connected = await connectDone;
+
+		// Removed while its server is down, the machine forgets the link on its first heartbeat back.
+		const remove = await asPerson(`/v1/workspaces/${workspace.id}/machines/e2e-box/remove`, { method: "POST" });
+		const afterRemove = await machines(workspace.id);
+		const serve = codework(["serve", "--port", "0"]);
+		const forgotten = await until(async () =>
+			Object.keys(machineFile().workspaces).length === 0 ? true : undefined,
+		);
+		serve.kill("SIGTERM");
+		const removedAgain = await asPerson(`/v1/workspaces/${workspace.id}/machines/e2e-box/remove`, {
+			method: "POST",
+		});
+
+		const artifact = {
+			decline: {
+				listed: listed.map((pairing) => ({
+					code: pairing.userCode === askedCode ? "<code>" : pairing.userCode,
+					machine: pairing.machine.id,
+				})),
+				status: decline.status,
+				exitCode: declined.code,
+				error: declined.err.trim(),
+				pendingAfter: afterDecline.length,
+			},
+			typedCode: { status: approve.status, exitCode: connected.code, output: connected.out.replace(code, "<code>") },
+			remove: {
+				status: remove.status,
+				machinesAfter: afterRemove.length,
+				machineFileForgot: forgotten,
+				again: { status: removedAgain.status, tag: decodeError(await removedAgain.json())._tag },
+			},
+		};
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/manage.json");
 	});
 });

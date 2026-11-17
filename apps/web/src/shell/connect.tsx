@@ -3,8 +3,7 @@ import { Effect, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
-import { messageOf } from "@/lib/utils";
-import { approveAtom } from "../kernel/relay";
+import { approveAtom, relayFailure } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
 
 /** This machine (the default CodeWork server) and the workspaces it is connected to. */
@@ -23,11 +22,6 @@ const connectAtom = Atom.family((workspaceId: string) =>
 	),
 );
 
-/** A connect failure in people's words: a network failure reads as one; the CLI's own message otherwise. */
-const unreachable = /transport error|fetch failed|econnrefused|enotfound|etimedout|network/i;
-const connectFailure = (message: string) =>
-	unreachable.test(message) ? "Can't reach CodeWork's servers. Check your connection, then try again." : message;
-
 /**
  * Connects this machine to a workspace while mounted, and approves its code as the signed-in member.
  * After Approve it holds as `approved` until the link arrives, which the relay reports on its next poll
@@ -43,7 +37,7 @@ export function useConnect(workspaceId: string) {
 	const [approved, setApproved] = useState<string | undefined>(undefined);
 	const [error, setError] = useState<string | null>(null);
 	const event = AsyncResult.isSuccess(progress) ? progress.value : undefined;
-	const failure = AsyncResult.isFailure(progress) ? connectFailure(messageOf(progress.cause)) : null;
+	const failure = AsyncResult.isFailure(progress) ? relayFailure(progress.cause) : null;
 	const linked = event?._tag === "Connected" ? event.connected : undefined;
 	const code = event?._tag === "Code" ? event.userCode : approved;
 	// The machine's own record of its workspaces changed; the menu and setup read it.
@@ -79,7 +73,7 @@ export function useConnect(workspaceId: string) {
 			approve({ userCode: code, workspaceId }).then(
 				() => setSent("approved"),
 				(cause: unknown) => {
-					setError(connectFailure(messageOf(cause)));
+					setError(relayFailure(cause));
 					setSent(null);
 				},
 			);

@@ -89,4 +89,12 @@ export const migrations = {
 			)
 		`;
 	}),
+
+	"2026111801_declined": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			ALTER TABLE pairing DROP CONSTRAINT pairing_status_check,
+				ADD CONSTRAINT pairing_status_check CHECK (status IN ('pending', 'approved', 'declined'))
+		`;
+	}),
 };

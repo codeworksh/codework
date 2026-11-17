@@ -94,6 +94,11 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 		yield* Effect.sleep(Duration.seconds(pairing.interval));
 		const status = yield* client.machine.poll({ payload: { deviceCode: pairing.deviceCode } });
 		if (status.status === "expired") break;
+		if (status.status === "declined") {
+			return yield* new Machine.ConnectError({
+				message: "The connect was declined; run connect again for a new code",
+			});
+		}
 		if (status.status === "approved") {
 			const { connected } = status;
 			const keyId = yield* Jws.thumbprint(Jws.publicOf(key));

@@ -14,10 +14,9 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { messageOf } from "@/lib/utils";
 import { isSignedInApp } from "./auth";
 import { Frame } from "./frame";
-import { createWorkspaceAtom, meAtom } from "./kernel/relay";
+import { createWorkspaceAtom, meAtom, relayFailure } from "./kernel/relay";
 
 /** Creates a workspace: a name, then Create Workspace. Full window, outside the app's sidebar. */
 export function Join() {
@@ -53,7 +52,7 @@ export function Join() {
 								}),
 							)
 							.catch((cause: unknown) => {
-								setError(messageOf(cause));
+								setError(relayFailure(cause));
 								setPending(false);
 							});
 					}}

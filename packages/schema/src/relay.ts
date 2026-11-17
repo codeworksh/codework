@@ -93,7 +93,7 @@ export const Connected = Schema.Struct({
 export type Connected = typeof Connected.Type;
 
 export const PairingStatus = Schema.Union([
-	Schema.Struct({ status: Schema.Literals(["pending", "expired"]) }),
+	Schema.Struct({ status: Schema.Literals(["pending", "expired", "declined"]) }),
 	Schema.Struct({ status: Schema.Literal("approved"), connected: Connected }),
 ]);
 export type PairingStatus = typeof PairingStatus.Type;
@@ -172,7 +172,7 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 			success: Schema.Array(PendingPairing),
 			error: Forbidden,
 		}),
-		/** Turns a pending connect away; the waiting machine sees its code expire. */
+		/** Turns a pending connect away; the waiting machine hears it was declined. */
 		HttpApiEndpoint.post("decline", "/v1/pairings/decline", {
 			payload: Schema.Struct({ userCode: Schema.String, workspaceId: Schema.String }),
 			error: [NotFound, Forbidden],

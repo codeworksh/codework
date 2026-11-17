@@ -663,6 +663,14 @@ export const layer = Contract.Api.toLayer(
 						workspaceId,
 						onCode: (userCode) => Queue.offer(queue, { _tag: "Code", userCode }).pipe(Effect.asVoid),
 					}).pipe(
+						// The workspace sees it online now rather than on the next beat; a miss is retried then.
+						Effect.tap(() =>
+							MachineRelay.heartbeat(global.home).pipe(
+								Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+								Effect.ignore,
+								Effect.forkDetach,
+							),
+						),
 						Effect.flatMap((connected) => Queue.offer(queue, { _tag: "Connected", connected })),
 						Effect.andThen(Queue.end(queue)),
 						Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),

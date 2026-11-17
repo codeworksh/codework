@@ -4,6 +4,8 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+import { messageOf } from "@/lib/utils";
+
 const configured: unknown = import.meta.env.CODEWORK_RELAY_URL;
 /** The relay the app talks to; `CODEWORK_RELAY_URL` in the repo's .env.local points a dev build elsewhere. */
 const relayUrl = typeof configured === "string" && configured !== "" ? configured : "https://relay.codework.sh";
@@ -30,6 +32,16 @@ class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.A
 }
 
 const runtime = Atom.runtime(Client.layer);
+
+const unreachable = /transport error|fetch failed|econnrefused|enotfound|etimedout|network/i;
+
+/** A relay failure in people's words: a network failure reads as one; the relay's own message otherwise. */
+export const relayFailure = (cause: unknown) => {
+	const message = messageOf(cause);
+	return unreachable.test(message)
+		? "Can't reach CodeWork's servers. Check your connection, then try again."
+		: message;
+};
 
 const isUnauthorized = Schema.is(Relay.Unauthorized);
 

@@ -1,3 +1,4 @@
+import { Machine } from "@codeworksh/schema";
 import { Effect, Option } from "effect";
 import * as Runtime from "../../../framework/runtime.ts";
 import * as Relay from "../../../machine/relay.ts";
@@ -19,6 +20,13 @@ export default Runtime.handler(
 			});
 			yield* writeOut(`Connected to ${connected.workspace.name}\n`);
 		},
+		Effect.catchReason("HttpClientError", "TransportError", (reason) =>
+			Effect.fail(
+				new Machine.ConnectError({
+					message: `Can't reach CodeWork's servers at ${new URL(reason.request.url).origin}; check your connection, then run connect again`,
+				}),
+			),
+		),
 		Effect.provide(Relay.Client.layer),
 		Effect.catch(reportFailure),
 	),

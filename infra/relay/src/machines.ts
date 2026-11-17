@@ -54,6 +54,11 @@ const userCode = () => {
 	const letters = Array.from(random(8), (byte) => alphabet[byte % alphabet.length]).join("");
 	return `${letters.slice(0, 4)}-${letters.slice(4)}`;
 };
+/** A code as people type it, in any case and with or without its dash or spaces, as stored. */
+const typed = (code: string) => {
+	const letters = code.toUpperCase().replace(/[^A-Z]/g, "");
+	return letters.length === 8 ? `${letters.slice(0, 4)}-${letters.slice(4)}` : code.toUpperCase();
+};
 
 const invalid = (message: string) => new Relay.Unauthorized({ message });
 
@@ -158,7 +163,7 @@ export class Machines extends Context.Service<
 
 				poll: Effect.fn("Machines.poll")(function* (deviceCode) {
 					const [row] = yield* sql<{
-						readonly status: "pending" | "approved";
+						readonly status: "pending" | "approved" | "declined";
 						readonly expired: boolean;
 						readonly connected: Relay.Connected | null;
 					}>`
@@ -169,6 +174,7 @@ export class Machines extends Context.Service<
 					if (row.status === "approved" && row.connected !== null) {
 						return { status: "approved", connected: row.connected } as const;
 					}
+					if (row.status === "declined") return { status: "declined" } as const;
 					return { status: row.expired ? "expired" : "pending" } as const;
 				}),
 
@@ -185,7 +191,7 @@ export class Machines extends Context.Service<
 									readonly keyId: string;
 								}>`
 									SELECT id, workspace_id, machine, key, key_id FROM pairing
-									WHERE user_code = ${code.toUpperCase()} AND status = 'pending' AND expires_at > now()
+									WHERE user_code = ${typed(code)} AND status = 'pending' AND expires_at > now()
 									FOR UPDATE
 								`;
 								if (pairing === undefined)
@@ -290,15 +296,14 @@ export class Machines extends Context.Service<
 					);
 				}),
 
-				// Declining expires the code, so the waiting machine stops with "expired"; no new status.
 				decline: Effect.fn("Machines.decline")(function* (authId, code, workspaceId) {
 					const account = (yield* accounts.ensure(authId)).account;
 					if ((yield* role(workspaceId, account.id).pipe(Effect.orDie)) === undefined) {
 						return yield* new Relay.Forbidden({ message: "You are not a member of this workspace" });
 					}
 					const declined = yield* sql<{ readonly id: string }>`
-						UPDATE pairing SET expires_at = now()
-						WHERE user_code = ${code.toUpperCase()} AND workspace_id = ${workspaceId}
+						UPDATE pairing SET status = 'declined'
+						WHERE user_code = ${typed(code)} AND workspace_id = ${workspaceId}
 							AND status = 'pending' AND expires_at > now()
 						RETURNING id
 					`.pipe(Effect.orDie);
