@@ -4,10 +4,12 @@ import type { Relay } from "@codeworksh/schema";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+
 import { messageOf } from "@/lib/utils";
 import { machinesAtom, workspaceAtom } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
-import { machineAtom } from "../shell/connect";
+import { ApproveDialog, ConnectDialog, machineAtom } from "../shell/connect";
 import { Ago } from "../widgets/time";
 import { Group, Page, quietField, Row, SavingInput, Section } from "./blocks";
 import { EmptyState, StatusDot } from "./controls";
@@ -29,6 +31,7 @@ export function MachinesSettings() {
 					? "Machines connected to your workspace."
 					: `Machines connected to ${workspace.name}, and this machine's name.`
 			}
+			actions={workspace === undefined ? undefined : <MachineActions workspace={workspace} />}
 		>
 			<ThisMachine />
 			{workspace === undefined ? (
@@ -41,6 +44,27 @@ export function MachinesSettings() {
 				<WorkspaceMachines workspace={workspace} />
 			)}
 		</Page>
+	);
+}
+
+/** Connecting this machine to the workspace, and approving another machine's code. */
+function MachineActions({ workspace }: { workspace: Relay.Workspace }) {
+	const machine = useAtomValue(machineAtom);
+	const [dialog, setDialog] = useState<"connect" | "approve" | null>(null);
+	// Unknown while the local server is unreachable; connecting then fails in the dialog and says so.
+	const linked =
+		AsyncResult.isSuccess(machine) && machine.value.workspaces.some((option) => option.id === workspace.id);
+	return (
+		<div className="flex shrink-0 items-center gap-2">
+			<Button variant="outline" size="sm" onClick={() => setDialog("approve")}>
+				Approve a Machine…
+			</Button>
+			<Button size="sm" disabled={linked} onClick={() => setDialog("connect")}>
+				{linked ? "This Machine Is Connected" : "Connect This Machine"}
+			</Button>
+			{dialog === "connect" && <ConnectDialog workspace={workspace} onClose={() => setDialog(null)} />}
+			{dialog === "approve" && <ApproveDialog workspace={workspace} onClose={() => setDialog(null)} />}
+		</div>
 	);
 }
 
@@ -112,7 +136,7 @@ function WorkspaceMachines({ workspace }: { workspace: { readonly id: string; re
 				<EmptyState
 					icon={<DesktopTowerIcon size={22} aria-hidden />}
 					title="No Machines Yet"
-					description="Connect this machine from the workspace menu, or run codework connect on another."
+					description="Connect this machine, or run codework connect on another."
 				/>
 			) : (
 				<Group>

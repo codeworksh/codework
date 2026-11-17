@@ -45,6 +45,8 @@ function DropdownMenuGroup({ ...props }: React.ComponentProps<typeof DropdownMen
 	return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
 }
 
+// A row lights up at once under the pointer and lets go over 150ms, so sweeping down a menu leaves a
+// short trail instead of a flicker, and never lags behind the pointer.
 function DropdownMenuItem({
 	className,
 	inset,
@@ -60,7 +62,7 @@ function DropdownMenuItem({
 			data-inset={inset}
 			data-variant={variant}
 			className={cn(
-				"relative flex min-h-7 cursor-default items-center gap-2 rounded-[8px] px-2 py-1 outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:*:[svg]:text-destructive!",
+				"relative flex min-h-7 cursor-default items-center gap-2 rounded-[8px] px-2 py-1 outline-hidden transition-colors duration-150 ease-out select-none focus:bg-accent focus:duration-0 focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:*:[svg]:text-destructive!",
 				className,
 			)}
 			{...props}
@@ -174,7 +176,7 @@ function DropdownMenuSubTrigger({
 			data-slot="dropdown-menu-sub-trigger"
 			data-inset={inset}
 			className={cn(
-				"flex min-h-7 cursor-default items-center gap-2 rounded-[8px] px-2 py-1 outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[inset]:pl-8 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
+				"flex min-h-7 cursor-default items-center gap-2 rounded-[8px] px-2 py-1 outline-hidden transition-colors duration-150 ease-out select-none focus:bg-accent focus:duration-0 data-[state=open]:duration-0 focus:text-accent-foreground data-[inset]:pl-8 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
 				className,
 			)}
 			{...props}

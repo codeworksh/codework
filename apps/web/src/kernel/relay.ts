@@ -80,6 +80,17 @@ export const workspaceAtom = Atom.make((get) => {
 	);
 });
 
+/** Creates a workspace the account owns and switches the app to it. */
+export const createWorkspaceAtom = runtime.fn((name: string, get) =>
+	Effect.gen(function* () {
+		const client = yield* Client;
+		const workspace = yield* client.workspace.create({ payload: { name } });
+		get.set(chosenAtom, workspace.id);
+		get.refresh(meAtom);
+		return workspace;
+	}),
+);
+
 /** Approves a machine's connect code for a workspace the account belongs to. */
 export const approveAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
 	Effect.gen(function* () {

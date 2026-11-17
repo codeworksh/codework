@@ -15,6 +15,7 @@ import { Route as ShellMetricsRouteImport } from './routes/_shell.metrics'
 import { Route as ShellProjectsRouteImport } from './routes/_shell.projects'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellThreadsRouteImport } from './routes/_shell.threads'
+import { Route as WorkspacesJoinRouteImport } from './routes/workspaces.join'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
 import { Route as ShellSettingsArchiveRouteImport } from './routes/_shell.settings.archive'
 import { Route as ShellSettingsChatRouteImport } from './routes/_shell.settings.chat'
@@ -59,6 +60,11 @@ const ShellThreadsRoute = ShellThreadsRouteImport.update({
   id: '/threads',
   path: '/threads',
   getParentRoute: () => ShellRoute,
+} as any)
+const WorkspacesJoinRoute = WorkspacesJoinRouteImport.update({
+  id: '/workspaces/join',
+  path: '/workspaces/join',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   id: '/',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof ShellProjectsRoute
   '/settings': typeof ShellSettingsRouteWithChildren
   '/threads': typeof ShellThreadsRoute
+  '/workspaces/join': typeof WorkspacesJoinRoute
   '/settings/archive': typeof ShellSettingsArchiveRoute
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/metrics': typeof ShellMetricsRoute
   '/projects': typeof ShellProjectsRoute
   '/threads': typeof ShellThreadsRoute
+  '/workspaces/join': typeof WorkspacesJoinRoute
   '/settings/archive': typeof ShellSettingsArchiveRoute
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/_shell/projects': typeof ShellProjectsRoute
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
   '/_shell/threads': typeof ShellThreadsRoute
+  '/workspaces/join': typeof WorkspacesJoinRoute
   '/_shell/settings/archive': typeof ShellSettingsArchiveRoute
   '/_shell/settings/chat': typeof ShellSettingsChatRoute
   '/_shell/settings/general': typeof ShellSettingsGeneralRoute
@@ -212,6 +221,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/threads'
+    | '/workspaces/join'
     | '/settings/archive'
     | '/settings/chat'
     | '/settings/general'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/metrics'
     | '/projects'
     | '/threads'
+    | '/workspaces/join'
     | '/settings/archive'
     | '/settings/chat'
     | '/settings/general'
@@ -256,6 +267,7 @@ export interface FileRouteTypes {
     | '/_shell/projects'
     | '/_shell/settings'
     | '/_shell/threads'
+    | '/workspaces/join'
     | '/_shell/settings/archive'
     | '/_shell/settings/chat'
     | '/_shell/settings/general'
@@ -276,6 +288,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ShellRoute: typeof ShellRouteWithChildren
+  WorkspacesJoinRoute: typeof WorkspacesJoinRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -321,6 +334,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/threads'
       preLoaderRoute: typeof ShellThreadsRouteImport
       parentRoute: typeof ShellRoute
+    }
+    '/workspaces/join': {
+      id: '/workspaces/join'
+      path: '/workspaces/join'
+      fullPath: '/workspaces/join'
+      preLoaderRoute: typeof WorkspacesJoinRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_shell/settings/': {
       id: '/_shell/settings/'
@@ -489,6 +509,7 @@ const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ShellRoute: ShellRouteWithChildren,
+  WorkspacesJoinRoute: WorkspacesJoinRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

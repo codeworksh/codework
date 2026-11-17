@@ -5,7 +5,6 @@ import {
 	ChatsIcon,
 	FolderIcon,
 	FolderOpenIcon,
-	GearSixIcon,
 	MagnifyingGlassIcon,
 	NotePencilIcon,
 	PlusIcon,
@@ -38,7 +37,6 @@ import { useTabs, tabTag } from "../wm/tabs";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
-import { isSignedInApp } from "../auth";
 import { WorkspaceSwitcher } from "../shell/workspace";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
@@ -54,7 +52,7 @@ import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDispla
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
-/** A sidebar action: New, Threads, Settings. Each sets its own colour: New, the primary action, is full ink. */
+/** A sidebar action: New, Threads. Each sets its own colour: New, the primary action, is full ink. */
 const NAV_ROW =
 	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
@@ -144,7 +142,7 @@ export function SessionsSidebar() {
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-3">
-				{isSignedInApp && <WorkspaceSwitcher />}
+				<WorkspaceSwitcher />
 				<button type="button" onClick={startNew} className={`${NAV_ROW} text-ink`}>
 					<NotePencilIcon size={15} className="shrink-0" aria-hidden />
 					<span>New</span>
@@ -259,11 +257,7 @@ export function SessionsSidebar() {
 					</div>
 				)}
 			</SidebarContent>
-			<SidebarFooter className="flex-row items-center gap-0.5 p-2">
-				<Link to="/settings/tabs" className={`${NAV_ROW} min-w-0 flex-1 text-ink-muted`}>
-					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
-					<span>Settings</span>
-				</Link>
+			<SidebarFooter className="flex-row items-center justify-end gap-0.5 p-2">
 				<Link
 					to="/metrics"
 					aria-label="Metrics"

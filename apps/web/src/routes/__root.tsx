@@ -10,10 +10,21 @@ import { Palette } from "../shell/palette";
 import { Toasts } from "../shell/toasts";
 import { Splash } from "../splash";
 
-// The sessions sidebar wraps every page but settings, which has its own; its open state carries over.
+// The sessions sidebar wraps every page but settings, which has its own, and the workspace pages, which
+// fill the window; its open state carries over.
 function Root() {
 	useScrollbars();
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
+	const fullWindow = useLocation({ select: (location) => location.pathname.startsWith("/workspaces") });
+	if (fullWindow) {
+		return (
+			<>
+				<Outlet />
+				<Toasts />
+				<Splash />
+			</>
+		);
+	}
 	return (
 		<SidebarProvider
 			className="app-shell h-full min-h-0 flex-col bg-desktop"
