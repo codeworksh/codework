@@ -1012,6 +1012,12 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: ServersError,
 	}),
+	/** Installs codework with the install script, into its default folder, then starts the local server `id`. */
+	Rpc.make("servers.install", {
+		payload: { id: Schema.String },
+		success: Schema.Void,
+		error: ServersError,
+	}),
 	/** Runs `codework service <action>` with a local server's executable, home, arguments and variables. */
 	Rpc.make("servers.service", {
 		payload: { id: Schema.String, action: CliAction },

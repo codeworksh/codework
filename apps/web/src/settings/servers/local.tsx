@@ -23,6 +23,7 @@ import { Code, Group as Card, quietField as field, SavingInput } from "../blocks
 import { Variables } from "./variables";
 
 const serviceAtom = Server.mutation("servers.service");
+const installAtom = Server.mutation("servers.install");
 const updateAtom = Server.mutation("servers.update");
 const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
@@ -232,7 +233,12 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						placeholder={cli !== null && !cli.custom ? cli.path : "codework"}
 						onSave={(next) => configure({ executable: next || null })}
 					>
-						{cli === null && <CopyCommand command={INSTALL} />}
+						{cli === null && (
+							<span className="flex flex-col items-start gap-2">
+								<Install id={status.id} />
+								<CopyCommand command={INSTALL} />
+							</span>
+						)}
 						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
@@ -444,6 +450,31 @@ function ServerLine({ status }: { status: LocalServerStatus }) {
 			</>
 		);
 	return "Not running. Once started, it keeps running in the background after the app quits.";
+}
+
+/** Runs the install command for the user, then starts this server; the status shows the result. */
+function Install({ id }: { id: string }) {
+	const install = useAtomSet(installAtom, { mode: "promise" });
+	const [installing, setInstalling] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	return (
+		<span className="flex flex-col items-start gap-1">
+			<Button
+				size="sm"
+				disabled={installing}
+				onClick={() => {
+					setInstalling(true);
+					setError(null);
+					install({ payload: { id } })
+						.catch((cause: unknown) => setError(messageOf(cause)))
+						.finally(() => setInstalling(false));
+				}}
+			>
+				{installing ? "Installing…" : "Install CodeWork"}
+			</Button>
+			{error !== null && <span className="text-sm text-destructive">{error}</span>}
+		</span>
+	);
 }
 
 function CopyCommand({ command }: { command: string }) {

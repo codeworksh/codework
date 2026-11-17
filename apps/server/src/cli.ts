@@ -206,4 +206,34 @@ export const service = Effect.fn("Cli.service")(function* (row: Servers.LocalRow
 	if (row.isDefault && action !== "stop") yield* awaitConnection;
 });
 
+// The script `curl -fsSL https://codework.sh/install | sh` runs; overridable so a test serves its own.
+const installScript = Config.String("CODEWORK_INSTALL_SCRIPT").pipe(
+	Config.withDefault("https://codework.sh/install"),
+	Effect.orDie,
+);
+
+/**
+ * Installs codework the way the install command does, into the install script's folder, then starts
+ * `row`. The shell's startup file is left alone: the app finds the binary in that folder by itself.
+ * A development or canary build of the app installs the newest development build.
+ */
+export const install = Effect.fn("Cli.install")(function* (row: Servers.LocalRow) {
+	const url = yield* installScript;
+	const channel = yield* Config.String("CODEWORK_CHANNEL").pipe(Config.withDefault("latest"), Effect.orDie);
+	const script = yield* Effect.tryPromise(() =>
+		fetch(url).then((response) => {
+			if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+			return response.text();
+		}),
+	).pipe(
+		Effect.mapError((error) => new ServersError({ message: `Could not download the installer: ${error.message}` })),
+	);
+	const flags = ["--no-modify-path", ...(channel === "dev" || channel === "canary" ? ["--dev"] : [])];
+	const { output, code } = yield* run("sh", ["-c", script, "install", ...flags], "300 seconds", {
+		CODEWORK_INSTALL_DIR: yield* installDir,
+	}).pipe(Effect.mapError((error) => new ServersError({ message: `Installing codework: ${error.message}` })));
+	if (code !== 0) return yield* new ServersError({ message: `Installing codework ${reason(output, code)}` });
+	yield* service(row, "start");
+});
+
 export * as Cli from "./cli.ts";
