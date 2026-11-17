@@ -53,6 +53,21 @@ const WorkspaceHandlers = HttpApiBuilder.group(
 				Effect.gen(function* () {
 					return yield* machines.list((yield* Relay.Person).authId, params.workspaceId);
 				}),
+			)
+			.handle("pairings", ({ params }) =>
+				Effect.gen(function* () {
+					return yield* machines.pairings((yield* Relay.Person).authId, params.workspaceId);
+				}),
+			)
+			.handle("decline", ({ payload }) =>
+				Effect.gen(function* () {
+					return yield* machines.decline((yield* Relay.Person).authId, payload.userCode, payload.workspaceId);
+				}),
+			)
+			.handle("remove", ({ params }) =>
+				Effect.gen(function* () {
+					return yield* machines.remove((yield* Relay.Person).authId, params.workspaceId, params.machineId);
+				}),
 			);
 	}),
 ).pipe(Layer.provide(PersonAuthLayer));

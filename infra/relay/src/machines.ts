@@ -72,6 +72,20 @@ export class Machines extends Context.Service<
 			authId: string,
 			workspaceId: string,
 		) => Effect.Effect<ReadonlyArray<Relay.Machine>, Relay.Forbidden>;
+		readonly pairings: (
+			authId: string,
+			workspaceId: string,
+		) => Effect.Effect<ReadonlyArray<Relay.PendingPairing>, Relay.Forbidden>;
+		readonly decline: (
+			authId: string,
+			userCode: string,
+			workspaceId: string,
+		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden>;
+		readonly remove: (
+			authId: string,
+			workspaceId: string,
+			machineId: string,
+		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden>;
 		readonly heartbeat: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
 		readonly revoke: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
 	}
@@ -246,6 +260,71 @@ export class Machines extends Context.Service<
 						ORDER BY created_at, id
 					`.pipe(Effect.orDie);
 					return rows.map(toMachine);
+				}),
+
+				// Only connects started for this workspace are listed: one started without a workspace is
+				// claimed by whoever types its code, so it is never shown to a workspace.
+				pairings: Effect.fn("Machines.pairings")(function* (authId, workspaceId) {
+					const account = (yield* accounts.ensure(authId)).account;
+					if ((yield* role(workspaceId, account.id).pipe(Effect.orDie)) === undefined) {
+						return yield* new Relay.Forbidden({ message: "You are not a member of this workspace" });
+					}
+					const rows = yield* sql<{
+						readonly userCode: string;
+						readonly machine: Relay.MachineInfo;
+						readonly createdAt: Date;
+						readonly expiresAt: Date;
+					}>`
+						SELECT user_code, machine, created_at, expires_at FROM pairing
+						WHERE workspace_id = ${workspaceId} AND status = 'pending' AND expires_at > now()
+						ORDER BY created_at, id
+					`.pipe(Effect.orDie);
+					return rows.map(
+						(row) =>
+							new Relay.PendingPairing({
+								userCode: row.userCode,
+								machine: row.machine,
+								createdAt: row.createdAt.toISOString(),
+								expiresAt: row.expiresAt.toISOString(),
+							}),
+					);
+				}),
+
+				// Declining expires the code, so the waiting machine stops with "expired"; no new status.
+				decline: Effect.fn("Machines.decline")(function* (authId, code, workspaceId) {
+					const account = (yield* accounts.ensure(authId)).account;
+					if ((yield* role(workspaceId, account.id).pipe(Effect.orDie)) === undefined) {
+						return yield* new Relay.Forbidden({ message: "You are not a member of this workspace" });
+					}
+					const declined = yield* sql<{ readonly id: string }>`
+						UPDATE pairing SET expires_at = now()
+						WHERE user_code = ${code.toUpperCase()} AND workspace_id = ${workspaceId}
+							AND status = 'pending' AND expires_at > now()
+						RETURNING id
+					`.pipe(Effect.orDie);
+					if (declined.length === 0) return yield* new Relay.NotFound({ message: "Unknown or expired code" });
+				}),
+
+				remove: Effect.fn("Machines.remove")(function* (authId, workspaceId, machineId) {
+					const account = (yield* accounts.ensure(authId)).account;
+					const memberRole = yield* role(workspaceId, account.id).pipe(Effect.orDie);
+					if (memberRole === undefined) {
+						return yield* new Relay.Forbidden({ message: "You are not a member of this workspace" });
+					}
+					const [machine] = yield* sql<{ readonly ownerId: string }>`
+						SELECT owner_id FROM machine
+						WHERE workspace_id = ${workspaceId} AND id = ${machineId} AND revoked_at IS NULL
+					`.pipe(Effect.orDie);
+					if (machine === undefined)
+						return yield* new Relay.NotFound({ message: "No such machine in this workspace" });
+					if (machine.ownerId !== account.id && memberRole === "member") {
+						return yield* new Relay.Forbidden({
+							message: "Only the machine's owner or a workspace admin can remove it",
+						});
+					}
+					yield* sql`
+						UPDATE machine SET revoked_at = now() WHERE workspace_id = ${workspaceId} AND id = ${machineId}
+					`.pipe(Effect.orDie);
 				}),
 
 				heartbeat: Effect.fn("Machines.heartbeat")(

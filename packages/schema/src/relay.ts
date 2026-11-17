@@ -139,6 +139,14 @@ export class MeGroup extends HttpApiGroup.make("me")
 	.add(HttpApiEndpoint.get("get", "/v1/me", { success: Me }))
 	.middleware(PersonAuth) {}
 
+/** A machine that ran `codework connect` for a workspace and waits for a member to approve its code. */
+export class PendingPairing extends Schema.Class<PendingPairing>("Relay.PendingPairing")({
+	userCode: Schema.String,
+	machine: MachineInfo,
+	createdAt: Schema.String,
+	expiresAt: Schema.String,
+}) {}
+
 export const WorkspaceName = Schema.Trimmed.check(Schema.isNonEmpty(), Schema.isMaxLength(64));
 
 /** People create workspaces, and manage pairings and machines in a workspace they belong to. */
@@ -157,6 +165,22 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 			params: { workspaceId: Schema.String },
 			success: Schema.Array(Machine),
 			error: Forbidden,
+		}),
+		/** The workspace's pending connects, each with the code its machine shows. */
+		HttpApiEndpoint.get("pairings", "/v1/workspaces/:workspaceId/pairings", {
+			params: { workspaceId: Schema.String },
+			success: Schema.Array(PendingPairing),
+			error: Forbidden,
+		}),
+		/** Turns a pending connect away; the waiting machine sees its code expire. */
+		HttpApiEndpoint.post("decline", "/v1/pairings/decline", {
+			payload: Schema.Struct({ userCode: Schema.String, workspaceId: Schema.String }),
+			error: [NotFound, Forbidden],
+		}),
+		/** Disconnects a machine from the workspace: its owner, or a workspace owner or admin, may. */
+		HttpApiEndpoint.post("remove", "/v1/workspaces/:workspaceId/machines/:machineId/remove", {
+			params: { workspaceId: Schema.String, machineId: Schema.String },
+			error: [NotFound, Forbidden],
 		}),
 	)
 	.middleware(PersonAuth) {}
