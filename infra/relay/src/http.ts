@@ -1,5 +1,6 @@
 import { Relay } from "@codeworksh/schema";
 import { Effect, Layer, Redacted } from "effect";
+import { HttpRouter } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import { Accounts } from "./accounts.ts";
 import { Clerk } from "./clerk.ts";
@@ -63,10 +64,21 @@ const MachineHandlers = HttpApiBuilder.group(
 	}),
 );
 
+/** The desktop app's renderer origins: packaged, and an unpackaged run. */
+const desktopOrigins = ["codework://app", "codeworkdev://app"];
+
 /** The relay's routes, independent of the runtime that serves them. Requires `SqlClient`. */
-export const routes = HttpApiBuilder.layer(Relay.Api).pipe(
-	Layer.provide([MeHandlers, WorkspaceHandlers, MachineHandlers]),
-	Layer.provide(Machines.layer),
-	Layer.provideMerge(Accounts.layer),
-	Layer.provide(Clerk.layer),
+export const routes = Layer.mergeAll(
+	HttpApiBuilder.layer(Relay.Api).pipe(
+		Layer.provide([MeHandlers, WorkspaceHandlers, MachineHandlers]),
+		Layer.provide(Machines.layer),
+		Layer.provideMerge(Accounts.layer),
+		Layer.provide(Clerk.layer),
+	),
+	HttpRouter.cors({
+		allowedOrigins: desktopOrigins,
+		allowedMethods: ["GET", "POST"],
+		// Effect's HTTP client also sends trace context with every request.
+		allowedHeaders: ["authorization", "content-type", "b3", "traceparent", "tracestate"],
+	}),
 );

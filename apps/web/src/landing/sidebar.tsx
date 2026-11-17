@@ -38,6 +38,8 @@ import { useTabs, tabTag } from "../wm/tabs";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
+import { isSignedInApp } from "../auth";
+import { WorkspaceSwitcher } from "../shell/workspace";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
@@ -142,6 +144,7 @@ export function SessionsSidebar() {
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-3">
+				{isSignedInApp && <WorkspaceSwitcher />}
 				<button type="button" onClick={startNew} className={`${NAV_ROW} text-ink`}>
 					<NotePencilIcon size={15} className="shrink-0" aria-hidden />
 					<span>New</span>
