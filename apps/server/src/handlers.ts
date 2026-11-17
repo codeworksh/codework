@@ -116,8 +116,17 @@ export const layer = Contract.Api.toLayer(
 			"machine.rename": Effect.fn("machine.rename")(function* ({ givenName }) {
 				return yield* call((client) => client("machine.rename", { givenName }));
 			}),
+			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
+			// a dropped server reads as unavailable.
 			"machine.connect": ({ workspaceId }) =>
-				Codework.stream((client) => client("machine.connect", { workspaceId })),
+				Codework.stream((client) =>
+					client("machine.connect", { workspaceId }).pipe(
+						Stream.map((event) => ({ event })),
+						Stream.catchTag("Machine.ConnectError", (failed) => Stream.succeed({ failed })),
+					),
+				).pipe(
+					Stream.flatMap((item) => ("failed" in item ? Stream.fail(item.failed) : Stream.succeed(item.event))),
+				),
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));
 			}),

@@ -1,7 +1,7 @@
 import { useClerk } from "@clerk/electron/react";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { ArrowLeftIcon, CaretDownIcon, SignOutIcon } from "@phosphor-icons/react";
-import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
+import { CaretDownIcon, SignOutIcon } from "@phosphor-icons/react";
+import { useNavigate } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 
@@ -16,36 +16,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/utils";
 import { isSignedInApp } from "./auth";
+import { Frame } from "./frame";
 import { createWorkspaceAtom, meAtom } from "./kernel/relay";
-
-const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** Creates a workspace: a name, then Create Workspace. Full window, outside the app's sidebar. */
 export function Join() {
-	const router = useRouter();
-	const canGoBack = useCanGoBack();
 	const navigate = useNavigate();
 	const create = useAtomSet(createWorkspaceAtom, { mode: "promise" });
 	const [name, setName] = useState("");
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const trimmed = name.trim();
-	const back = () => (canGoBack ? router.history.back() : void navigate({ to: "/" }));
 	return (
-		<div className="flex h-full flex-col bg-desktop text-ink">
-			<header
-				className={`flex h-titlebar shrink-0 items-center justify-between gap-4 pr-3 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-22" : "pl-3"}`}
-			>
-				<button
-					type="button"
-					onClick={back}
-					className="flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs text-ink-muted outline-none [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
-				>
-					<ArrowLeftIcon size={12} aria-hidden />
-					Back to App
-				</button>
-				{isSignedInApp && <Account />}
-			</header>
+		<Frame end={isSignedInApp && <Account />}>
 			{/* Extra room below lifts the form a little above center, where it reads as centered. */}
 			<main className="flex flex-1 flex-col items-center overflow-auto px-4 pb-24">
 				<form
@@ -61,7 +44,14 @@ export function Join() {
 						setPending(true);
 						setError(null);
 						create(trimmed)
-							.then(() => navigate({ to: "/" }))
+							.then((workspace) =>
+								navigate({
+									to: "/workspaces/$workspaceId/settings/machines/setup",
+									params: { workspaceId: workspace.id },
+									// The form is done; Back from setup shouldn't land on it again.
+									replace: true,
+								}),
+							)
 							.catch((cause: unknown) => {
 								setError(messageOf(cause));
 								setPending(false);
@@ -109,7 +99,7 @@ export function Join() {
 					</div>
 				</form>
 			</main>
-		</div>
+		</Frame>
 	);
 }
 

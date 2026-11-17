@@ -32,6 +32,7 @@ import { Route as ShellSettingsTabsRouteImport } from './routes/_shell.settings.
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellTabsTabIdRouteImport } from './routes/_shell.tabs.$tabId'
 import { Route as ShellWorkspacesWorkspaceIdSettingsRouteImport } from './routes/_shell.workspaces.$workspaceId.settings'
+import { Route as WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport } from './routes/workspaces.$workspaceId.settings.machines.setup'
 import { Route as ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.account.profile'
 
 const IndexRoute = IndexRouteImport.update({
@@ -150,6 +151,12 @@ const ShellWorkspacesWorkspaceIdSettingsRoute =
     path: '/workspaces/$workspaceId/settings',
     getParentRoute: () => ShellRoute,
   } as any)
+const WorkspacesWorkspaceIdSettingsMachinesSetupRoute =
+  WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport.update({
+    id: '/workspaces/$workspaceId/settings/machines/setup',
+    path: '/workspaces/$workspaceId/settings/machines/setup',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute =
   ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport.update({
     id: '/account/profile',
@@ -180,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/': typeof ShellSettingsIndexRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRoutesByTo {
@@ -204,6 +212,7 @@ export interface FileRoutesByTo {
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings': typeof ShellSettingsIndexRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRoutesById {
@@ -231,6 +240,7 @@ export interface FileRoutesById {
   '/_shell/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
   '/_shell/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/_shell/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRouteTypes {
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/tabs/$tabId'
     | '/settings/'
     | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/tabs/$tabId'
     | '/settings'
     | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
   id:
     | '__root__'
@@ -308,6 +320,7 @@ export interface FileRouteTypes {
     | '/_shell/tabs/$tabId'
     | '/_shell/settings/'
     | '/_shell/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/machines/setup'
     | '/_shell/workspaces/$workspaceId/settings/account/profile'
   fileRoutesById: FileRoutesById
 }
@@ -315,6 +328,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ShellRoute: typeof ShellRouteWithChildren
   WorkspacesJoinRoute: typeof WorkspacesJoinRoute
+  WorkspacesWorkspaceIdSettingsMachinesSetupRoute: typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -480,6 +494,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellWorkspacesWorkspaceIdSettingsRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/workspaces/$workspaceId/settings/machines/setup': {
+      id: '/workspaces/$workspaceId/settings/machines/setup'
+      path: '/workspaces/$workspaceId/settings/machines/setup'
+      fullPath: '/workspaces/$workspaceId/settings/machines/setup'
+      preLoaderRoute: typeof WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_shell/workspaces/$workspaceId/settings/account/profile': {
       id: '/_shell/workspaces/$workspaceId/settings/account/profile'
       path: '/account/profile'
@@ -568,6 +589,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ShellRoute: ShellRouteWithChildren,
   WorkspacesJoinRoute: WorkspacesJoinRoute,
+  WorkspacesWorkspaceIdSettingsMachinesSetupRoute:
+    WorkspacesWorkspaceIdSettingsMachinesSetupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

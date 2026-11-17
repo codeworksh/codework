@@ -9,17 +9,18 @@ import { isSettingsPath } from "../settings/sections";
 import { NavigationControls } from "../shell/titlebar";
 import { Palette } from "../shell/palette";
 import { Toasts } from "../shell/toasts";
+import { SetupGate } from "../setup";
 import { Splash } from "../splash";
 
-// The sessions sidebar wraps every page but settings, which has its own, and creating a workspace, which
-// fills the window; its open state carries over.
+// The sessions sidebar wraps every page but settings, which has its own, and full-window pages such as
+// creating a workspace; its open state carries over.
 function Root() {
 	useScrollbars();
 	const inSettings = useLocation({ select: (location) => isSettingsPath(location.pathname) });
 	// From the rendered matches, not the location: the location moves first, and the outgoing page,
 	// still shown while the next one loads, needs the sidebar around it.
 	const fullWindow = useMatches({
-		select: (matches) => matches.some((match) => match.routeId === "/workspaces/join"),
+		select: (matches) => matches.some((match) => match.staticData.fullWindow === true),
 	});
 	if (fullWindow) {
 		return (
@@ -46,6 +47,7 @@ function Root() {
 				</div>
 			</div>
 			<Palette />
+			<SetupGate />
 			<Toasts />
 			<Splash />
 		</SidebarProvider>

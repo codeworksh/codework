@@ -14,6 +14,7 @@ import {
 	SparkleIcon,
 	StackIcon,
 	UserIcon,
+	WrenchIcon,
 } from "@phosphor-icons/react";
 
 /** Whether a path is a settings page: the app's own, or the account's and workspace's under a workspace. */
@@ -23,6 +24,7 @@ export const isSettingsPath = (pathname: string) =>
 export interface SettingsSection {
 	readonly to:
 		| "/workspaces/$workspaceId/settings/account/profile"
+		| "/workspaces/$workspaceId/settings/machines/setup"
 		| "/settings/general"
 		| "/settings/tabs"
 		| "/settings/themes"
@@ -144,6 +146,13 @@ const sections: readonly SettingsSection[] = [
 		icon: PuzzlePieceIcon,
 		group: "Application",
 		keywords: ["plugins", "extensions", "npm", "tools", "prompt", "bash", "grep", "find", "reload"],
+	},
+	{
+		to: "/workspaces/$workspaceId/settings/machines/setup",
+		label: "Setup",
+		icon: WrenchIcon,
+		group: "Workspace",
+		keywords: ["set up", "install", "cli", "start", "server", "connect", "this machine", "onboarding"],
 	},
 	{
 		to: "/settings/machines",

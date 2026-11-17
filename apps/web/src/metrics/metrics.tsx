@@ -1,8 +1,8 @@
 import { ChartBarIcon, InfoIcon } from "@phosphor-icons/react";
 import { type ReactNode, useMemo, useState } from "react";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProviderIcon } from "@/components/provider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Activity, Weeks } from "./activity";
 import {
 	Card,
@@ -89,7 +89,7 @@ export function MetricsBody({
 	const period = RANGES.find(({ key }) => key === metrics.range)?.label.toLowerCase() ?? "";
 	if (year.totals.steps === 0) return <Empty projectName={projectName} period="year" />;
 	return (
-		<div className="mx-auto flex max-w-[1100px] flex-col gap-4 px-6 py-6">
+		<div className="mx-auto flex max-w-27 flex-col gap-4 px-6 py-6">
 			<Stats metrics={metrics} period={period} />
 			<Activity year={year} scope={scope} colors={modelColors} />
 			<Work metrics={metrics} models={named} providers={providers.parts} />
@@ -407,7 +407,7 @@ function Breakdown({
 	const body = (part: Colored, hint: string | undefined) => (
 		<>
 			<span className="flex min-w-0 items-center gap-2">
-				<span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ backgroundColor: part.color }} />
+				<span aria-hidden className="size-2 shrink-0 rounded-xs" style={{ backgroundColor: part.color }} />
 				<span className="flex min-w-0 flex-col">
 					<span className="truncate text-ink">{part.label}</span>
 					{hint !== undefined && (
@@ -715,7 +715,7 @@ function Estimated() {
 function Swatch({ color, label }: { readonly color: string; readonly label: string }) {
 	return (
 		<span className="flex min-w-0 items-center gap-2">
-			<span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ backgroundColor: color }} />
+			<span aria-hidden className="size-2 shrink-0 rounded-xs" style={{ backgroundColor: color }} />
 			<span className="truncate text-ink">{label}</span>
 		</span>
 	);
