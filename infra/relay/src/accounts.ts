@@ -9,6 +9,8 @@ export class Accounts extends Context.Service<
 	{
 		/** The person's account and workspaces, creating the account and its default workspace on first sight. */
 		readonly ensure: (authId: string) => Effect.Effect<Relay.Me>;
+		/** A new workspace the person owns. */
+		readonly createWorkspace: (authId: string, name: string) => Effect.Effect<Relay.Workspace>;
 	}
 >()("relay/Accounts") {
 	static readonly layer = Layer.effect(
@@ -50,24 +52,42 @@ export class Accounts extends Context.Service<
 				);
 			});
 
-			return Accounts.of({
-				ensure: Effect.fn("Accounts.ensure")(function* (authId) {
-					const account = (yield* find(authId)) ?? (yield* create(authId).pipe(Effect.andThen(find(authId))));
-					if (account === undefined) return yield* Effect.die(new Error(`No account for ${authId}`));
-					const workspaces = yield* sql<{
-						readonly id: string;
-						readonly name: string;
-						readonly role: typeof Relay.Role.Type;
-					}>`
+			const ensure = Effect.fn("Accounts.ensure")(function* (authId: string) {
+				const account = (yield* find(authId)) ?? (yield* create(authId).pipe(Effect.andThen(find(authId))));
+				if (account === undefined) return yield* Effect.die(new Error(`No account for ${authId}`));
+				const workspaces = yield* sql<{
+					readonly id: string;
+					readonly name: string;
+					readonly role: typeof Relay.Role.Type;
+				}>`
 							SELECT w.id, w.name, m.role
 							FROM member m JOIN workspace w ON w.id = m.workspace_id
 							WHERE m.account_id = ${account.id}
 							ORDER BY w.created_at, w.id
 						`;
-					return new Relay.Me({
-						account: new Relay.Account(account),
-						workspaces: workspaces.map((row) => new Relay.Workspace(row)),
-					});
+				return new Relay.Me({
+					account: new Relay.Account(account),
+					workspaces: workspaces.map((row) => new Relay.Workspace(row)),
+				});
+			}, Effect.orDie);
+
+			return Accounts.of({
+				ensure,
+				createWorkspace: Effect.fn("Accounts.createWorkspace")(function* (authId, name) {
+					const { account } = yield* ensure(authId);
+					return yield* sql.withTransaction(
+						Effect.gen(function* () {
+							const [workspace] = yield* sql<{ readonly id: string }>`
+								INSERT INTO workspace (name, created_by) VALUES (${name}, ${account.id}) RETURNING id
+							`;
+							if (workspace === undefined) return yield* Effect.die(new Error("No workspace inserted"));
+							yield* sql`
+								INSERT INTO member (workspace_id, account_id, role)
+								VALUES (${workspace.id}, ${account.id}, 'owner')
+							`;
+							return new Relay.Workspace({ id: workspace.id, name, role: "owner" });
+						}),
+					);
 				}, Effect.orDie),
 			});
 		}),

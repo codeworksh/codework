@@ -139,9 +139,15 @@ export class MeGroup extends HttpApiGroup.make("me")
 	.add(HttpApiEndpoint.get("get", "/v1/me", { success: Me }))
 	.middleware(PersonAuth) {}
 
-/** People manage pairings and machines in a workspace they belong to. */
+export const WorkspaceName = Schema.Trimmed.check(Schema.isNonEmpty(), Schema.isMaxLength(64));
+
+/** People create workspaces, and manage pairings and machines in a workspace they belong to. */
 export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 	.add(
+		HttpApiEndpoint.post("create", "/v1/workspaces", {
+			payload: Schema.Struct({ name: WorkspaceName }),
+			success: Workspace,
+		}),
 		HttpApiEndpoint.post("approve", "/v1/pairings/approve", {
 			payload: Schema.Struct({ userCode: Schema.String, workspaceId: Schema.String }),
 			success: Machine,

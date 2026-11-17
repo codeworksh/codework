@@ -37,7 +37,13 @@ const WorkspaceHandlers = HttpApiBuilder.group(
 	"workspace",
 	Effect.fn(function* (handlers) {
 		const machines = yield* Machines;
+		const accounts = yield* Accounts;
 		return handlers
+			.handle("create", ({ payload }) =>
+				Effect.gen(function* () {
+					return yield* accounts.createWorkspace((yield* Relay.Person).authId, payload.name);
+				}),
+			)
 			.handle("approve", ({ payload }) =>
 				Effect.gen(function* () {
 					return yield* machines.approve((yield* Relay.Person).authId, payload.userCode, payload.workspaceId);
