@@ -809,6 +809,12 @@ export const Api = RpcGroup.make(
 		payload: { givenName: Schema.String },
 		success: Machine.Status,
 	}),
+	/** Leaves a workspace: the relay revokes this machine's link, and the machine forgets it. */
+	Rpc.make("machine.disconnect", {
+		payload: { workspaceId: Schema.String },
+		success: Machine.Status,
+		error: Machine.ConnectError,
+	}),
 	/** Connects this machine to a workspace: the code a member approves, then the link once they have. */
 	Rpc.make("machine.connect", {
 		payload: { workspaceId: Schema.optional(Schema.String) },

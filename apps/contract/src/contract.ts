@@ -829,6 +829,12 @@ export const Api = RpcGroup.make(
 		success: Machine.Status,
 		error: CodeworkUnavailable,
 	}),
+	/** Disconnects the default machine from a workspace. */
+	Rpc.make("machine.disconnect", {
+		payload: { workspaceId: Schema.String },
+		success: Machine.Status,
+		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+	}),
 	/** Connects the default machine to a workspace: the code to approve, then the link. */
 	Rpc.make("machine.connect", {
 		payload: { workspaceId: Schema.String },

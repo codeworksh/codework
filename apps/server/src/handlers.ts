@@ -116,6 +116,16 @@ export const layer = Contract.Api.toLayer(
 			"machine.rename": Effect.fn("machine.rename")(function* ({ givenName }) {
 				return yield* call((client) => client("machine.rename", { givenName }));
 			}),
+			// The CLI's own failure (not connected to that workspace) keeps its message.
+			"machine.disconnect": Effect.fn("machine.disconnect")(function* ({ workspaceId }) {
+				const reply = yield* call((client) =>
+					client("machine.disconnect", { workspaceId }).pipe(
+						Effect.map((status) => ({ status })),
+						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
+					),
+				);
+				return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.status);
+			}),
 			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
 			// a dropped server reads as unavailable.
 			"machine.connect": ({ workspaceId }) =>

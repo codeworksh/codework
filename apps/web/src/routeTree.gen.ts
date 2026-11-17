@@ -21,7 +21,6 @@ import { Route as ShellSettingsArchiveRouteImport } from './routes/_shell.settin
 import { Route as ShellSettingsChatRouteImport } from './routes/_shell.settings.chat'
 import { Route as ShellSettingsGeneralRouteImport } from './routes/_shell.settings.general'
 import { Route as ShellSettingsKeybindingsRouteImport } from './routes/_shell.settings.keybindings'
-import { Route as ShellSettingsMachinesRouteImport } from './routes/_shell.settings.machines'
 import { Route as ShellSettingsMcpRouteImport } from './routes/_shell.settings.mcp'
 import { Route as ShellSettingsModelsRouteImport } from './routes/_shell.settings.models'
 import { Route as ShellSettingsPluginsRouteImport } from './routes/_shell.settings.plugins'
@@ -32,6 +31,7 @@ import { Route as ShellSettingsTabsRouteImport } from './routes/_shell.settings.
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellTabsTabIdRouteImport } from './routes/_shell.tabs.$tabId'
 import { Route as ShellWorkspacesWorkspaceIdSettingsRouteImport } from './routes/_shell.workspaces.$workspaceId.settings'
+import { Route as ShellWorkspacesWorkspaceIdSettingsMachinesRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.machines'
 import { Route as WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport } from './routes/workspaces.$workspaceId.settings.machines.setup'
 import { Route as ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.account.profile'
 
@@ -95,11 +95,6 @@ const ShellSettingsKeybindingsRoute =
     path: '/keybindings',
     getParentRoute: () => ShellSettingsRoute,
   } as any)
-const ShellSettingsMachinesRoute = ShellSettingsMachinesRouteImport.update({
-  id: '/machines',
-  path: '/machines',
-  getParentRoute: () => ShellSettingsRoute,
-} as any)
 const ShellSettingsMcpRoute = ShellSettingsMcpRouteImport.update({
   id: '/mcp',
   path: '/mcp',
@@ -151,6 +146,12 @@ const ShellWorkspacesWorkspaceIdSettingsRoute =
     path: '/workspaces/$workspaceId/settings',
     getParentRoute: () => ShellRoute,
   } as any)
+const ShellWorkspacesWorkspaceIdSettingsMachinesRoute =
+  ShellWorkspacesWorkspaceIdSettingsMachinesRouteImport.update({
+    id: '/machines',
+    path: '/machines',
+    getParentRoute: () => ShellWorkspacesWorkspaceIdSettingsRoute,
+  } as any)
 const WorkspacesWorkspaceIdSettingsMachinesSetupRoute =
   WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport.update({
     id: '/workspaces/$workspaceId/settings/machines/setup',
@@ -175,7 +176,6 @@ export interface FileRoutesByFullPath {
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
   '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
-  '/settings/machines': typeof ShellSettingsMachinesRoute
   '/settings/mcp': typeof ShellSettingsMcpRoute
   '/settings/models': typeof ShellSettingsModelsRoute
   '/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -187,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/': typeof ShellSettingsIndexRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
@@ -200,7 +201,6 @@ export interface FileRoutesByTo {
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
   '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
-  '/settings/machines': typeof ShellSettingsMachinesRoute
   '/settings/mcp': typeof ShellSettingsMcpRoute
   '/settings/models': typeof ShellSettingsModelsRoute
   '/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -212,6 +212,7 @@ export interface FileRoutesByTo {
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings': typeof ShellSettingsIndexRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
@@ -228,7 +229,6 @@ export interface FileRoutesById {
   '/_shell/settings/chat': typeof ShellSettingsChatRoute
   '/_shell/settings/general': typeof ShellSettingsGeneralRoute
   '/_shell/settings/keybindings': typeof ShellSettingsKeybindingsRoute
-  '/_shell/settings/machines': typeof ShellSettingsMachinesRoute
   '/_shell/settings/mcp': typeof ShellSettingsMcpRoute
   '/_shell/settings/models': typeof ShellSettingsModelsRoute
   '/_shell/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -240,6 +240,7 @@ export interface FileRoutesById {
   '/_shell/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
   '/_shell/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/_shell/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/_shell/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
@@ -256,7 +257,6 @@ export interface FileRouteTypes {
     | '/settings/chat'
     | '/settings/general'
     | '/settings/keybindings'
-    | '/settings/machines'
     | '/settings/mcp'
     | '/settings/models'
     | '/settings/plugins'
@@ -268,6 +268,7 @@ export interface FileRouteTypes {
     | '/tabs/$tabId'
     | '/settings/'
     | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
   fileRoutesByTo: FileRoutesByTo
@@ -281,7 +282,6 @@ export interface FileRouteTypes {
     | '/settings/chat'
     | '/settings/general'
     | '/settings/keybindings'
-    | '/settings/machines'
     | '/settings/mcp'
     | '/settings/models'
     | '/settings/plugins'
@@ -293,6 +293,7 @@ export interface FileRouteTypes {
     | '/tabs/$tabId'
     | '/settings'
     | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
   id:
@@ -308,7 +309,6 @@ export interface FileRouteTypes {
     | '/_shell/settings/chat'
     | '/_shell/settings/general'
     | '/_shell/settings/keybindings'
-    | '/_shell/settings/machines'
     | '/_shell/settings/mcp'
     | '/_shell/settings/models'
     | '/_shell/settings/plugins'
@@ -320,6 +320,7 @@ export interface FileRouteTypes {
     | '/_shell/tabs/$tabId'
     | '/_shell/settings/'
     | '/_shell/workspaces/$workspaceId/settings'
+    | '/_shell/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/_shell/workspaces/$workspaceId/settings/account/profile'
   fileRoutesById: FileRoutesById
@@ -417,13 +418,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsKeybindingsRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
-    '/_shell/settings/machines': {
-      id: '/_shell/settings/machines'
-      path: '/machines'
-      fullPath: '/settings/machines'
-      preLoaderRoute: typeof ShellSettingsMachinesRouteImport
-      parentRoute: typeof ShellSettingsRoute
-    }
     '/_shell/settings/mcp': {
       id: '/_shell/settings/mcp'
       path: '/mcp'
@@ -494,6 +488,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellWorkspacesWorkspaceIdSettingsRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/workspaces/$workspaceId/settings/machines': {
+      id: '/_shell/workspaces/$workspaceId/settings/machines'
+      path: '/machines'
+      fullPath: '/workspaces/$workspaceId/settings/machines'
+      preLoaderRoute: typeof ShellWorkspacesWorkspaceIdSettingsMachinesRouteImport
+      parentRoute: typeof ShellWorkspacesWorkspaceIdSettingsRoute
+    }
     '/workspaces/$workspaceId/settings/machines/setup': {
       id: '/workspaces/$workspaceId/settings/machines/setup'
       path: '/workspaces/$workspaceId/settings/machines/setup'
@@ -516,7 +517,6 @@ interface ShellSettingsRouteChildren {
   ShellSettingsChatRoute: typeof ShellSettingsChatRoute
   ShellSettingsGeneralRoute: typeof ShellSettingsGeneralRoute
   ShellSettingsKeybindingsRoute: typeof ShellSettingsKeybindingsRoute
-  ShellSettingsMachinesRoute: typeof ShellSettingsMachinesRoute
   ShellSettingsMcpRoute: typeof ShellSettingsMcpRoute
   ShellSettingsModelsRoute: typeof ShellSettingsModelsRoute
   ShellSettingsPluginsRoute: typeof ShellSettingsPluginsRoute
@@ -533,7 +533,6 @@ const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
   ShellSettingsChatRoute: ShellSettingsChatRoute,
   ShellSettingsGeneralRoute: ShellSettingsGeneralRoute,
   ShellSettingsKeybindingsRoute: ShellSettingsKeybindingsRoute,
-  ShellSettingsMachinesRoute: ShellSettingsMachinesRoute,
   ShellSettingsMcpRoute: ShellSettingsMcpRoute,
   ShellSettingsModelsRoute: ShellSettingsModelsRoute,
   ShellSettingsPluginsRoute: ShellSettingsPluginsRoute,
@@ -550,11 +549,14 @@ const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(
 )
 
 interface ShellWorkspacesWorkspaceIdSettingsRouteChildren {
+  ShellWorkspacesWorkspaceIdSettingsMachinesRoute: typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute: typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 
 const ShellWorkspacesWorkspaceIdSettingsRouteChildren: ShellWorkspacesWorkspaceIdSettingsRouteChildren =
   {
+    ShellWorkspacesWorkspaceIdSettingsMachinesRoute:
+      ShellWorkspacesWorkspaceIdSettingsMachinesRoute,
     ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute:
       ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute,
   }

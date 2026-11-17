@@ -646,6 +646,16 @@ export const layer = Contract.Api.toLayer(
 					Effect.provide(NodeServices.layer),
 					Effect.orDie,
 				),
+			"machine.disconnect": ({ workspaceId }) =>
+				MachineRelay.disconnect(global.home, workspaceId).pipe(
+					Effect.andThen(MachineRelay.status(global.home)),
+					Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+					Effect.catchIf(
+						(error) => !isConnectError(error),
+						(error) =>
+							Effect.fail(new Machine.ConnectError({ message: `Could not disconnect: ${String(error)}` })),
+					),
+				),
 			"machine.connect": ({ workspaceId }) =>
 				Stream.callback<Machine.ConnectEvent, Machine.ConnectError>((queue) =>
 					MachineRelay.connect({

@@ -1,5 +1,5 @@
 import { Relay } from "@codeworksh/schema";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schedule, Schema } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -31,12 +31,19 @@ class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.A
 
 const runtime = Atom.runtime(Client.layer);
 
-/** The signed-in account and the workspaces it belongs to. */
+const isUnauthorized = Schema.is(Relay.Unauthorized);
+
+/**
+ * The signed-in account and the workspaces it belongs to. An unreachable relay is asked again every few
+ * seconds, so the account and its workspaces come back with it; a refused session is final.
+ */
 export const meAtom = runtime
 	.atom(
 		Effect.gen(function* () {
 			const client = yield* Client;
-			return yield* client.me.get();
+			return yield* client.me
+				.get()
+				.pipe(Effect.retry({ schedule: Schedule.spaced("3 seconds"), while: (error) => !isUnauthorized(error) }));
 		}),
 	)
 	.pipe(Atom.keepAlive);
@@ -107,4 +114,30 @@ export const machinesAtom = Atom.family((workspaceId: string) =>
 			return yield* client.workspace.machines({ params: { workspaceId } });
 		}),
 	),
+);
+
+/** A workspace's pending connects: machines that ran `codework connect --workspace` and wait for approval. */
+export const pairingsAtom = Atom.family((workspaceId: string) =>
+	runtime.atom(
+		Effect.gen(function* () {
+			const client = yield* Client;
+			return yield* client.workspace.pairings({ params: { workspaceId } });
+		}),
+	),
+);
+
+/** Turns a pending connect away. */
+export const declineAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
+	Effect.gen(function* () {
+		const client = yield* Client;
+		return yield* client.workspace.decline({ payload: input });
+	}),
+);
+
+/** Disconnects another machine from a workspace, as its owner or a workspace owner or admin. */
+export const removeMachineAtom = runtime.fn((input: { readonly workspaceId: string; readonly machineId: string }) =>
+	Effect.gen(function* () {
+		const client = yield* Client;
+		return yield* client.workspace.remove({ params: input });
+	}),
 );

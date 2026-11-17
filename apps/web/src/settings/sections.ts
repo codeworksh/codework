@@ -35,13 +35,13 @@ export interface SettingsSection {
 		| "/settings/mcp"
 		| "/settings/skills"
 		| "/settings/plugins"
-		| "/settings/machines"
+		| "/workspaces/$workspaceId/settings/machines"
 		| "/settings/sandboxes"
 		| "/settings/archive";
 	readonly label: string;
 	readonly icon: Icon;
 	/** Sidebar heading the section sits under. */
-	readonly group: "Personal" | "Application" | "Workspace";
+	readonly group: "Personal" | "Application" | "Administration";
 	/** Extra words the search matches, beyond the label. */
 	readonly keywords: readonly string[];
 }
@@ -151,14 +151,14 @@ const sections: readonly SettingsSection[] = [
 		to: "/workspaces/$workspaceId/settings/machines/setup",
 		label: "Setup",
 		icon: WrenchIcon,
-		group: "Workspace",
+		group: "Administration",
 		keywords: ["set up", "install", "cli", "start", "server", "connect", "this machine", "onboarding"],
 	},
 	{
-		to: "/settings/machines",
+		to: "/workspaces/$workspaceId/settings/machines",
 		label: "Machines",
 		icon: DesktopTowerIcon,
-		group: "Workspace",
+		group: "Administration",
 		keywords: ["machines", "connect", "online", "offline", "rename", "name", "relay", "harness", "computer"],
 	},
 	{
