@@ -17,7 +17,7 @@ use ratatui::widgets::{Block, Widget};
 use unicode_width::UnicodeWidthStr;
 
 use super::badge;
-use super::text::{fitted, scrolled};
+use super::text::fitted;
 use crate::prompt::Prompt;
 use crate::theme::Palette;
 
@@ -53,38 +53,59 @@ pub fn draw_in(
     prompt: &Prompt,
     palette: &Palette,
 ) -> Option<(u16, u16)> {
-    // Measured rather than assumed to be two cells: a terminal that draws `❯` wide would
-    // otherwise put the caret a column out.
     let marker = MARKER.width() as u16;
-    // Too narrow for a marker and a line, or too short for the border: the box is all or nothing.
-    if column.width < marker + 2 || column.height < HEIGHT {
+    if column.width < marker + 4 || column.height < HEIGHT {
         return None;
     }
     let block = Block::bordered().border_style(Style::default().fg(palette.border_strong));
     let inner = block.inner(column);
     block.render(column, buffer);
-
-    // The tag rides the top border, as the site's badge does.
     badge::draw(buffer, column, TAG, palette);
-
-    for x in inner.x..inner.x + inner.width {
-        buffer[(x, inner.y)].set_char(' ');
-    }
-
-    // One column stays free at the end of the line, because that is where a terminal puts the
-    // caret once the text fills the rest.
-    let text_x = inner.x + marker;
     let usable = inner.width.saturating_sub(marker + 1) as usize;
+    let layout = prompt.layout(usable);
+    let start = layout
+        .caret
+        .1
+        .saturating_sub(inner.height.saturating_sub(1) as usize);
+    for row in 0..inner.height {
+        for x in inner.x..inner.right() {
+            buffer[(x, inner.y + row)].set_char(' ');
+        }
+        let at = start + row as usize;
+        if let Some(line) = layout.lines.get(at) {
+            buffer.set_string(
+                inner.x,
+                inner.y + row,
+                if at == 0 { MARKER } else { "· " },
+                Style::default().fg(palette.brand),
+            );
+            if prompt.text().is_empty() {
+                buffer.set_string(
+                    inner.x + marker,
+                    inner.y + row,
+                    fitted(PLACEHOLDER, usable),
+                    Style::default().fg(palette.text_muted),
+                );
+            } else {
+                buffer.set_string(
+                    inner.x + marker,
+                    inner.y + row,
+                    line,
+                    Style::default().fg(palette.text),
+                );
+            }
+        }
+    }
+    Some((
+        inner.x + marker + layout.caret.0 as u16,
+        inner.y + (layout.caret.1 - start) as u16,
+    ))
+}
 
-    buffer.set_string(inner.x, inner.y, MARKER, Style::default().fg(palette.brand));
-    let (caret_x, text, ink) = if prompt.text().is_empty() {
-        (text_x, fitted(PLACEHOLDER, usable), palette.text_muted)
-    } else {
-        let (text, offset) = scrolled(prompt.text(), prompt.before_caret(), usable);
-        (text_x + offset, text, palette.text)
-    };
-    buffer.set_string(text_x, inner.y, text, Style::default().fg(ink));
-    Some((caret_x, inner.y))
+/// Grow to six visible text rows, then scroll the composer to keep its caret visible.
+pub fn height(prompt: &Prompt, width: u16, available: u16) -> u16 {
+    let usable = width.saturating_sub(MARKER.width() as u16 + 3) as usize;
+    (prompt.layout(usable).lines.len().clamp(1, 6) as u16 + 2).min(available.max(HEIGHT))
 }
 
 /// The box's own rect: [`WIDTH`] wide and centred in `area`, and no larger than it.
@@ -97,6 +118,6 @@ pub fn centred(area: Rect) -> Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y,
         width,
-        height: area.height.min(HEIGHT),
+        height: area.height,
     }
 }

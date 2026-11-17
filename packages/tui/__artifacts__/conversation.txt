@@ -1,0 +1,18 @@
+  ● Conversation  /workspace                                             default model
+────────────────────────────────────────────────────────────────────────────────────────
+  ❯ Explain the change
+    00:00
+    ▸ default model worked for 1m 2s
+
+    The conversation is ready.
+    00:01 · /fork · ctrl+y copy
+
+
+
+
+  Queued · parked · l Send Now
+  ↳ [follow-up] Next question
+  ┌────────────────────────────────────────────────────────────────────────── alpha ─┐
+  │❯ build me flappy bird                                                            │
+  └──────────────────────────────────────────────────────────────────────────────────┘
+        enter send · ctrl+j newline · ctrl+p threads · alt+↑ queue · ctrl+o work

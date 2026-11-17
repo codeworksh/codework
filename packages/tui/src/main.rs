@@ -1,10 +1,17 @@
 mod action;
 mod app;
+mod browser;
+#[cfg(test)]
+mod conversation;
 mod diff;
+mod draft;
 mod event;
+mod git;
 mod menu;
 mod prompt;
 mod rpc;
+#[cfg(test)]
+mod tests;
 mod theme;
 mod tool;
 mod tui;

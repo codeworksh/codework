@@ -63,12 +63,9 @@ fn cell(upper: bool, lower: bool) -> char {
 
 /// The glyph to draw in a frame this wide: the wordmark, else the mark, else nothing.
 fn glyph_for(width: usize) -> Option<&'static Glyph> {
-    for glyph in [&WORDMARK, &MARK] {
-        if glyph.width + MARGIN * 2 <= width {
-            return Some(glyph);
-        }
-    }
-    None
+    [&WORDMARK, &MARK]
+        .into_iter()
+        .find(|glyph| glyph.width + MARGIN * 2 <= width)
 }
 
 /// How many terminal rows the glyph for a frame this wide needs, or `None` when no glyph fits the

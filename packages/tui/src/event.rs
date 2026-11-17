@@ -10,34 +10,44 @@ use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseEventKind};
 use tokio::sync::mpsc;
 
 use crate::rpc::StreamEvent;
-use crate::types::{HistoryEntry, ModelList, ServerInfo, SessionInfo};
+use crate::types::{ModelList, ServerInfo, ThreadInfo};
 
 /// Asynchronous results arriving from the RPC server.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RpcEvent {
-    Stream(StreamEvent),
-    SessionStream {
-        session_id: String,
-        event: StreamEvent,
-    },
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
-    SessionsLoaded(Result<Vec<SessionInfo>, String>),
-    SessionHistoryRefresh {
-        session_id: String,
+    ThreadsLoaded {
+        generation: u64,
+        result: Result<Vec<ThreadInfo>, String>,
     },
-    SessionHistoryLoaded {
-        session_id: String,
+    Git {
+        space_id: String,
+        generation: u64,
+        event: crate::git::GitEvent,
+    },
+    GitDiff {
+        space_id: String,
+        generation: u64,
         request_id: u64,
-        revision: u64,
-        result: Result<Vec<HistoryEntry>, String>,
+        file: String,
+        result: Result<crate::git::Diff, String>,
     },
-    SessionConfigured(Result<SessionInfo, String>),
-    PluginsReloaded(Result<(u64, Option<String>), String>),
-    PromptDispatched {
-        session_id: String,
-        message_id: String,
-        result: Result<(), String>,
+    Created {
+        result: Result<ThreadInfo, String>,
+        text: String,
+        delivery: crate::types::PromptDelivery,
+        id: String,
+    },
+    ThreadStream {
+        address: crate::rpc::protocol::ThreadRefPayload,
+        generation: u64,
+        event: StreamEvent,
+    },
+    Operation {
+        address: crate::rpc::protocol::ThreadRefPayload,
+        generation: u64,
+        result: Result<crate::app::OperationResult, String>,
     },
 }
 
@@ -58,8 +68,17 @@ pub enum AppEvent {
     /// view reads its own dimensions from the frame it is drawing into, so a
     /// stale copy in state would be one more thing to keep in sync.
     Resize,
+    SaveDraft {
+        revision: u64,
+    },
     /// An event or response from the CodeWork RPC server.
-    Rpc(RpcEvent),
+    Rpc(Box<RpcEvent>),
+}
+
+impl AppEvent {
+    pub fn rpc(event: RpcEvent) -> Self {
+        Self::Rpc(Box::new(event))
+    }
 }
 
 pub struct EventHandler {
@@ -77,17 +96,14 @@ impl EventHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let reader_tx = tx.clone();
-        std::thread::spawn(move || loop {
-            match crossterm::event::read() {
-                Ok(event) => {
-                    let Some(event) = translate(event) else {
-                        continue;
-                    };
-                    if reader_tx.send(event).is_err() {
-                        break;
-                    }
+        std::thread::spawn(move || {
+            while let Ok(event) = crossterm::event::read() {
+                let Some(event) = translate(event) else {
+                    continue;
+                };
+                if reader_tx.send(event).is_err() {
+                    break;
                 }
-                Err(_) => break,
             }
         });
         Self { tx, rx }

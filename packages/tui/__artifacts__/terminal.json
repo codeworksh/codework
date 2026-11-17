@@ -1,0 +1,46 @@
+[
+  {
+    "payload": {
+      "before": 8,
+      "limit": 60,
+      "sessionId": "session",
+      "threadId": "main"
+    },
+    "tag": "thread.page"
+  },
+  {
+    "payload": {
+      "delivery": "steer",
+      "messageId": "q",
+      "sessionId": "session",
+      "threadId": "main"
+    },
+    "tag": "thread.update"
+  },
+  {
+    "payload": {
+      "messageId": "q",
+      "sessionId": "session",
+      "text": "rewritten",
+      "threadId": "main"
+    },
+    "tag": "thread.update"
+  },
+  {
+    "payload": {
+      "messageId": "q",
+      "sessionId": "session",
+      "threadId": "main"
+    },
+    "tag": "thread.cancel"
+  },
+  {
+    "payload": {
+      "entryId": "old",
+      "mode": "before",
+      "sessionId": "session",
+      "threadId": "main"
+    },
+    "tag": "thread.fork"
+  }
+]

@@ -25,3 +25,5 @@ chrono = "0.4"
 # tree through ratatui, so it costs no extra build to depend on it directly rather than
 # assume every character is one column wide.
 unicode-width = "0.2"
+
+base64 = "0.22"

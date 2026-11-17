@@ -24,6 +24,35 @@ pub const DEFAULT_MAX_DIFF_LINES: usize = 60;
 /// (matching OpenCode's `ctx.width > 120` threshold minus the 4-column transcript indent).
 pub const SPLIT_MIN_WIDTH: usize = 116;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum View {
+    #[default]
+    Auto,
+    Unified,
+    Split,
+}
+impl View {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Unified => "unified",
+            Self::Split => "split",
+        }
+    }
+    pub fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::Unified,
+            Self::Unified => Self::Split,
+            Self::Split => Self::Auto,
+        }
+    }
+}
+pub struct RenderedDiff {
+    pub lines: Vec<Line<'static>>,
+    pub hunks: Vec<usize>,
+    pub summary: DiffSummary,
+}
+
 /// Added/removed counts for the whole patch, before any truncation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DiffSummary {
@@ -78,7 +107,20 @@ fn parse_hunks(patch: &str) -> (Vec<Hunk>, DiffSummary) {
     let mut old_ln = 1usize;
     let mut new_ln = 1usize;
 
+    let has_headers = patch.lines().any(|line| line.starts_with("@@"));
+    let mut in_hunk = !has_headers && !patch.lines().any(|line| line.starts_with("diff --git "));
     for raw in patch.lines() {
+        if raw.starts_with("@@") {
+            in_hunk = true;
+        }
+        if !in_hunk
+            || raw.starts_with("diff --git ")
+            || raw.starts_with("index ")
+            || raw.starts_with("Binary files ")
+            || raw.starts_with("GIT binary patch")
+        {
+            continue;
+        }
         if raw.starts_with("--- ") || raw.starts_with("+++ ") || raw.starts_with('\\') {
             continue;
         }
@@ -162,16 +204,36 @@ pub fn render_diff(
     max_lines: usize,
     palette: &Palette,
 ) -> (Vec<Line<'static>>, DiffSummary) {
+    let rendered = render_view(patch, max_width, max_lines, palette, View::Auto);
+    (rendered.lines, rendered.summary)
+}
+
+pub fn render_view(
+    patch: &str,
+    max_width: usize,
+    max_lines: usize,
+    palette: &Palette,
+    view: View,
+) -> RenderedDiff {
     let (hunks, summary) = parse_hunks(patch);
     if hunks.is_empty() || max_width < 8 {
-        return (Vec::new(), summary);
+        return RenderedDiff {
+            lines: Vec::new(),
+            hunks: Vec::new(),
+            summary,
+        };
     }
 
     let has_old = summary.removed > 0
         || hunks
             .iter()
             .any(|h| h.lines.iter().any(|l| l.kind == Kind::Context));
-    let use_split = max_width >= SPLIT_MIN_WIDTH && has_old && summary.added > 0;
+    let split_width = match view {
+        View::Auto => max_width >= SPLIT_MIN_WIDTH,
+        View::Unified => false,
+        View::Split => max_width >= 40,
+    };
+    let use_split = split_width && has_old && summary.added > 0;
 
     let mut all_lines = if use_split {
         render_split(&hunks, max_width, palette)
@@ -188,7 +250,26 @@ pub fn render_diff(
         )]));
     }
 
-    (all_lines, summary)
+    // Each hunk contributes its data rows plus one separator before subsequent hunks.
+    let mut hunks_at = Vec::new();
+    let mut offset = 0;
+    for (at, hunk) in hunks.iter().enumerate() {
+        if at > 0 {
+            offset += 1;
+        }
+        hunks_at.push(offset);
+        offset += if use_split {
+            render_split(std::slice::from_ref(hunk), max_width, palette).len()
+        } else {
+            hunk.lines.len()
+        };
+    }
+    hunks_at.retain(|row| *row < all_lines.len());
+    RenderedDiff {
+        lines: all_lines,
+        hunks: hunks_at,
+        summary,
+    }
 }
 
 fn render_unified(hunks: &[Hunk], max_width: usize, palette: &Palette) -> Vec<Line<'static>> {
