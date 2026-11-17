@@ -54,7 +54,7 @@ import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDispla
  */
 /** A sidebar action: New, Threads. Each sets its own colour: New, the primary action, is full ink. */
 const NAV_ROW =
-	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+	"flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const collapsedKey = "codework.sidebar.collapsed";
 const decodeCollapsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
@@ -150,7 +150,7 @@ export function SessionsSidebar() {
 				<div className="relative">
 					<MagnifyingGlassIcon
 						size={15}
-						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted"
+						className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-muted"
 						aria-hidden
 					/>
 					<SidebarInput
@@ -166,7 +166,7 @@ export function SessionsSidebar() {
 								setQuery("");
 							}
 						}}
-						className="h-7 rounded-md border-0 bg-transparent pr-7 pl-[30px] text-ui shadow-none dark:bg-transparent placeholder:text-ink-muted not-placeholder-shown:bg-selection-subtle hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-1 focus-visible:ring-edge focus-visible:ring-inset [&::-webkit-search-cancel-button]:appearance-none"
+						className="h-7 rounded-lg border-0 bg-transparent pr-7 pl-9 text-ui font-medium shadow-none dark:bg-transparent placeholder:text-ink-muted not-placeholder-shown:bg-selection-subtle hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-1 focus-visible:ring-edge focus-visible:ring-inset [&::-webkit-search-cancel-button]:appearance-none"
 					/>
 					{query !== "" && (
 						<button

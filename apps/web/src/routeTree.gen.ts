@@ -31,6 +31,8 @@ import { Route as ShellSettingsSkillsRouteImport } from './routes/_shell.setting
 import { Route as ShellSettingsTabsRouteImport } from './routes/_shell.settings.tabs'
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellTabsTabIdRouteImport } from './routes/_shell.tabs.$tabId'
+import { Route as ShellWorkspacesWorkspaceIdSettingsRouteImport } from './routes/_shell.workspaces.$workspaceId.settings'
+import { Route as ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.account.profile'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -142,6 +144,18 @@ const ShellTabsTabIdRoute = ShellTabsTabIdRouteImport.update({
   path: '/tabs/$tabId',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellWorkspacesWorkspaceIdSettingsRoute =
+  ShellWorkspacesWorkspaceIdSettingsRouteImport.update({
+    id: '/workspaces/$workspaceId/settings',
+    path: '/workspaces/$workspaceId/settings',
+    getParentRoute: () => ShellRoute,
+  } as any)
+const ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute =
+  ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport.update({
+    id: '/account/profile',
+    path: '/account/profile',
+    getParentRoute: () => ShellWorkspacesWorkspaceIdSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -165,6 +179,8 @@ export interface FileRoutesByFullPath {
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/': typeof ShellSettingsIndexRoute
+  '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -187,6 +203,8 @@ export interface FileRoutesByTo {
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings': typeof ShellSettingsIndexRoute
+  '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -212,6 +230,8 @@ export interface FileRoutesById {
   '/_shell/settings/themes': typeof ShellSettingsThemesRoute
   '/_shell/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
+  '/_shell/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/_shell/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -237,6 +257,8 @@ export interface FileRouteTypes {
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings/'
+    | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/account/profile'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -259,6 +281,8 @@ export interface FileRouteTypes {
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings'
+    | '/workspaces/$workspaceId/settings'
+    | '/workspaces/$workspaceId/settings/account/profile'
   id:
     | '__root__'
     | '/'
@@ -283,6 +307,8 @@ export interface FileRouteTypes {
     | '/_shell/settings/themes'
     | '/_shell/tabs/$tabId'
     | '/_shell/settings/'
+    | '/_shell/workspaces/$workspaceId/settings'
+    | '/_shell/workspaces/$workspaceId/settings/account/profile'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -447,6 +473,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellTabsTabIdRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/workspaces/$workspaceId/settings': {
+      id: '/_shell/workspaces/$workspaceId/settings'
+      path: '/workspaces/$workspaceId/settings'
+      fullPath: '/workspaces/$workspaceId/settings'
+      preLoaderRoute: typeof ShellWorkspacesWorkspaceIdSettingsRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/workspaces/$workspaceId/settings/account/profile': {
+      id: '/_shell/workspaces/$workspaceId/settings/account/profile'
+      path: '/account/profile'
+      fullPath: '/workspaces/$workspaceId/settings/account/profile'
+      preLoaderRoute: typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport
+      parentRoute: typeof ShellWorkspacesWorkspaceIdSettingsRoute
+    }
   }
 }
 
@@ -488,12 +528,28 @@ const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(
   ShellSettingsRouteChildren,
 )
 
+interface ShellWorkspacesWorkspaceIdSettingsRouteChildren {
+  ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute: typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
+}
+
+const ShellWorkspacesWorkspaceIdSettingsRouteChildren: ShellWorkspacesWorkspaceIdSettingsRouteChildren =
+  {
+    ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute:
+      ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute,
+  }
+
+const ShellWorkspacesWorkspaceIdSettingsRouteWithChildren =
+  ShellWorkspacesWorkspaceIdSettingsRoute._addFileChildren(
+    ShellWorkspacesWorkspaceIdSettingsRouteChildren,
+  )
+
 interface ShellRouteChildren {
   ShellMetricsRoute: typeof ShellMetricsRoute
   ShellProjectsRoute: typeof ShellProjectsRoute
   ShellSettingsRoute: typeof ShellSettingsRouteWithChildren
   ShellThreadsRoute: typeof ShellThreadsRoute
   ShellTabsTabIdRoute: typeof ShellTabsTabIdRoute
+  ShellWorkspacesWorkspaceIdSettingsRoute: typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
@@ -502,6 +558,8 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellSettingsRoute: ShellSettingsRouteWithChildren,
   ShellThreadsRoute: ShellThreadsRoute,
   ShellTabsTabIdRoute: ShellTabsTabIdRoute,
+  ShellWorkspacesWorkspaceIdSettingsRoute:
+    ShellWorkspacesWorkspaceIdSettingsRouteWithChildren,
 }
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)

@@ -1,4 +1,5 @@
-/* The desktop light and dark palettes. Dark applies when no theme is selected. */
+/* The desktop light and dark palettes. Dark applies when no theme is selected. Light follows Linear's
+   light palette: its sidebar, base and card surfaces, border and text scale, and indigo accent. */
 
 :root,
 [data-theme="dark"] {
@@ -26,13 +27,13 @@
 	--t-bg: #efeff0;
 	--t-surface: #f9f9fa;
 	--t-surface-2: #ffffff;
-	--t-border-subtle: #dedee2;
+	--t-border-subtle: #e2e2e2;
 	--t-border-strong: #c0c0c0;
-	--t-text: #2e2e2e;
-	--t-text-secondary: #383838;
-	--t-text-muted: #6d6d6d;
-	--t-scrollbar: rgba(46, 46, 46, 0.28);
-	--t-brand: #1f6fc4;
+	--t-text: #1b1b1b;
+	--t-text-secondary: #3b3b3d;
+	--t-text-muted: #5e5e60;
+	--t-scrollbar: rgba(27, 27, 27, 0.28);
+	--t-brand: #5e6ad2;
 	--t-brand-ink: #ffffff;
 	--t-field-bg: #e8e8e8;
 	--t-field-dim: #c3c3c3;

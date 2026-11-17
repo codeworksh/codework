@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-rou
 import { AsyncResult } from "effect/reactivity";
 import { useEffect } from "react";
 
+import { isSettingsPath } from "../settings/sections";
 import { Desktop } from "../wm/desktop";
 import { deskQueryAtom } from "../wm/instances";
 import { lastTabAtom, useTabs, useTabReturn, tabRoute, tabsAtom } from "../wm/tabs";
@@ -19,14 +20,16 @@ export function Shell() {
 	const navigate = useNavigate();
 	// From the location, which changes before route params do: a match-based check lags a
 	// render behind, in which the first tab would pass for the one settings returns to.
-	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
+	const inSettings = useLocation({ select: (location) => isSettingsPath(location.pathname) });
 	const overDesktop = useLocation({
 		select: (location) =>
-			location.pathname.startsWith("/settings") ||
+			isSettingsPath(location.pathname) ||
 			location.pathname === "/threads" ||
 			location.pathname === "/projects" ||
 			location.pathname === "/metrics",
 	});
+	// On a tab's own page. A page outside the shell, still shown while the next one loads, is not one.
+	const onTab = useLocation({ select: (location) => location.pathname.startsWith("/tabs/") });
 	// An id that no longer exists (a deleted tab) shows the first one.
 	const shown = tabs.find((tab) => tab.id === tabId) ?? tabs[0];
 	const back = useTabReturn();
@@ -39,14 +42,14 @@ export function Shell() {
 	const desk = useAtomValue(deskQueryAtom);
 	const ready = AsyncResult.isSuccess(listed) && AsyncResult.isSuccess(desk);
 	useEffect(() => {
-		if (loaded && tabs.length === 0 && !overDesktop) void navigate({ to: "/", replace: true });
-	}, [loaded, tabs.length, overDesktop, navigate]);
+		if (loaded && tabs.length === 0 && onTab) void navigate({ to: "/", replace: true });
+	}, [loaded, tabs.length, onTab, navigate]);
 
 	// Remembered past this route, so the start page opens things where the user last was.
 	const setLastTab = useAtomSet(lastTabAtom);
 	useEffect(() => {
-		if (!overDesktop && shown !== undefined) setLastTab(shown.id);
-	}, [overDesktop, shown, setLastTab]);
+		if (onTab && shown !== undefined) setLastTab(shown.id);
+	}, [onTab, shown, setLastTab]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {

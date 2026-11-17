@@ -1,8 +1,13 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter/standard.css";
-@import "@fontsource-variable/inter/standard-italic.css";
+/* Inter with its optical-size axis: large text such as page titles draws with Inter Display's tighter shapes. */
+@import "@fontsource-variable/inter/opsz.css";
+@import "@fontsource-variable/inter/opsz-italic.css";
+@import "@fontsource-variable/lilex/wght.css";
 /* shadcn/ui's enter and exit animations (animate-in, fade-in-0, zoom-in-95, ...). */
 @import "tw-animate-css";
+
+/* `dark:` follows the app's theme, not the system's: a light theme on a Mac in dark mode stays light. */
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
 
 /* `--cw-*` are the theme contract widgets style against. They map onto the site palette's `--t-*`
    tokens, so switching data-theme restyles everything; light-dark() follows the theme's color-scheme. */
@@ -33,10 +38,11 @@
 		color-mix(in srgb, var(--cw-ink) 12%, transparent)
 	);
 	--cw-selection-hover: light-dark(
-		color-mix(in srgb, var(--cw-ink) 10%, transparent),
+		color-mix(in srgb, var(--cw-ink) 7%, transparent),
 		color-mix(in srgb, var(--cw-ink) 15%, transparent)
 	);
-	--cw-primary: var(--cw-ink);
+	/* Primary actions: the accent in light, as Linear does; ink in dark. */
+	--cw-primary: light-dark(var(--cw-brand), var(--cw-ink));
 	--cw-primary-ink: var(--cw-frame);
 	--cw-message: light-dark(#0a0a0a, var(--cw-selection));
 	--cw-message-ink: light-dark(#ffffff, var(--cw-ink));
@@ -56,13 +62,28 @@
 	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.22));
 	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.3));
 	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
-	--cw-menu-shadow: 0 16px 40px -18px light-dark(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.8));
+	/* The main panel: a hairline border and the faintest drop, set into the window. */
+	--cw-panel-shadow:
+		0 3px 6px -2px light-dark(rgb(0 0 0 / 0.02), rgb(0 0 0 / 0.2)),
+		0 1px 1px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.25));
+	/* A settings card: a hairline ring and a soft drop, lifting it off the panel without a border. */
+	--cw-card-shadow:
+		0 0 0 1px light-dark(rgb(0 0 0 / 0.06), rgb(255 255 255 / 0.06)),
+		0 3px 6px -2px light-dark(rgb(0 0 0 / 0.03), rgb(0 0 0 / 0.25)),
+		0 1px 1px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3));
+	--cw-menu-shadow:
+		0 6px 18px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.35)),
+		0 3px 9px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.3)),
+		0 1px 1px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.3));
 }
 
 @theme {
 	/* Inter is bundled locally; code keeps the platform's monospace face. */
 	--font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-	--font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+	/* Between regular and medium: secondary text, as Linear sets descriptions. */
+	--font-weight-book: 450;
+	--font-mono:
+		"Lilex Variable", ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 	/* Tailwind's built-in curves are too weak for UI motion. */
 	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -74,6 +95,9 @@
 	--text-3xs--line-height: calc(0.875 / 0.625);
 	--text-4xs: 0.5rem;
 	--text-4xs--line-height: 1;
+	/* A settings section heading, between the 13px body and the 24px page title. */
+	--text-section: 0.9375rem;
+	--text-section--line-height: 1.5;
 	--text-ui: 0.8125rem;
 	--text-ui--line-height: 1.4;
 	--text-body: 0.8125rem;
@@ -87,6 +111,7 @@
 	--spacing-tab: 27px;
 	--spacing-pane: 36px;
 	--container-conversation: var(--cw-content-width);
+	--container-settings: 44rem;
 	--color-selection-subtle: var(--cw-selection-subtle);
 	--color-selection: var(--cw-selection);
 	--color-selection-strong: var(--cw-selection-strong);
@@ -207,6 +232,19 @@
 
 	body {
 		@apply bg-desktop font-sans text-ui text-ink antialiased;
+	}
+
+	/* Lilex's ligatures suit code blocks (=>, !==) but not IDs, paths or keys, where -- and -> stay literal. */
+	code,
+	kbd,
+	samp,
+	.font-mono {
+		font-variant-ligatures: none;
+	}
+
+	pre,
+	pre code {
+		font-variant-ligatures: contextual;
 	}
 
 	::selection {

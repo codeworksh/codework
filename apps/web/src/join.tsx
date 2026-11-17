@@ -79,6 +79,7 @@ export function Join() {
 							</label>
 							<Input
 								id="workspace-name"
+								size="lg"
 								value={name}
 								onChange={(event) => {
 									setName(event.target.value);
