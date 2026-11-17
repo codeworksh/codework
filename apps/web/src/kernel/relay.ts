@@ -79,3 +79,21 @@ export const workspaceAtom = Atom.make((get) => {
 		(me) => me.workspaces.find((workspace) => workspace.id === chosen) ?? me.workspaces[0],
 	);
 });
+
+/** Approves a machine's connect code for a workspace the account belongs to. */
+export const approveAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
+	Effect.gen(function* () {
+		const client = yield* Client;
+		return yield* client.workspace.approve({ payload: input });
+	}),
+);
+
+/** The machines connected to a workspace, as the relay last heard from them. */
+export const machinesAtom = Atom.family((workspaceId: string) =>
+	runtime.atom(
+		Effect.gen(function* () {
+			const client = yield* Client;
+			return yield* client.workspace.machines({ params: { workspaceId } });
+		}),
+	),
+);

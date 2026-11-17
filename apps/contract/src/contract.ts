@@ -1,3 +1,4 @@
+import { Machine } from "@codeworksh/schema";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
@@ -816,6 +817,24 @@ export const Api = RpcGroup.make(
 		payload: { hostDir: Schema.optionalKey(Schema.String) },
 		success: ModelList,
 		error: Schema.Union([CodeworkUnavailable, ModelsError]),
+	}),
+	/** The default machine and the workspaces it is connected to. */
+	Rpc.make("machine.info", {
+		success: Machine.Status,
+		error: CodeworkUnavailable,
+	}),
+	/** Names the default machine for people; an empty name goes back to the OS's. */
+	Rpc.make("machine.rename", {
+		payload: { givenName: Schema.String },
+		success: Machine.Status,
+		error: CodeworkUnavailable,
+	}),
+	/** Connects the default machine to a workspace: the code to approve, then the link. */
+	Rpc.make("machine.connect", {
+		payload: { workspaceId: Schema.String },
+		success: Machine.ConnectEvent,
+		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		stream: true,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {

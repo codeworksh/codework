@@ -2,6 +2,7 @@ import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	DaemonHost,
+	Global,
 	Event,
 	EventList,
 	EventRegistry,
@@ -22,7 +23,10 @@ import {
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
+import { Machine } from "@codeworksh/schema";
+import { DateTime, Effect, Option, Predicate, Queue, Schema, Stream } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import * as MachineRelay from "../machine/relay.ts";
 import * as Contract from "./contract.ts";
 import {
 	type HistoryEntry,
@@ -47,6 +51,8 @@ import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
 import * as MessagePart from "./part.ts";
 import * as Rows from "./rows.ts";
+
+const isConnectError = Schema.is(Machine.ConnectError);
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -282,6 +288,7 @@ export const layer = Contract.Api.toLayer(
 		const host = yield* Host.Service;
 		const clones = yield* Clones.Service;
 		const store = yield* Store.Service;
+		const global = yield* Global.Service;
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -625,6 +632,41 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"mcp.connect": mcpControl("connect"),
 			"mcp.disconnect": mcpControl("disconnect"),
+			"machine.info": () => MachineRelay.status(global.home).pipe(Effect.provide(NodeServices.layer), Effect.orDie),
+			"machine.rename": ({ givenName }) =>
+				MachineRelay.rename(global.home, givenName).pipe(
+					// The relay hears the new name now rather than on the next beat; a miss is retried then.
+					Effect.tap(() =>
+						MachineRelay.heartbeat(global.home).pipe(
+							Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+							Effect.ignore,
+							Effect.forkDetach,
+						),
+					),
+					Effect.provide(NodeServices.layer),
+					Effect.orDie,
+				),
+			"machine.connect": ({ workspaceId }) =>
+				Stream.callback<Machine.ConnectEvent, Machine.ConnectError>((queue) =>
+					MachineRelay.connect({
+						home: global.home,
+						workspaceId,
+						onCode: (userCode) => Queue.offer(queue, { _tag: "Code", userCode }).pipe(Effect.asVoid),
+					}).pipe(
+						Effect.flatMap((connected) => Queue.offer(queue, { _tag: "Connected", connected })),
+						Effect.andThen(Queue.end(queue)),
+						Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+						Effect.catch((error) =>
+							Queue.fail(
+								queue,
+								isConnectError(error)
+									? error
+									: new Machine.ConnectError({ message: `Could not connect: ${String(error)}` }),
+							),
+						),
+						Effect.forkScoped,
+					),
+				),
 			"host.info": () => Effect.succeed(host.info),
 			"host.browse": ({ path }) => host.browse(path),
 			"host.create": ({ name }) => host.create(name),

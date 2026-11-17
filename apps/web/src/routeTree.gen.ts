@@ -20,6 +20,7 @@ import { Route as ShellSettingsArchiveRouteImport } from './routes/_shell.settin
 import { Route as ShellSettingsChatRouteImport } from './routes/_shell.settings.chat'
 import { Route as ShellSettingsGeneralRouteImport } from './routes/_shell.settings.general'
 import { Route as ShellSettingsKeybindingsRouteImport } from './routes/_shell.settings.keybindings'
+import { Route as ShellSettingsMachinesRouteImport } from './routes/_shell.settings.machines'
 import { Route as ShellSettingsMcpRouteImport } from './routes/_shell.settings.mcp'
 import { Route as ShellSettingsModelsRouteImport } from './routes/_shell.settings.models'
 import { Route as ShellSettingsPluginsRouteImport } from './routes/_shell.settings.plugins'
@@ -85,6 +86,11 @@ const ShellSettingsKeybindingsRoute =
     path: '/keybindings',
     getParentRoute: () => ShellSettingsRoute,
   } as any)
+const ShellSettingsMachinesRoute = ShellSettingsMachinesRouteImport.update({
+  id: '/machines',
+  path: '/machines',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
 const ShellSettingsMcpRoute = ShellSettingsMcpRouteImport.update({
   id: '/mcp',
   path: '/mcp',
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
   '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/settings/machines': typeof ShellSettingsMachinesRoute
   '/settings/mcp': typeof ShellSettingsMcpRoute
   '/settings/models': typeof ShellSettingsModelsRoute
   '/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/settings/chat': typeof ShellSettingsChatRoute
   '/settings/general': typeof ShellSettingsGeneralRoute
   '/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/settings/machines': typeof ShellSettingsMachinesRoute
   '/settings/mcp': typeof ShellSettingsMcpRoute
   '/settings/models': typeof ShellSettingsModelsRoute
   '/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/_shell/settings/chat': typeof ShellSettingsChatRoute
   '/_shell/settings/general': typeof ShellSettingsGeneralRoute
   '/_shell/settings/keybindings': typeof ShellSettingsKeybindingsRoute
+  '/_shell/settings/machines': typeof ShellSettingsMachinesRoute
   '/_shell/settings/mcp': typeof ShellSettingsMcpRoute
   '/_shell/settings/models': typeof ShellSettingsModelsRoute
   '/_shell/settings/plugins': typeof ShellSettingsPluginsRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/settings/chat'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/machines'
     | '/settings/mcp'
     | '/settings/models'
     | '/settings/plugins'
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/settings/chat'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/machines'
     | '/settings/mcp'
     | '/settings/models'
     | '/settings/plugins'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/_shell/settings/chat'
     | '/_shell/settings/general'
     | '/_shell/settings/keybindings'
+    | '/_shell/settings/machines'
     | '/_shell/settings/mcp'
     | '/_shell/settings/models'
     | '/_shell/settings/plugins'
@@ -345,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsKeybindingsRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
+    '/_shell/settings/machines': {
+      id: '/_shell/settings/machines'
+      path: '/machines'
+      fullPath: '/settings/machines'
+      preLoaderRoute: typeof ShellSettingsMachinesRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
     '/_shell/settings/mcp': {
       id: '/_shell/settings/mcp'
       path: '/mcp'
@@ -416,6 +435,7 @@ interface ShellSettingsRouteChildren {
   ShellSettingsChatRoute: typeof ShellSettingsChatRoute
   ShellSettingsGeneralRoute: typeof ShellSettingsGeneralRoute
   ShellSettingsKeybindingsRoute: typeof ShellSettingsKeybindingsRoute
+  ShellSettingsMachinesRoute: typeof ShellSettingsMachinesRoute
   ShellSettingsMcpRoute: typeof ShellSettingsMcpRoute
   ShellSettingsModelsRoute: typeof ShellSettingsModelsRoute
   ShellSettingsPluginsRoute: typeof ShellSettingsPluginsRoute
@@ -432,6 +452,7 @@ const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
   ShellSettingsChatRoute: ShellSettingsChatRoute,
   ShellSettingsGeneralRoute: ShellSettingsGeneralRoute,
   ShellSettingsKeybindingsRoute: ShellSettingsKeybindingsRoute,
+  ShellSettingsMachinesRoute: ShellSettingsMachinesRoute,
   ShellSettingsMcpRoute: ShellSettingsMcpRoute,
   ShellSettingsModelsRoute: ShellSettingsModelsRoute,
   ShellSettingsPluginsRoute: ShellSettingsPluginsRoute,

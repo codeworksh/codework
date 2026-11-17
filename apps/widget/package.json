@@ -13,6 +13,9 @@
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@codeworksh/schema": "workspace:*"
+	},
 	"devDependencies": {
 		"@phosphor-icons/react": "2.1.10",
 		"@types/react": "^19.3.0",

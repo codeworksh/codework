@@ -20,6 +20,7 @@ import {
 	ThreadStore,
 	UsageSchema,
 } from "@codeworksh/harness/effect";
+import { Machine } from "@codeworksh/schema";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
@@ -915,6 +916,26 @@ export const Api = RpcGroup.make(
 		payload: McpServerRef,
 		success: McpStatus,
 		error: McpErrors,
+	}),
+	/** This machine and the workspaces it is connected to. */
+	Rpc.make("machine.info", {
+		payload: {},
+		success: Machine.Status,
+	}),
+	/** Names this machine for people; an empty name goes back to the OS's. */
+	Rpc.make("machine.rename", {
+		payload: { givenName: Schema.String },
+		success: Machine.Status,
+	}),
+	/**
+	 * Connects this machine to a workspace: the code a member approves, then the link once they have.
+	 * `workspaceId` is the workspace it is meant for; without one the approver picks it.
+	 */
+	Rpc.make("machine.connect", {
+		payload: { workspaceId: Schema.optional(Schema.String) },
+		success: Machine.ConnectEvent,
+		error: Machine.ConnectError,
+		stream: true,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {

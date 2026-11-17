@@ -110,6 +110,14 @@ export const layer = Contract.Api.toLayer(
 			"metrics.usage": (input) => Metrics.usage(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"metrics.hours": (input) => Metrics.hours(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
+			"machine.info": Effect.fn("machine.info")(function* () {
+				return yield* call((client) => client("machine.info", {}));
+			}),
+			"machine.rename": Effect.fn("machine.rename")(function* ({ givenName }) {
+				return yield* call((client) => client("machine.rename", { givenName }));
+			}),
+			"machine.connect": ({ workspaceId }) =>
+				Codework.stream((client) => client("machine.connect", { workspaceId })),
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));
 			}),

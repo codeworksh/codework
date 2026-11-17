@@ -3,6 +3,7 @@ import {
 	ChatTextIcon,
 	CpuIcon,
 	CubeIcon,
+	DesktopTowerIcon,
 	HardDrivesIcon,
 	type Icon,
 	KeyboardIcon,
@@ -26,6 +27,7 @@ export interface SettingsSection {
 		| "/settings/mcp"
 		| "/settings/skills"
 		| "/settings/plugins"
+		| "/settings/machines"
 		| "/settings/sandboxes"
 		| "/settings/archive";
 	readonly label: string;
@@ -129,6 +131,13 @@ const sections: readonly SettingsSection[] = [
 		icon: PuzzlePieceIcon,
 		group: "Agents",
 		keywords: ["plugins", "extensions", "npm", "tools", "prompt", "bash", "grep", "find", "reload"],
+	},
+	{
+		to: "/settings/machines",
+		label: "Machines",
+		icon: DesktopTowerIcon,
+		group: "Workspace",
+		keywords: ["machines", "connect", "online", "offline", "rename", "name", "relay", "harness", "computer"],
 	},
 	{
 		to: "/settings/sandboxes",

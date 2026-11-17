@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
-import { Jws, Relay } from "@codeworksh/schema";
-import { Clock, Config, Context, Duration, Effect, Layer, Schema } from "effect";
+import { Jws, Machine, Relay } from "@codeworksh/schema";
+import { Clock, Config, Context, Duration, Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 import { uuidv7 } from "uuidv7";
@@ -23,10 +23,6 @@ export class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof 
 	).pipe(Layer.provide(FetchHttpClient.layer));
 }
 
-class ConnectError extends Schema.TaggedError<ConnectError>()("Machine.ConnectError", {
-	message: Schema.String,
-}) {}
-
 /** What this machine says about itself to the relay. */
 const describe = Effect.fn("Machine.describe")(function* (machine: File.Machine) {
 	const localHostName = yield* hostName.pipe(Effect.provide(NodeServices.layer));
@@ -39,6 +35,33 @@ const describe = Effect.fn("Machine.describe")(function* (machine: File.Machine)
 		arch: process.arch,
 		version: pkg.version,
 	} satisfies Relay.MachineInfo;
+});
+
+/** This machine and its workspaces, as the desktop app shows them. */
+export const status = Effect.fn("Machine.status")(function* (home: string) {
+	const stored = yield* File.read(home);
+	const localHostName = yield* hostName.pipe(Effect.provide(NodeServices.layer));
+	if (stored._tag === "None")
+		return { id: null, localHostName, givenName: null, workspaces: [] } satisfies Machine.Status;
+	const machine = stored.value;
+	return {
+		id: machine.id,
+		localHostName,
+		givenName: machine.givenName ?? null,
+		workspaces: Object.entries(machine.workspaces).map(([id, link]) => ({ id, name: link.name })),
+	} satisfies Machine.Status;
+});
+
+/**
+ * Names this machine for people: empty clears the name back to the OS's. The relay hears it on the
+ * next heartbeat.
+ */
+export const rename = Effect.fn("Machine.rename")(function* (home: string, givenName: string) {
+	const name = givenName.trim();
+	yield* File.update(home, {}, ({ givenName: _previous, ...machine }) =>
+		Effect.succeed(name === "" ? machine : { ...machine, givenName: name }),
+	);
+	return yield* status(home);
 });
 
 /**
@@ -86,7 +109,7 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 			return connected;
 		}
 	}
-	return yield* new ConnectError({ message: "The code expired before it was approved; run connect again" });
+	return yield* new Machine.ConnectError({ message: "The code expired before it was approved; run connect again" });
 });
 
 /** One heartbeat per connected workspace. A link the relay no longer knows is removed here too. */
@@ -125,7 +148,7 @@ export const disconnect = Effect.fn("Machine.disconnect")(function* (home: strin
 	const stored = yield* File.read(home);
 	const link = stored._tag === "Some" ? stored.value.workspaces[workspaceId] : undefined;
 	if (stored._tag === "None" || link === undefined) {
-		return yield* new ConnectError({ message: `This machine is not connected to workspace ${workspaceId}` });
+		return yield* new Machine.ConnectError({ message: `This machine is not connected to workspace ${workspaceId}` });
 	}
 	const claims: Relay.RevokeClaims = {
 		op: "machine.revoke",
