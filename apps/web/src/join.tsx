@@ -42,7 +42,7 @@ export function Join() {
 					className="flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs text-ink-muted outline-none [-webkit-app-region:no-drag] hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<ArrowLeftIcon size={12} aria-hidden />
-					Back to CodeWork
+					Back to App
 				</button>
 				{isSignedInApp && <Account />}
 			</header>

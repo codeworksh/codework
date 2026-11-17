@@ -2,9 +2,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { ArrowLeftIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 
+import { useScrollFade } from "@/hooks/use-scroll-fade";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
-import { useScrollFade } from "@/hooks/use-scroll-fade";
 
 import {
 	Sidebar,
@@ -20,8 +20,8 @@ import {
 } from "@/components/ui/sidebar";
 import { isSignedInApp } from "../auth";
 import { workspaceAtom } from "../kernel/relay";
-import { search } from "./sections";
 import { useTabReturn } from "../wm/tabs";
+import { search } from "./sections";
 
 /** Settings replaces the sessions list within the same app shell and sidebar controls. */
 export function SettingsSidebar() {
@@ -45,7 +45,7 @@ export function SettingsSidebar() {
 					className="flex h-7 w-fit items-center gap-1.5 rounded-full pr-3 pl-1.5 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<ArrowLeftIcon size={14} className="shrink-0" aria-hidden />
-					<span>Back to app</span>
+					<span>Back to App</span>
 				</Link>
 				<div className="relative">
 					<MagnifyingGlassIcon
