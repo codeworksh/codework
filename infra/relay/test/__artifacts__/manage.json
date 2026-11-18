@@ -16,7 +16,7 @@
 	"typedCode": {
 		"status": 200,
 		"exitCode": 0,
-		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\n"
+		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\nIt shows online once its server runs: codework service start --home <home>\n"
 	},
 	"remove": {
 		"status": 204,

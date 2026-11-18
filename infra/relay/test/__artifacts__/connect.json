@@ -1,7 +1,7 @@
 {
 	"connect": {
 		"exitCode": 0,
-		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\n",
+		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\nIt shows online once its server runs: codework service start --home <home>\n",
 		"approveStatus": 200,
 		"approved": {
 			"id": "e2e-box",

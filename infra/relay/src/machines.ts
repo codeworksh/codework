@@ -87,25 +87,25 @@ export class Machines extends Context.Service<
 			authId: string,
 			userCode: string,
 			workspaceId: string,
-		) => Effect.Effect<{ readonly machine: Relay.MachineInfo }, Relay.NotFound | Relay.Forbidden>;
+		) => Effect.Effect<{ readonly machine: Relay.MachineInfo }, Relay.NotFound | Relay.Forbidden | Relay.Unavailable>;
 		readonly list: (
 			authId: string,
 			workspaceId: string,
-		) => Effect.Effect<ReadonlyArray<Relay.Machine>, Relay.Forbidden>;
+		) => Effect.Effect<ReadonlyArray<Relay.Machine>, Relay.Forbidden | Relay.Unavailable>;
 		readonly pairings: (
 			authId: string,
 			workspaceId: string,
-		) => Effect.Effect<ReadonlyArray<Relay.PendingPairing>, Relay.Forbidden>;
+		) => Effect.Effect<ReadonlyArray<Relay.PendingPairing>, Relay.Forbidden | Relay.Unavailable>;
 		readonly decline: (
 			authId: string,
 			userCode: string,
 			workspaceId: string,
-		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden>;
+		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden | Relay.Unavailable>;
 		readonly remove: (
 			authId: string,
 			workspaceId: string,
 			machineId: string,
-		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden>;
+		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden | Relay.Unavailable>;
 		readonly heartbeat: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
 		readonly revoke: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
 	}

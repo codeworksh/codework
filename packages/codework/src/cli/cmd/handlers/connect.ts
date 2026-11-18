@@ -2,6 +2,7 @@ import { Machine, Relay } from "@codeworksh/schema";
 import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../framework/runtime.ts";
 import * as MachineRelay from "../../../machine/relay.ts";
+import * as Discovery from "../../../server/discovery.ts";
 import { InvalidInputError, reportFailure } from "../../error.ts";
 import { writeOut } from "../../output.ts";
 import * as Service from "../../service.ts";
@@ -17,7 +18,8 @@ export default Runtime.handler(
 					message: "--workspace must be a Workspace ID; copy it from Settings → Machines in the CodeWork app",
 				});
 			}
-			const paths = yield* Service.home(yield* Cmd.spec);
+			const spec = yield* Cmd.spec;
+			const paths = yield* Service.home(spec);
 			const connected = yield* MachineRelay.connect({
 				home: paths.home,
 				workspaceId,
@@ -25,6 +27,11 @@ export default Runtime.handler(
 				onCode: (code) => writeOut(`Approve this machine in the CodeWork app with code ${code}\n`),
 			});
 			yield* writeOut(`Connected to ${connected.workspace.name}\n`);
+			// The workspace sees a machine online while its server runs; say how when it doesn't yet.
+			if ((yield* Discovery.discover(paths.home)) === undefined) {
+				const home = Option.match(spec.home, { onNone: () => "", onSome: (path) => ` --home ${path}` });
+				yield* writeOut(`It shows online once its server runs: codework service start${home}\n`);
+			}
 		},
 		Effect.catchReason("HttpClientError", "TransportError", (reason) =>
 			Effect.fail(

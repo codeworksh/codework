@@ -15,7 +15,7 @@ export class Clerk extends Context.Service<
 	{
 		/** The verified subject (`auth_id`) of a session token. */
 		readonly verify: (token: string) => Effect.Effect<string, Relay.Unauthorized | Relay.Unavailable>;
-		readonly profile: (authId: string) => Effect.Effect<Profile>;
+		readonly profile: (authId: string) => Effect.Effect<Profile, Relay.Unavailable>;
 	}
 >()("relay/Clerk") {
 	static readonly layer = Layer.effect(
@@ -48,7 +48,11 @@ export class Clerk extends Context.Service<
 					return claims.sub;
 				}),
 				profile: Effect.fn("Clerk.profile")(function* (authId) {
-					const user = yield* Effect.tryPromise(() => client.users.getUser(authId)).pipe(Effect.orDie);
+					// Needed once, on a person's first sign-in: the vendor out of reach then is "try again".
+					const user = yield* Effect.tryPromise({
+						try: () => client.users.getUser(authId),
+						catch: () => new Relay.Unavailable({ message: "CodeWork's sign-in service isn't responding" }),
+					});
 					const email = user.primaryEmailAddress?.emailAddress;
 					if (email === undefined)
 						return yield* Effect.die(new Error(`Clerk user ${authId} has no email address`));

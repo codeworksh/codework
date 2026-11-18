@@ -124,7 +124,7 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const artifact = {
 			connect: {
 				exitCode: connected.code,
-				output: connected.out.replace(code, "<code>"),
+				output: connected.out.replace(code, "<code>").replaceAll(home, "<home>"),
 				approveStatus: approve.status,
 				approved: { id: approved.id, source: approved.source },
 				reusedCode: { status: reused.status, tag: decodeError(await reused.json())._tag },
@@ -223,7 +223,11 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 				error: declined.err.trim(),
 				pendingAfter: afterDecline.length,
 			},
-			typedCode: { status: approve.status, exitCode: connected.code, output: connected.out.replace(code, "<code>") },
+			typedCode: {
+				status: approve.status,
+				exitCode: connected.code,
+				output: connected.out.replace(code, "<code>").replaceAll(home, "<home>"),
+			},
 			remove: {
 				status: remove.status,
 				machinesAfter: afterRemove.length,

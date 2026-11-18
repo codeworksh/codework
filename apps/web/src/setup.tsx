@@ -14,6 +14,9 @@ import { meAtom, workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
 import { approveLabel, canAct, CodeSlot, machineAtom, useConnect } from "./shell/connect";
 
+/** A path as one shell word: as is when it needs no quoting, else single-quoted. */
+const shellQuoted = (path: string) => (/^[\w./~-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`);
+
 /** Set Up Later, per workspace: the app stops opening this page for it. */
 const laterKey = (workspaceId: string) => `codework.setup.later.${workspaceId}`;
 
@@ -95,6 +98,9 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 	const cli = status?.cli ?? null;
 	const version = cli !== null && "version" in cli ? cli.version : undefined;
 	const running = status?.server._tag === "Running";
+	// The terminal commands reach this server's home: a home chosen in Settings isn't the CLI's default.
+	const home =
+		status !== undefined && "home" in status && status.home.custom ? ` --home ${shellQuoted(status.home.path)}` : "";
 	const connected =
 		AsyncResult.isSuccess(machine) && machine.value.workspaces.some((option) => option.id === workspaceId);
 	const name = AsyncResult.isSuccess(machine)
@@ -165,7 +171,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 									? `The running server is v${status.server.version}, which this app can't read. Restart it with the installed CLI.`
 									: "It keeps running in the background, also after the app quits."
 							}
-							command="codework service start"
+							command={`codework service start${home}`}
 							error={current === 1 ? error : null}
 						>
 							<Button disabled={busy !== null} onClick={() => run("start")}>
@@ -178,7 +184,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							title={`Connect to ${workspaceName}`}
 							summary={`Connected to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
-							command={`codework connect --workspace ${workspaceId}`}
+							command={`codework connect --workspace ${workspaceId}${home}`}
 							error={null}
 						>
 							{connecting ? (
