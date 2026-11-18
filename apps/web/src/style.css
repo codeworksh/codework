@@ -112,6 +112,7 @@
 	--spacing-pane: 36px;
 	--container-conversation: var(--cw-content-width);
 	--container-settings: 44rem;
+	--container-metrics: 1100px;
 	--color-selection-subtle: var(--cw-selection-subtle);
 	--color-selection: var(--cw-selection);
 	--color-selection-strong: var(--cw-selection-strong);

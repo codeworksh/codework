@@ -89,7 +89,7 @@ export function MetricsBody({
 	const period = RANGES.find(({ key }) => key === metrics.range)?.label.toLowerCase() ?? "";
 	if (year.totals.steps === 0) return <Empty projectName={projectName} period="year" />;
 	return (
-		<div className="mx-auto flex max-w-27 flex-col gap-4 px-6 py-6">
+		<div className="mx-auto flex max-w-metrics flex-col gap-4 px-6 py-6">
 			<Stats metrics={metrics} period={period} />
 			<Activity year={year} scope={scope} colors={modelColors} />
 			<Work metrics={metrics} models={named} providers={providers.parts} />
