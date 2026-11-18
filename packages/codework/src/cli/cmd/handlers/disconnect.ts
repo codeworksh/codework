@@ -28,7 +28,7 @@ export default Runtime.handler(
 		yield* writeOut(
 			result.revoked
 				? `Disconnected from ${result.workspace}\n`
-				: `Disconnected locally from ${result.workspace}; the relay could not be reached, so its link stays until a workspace admin removes it\n`,
+				: `Disconnected locally from ${result.workspace}. The relay did not confirm. If this machine still appears in Settings → Machines, remove it there.\n`,
 		);
 	}, Effect.catch(reportFailure)),
 );

@@ -1,5 +1,8 @@
 import { Relay } from "@codeworksh/schema";
 import { Schema } from "effect";
+import { generateKeyPairSync } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { clerkUser, newRun, secretKey, startRelay } from "./utils.ts";
 
@@ -22,6 +25,32 @@ describe.skipIf(secretKey === undefined)("relay /v1/me", () => {
 	afterAll(async () => {
 		await user?.remove();
 		relay?.stop();
+	});
+
+	it("refuses a session signed by a key the vendor no longer lists", async () => {
+		const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+		const keys = [{ ...publicKey.export({ format: "jwk" }), kid: "replacement", alg: "RS256" }];
+		const vendor = createServer((_request, response) => {
+			response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ keys }));
+		});
+		await new Promise<void>((ready) => vendor.listen(0, "127.0.0.1", ready));
+		try {
+			const rotated = await startRelay(`${run}r`, {
+				CLERK_API_URL: `http://127.0.0.1:${(vendor.address() as AddressInfo).port}`,
+			});
+			try {
+				const response = await fetch(`${rotated.base}/v1/me`, {
+					headers: { authorization: `Bearer ${await user.token()}` },
+				});
+				const result = { status: response.status, tag: decodeError(await response.json())._tag };
+				expect(result).toEqual({ status: 401, tag: "Relay.Unauthorized" });
+				await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/rotated.json");
+			} finally {
+				rotated.stop();
+			}
+		} finally {
+			vendor.close();
+		}
 	});
 
 	it("creates one account and default workspace, even for concurrent first calls", async () => {

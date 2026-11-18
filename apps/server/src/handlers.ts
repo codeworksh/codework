@@ -117,9 +117,9 @@ export const layer = Contract.Api.toLayer(
 				return yield* call((client) => client("machine.rename", { givenName }));
 			}),
 			// The CLI's own failure (not connected to that workspace) keeps its message.
-			"machine.disconnect": Effect.fn("machine.disconnect")(function* ({ workspaceId }) {
+			"machine.disconnect": Effect.fn("machine.disconnect")(function* (input) {
 				const reply = yield* call((client) =>
-					client("machine.disconnect", { workspaceId }).pipe(
+					client("machine.disconnect", input).pipe(
 						Effect.map((disconnected) => ({ disconnected })),
 						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
 					),

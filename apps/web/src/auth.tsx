@@ -28,7 +28,7 @@ export function Auth({ children }: { readonly children: ReactNode }) {
 	// The hash, which is the app's route, is kept.
 	const [path, setPath] = useState(() => {
 		const { pathname, hash } = window.location;
-		if (!pathname.startsWith(SIGN_IN) && !pathname.startsWith(SIGN_UP)) {
+		if (isSignedInApp && !pathname.startsWith(SIGN_IN) && !pathname.startsWith(SIGN_UP)) {
 			window.history.replaceState(null, "", `${SIGN_IN}${hash}`);
 		}
 		return window.location.pathname;

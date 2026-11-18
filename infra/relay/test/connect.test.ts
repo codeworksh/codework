@@ -1,8 +1,10 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite spawns the real codework CLI and server. */
-import { Relay } from "@codeworksh/schema";
-import { Schema } from "effect";
+import { Jws, Relay } from "@codeworksh/schema";
+import { Effect, Schema } from "effect";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -192,16 +194,30 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const connected = await connectDone;
 
 		// Removed while its server is down, the machine forgets the link on its first heartbeat back.
-		const remove = await asPerson(`/v1/workspaces/${workspace.id}/machines/e2e-box/remove`, { method: "POST" });
+		const { keyId, key } = machineFile().workspaces[workspace.id];
+		const removeLink = (expectedKey: string) =>
+			asPerson(`/v1/workspaces/${workspace.id}/machines/e2e-box/remove`, {
+				method: "POST",
+				body: JSON.stringify({ keyId: expectedKey }),
+			});
+		const staleRemove = await removeLink("previous-key");
+		expect(staleRemove.status).toBe(404);
+		const remove = await removeLink(keyId);
+		const poll = await Effect.runPromise(Jws.sign({ op: "pairing.poll", iat: Date.now() }, key, { kid: keyId }));
+		const retried = await fetch(`${relay.base}/v1/pairings/poll`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ jws: poll }),
+		});
+		const pollResult = Schema.decodeUnknownSync(Relay.PairingStatus)(await retried.json());
+		expect(pollResult.status).toBe("superseded");
 		const afterRemove = await machines(workspace.id);
 		const serve = codework(["serve", "--port", "0"]);
 		const forgotten = await until(async () =>
 			Object.keys(machineFile().workspaces).length === 0 ? true : undefined,
 		);
 		serve.kill("SIGTERM");
-		const removedAgain = await asPerson(`/v1/workspaces/${workspace.id}/machines/e2e-box/remove`, {
-			method: "POST",
-		});
+		const removedAgain = await removeLink(keyId);
 
 		// Ids that aren't a workspace's fail plainly: before any request, at the relay, and at the wire.
 		const badWorkspace = await finished(codework(["connect", "--workspace", "typo-123"], { stderr: true }));
@@ -230,6 +246,8 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			},
 			remove: {
 				status: remove.status,
+				staleKey: staleRemove.status,
+				pollAfterRemove: pollResult.status,
 				machinesAfter: afterRemove.length,
 				machineFileForgot: forgotten,
 				again: { status: removedAgain.status, tag: decodeError(await removedAgain.json())._tag },
@@ -326,4 +344,59 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			other.stop();
 		}
 	});
+	it("forgets the local link when a committed revoke loses its reply", async () => {
+		const workspace = decodeMe(await (await asPerson("/v1/me")).json()).workspaces[0]!;
+		let revokeStatus: number | undefined;
+		const gateway = createServer((incoming, outgoing) => {
+			const upstream = request(
+				new URL(incoming.url ?? "/", relay.base),
+				{
+					method: incoming.method,
+					headers: incoming.headers,
+				},
+				(response) => {
+					if (incoming.url === "/v1/machines/revoke") {
+						revokeStatus = response.statusCode;
+						response.resume();
+						return;
+					}
+					outgoing.writeHead(response.statusCode ?? 502, response.headers);
+					response.pipe(outgoing);
+				},
+			);
+			upstream.on("error", () => outgoing.destroy());
+			incoming.pipe(upstream);
+		});
+		await new Promise<void>((ready) => gateway.listen(0, "127.0.0.1", ready));
+		try {
+			const connect = codework(["connect", "--workspace", workspace.id], {
+				relayUrl: `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`,
+			});
+			const done = finished(connect);
+			const userCode = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+			expect(
+				(
+					await asPerson("/v1/pairings/approve", {
+						method: "POST",
+						body: JSON.stringify({ userCode, workspaceId: workspace.id }),
+					})
+				).status,
+			).toBe(200);
+			expect((await done).code).toBe(0);
+			const result = await finished(codework(["disconnect", "--workspace", workspace.id]));
+			const artifact = {
+				revokeStatus,
+				exitCode: result.code,
+				localLinkRemoved: machineFile().workspaces[workspace.id] === undefined,
+				relayLinkRemoved: (await machines(workspace.id)).length === 0,
+			};
+			expect(artifact).toEqual({ revokeStatus: 204, exitCode: 0, localLinkRemoved: true, relayLinkRemoved: true });
+			await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+				"./__artifacts__/disconnect.json",
+			);
+		} finally {
+			gateway.close();
+			gateway.closeAllConnections();
+		}
+	}, 30_000);
 });

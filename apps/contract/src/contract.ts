@@ -831,7 +831,7 @@ export const Api = RpcGroup.make(
 	}),
 	/** Disconnects the default machine from a workspace. */
 	Rpc.make("machine.disconnect", {
-		payload: { workspaceId: Schema.String },
+		payload: Machine.Disconnect,
 		success: Machine.Disconnected,
 		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
 	}),

@@ -929,7 +929,7 @@ export const Api = RpcGroup.make(
 	}),
 	/** Leaves a workspace: the relay revokes this machine's link, and the machine forgets it. */
 	Rpc.make("machine.disconnect", {
-		payload: { workspaceId: Schema.String },
+		payload: Machine.Disconnect,
 		success: Machine.Disconnected,
 		error: Machine.ConnectError,
 	}),

@@ -1,5 +1,5 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
-import { TokenVerificationError } from "@clerk/backend/errors";
+import { TokenVerificationError, TokenVerificationErrorReason } from "@clerk/backend/errors";
 import { Config, Context, Effect, Layer, Option, Redacted } from "effect";
 import { Relay } from "@codeworksh/schema";
 
@@ -33,7 +33,8 @@ export class Clerk extends Context.Service<
 					const claims: unknown = yield* Effect.tryPromise({
 						try: () => verifyToken(token, { secretKey, ...(apiUrl === undefined ? {} : { apiUrl }) }),
 						catch: (cause) =>
-							cause instanceof TokenVerificationError && cause.reason.startsWith("token-")
+							cause instanceof TokenVerificationError &&
+							(cause.reason.startsWith("token-") || cause.reason === TokenVerificationErrorReason.JWKKidMismatch)
 								? new Relay.Unauthorized({ message: "Invalid or expired session token" })
 								: new Relay.Unavailable({ message: "CodeWork's sign-in service isn't responding" }),
 					});

@@ -495,7 +495,11 @@ export const layer = Layer.effect(
 				);
 				const client = Context.get(context, Client);
 				clients.set(row.id, client);
-				yield* Effect.addFinalizer(() => Effect.sync(() => clients.delete(row.id)));
+				yield* Effect.addFinalizer(() =>
+					Effect.sync(() => {
+						if (clients.get(row.id) === client) clients.delete(row.id);
+					}),
+				);
 				yield* Effect.forkScoped(followUsage(row.id, client));
 				yield* connected(row.id, client).pipe(
 					Effect.catchCause((cause) =>

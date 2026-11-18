@@ -39,7 +39,7 @@ import {
 	removeMachineAtom,
 } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
-import { disconnectAtom, machineAtom } from "../shell/connect";
+import { disconnectAtom, useMachineAtom } from "../shell/connect";
 import { Ago } from "../widgets/time";
 import { Group, Page, quietField, Row, SavingInput, Section } from "./blocks";
 import { EmptyState, StatusDot } from "./controls";
@@ -85,6 +85,7 @@ export function MachinesSettings({ workspaceId }: { readonly workspaceId: string
 }
 
 function ThisMachine({ workspace }: { readonly workspace: Relay.Workspace | undefined }) {
+	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const refresh = useAtomRefresh(machineAtom);
 	const rename = useAtomSet(renameAtom, { mode: "promise" });
@@ -342,6 +343,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace }) {
 	const machines = useAtomValue(machinesAtom(workspace.id));
 	const refresh = useAtomRefresh(machinesAtom(workspace.id));
+	const machineAtom = useMachineAtom();
 	const local = useAtomValue(machineAtom);
 	const refreshLocal = useAtomRefresh(machineAtom);
 	const me = useAtomValue(meAtom);
@@ -407,7 +409,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 					<Group>
 						{ordered.map((machine) => (
 							<MachineRow
-								key={machine.id}
+								key={machine.keyId}
 								machine={machine}
 								workspace={workspace}
 								isLocal={machine.id === localId && machine.keyId === localKey}
@@ -487,6 +489,7 @@ function MachineRow({
 							<MachineMenu
 								name={name}
 								machineId={machine.id}
+								keyId={machine.keyId}
 								workspace={workspace}
 								isLocal={isLocal}
 								onDone={() => {
@@ -506,28 +509,30 @@ function MachineRow({
 function MachineMenu({
 	name,
 	machineId,
+	keyId,
 	workspace,
 	isLocal,
 	onDone,
 }: {
 	readonly name: string;
 	readonly machineId: string;
+	readonly keyId: string;
 	readonly workspace: Relay.Workspace;
 	readonly isLocal: boolean;
 	readonly onDone: () => void;
 }) {
 	const disconnect = useAtomSet(disconnectAtom, { mode: "promise" });
 	const remove = useAtomSet(removeMachineAtom, { mode: "promise" });
-	const refreshLocal = useAtomRefresh(machineAtom);
+	const refreshLocal = useAtomRefresh(useMachineAtom());
 	const [asking, setAsking] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const confirm = () => {
 		setBusy(true);
 		setError(null);
-		const removeAsPerson = () => remove({ workspaceId: workspace.id, machineId });
+		const removeAsPerson = () => remove({ workspaceId: workspace.id, machineId, keyId, afterDisconnect: isLocal });
 		(isLocal
-			? disconnect({ payload: { workspaceId: workspace.id } })
+			? disconnect({ payload: { workspaceId: workspace.id, keyId } })
 					// The relay didn't confirm the machine's own revoke: remove it as the signed-in person instead.
 					.then(({ revoked }) =>
 						revoked

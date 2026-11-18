@@ -646,8 +646,8 @@ export const layer = Contract.Api.toLayer(
 					Effect.provide(NodeServices.layer),
 					Effect.orDie,
 				),
-			"machine.disconnect": ({ workspaceId }) =>
-				MachineRelay.disconnect(global.home, workspaceId).pipe(
+			"machine.disconnect": ({ workspaceId, keyId }) =>
+				MachineRelay.disconnect(global.home, workspaceId, keyId).pipe(
 					Effect.flatMap(({ revoked }) =>
 						MachineRelay.status(global.home).pipe(Effect.map((status) => ({ status, revoked }))),
 					),

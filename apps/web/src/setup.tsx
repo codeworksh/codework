@@ -1,3 +1,4 @@
+import { shellQuoted } from "@codeworksh/schema";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { CaretRightIcon, CheckIcon, CircleNotchIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
@@ -12,10 +13,7 @@ import { Frame } from "./frame";
 import { isSignedInApp } from "./auth";
 import { meAtom, workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
-import { approveLabel, canAct, CodeSlot, machineAtom, useConnect } from "./shell/connect";
-
-/** A path as one shell word: as is when it needs no quoting, else single-quoted. */
-const shellQuoted = (path: string) => (/^[\w./~-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`);
+import { approveLabel, canAct, CodeSlot, useMachineAtom, useConnect } from "./shell/connect";
 
 /** Set Up Later, per workspace: the app stops opening this page for it. */
 const laterKey = (workspaceId: string) => `codework.setup.later.${workspaceId}`;
@@ -50,6 +48,7 @@ export function SetupGate() {
 	const [checked, setChecked] = useAtom(checkedAtom);
 	const current = useAtomValue(workspaceAtom);
 	const status = useAtomValue(defaultServerAtom);
+	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const workspace = AsyncResult.isSuccess(current) ? current.value : undefined;
 	const running = status?.server._tag === "Running";
@@ -82,6 +81,7 @@ export function SetupGate() {
 export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 	const navigate = useNavigate();
 	const status = useAtomValue(defaultServerAtom);
+	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const refreshMachine = useAtomRefresh(machineAtom);
 	const me = useAtomValue(meAtom);
@@ -204,7 +204,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 						>
 							Set Up Later
 						</Button>
-						<Button disabled={!connected} onClick={() => void navigate({ to: "/" })}>
+						<Button disabled={current !== 3} onClick={() => void navigate({ to: "/" })}>
 							Done
 						</Button>
 					</div>

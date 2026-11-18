@@ -42,7 +42,7 @@ const remember = (me: Relay.Me) => {
  * Whether the relay answers, as the latest call to it found: `unreachable` (no answer at all) or
  * `unavailable` (it answered that its sign-in vendor is out of reach).
  */
-export type Reach = "ok" | "unreachable" | "unavailable";
+export type Reach = "ok" | "unreachable" | "unavailable" | "signedOut";
 let reach: Reach = "ok";
 const reachListeners = new Set<(next: Reach) => void>();
 const report = (next: Reach) => {
@@ -63,7 +63,8 @@ class SessionPending extends Schema.TaggedError<SessionPending>()("Relay.Session
 }) {}
 const pending = () => new SessionPending({ message: "Waiting for your sign-in to load" });
 /** The current token, or none when Clerk can't give one (still loading, offline). */
-const currentToken = Effect.tryPromise(() => sessionToken()).pipe(Effect.orElseSucceed(() => null));
+const currentToken = (skipCache = false) =>
+	Effect.tryPromise(() => sessionToken({ skipCache })).pipe(Effect.orElseSucceed(() => null));
 
 class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.Api>>()("codework/web/Relay") {
 	static readonly layer = Layer.effect(
@@ -73,12 +74,25 @@ class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.A
 			transformClient: (client) =>
 				client.pipe(
 					HttpClient.mapRequestEffect((request) =>
-						currentToken.pipe(
+						currentToken().pipe(
 							Effect.map((token) => (token === null ? request : HttpClientRequest.bearerToken(request, token))),
 						),
 					),
-					// Every answer, and every call that got none, says whether the relay is in reach.
-					HttpClient.tap((response) => Effect.sync(() => report(response.status === 503 ? "unavailable" : "ok"))),
+					HttpClient.transform((response, request) =>
+						Effect.gen(function* () {
+							const first = yield* response;
+							if (first.status !== 401) return first;
+							const token = yield* currentToken(true);
+							return token === null
+								? first
+								: yield* client.execute(HttpClientRequest.bearerToken(request, token));
+						}),
+					),
+					HttpClient.tap((response) =>
+						Effect.sync(() =>
+							report(response.status === 401 ? "signedOut" : response.status === 503 ? "unavailable" : "ok"),
+						),
+					),
 					HttpClient.tapError((error) =>
 						Effect.sync(() => {
 							if (error.reason._tag === "TransportError") report("unreachable");
@@ -129,13 +143,10 @@ export const meAtom = runtime
 			const client = yield* Client;
 			// Without a session yet there is nothing to ask the relay with; wait for one.
 			const get = Effect.gen(function* () {
-				if ((yield* currentToken) === null) return yield* pending();
+				if ((yield* currentToken()) === null) return yield* pending();
 				return yield* client.me.get();
 			});
 			return yield* get.pipe(
-				Effect.catchIf(isUnauthorized, () =>
-					Effect.promise(() => sessionToken({ skipCache: true }).catch(() => null)).pipe(Effect.andThen(get)),
-				),
 				Effect.tap((me) => Effect.sync(() => remember(me))),
 				Effect.catchIf(isTransient, (error) => {
 					const known = remembered();
@@ -233,9 +244,22 @@ export const declineAtom = runtime.fn((input: { readonly userCode: string; reado
 );
 
 /** Disconnects another machine from a workspace, as its owner or a workspace owner or admin. */
-export const removeMachineAtom = runtime.fn((input: { readonly workspaceId: string; readonly machineId: string }) =>
-	Effect.gen(function* () {
-		const client = yield* Client;
-		return yield* client.workspace.remove({ params: input });
-	}),
+export const removeMachineAtom = runtime.fn(
+	(input: {
+		readonly workspaceId: string;
+		readonly machineId: string;
+		readonly keyId: string;
+		readonly afterDisconnect: boolean;
+	}) =>
+		Effect.gen(function* () {
+			const client = yield* Client;
+			const remove = client.workspace.remove({
+				params: { workspaceId: input.workspaceId, machineId: input.machineId },
+				payload: { keyId: input.keyId },
+			});
+			// The machine may already have revoked this key before its acknowledgement was lost.
+			return yield* input.afterDisconnect
+				? remove.pipe(Effect.catchTag("Relay.NotFound", () => Effect.void))
+				: remove;
+		}),
 );

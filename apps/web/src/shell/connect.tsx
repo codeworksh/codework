@@ -5,9 +5,13 @@ import { useEffect, useState } from "react";
 
 import { approveAtom, relayFailure } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
+import { defaultServerAtom } from "../kernel/servers";
 
 /** This machine (the default CodeWork server) and the workspaces it is connected to. */
-export const machineAtom = Server.query("machine.info", undefined);
+export function useMachineAtom() {
+	const home = useAtomValue(defaultServerAtom)?.home.path;
+	return Server.query("machine.info", undefined, { reactivityKeys: ["codework", home] });
+}
 
 /** Disconnects this machine from a workspace. */
 export const disconnectAtom = Server.mutation("machine.disconnect");
@@ -30,7 +34,7 @@ const connectAtom = Atom.family((workspaceId: string) =>
 export function useConnect(workspaceId: string) {
 	const progress = useAtomValue(connectAtom(workspaceId));
 	const restart = useAtomRefresh(connectAtom(workspaceId));
-	const refreshMachine = useAtomRefresh(machineAtom);
+	const refreshMachine = useAtomRefresh(useMachineAtom());
 	const approve = useAtomSet(approveAtom, { mode: "promise" });
 	const [sent, setSent] = useState<"approving" | "approved" | null>(null);
 	// The approved code stays on screen once the stream moves past it, until the link folds the step.

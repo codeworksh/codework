@@ -64,9 +64,14 @@ const WorkspaceHandlers = HttpApiBuilder.group(
 					return yield* machines.decline((yield* Relay.Person).authId, payload.userCode, payload.workspaceId);
 				}),
 			)
-			.handle("remove", ({ params }) =>
+			.handle("remove", ({ params, payload }) =>
 				Effect.gen(function* () {
-					return yield* machines.remove((yield* Relay.Person).authId, params.workspaceId, params.machineId);
+					return yield* machines.remove(
+						(yield* Relay.Person).authId,
+						params.workspaceId,
+						params.machineId,
+						payload.keyId,
+					);
 				}),
 			);
 	}),

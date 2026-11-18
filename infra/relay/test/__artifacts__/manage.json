@@ -20,6 +20,8 @@
 	},
 	"remove": {
 		"status": 204,
+		"staleKey": 404,
+		"pollAfterRemove": "superseded",
 		"machinesAfter": 0,
 		"machineFileForgot": true,
 		"again": {

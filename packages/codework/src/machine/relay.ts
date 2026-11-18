@@ -109,6 +109,7 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 			Effect.logDebug("Pairing poll failed", error).pipe(Effect.as(undefined)),
 		),
 	);
+	let previous = machine;
 	const deadline = (yield* Clock.currentTimeMillis) + pairing.expiresIn * 1000;
 	while ((yield* Clock.currentTimeMillis) < deadline) {
 		yield* Effect.sleep(Duration.seconds(pairing.interval));
@@ -125,22 +126,30 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 			});
 		}
 		const { connected } = status;
-		yield* File.update(options.home, {}, (current) =>
-			Effect.succeed({
-				...current,
-				workspaces: {
-					...current.workspaces,
-					[connected.workspace.id]: {
-						name: connected.workspace.name,
-						owner: connected.owner,
-						relay: client.url,
-						key,
-						keyId,
-					},
-				},
-			}),
+		// A poll response can arrive after another connect saved a different key.
+		// Observe that change under the lock, then poll again before replacing it.
+		const id = connected.workspace.id;
+		const stored = yield* File.update(options.home, {}, (current) =>
+			Effect.succeed(
+				current.workspaces[id]?.keyId !== previous.workspaces[id]?.keyId
+					? current
+					: {
+							...current,
+							workspaces: {
+								...current.workspaces,
+								[connected.workspace.id]: {
+									name: connected.workspace.name,
+									owner: connected.owner,
+									relay: client.url,
+									key,
+									keyId,
+								},
+							},
+						},
+			),
 		);
-		return connected;
+		if (stored.workspaces[id]?.keyId === keyId) return connected;
+		previous = stored;
 	}
 	return yield* new Machine.ConnectError({ message: "The code expired before it was approved; run connect again" });
 });
@@ -187,12 +196,18 @@ export const heartbeat = Effect.fn("Machine.heartbeat")(function* (home: string)
  * Leaves a workspace: asks the link's relay to revoke it, then forgets it locally. The local link is
  * removed even when the relay can't be reached; `revoked` says whether it confirmed.
  */
-export const disconnect = Effect.fn("Machine.disconnect")(function* (home: string, workspaceId: string) {
+export const disconnect = Effect.fn("Machine.disconnect")(function* (
+	home: string,
+	workspaceId: string,
+	expectedKeyId?: string,
+) {
 	const stored = yield* File.read(home);
 	const link = stored._tag === "Some" ? stored.value.workspaces[workspaceId] : undefined;
 	if (stored._tag === "None" || link === undefined) {
 		return yield* new Machine.ConnectError({ message: `This machine is not connected to workspace ${workspaceId}` });
 	}
+	if (expectedKeyId !== undefined && link.keyId !== expectedKeyId)
+		return yield* new Machine.ConnectError({ message: "This machine link has changed" });
 	const claims: Relay.RevokeClaims = {
 		op: "machine.revoke",
 		iat: yield* Clock.currentTimeMillis,
@@ -204,6 +219,8 @@ export const disconnect = Effect.fn("Machine.disconnect")(function* (home: strin
 		const api = yield* at(link.relay);
 		yield* api.machine.revoke({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
 	}).pipe(
+		// Leave time for the local update and fallback before the desktop RPC expires.
+		Effect.timeout("3 seconds"),
 		Effect.as(true),
 		Effect.catchTag("Relay.MachineRevoked", () => Effect.succeed(true)),
 		Effect.orElseSucceed(() => false),

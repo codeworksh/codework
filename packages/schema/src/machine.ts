@@ -16,6 +16,8 @@ export const Status = Schema.Struct({
 });
 export type Status = typeof Status.Type;
 
+export const Disconnect = Schema.Struct({ workspaceId: Schema.String, keyId: Schema.String });
+
 /** A disconnect: this machine afterwards, and whether the relay confirmed the link is revoked. */
 export const Disconnected = Schema.Struct({ status: Status, revoked: Schema.Boolean });
 export type Disconnected = typeof Disconnected.Type;

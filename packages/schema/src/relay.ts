@@ -207,6 +207,7 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 		/** Disconnects a machine from the workspace: its owner, or a workspace owner or admin, may. */
 		HttpApiEndpoint.post("remove", "/v1/workspaces/:workspaceId/machines/:machineId/remove", {
 			params: { workspaceId: WorkspaceId, machineId: MachineId },
+			payload: Schema.Struct({ keyId: Schema.String }),
 			error: [NotFound, Forbidden],
 		}),
 	)

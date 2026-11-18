@@ -105,6 +105,7 @@ export class Machines extends Context.Service<
 			authId: string,
 			workspaceId: string,
 			machineId: string,
+			keyId: string,
 		) => Effect.Effect<void, Relay.NotFound | Relay.Forbidden | Relay.Unavailable>;
 		readonly heartbeat: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
 		readonly revoke: (jws: string) => Effect.Effect<void, Relay.Unauthorized | Relay.MachineRevoked>;
@@ -163,7 +164,10 @@ export class Machines extends Context.Service<
 			});
 
 			const pairingColumns = sql`
-				id, workspace_id, machine, key, key_id, status, approved_by, connected, expires_at < now() AS expired
+				id, workspace_id, machine, key, key_id, approved_by, connected, expires_at < now() AS expired,
+				CASE WHEN status = 'active' AND NOT EXISTS (
+					SELECT 1 FROM machine m WHERE m.key_id = pairing.key_id AND m.revoked_at IS NULL
+				) THEN 'superseded' ELSE status END AS status
 			`;
 
 			// The machine proved it holds the approved key: its link goes live under that key, replacing any
@@ -406,11 +410,11 @@ export class Machines extends Context.Service<
 					if (declined.length === 0) return yield* new Relay.NotFound({ message: "Unknown or expired code" });
 				}),
 
-				remove: Effect.fn("Machines.remove")(function* (authId, workspaceId, machineId) {
+				remove: Effect.fn("Machines.remove")(function* (authId, workspaceId, machineId, keyId) {
 					const { account, role: memberRole } = yield* member(authId, workspaceId);
 					const [machine] = yield* sql<{ readonly ownerId: string }>`
 						SELECT owner_id FROM machine
-						WHERE workspace_id = ${workspaceId} AND id = ${machineId} AND revoked_at IS NULL
+						WHERE workspace_id = ${workspaceId} AND id = ${machineId} AND key_id = ${keyId} AND revoked_at IS NULL
 					`.pipe(Effect.orDie);
 					if (machine === undefined)
 						return yield* new Relay.NotFound({ message: "No such machine in this workspace" });
@@ -419,9 +423,13 @@ export class Machines extends Context.Service<
 							message: "Only the machine's owner or a workspace admin can remove it",
 						});
 					}
-					yield* sql`
-						UPDATE machine SET revoked_at = now() WHERE workspace_id = ${workspaceId} AND id = ${machineId}
+					const removed = yield* sql`
+						UPDATE machine SET revoked_at = now()
+						WHERE workspace_id = ${workspaceId} AND id = ${machineId} AND key_id = ${keyId} AND revoked_at IS NULL
+						RETURNING id
 					`.pipe(Effect.orDie);
+					if (removed.length === 0)
+						return yield* new Relay.NotFound({ message: "This machine link is no longer active" });
 				}),
 
 				heartbeat: Effect.fn("Machines.heartbeat")(

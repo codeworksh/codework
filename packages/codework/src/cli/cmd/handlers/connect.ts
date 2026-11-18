@@ -1,4 +1,4 @@
-import { Machine, Relay } from "@codeworksh/schema";
+import { Machine, Relay, shellQuoted } from "@codeworksh/schema";
 import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../framework/runtime.ts";
 import * as MachineRelay from "../../../machine/relay.ts";
@@ -29,7 +29,10 @@ export default Runtime.handler(
 			yield* writeOut(`Connected to ${connected.workspace.name}\n`);
 			// The workspace sees a machine online while its server runs; say how when it doesn't yet.
 			if ((yield* Discovery.discover(paths.home)) === undefined) {
-				const home = Option.match(spec.home, { onNone: () => "", onSome: (path) => ` --home ${path}` });
+				const home = Option.match(spec.home, {
+					onNone: () => "",
+					onSome: (path) => ` --home ${shellQuoted(path)}`,
+				});
 				yield* writeOut(`It shows online once its server runs: codework service start${home}\n`);
 			}
 		},
