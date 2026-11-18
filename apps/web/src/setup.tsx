@@ -149,10 +149,9 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							current={current}
 							title="Install the CodeWork CLI"
 							summary={version === undefined ? "" : `v${version} installed`}
-							line={
-								cli !== null && "failure" in cli
-									? `codework at ${cli.path} fails to run: ${cli.failure}`
-									: "It runs your sessions on this Machine."
+							line="It runs your sessions on this Machine."
+							problem={
+								cli !== null && "failure" in cli ? `codework at ${cli.path} fails to run: ${cli.failure}` : null
 							}
 							command={INSTALL}
 							error={current === 0 ? error : null}
@@ -166,10 +165,11 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							current={current}
 							title="Start the Server"
 							summary="Running"
-							line={
+							line="It keeps running in the background, also after the app quits."
+							problem={
 								status?.server._tag === "Incompatible"
 									? `The running server is v${status.server.version}, which this app can't read. Restart it with the installed CLI.`
-									: "It keeps running in the background, also after the app quits."
+									: null
 							}
 							command={`codework service start${home}`}
 							error={current === 1 ? error : null}
@@ -184,6 +184,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							title={`Connect to ${workspaceName}`}
 							summary={`Connected to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
+							problem={null}
 							command={`codework connect --workspace ${workspaceId}${home}`}
 							error={null}
 						>
@@ -262,6 +263,7 @@ function Step({
 	title,
 	summary,
 	line,
+	problem,
 	command,
 	error,
 	children,
@@ -271,6 +273,8 @@ function Step({
 	readonly title: string;
 	readonly summary: string;
 	readonly line: string;
+	/** What stands in the step's way, in place of its line and in the error's colour. */
+	readonly problem: string | null;
 	readonly command: string;
 	readonly error: string | null;
 	readonly children: ReactNode;
@@ -311,7 +315,11 @@ function Step({
 					)}
 				</div>
 				<Collapse open={open}>
-					<p className="pt-0.5 text-xs font-book text-ink-muted">{line}</p>
+					{problem === null ? (
+						<p className="pt-0.5 text-xs font-book text-ink-muted">{line}</p>
+					) : (
+						<p className="pt-0.5 text-xs text-destructive">{problem}</p>
+					)}
 					<div className="flex flex-col gap-2 pt-3">
 						<div>{children}</div>
 						{error !== null && <p className="text-xs text-destructive">{error}</p>}
