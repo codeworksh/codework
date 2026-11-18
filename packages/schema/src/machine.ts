@@ -11,9 +11,14 @@ export const Status = Schema.Struct({
 	localHostName: Schema.String,
 	/** The user's own name for it, shown in place of `localHostName` when set. */
 	givenName: Schema.NullOr(Schema.String),
-	workspaces: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	/** Each link with the thumbprint of its key: a relay row under another key is not this machine's. */
+	workspaces: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, keyId: Schema.String })),
 });
 export type Status = typeof Status.Type;
+
+/** A disconnect: this machine afterwards, and whether the relay confirmed the link is revoked. */
+export const Disconnected = Schema.Struct({ status: Status, revoked: Schema.Boolean });
+export type Disconnected = typeof Disconnected.Type;
 
 /** A connect's progress: the code to approve, then the link once a member approved it. */
 export const ConnectEvent = Schema.Union([

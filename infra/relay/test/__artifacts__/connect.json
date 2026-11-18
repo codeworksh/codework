@@ -5,9 +5,7 @@
 		"approveStatus": 200,
 		"approved": {
 			"id": "e2e-box",
-			"source": "flag",
-			"ownerIsApprover": true,
-			"online": false
+			"source": "flag"
 		},
 		"reusedCode": {
 			"status": 404,
@@ -24,6 +22,7 @@
 		"link": {
 			"name": "Ada's Workspace",
 			"ownerName": "Ada Lovelace",
+			"relay": "<relay>",
 			"keyKty": "OKP",
 			"keyCrv": "Ed25519"
 		}
@@ -31,7 +30,9 @@
 	"machinesBeforeServe": [
 		{
 			"id": "e2e-box",
-			"online": false
+			"online": false,
+			"ownerIsApprover": true,
+			"keyIsLinkKey": true
 		}
 	],
 	"online": {

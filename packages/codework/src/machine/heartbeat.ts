@@ -13,7 +13,6 @@ export const layer = Layer.effectDiscard(
 		yield* Relay.heartbeat(global.home).pipe(
 			Effect.catch((error) => Effect.logDebug("Machine heartbeat failed", error)),
 			Effect.repeat(Schedule.spaced("30 seconds")),
-			Effect.provide(Relay.Client.layer),
 			Effect.forkScoped,
 		);
 	}),

@@ -2,7 +2,7 @@ import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/electro
 import { type ReactNode, useEffect, useState } from "react";
 
 import { isElectron } from "./env";
-import { setSessionToken } from "./kernel/relay";
+import { setSession } from "./kernel/relay";
 import { reveal } from "./splash";
 
 const key: unknown = import.meta.env.CLERK_PUBLISHABLE_KEY;
@@ -54,9 +54,9 @@ export function Auth({ children }: { readonly children: ReactNode }) {
 
 function Gate({ signingUp, children }: { readonly signingUp: boolean; readonly children: ReactNode }) {
 	const clerk = useClerk();
-	const { isLoaded, isSignedIn, getToken } = useAuth();
+	const { isLoaded, isSignedIn, getToken, userId } = useAuth();
 	// Before the app renders, so the relay client's first call already carries the session.
-	setSessionToken(getToken);
+	setSession(getToken, userId);
 	// Clerk unreachable (offline): local work keeps running; only cloud features wait for it.
 	if (clerk.status === "error") return children;
 	// Clerk is briefly not loaded while it signs out too, after the splash is gone: the screen's backdrop

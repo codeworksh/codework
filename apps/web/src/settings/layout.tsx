@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import {
 	Sidebar,
 	SidebarContent,
+	SidebarFooter,
 	SidebarGroup,
 	SidebarGroupLabel,
 	SidebarHeader,
@@ -18,6 +19,7 @@ import {
 	SidebarMenuItem,
 	SidebarRail,
 } from "@/components/ui/sidebar";
+import { ConnectionStatus } from "../shell/status";
 import { isSignedInApp } from "../auth";
 import { workspaceAtom } from "../kernel/relay";
 import { useTabReturn } from "../wm/tabs";
@@ -104,6 +106,9 @@ export function SettingsSidebar() {
 					{matches.length === 0 && <p className="px-2 py-2 text-xs text-ink-muted">No Settings Match “{query}”</p>}
 				</nav>
 			</SidebarContent>
+			<SidebarFooter className="flex-row items-center p-2">
+				<ConnectionStatus />
+			</SidebarFooter>
 			<SidebarRail />
 		</Sidebar>
 	);

@@ -120,11 +120,11 @@ export const layer = Contract.Api.toLayer(
 			"machine.disconnect": Effect.fn("machine.disconnect")(function* ({ workspaceId }) {
 				const reply = yield* call((client) =>
 					client("machine.disconnect", { workspaceId }).pipe(
-						Effect.map((status) => ({ status })),
+						Effect.map((disconnected) => ({ disconnected })),
 						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
 					),
 				);
-				return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.status);
+				return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.disconnected);
 			}),
 			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
 			// a dropped server reads as unavailable.

@@ -638,7 +638,7 @@ export const layer = Contract.Api.toLayer(
 					// The relay hears the new name now rather than on the next beat; a miss is retried then.
 					Effect.tap(() =>
 						MachineRelay.heartbeat(global.home).pipe(
-							Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+							Effect.provide(NodeServices.layer),
 							Effect.ignore,
 							Effect.forkDetach,
 						),
@@ -648,8 +648,10 @@ export const layer = Contract.Api.toLayer(
 				),
 			"machine.disconnect": ({ workspaceId }) =>
 				MachineRelay.disconnect(global.home, workspaceId).pipe(
-					Effect.andThen(MachineRelay.status(global.home)),
-					Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+					Effect.flatMap(({ revoked }) =>
+						MachineRelay.status(global.home).pipe(Effect.map((status) => ({ status, revoked }))),
+					),
+					Effect.provide(NodeServices.layer),
 					Effect.catchIf(
 						(error) => !isConnectError(error),
 						(error) =>
@@ -666,7 +668,7 @@ export const layer = Contract.Api.toLayer(
 						// The workspace sees it online now rather than on the next beat; a miss is retried then.
 						Effect.tap(() =>
 							MachineRelay.heartbeat(global.home).pipe(
-								Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+								Effect.provide(NodeServices.layer),
 								Effect.ignore,
 								Effect.forkDetach,
 							),

@@ -14,17 +14,23 @@ const cli = fileURLToPath(new URL("../../../packages/codework/src/index.ts", imp
 const home = mkdtempSync(join(tmpdir(), "codework-connect-"));
 const decodeMe = Schema.decodeUnknownSync(Relay.Me);
 const decodeMachines = Schema.decodeUnknownSync(Schema.Array(Relay.Machine));
-const decodeMachine = Schema.decodeUnknownSync(Relay.Machine);
+const decodeApproved = Schema.decodeUnknownSync(Schema.Struct({ machine: Relay.MachineInfo }));
 const decodeError = Schema.decodeUnknownSync(Schema.Struct({ _tag: Schema.String }));
 
 let relay: Awaited<ReturnType<typeof startRelay>>;
 let user: Awaited<ReturnType<typeof clerkUser>>;
 const children: Array<ChildProcess> = [];
 
-/** `stderr` pipes it for {@link finished} to read; a long-running server leaves it inherited. */
-const codework = (args: ReadonlyArray<string>, options: { readonly stderr?: boolean } = {}) => {
+/**
+ * `stderr` pipes it for {@link finished} to read; a long-running server leaves it inherited. `relayUrl`
+ * points the CLI's new connects at another relay.
+ */
+const codework = (
+	args: ReadonlyArray<string>,
+	options: { readonly stderr?: boolean; readonly relayUrl?: string } = {},
+) => {
 	const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "--home", home], {
-		env: { ...process.env, CODEWORK_RELAY_URL: relay.base },
+		env: { ...process.env, CODEWORK_RELAY_URL: options.relayUrl ?? relay.base },
 		stdio: ["ignore", "pipe", options.stderr === true ? "pipe" : "inherit"],
 	});
 	children.push(child);
@@ -86,7 +92,7 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			method: "POST",
 			body: JSON.stringify({ userCode: code, workspaceId: workspace.id }),
 		});
-		const approved = decodeMachine(await approve.json());
+		const approved = decodeApproved(await approve.json()).machine;
 		const connected = await connectDone;
 		const reused = await asPerson("/v1/pairings/approve", {
 			method: "POST",
@@ -120,12 +126,7 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 				exitCode: connected.code,
 				output: connected.out.replace(code, "<code>"),
 				approveStatus: approve.status,
-				approved: {
-					id: approved.id,
-					source: approved.source,
-					ownerIsApprover: approved.ownerId === me.account.id,
-					online: approved.online,
-				},
+				approved: { id: approved.id, source: approved.source },
 				reusedCode: { status: reused.status, tag: decodeError(await reused.json())._tag },
 			},
 			machineFile: {
@@ -133,9 +134,20 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 				source: file.source,
 				mode: (statSync(join(home, "machine.json")).mode & 0o777).toString(8),
 				workspaces: Object.keys(file.workspaces).map((id) => (id === workspace.id ? "<workspace>" : id)),
-				link: { name: link.name, ownerName: link.owner.name, keyKty: link.key.kty, keyCrv: link.key.crv },
+				link: {
+					name: link.name,
+					ownerName: link.owner.name,
+					relay: link.relay === relay.base ? "<relay>" : link.relay,
+					keyKty: link.key.kty,
+					keyCrv: link.key.crv,
+				},
 			},
-			machinesBeforeServe: beforeServe.map((machine) => ({ id: machine.id, online: machine.online })),
+			machinesBeforeServe: beforeServe.map((machine) => ({
+				id: machine.id,
+				online: machine.online,
+				ownerIsApprover: machine.ownerId === me.account.id,
+				keyIsLinkKey: machine.keyId === link.keyId,
+			})),
 			online: { id: online.id, online: online.online, version: online.version.length > 0 },
 			forgedHeartbeat: { status: forged.status, tag: decodeError(await forged.json())._tag },
 			disconnect: {
@@ -191,11 +203,20 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			method: "POST",
 		});
 
+		// Ids that aren't a workspace's fail plainly: before any request, at the relay, and at the wire.
+		const badWorkspace = await finished(codework(["connect", "--workspace", "typo-123"], { stderr: true }));
+		const unknownWorkspace = await finished(
+			codework(["connect", "--workspace", "01a1ead7-0000-7000-8000-000000000000"], { stderr: true }),
+		);
+		const badParam = await asPerson("/v1/workspaces/typo/machines");
+
 		const artifact = {
 			decline: {
 				listed: listed.map((pairing) => ({
 					code: pairing.userCode === askedCode ? "<code>" : pairing.userCode,
 					machine: pairing.machine.id,
+					status: pairing.status,
+					replaces: pairing.replaces,
 				})),
 				status: decline.status,
 				exitCode: declined.code,
@@ -209,7 +230,96 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 				machineFileForgot: forgotten,
 				again: { status: removedAgain.status, tag: decodeError(await removedAgain.json())._tag },
 			},
+			badWorkspace: { exitCode: badWorkspace.code, error: badWorkspace.err.trim() },
+			unknownWorkspace: { exitCode: unknownWorkspace.code, error: unknownWorkspace.err.trim() },
+			badParam: { status: badParam.status },
 		};
 		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/manage.json");
+	});
+
+	it("never links an abandoned connect, and lets one of two competing connects win", async () => {
+		const me = decodeMe(await (await asPerson("/v1/me")).json());
+		const workspace = me.workspaces[0]!;
+		const approve = (userCode: string) =>
+			asPerson("/v1/pairings/approve", {
+				method: "POST",
+				body: JSON.stringify({ userCode, workspaceId: workspace.id }),
+			});
+		const started = async () => {
+			const child = codework(["connect", "--workspace", workspace.id], { stderr: true });
+			const done = finished(child);
+			const code = await waitForLine(child, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+			return { child, done, code };
+		};
+
+		// A connect killed while its code is pending, approved anyway before its lease lapses: nobody holds
+		// its key, so it never links. A second connect approved after it links and supersedes it.
+		const abandoned = await started();
+		abandoned.child.kill("SIGKILL");
+		const raceApprove = await approve(abandoned.code);
+		const kept = await started();
+		await approve(kept.code);
+		const keptDone = await kept.done;
+		const serve = codework(["serve", "--port", "0"]);
+		const online = await until(async () => (await machines(workspace.id)).find((machine) => machine.online));
+		serve.kill("SIGTERM");
+		const link = machineFile().workspaces[workspace.id];
+
+		// A connect that stops polling drops out of Waiting to Join and its code can't be approved.
+		const stale = await started();
+		stale.child.kill("SIGKILL");
+		const listed = Schema.decodeUnknownSync(Schema.Array(Relay.PendingPairing));
+		await until(async () => {
+			const list = listed(await (await asPerson(`/v1/workspaces/${workspace.id}/pairings`)).json());
+			return list.some((pairing) => pairing.userCode === stale.code) ? undefined : true;
+		}, 40_000);
+		const staleApprove = await approve(stale.code);
+
+		// Two live connects for one machine, both approved: the first to poll links, the other is told.
+		const [first, second] = await Promise.all([started(), started()]);
+		await Promise.all([approve(first.code), approve(second.code)]);
+		const outcomes = (await Promise.all([first.done, second.done]))
+			.map((result) => ({ exitCode: result.code, error: result.err.trim() }))
+			.sort((a, b) => (a.exitCode ?? 0) - (b.exitCode ?? 0));
+
+		const artifact = {
+			kept: { exitCode: keptDone.code },
+			raceApprove: { status: raceApprove.status },
+			afterRace: {
+				online: online.online,
+				relayKeyIsLocalKey: online.keyId === link.keyId,
+				machineFileWorkspaces: Object.keys(machineFile().workspaces).length,
+			},
+			stale: { status: staleApprove.status, error: decodeError(await staleApprove.json())._tag },
+			competing: outcomes,
+		};
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/abandon.json");
+	}, 150_000);
+
+	it("keeps links made with one relay when the CLI is pointed at another", async () => {
+		const workspace = decodeMe(await (await asPerson("/v1/me")).json()).workspaces[0]!;
+		const other = await startRelay(`${run}b`);
+		try {
+			// The machine is linked (previous case); its server now runs with new connects aimed elsewhere.
+			const before = Object.keys(machineFile().workspaces);
+			const seen = () =>
+				relay.psql(
+					`SELECT coalesce(max(last_seen_at)::text, '') FROM machine WHERE workspace_id = '${workspace.id}'`,
+				);
+			const seenBefore = seen();
+			const serve = codework(["serve", "--port", "0"], { relayUrl: other.base });
+			const beat = await until(async () => (seen() > seenBefore ? true : undefined));
+			await new Promise((resolve) => setTimeout(resolve, 2_000));
+			serve.kill("SIGTERM");
+			const artifact = {
+				linkedBefore: before.length,
+				heartbeatReachedItsRelay: beat,
+				linkedAfter: Object.keys(machineFile().workspaces).length,
+				machinesOnOtherRelay: Number(other.psql("SELECT count(*) FROM machine")),
+			};
+			await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/relays.json");
+		} finally {
+			other.stop();
+		}
 	});
 });

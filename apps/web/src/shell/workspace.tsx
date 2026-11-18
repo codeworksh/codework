@@ -21,7 +21,8 @@ import { chooseWorkspaceAtom, meAtom, workspaceAtom } from "../kernel/relay";
 
 /**
  * The workspace menu at the top of the sidebar: settings, members, switching workspaces and signing out.
- * It stays while the relay is unreachable, as CodeWork, since it is also the way to settings.
+ * Out of reach it shows what the relay last said; with nothing remembered yet it reads CodeWork, since it is
+ * also the way to settings. The status slot in the sidebar says when CodeWork can't be reached.
  */
 export function WorkspaceSwitcher() {
 	const navigate = useNavigate();

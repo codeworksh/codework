@@ -7,14 +7,14 @@ import { SqlClient } from "effect/sql";
 export const migrations = {
 	"2026111701_identity": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-		yield* sql`CREATE EXTENSION IF NOT EXISTS citext`;
 
 		// One row per person, keyed by the auth vendor's subject so a vendor switch migrates users only.
+		// Email and name are for display: a new subject may arrive with an email the relay has seen.
 		yield* sql`
 			CREATE TABLE account (
 				id         uuid PRIMARY KEY DEFAULT uuidv7(),
 				auth_id    text NOT NULL UNIQUE,
-				email      citext NOT NULL UNIQUE,
+				email      text NOT NULL,
 				name       text,
 				created_at timestamptz NOT NULL DEFAULT now()
 			)
@@ -63,20 +63,22 @@ export const migrations = {
 				PRIMARY KEY (workspace_id, id)
 			)
 		`;
-		// A pending connect: the machine's key is registered when the code is created, so a leaked device
-		// code is useless without the private key.
+		// A connect in flight. The machine's key is registered with the code and signs every poll, so only
+		// the process that holds it can see the outcome. Approval marks the row; the machine's next signed
+		// poll activates the link, so a key nobody holds anymore never replaces a working one. seen_at is
+		// the poll's lease: a connect that stopped polling drops out of Waiting to Join and can't be approved.
 		yield* sql`
 			CREATE TABLE pairing (
 				id           uuid PRIMARY KEY DEFAULT uuidv7(),
-				code_hash    text NOT NULL UNIQUE,
 				user_code    text NOT NULL UNIQUE,
 				workspace_id uuid REFERENCES workspace(id) ON DELETE CASCADE,
 				machine      jsonb NOT NULL,
 				key          jsonb NOT NULL,
-				key_id       text NOT NULL,
-				status       text NOT NULL CHECK (status IN ('pending', 'approved')),
+				key_id       text NOT NULL UNIQUE,
+				status       text NOT NULL CHECK (status IN ('pending', 'approved', 'active', 'declined', 'superseded')),
 				approved_by  uuid REFERENCES account(id),
 				connected    jsonb,
+				seen_at      timestamptz NOT NULL DEFAULT now(),
 				expires_at   timestamptz NOT NULL,
 				created_at   timestamptz NOT NULL DEFAULT now()
 			)
@@ -87,14 +89,6 @@ export const migrations = {
 				jti        text PRIMARY KEY,
 				expires_at timestamptz NOT NULL
 			)
-		`;
-	}),
-
-	"2026111801_declined": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`
-			ALTER TABLE pairing DROP CONSTRAINT pairing_status_check,
-				ADD CONSTRAINT pairing_status_check CHECK (status IN ('pending', 'approved', 'declined'))
 		`;
 	}),
 };

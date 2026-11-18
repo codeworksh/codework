@@ -1,8 +1,8 @@
-import { Machine } from "@codeworksh/schema";
-import { Effect, Option } from "effect";
+import { Machine, Relay } from "@codeworksh/schema";
+import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../framework/runtime.ts";
-import * as Relay from "../../../machine/relay.ts";
-import { reportFailure } from "../../error.ts";
+import * as MachineRelay from "../../../machine/relay.ts";
+import { InvalidInputError, reportFailure } from "../../error.ts";
 import { writeOut } from "../../output.ts";
 import * as Service from "../../service.ts";
 import { Cmd } from "../cmd.ts";
@@ -11,10 +11,16 @@ export default Runtime.handler(
 	Cmd.commands.connect,
 	Effect.fn("CLI.connect")(
 		function* ({ workspace, machineId }) {
+			const workspaceId = Option.getOrUndefined(workspace);
+			if (workspaceId !== undefined && !Schema.is(Relay.WorkspaceId)(workspaceId)) {
+				return yield* new InvalidInputError({
+					message: "--workspace must be a Workspace ID; copy it from Settings → Machines in the CodeWork app",
+				});
+			}
 			const paths = yield* Service.home(yield* Cmd.spec);
-			const connected = yield* Relay.connect({
+			const connected = yield* MachineRelay.connect({
 				home: paths.home,
-				workspaceId: Option.getOrUndefined(workspace),
+				workspaceId,
 				machineId: Option.getOrUndefined(machineId),
 				onCode: (code) => writeOut(`Approve this machine in the CodeWork app with code ${code}\n`),
 			});
@@ -27,7 +33,7 @@ export default Runtime.handler(
 				}),
 			),
 		),
-		Effect.provide(Relay.Client.layer),
+		Effect.provide(MachineRelay.Client.layer),
 		Effect.catch(reportFailure),
 	),
 );

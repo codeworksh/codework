@@ -11,6 +11,8 @@ import { uuidv7 } from "uuidv7";
 const Link = Schema.Struct({
 	name: Schema.String,
 	owner: Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) }),
+	/** The relay the link was made with; heartbeats and disconnect go there. */
+	relay: Schema.String,
 	key: Jws.PrivateKey,
 	keyId: Schema.String,
 });
@@ -25,9 +27,6 @@ export const Machine = Schema.Struct({
 export type Machine = typeof Machine.Type;
 
 const json = Schema.fromJsonString(Machine);
-
-/** `--machine-id`: lowercase letters, digits and dashes, so it reads well in every UI. */
-const IdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 class MachineError extends Schema.TaggedError<MachineError>()("Machine.MachineError", {
 	message: Schema.String,
@@ -103,7 +102,7 @@ const created = (machineId: string | undefined): Machine =>
 
 /** Validates a `--machine-id` before anything is written. */
 export const checkId = (machineId: string | undefined) =>
-	machineId === undefined || IdPattern.test(machineId)
+	machineId === undefined || Schema.is(Relay.MachineId)(machineId)
 		? Effect.void
 		: Effect.fail(
 				new MachineError({
@@ -111,8 +110,12 @@ export const checkId = (machineId: string | undefined) =>
 				}),
 			);
 
-export const removeLink = (home: string, workspaceId: string) =>
+/**
+ * Forgets the link to a workspace, only while it still holds `keyId`: a reconnect that saved a new key in
+ * the meantime keeps its link.
+ */
+export const removeLink = (home: string, workspaceId: string, keyId: string) =>
 	update(home, {}, (machine) => {
-		const { [workspaceId]: _removed, ...workspaces } = machine.workspaces;
-		return Effect.succeed({ ...machine, workspaces });
+		const { [workspaceId]: link, ...workspaces } = machine.workspaces;
+		return Effect.succeed(link === undefined || link.keyId !== keyId ? machine : { ...machine, workspaces });
 	});

@@ -8,19 +8,24 @@ import pkg from "../../package.json" with { type: "json" };
 import { hostName } from "../server/identity.ts";
 import * as File from "./file.ts";
 
-/** The relay's typed client, at `CODEWORK_RELAY_URL` (default https://relay.codework.sh). */
-export class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.Api>>()(
-	"@codeworksh/cli/machine/relay/Client",
-) {
+/** The relay's typed client at `url`. */
+const at = (url: string) => HttpApiClient.make(Relay.Api, { baseUrl: url }).pipe(Effect.provide(FetchHttpClient.layer));
+
+/**
+ * The relay new connects go to: `CODEWORK_RELAY_URL`, default https://relay.codework.sh. A link keeps
+ * talking to the relay it was made with, whatever this says later.
+ */
+export class Client extends Context.Service<
+	Client,
+	{ readonly url: string; readonly api: HttpApiClient.ForApi<typeof Relay.Api> }
+>()("@codeworksh/cli/machine/relay/Client") {
 	static readonly layer = Layer.effect(
 		Client,
 		Effect.gen(function* () {
-			const baseUrl = yield* Config.String("CODEWORK_RELAY_URL").pipe(
-				Config.withDefault("https://relay.codework.sh"),
-			);
-			return yield* HttpApiClient.make(Relay.Api, { baseUrl });
+			const url = yield* Config.String("CODEWORK_RELAY_URL").pipe(Config.withDefault("https://relay.codework.sh"));
+			return { url, api: yield* at(url) };
 		}),
-	).pipe(Layer.provide(FetchHttpClient.layer));
+	);
 }
 
 /** What this machine says about itself to the relay. */
@@ -48,7 +53,7 @@ export const status = Effect.fn("Machine.status")(function* (home: string) {
 		id: machine.id,
 		localHostName,
 		givenName: machine.givenName ?? null,
-		workspaces: Object.entries(machine.workspaces).map(([id, link]) => ({ id, name: link.name })),
+		workspaces: Object.entries(machine.workspaces).map(([id, link]) => ({ id, name: link.name, keyId: link.keyId })),
 	} satisfies Machine.Status;
 });
 
@@ -66,7 +71,8 @@ export const rename = Effect.fn("Machine.rename")(function* (home: string, given
 
 /**
  * Pairs this home with a workspace: registers a fresh key with the relay, shows the code a member
- * approves, and saves the link once approved. Each workspace gets its own key.
+ * approves, and polls with that key until the relay links it, then saves the link. Each workspace gets
+ * its own key, and only this process can take the link: a connect that stops is never linked.
  */
 export const connect = Effect.fn("Machine.connect")(function* (options: {
 	readonly home: string;
@@ -78,78 +84,110 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 	yield* File.checkId(options.machineId);
 	const machine = yield* File.update(options.home, { machineId: options.machineId }, Effect.succeed);
 	const key = yield* Jws.generate();
+	const keyId = yield* Jws.thumbprint(Jws.publicOf(key));
 	const claims: Relay.PairingClaims = {
 		op: "pairing.create",
 		iat: yield* Clock.currentTimeMillis,
 		machine: yield* describe(machine),
 		workspaceId: options.workspaceId ?? null,
 	};
-	const pairing = yield* client.machine.pair({
-		payload: { jws: yield* Jws.sign(claims, key, { embed: true }) },
-	});
+	const pairing = yield* client.api.machine
+		.pair({ payload: { jws: yield* Jws.sign(claims, key, { embed: true }) } })
+		.pipe(
+			Effect.catchTag("Relay.NotFound", () =>
+				Effect.fail(new Machine.ConnectError({ message: "No such workspace" })),
+			),
+		);
 	yield* options.onCode(pairing.userCode);
 
+	const poll = Effect.gen(function* () {
+		const claims: Relay.PollClaims = { op: "pairing.poll", iat: yield* Clock.currentTimeMillis };
+		return yield* client.api.machine.poll({ payload: { jws: yield* Jws.sign(claims, key, { kid: keyId }) } });
+	}).pipe(
+		// A dropped request or a relay restart doesn't end the connect; the next poll asks again.
+		Effect.catchTag("HttpClientError", (error) =>
+			Effect.logDebug("Pairing poll failed", error).pipe(Effect.as(undefined)),
+		),
+	);
 	const deadline = (yield* Clock.currentTimeMillis) + pairing.expiresIn * 1000;
 	while ((yield* Clock.currentTimeMillis) < deadline) {
 		yield* Effect.sleep(Duration.seconds(pairing.interval));
-		const status = yield* client.machine.poll({ payload: { deviceCode: pairing.deviceCode } });
-		if (status.status === "expired") break;
-		if (status.status === "declined") {
+		const status = yield* poll;
+		if (status === undefined) continue;
+		if (status.status !== "approved") {
+			if (status.status === "pending") continue;
+			if (status.status === "expired") break;
 			return yield* new Machine.ConnectError({
-				message: "The connect was declined; run connect again for a new code",
+				message:
+					status.status === "declined"
+						? "The connect was declined; run connect again for a new code"
+						: "Another connect for this machine finished first",
 			});
 		}
-		if (status.status === "approved") {
-			const { connected } = status;
-			const keyId = yield* Jws.thumbprint(Jws.publicOf(key));
-			yield* File.update(options.home, {}, (current) =>
-				Effect.succeed({
-					...current,
-					workspaces: {
-						...current.workspaces,
-						[connected.workspace.id]: { name: connected.workspace.name, owner: connected.owner, key, keyId },
+		const { connected } = status;
+		yield* File.update(options.home, {}, (current) =>
+			Effect.succeed({
+				...current,
+				workspaces: {
+					...current.workspaces,
+					[connected.workspace.id]: {
+						name: connected.workspace.name,
+						owner: connected.owner,
+						relay: client.url,
+						key,
+						keyId,
 					},
-				}),
-			);
-			return connected;
-		}
+				},
+			}),
+		);
+		return connected;
 	}
 	return yield* new Machine.ConnectError({ message: "The code expired before it was approved; run connect again" });
 });
 
-/** One heartbeat per connected workspace. A link the relay no longer knows is removed here too. */
+/**
+ * One heartbeat per connected workspace, each to the relay its link was made with, all at once. A link
+ * the relay refuses as revoked is removed, but only while it still holds the refused key.
+ */
 export const heartbeat = Effect.fn("Machine.heartbeat")(function* (home: string) {
-	const client = yield* Client;
 	const stored = yield* File.read(home);
 	if (stored._tag === "None") return;
 	const machine = stored.value;
 	const info = yield* describe(machine);
-	for (const [workspaceId, link] of Object.entries(machine.workspaces)) {
-		const claims: Relay.HeartbeatClaims = {
-			op: "machine.heartbeat",
-			iat: yield* Clock.currentTimeMillis,
-			workspaceId,
-			machine: info,
-		};
-		yield* client.machine
-			.heartbeat({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } })
-			.pipe(
-				Effect.catchTag("Relay.MachineRevoked", (revoked) =>
-					Effect.logWarning(`Disconnected from ${link.name}: ${revoked.message}`).pipe(
-						Effect.andThen(File.removeLink(home, workspaceId)),
-					),
-				),
+	yield* Effect.forEach(
+		Object.entries(machine.workspaces),
+		([workspaceId, link]) =>
+			Effect.gen(function* () {
+				const api = yield* at(link.relay);
+				const claims: Relay.HeartbeatClaims = {
+					op: "machine.heartbeat",
+					iat: yield* Clock.currentTimeMillis,
+					workspaceId,
+					machine: info,
+				};
+				yield* api.machine.heartbeat({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
+			}).pipe(
+				Effect.timeout("10 seconds"),
+				Effect.catchTags({
+					"Relay.MachineRevoked": (revoked) =>
+						Effect.logWarning(`Disconnected from ${link.name}: ${revoked.message}`).pipe(
+							Effect.andThen(File.removeLink(home, workspaceId, link.keyId)),
+						),
+					// Refused but not revoked, most often a clock more than a minute off: worth seeing in the log.
+					"Relay.Unauthorized": (refused) =>
+						Effect.logWarning(`Heartbeat to ${link.name} refused: ${refused.message}`),
+				}),
 				Effect.catch((error) => Effect.logDebug(`Heartbeat to ${link.name} failed`, error)),
-			);
-	}
+			),
+		{ concurrency: "unbounded", discard: true },
+	);
 });
 
 /**
- * Leaves a workspace: asks the relay to revoke this machine's link, then forgets it locally. The
- * local link is removed even when the relay can't be reached; `revoked` says whether it confirmed.
+ * Leaves a workspace: asks the link's relay to revoke it, then forgets it locally. The local link is
+ * removed even when the relay can't be reached; `revoked` says whether it confirmed.
  */
 export const disconnect = Effect.fn("Machine.disconnect")(function* (home: string, workspaceId: string) {
-	const client = yield* Client;
 	const stored = yield* File.read(home);
 	const link = stored._tag === "Some" ? stored.value.workspaces[workspaceId] : undefined;
 	if (stored._tag === "None" || link === undefined) {
@@ -162,13 +200,14 @@ export const disconnect = Effect.fn("Machine.disconnect")(function* (home: strin
 		workspaceId,
 		machineId: stored.value.id,
 	};
-	const revoked = yield* client.machine
-		.revoke({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } })
-		.pipe(
-			Effect.as(true),
-			Effect.catchTag("Relay.MachineRevoked", () => Effect.succeed(true)),
-			Effect.orElseSucceed(() => false),
-		);
-	yield* File.removeLink(home, workspaceId);
+	const revoked = yield* Effect.gen(function* () {
+		const api = yield* at(link.relay);
+		yield* api.machine.revoke({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
+	}).pipe(
+		Effect.as(true),
+		Effect.catchTag("Relay.MachineRevoked", () => Effect.succeed(true)),
+		Effect.orElseSucceed(() => false),
+	);
+	yield* File.removeLink(home, workspaceId, link.keyId);
 	return { workspace: link.name, revoked };
 });

@@ -6,6 +6,12 @@ import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSecur
 
 export const Role = Schema.Literals(["owner", "admin", "member"]);
 
+/** A workspace's id, which the relay assigns; anything else is refused at the wire. */
+export const WorkspaceId = Schema.String.check(Schema.isUUID());
+
+/** A machine's id: generated (a UUID) or set with `--machine-id`, lowercase letters, digits and dashes. */
+export const MachineId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,63}$/));
+
 export class Account extends Schema.Class<Account>("Relay.Account")({
 	id: Schema.String,
 	email: Schema.String,
@@ -13,7 +19,7 @@ export class Account extends Schema.Class<Account>("Relay.Account")({
 }) {}
 
 export class Workspace extends Schema.Class<Workspace>("Relay.Workspace")({
-	id: Schema.String,
+	id: WorkspaceId,
 	name: Schema.String,
 	role: Role,
 }) {}
@@ -28,7 +34,7 @@ export const IdSource = Schema.Literals(["generated", "flag"]);
 
 /** What a machine says about itself when it pairs and on every heartbeat. */
 export const MachineInfo = Schema.Struct({
-	id: Schema.String,
+	id: MachineId,
 	source: IdSource,
 	localHostName: Schema.String,
 	givenName: Schema.NullOr(Schema.String),
@@ -40,7 +46,9 @@ export type MachineInfo = typeof MachineInfo.Type;
 
 export class Machine extends Schema.Class<Machine>("Relay.Machine")({
 	...MachineInfo.fields,
-	workspaceId: Schema.String,
+	workspaceId: WorkspaceId,
+	/** The thumbprint of the key the link is live under; a home holds that key for this workspace. */
+	keyId: Schema.String,
 	ownerId: Schema.String,
 	online: Schema.Boolean,
 	lastSeenAt: Schema.NullOr(Schema.String),
@@ -56,14 +64,21 @@ export const PairingClaims = Schema.Struct({
 	iat: Schema.Number,
 	machine: MachineInfo,
 	/** The workspace the connect started from; the approver may pick another when it is null. */
-	workspaceId: Schema.NullOr(Schema.String),
+	workspaceId: Schema.NullOr(WorkspaceId),
 });
 export type PairingClaims = typeof PairingClaims.Type;
+
+/** A pairing's poll, signed with the key it registered: only that process learns the outcome. */
+export const PollClaims = Schema.Struct({
+	op: Schema.Literal("pairing.poll"),
+	iat: Schema.Number,
+});
+export type PollClaims = typeof PollClaims.Type;
 
 export const HeartbeatClaims = Schema.Struct({
 	op: Schema.Literal("machine.heartbeat"),
 	iat: Schema.Number,
-	workspaceId: Schema.String,
+	workspaceId: WorkspaceId,
 	machine: MachineInfo,
 });
 export type HeartbeatClaims = typeof HeartbeatClaims.Type;
@@ -73,27 +88,27 @@ export const RevokeClaims = Schema.Struct({
 	iat: Schema.Number,
 	/** Used once: a replayed revoke is refused. */
 	jti: Schema.String,
-	workspaceId: Schema.String,
-	machineId: Schema.String,
+	workspaceId: WorkspaceId,
+	machineId: MachineId,
 });
 export type RevokeClaims = typeof RevokeClaims.Type;
 
 export const PairingCreated = Schema.Struct({
-	deviceCode: Schema.String,
 	userCode: Schema.String,
 	expiresIn: Schema.Int,
 	interval: Schema.Int,
 });
 
 export const Connected = Schema.Struct({
-	machineId: Schema.String,
-	workspace: Schema.Struct({ id: Schema.String, name: Schema.String }),
+	machineId: MachineId,
+	workspace: Schema.Struct({ id: WorkspaceId, name: Schema.String }),
 	owner: Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) }),
 });
 export type Connected = typeof Connected.Type;
 
 export const PairingStatus = Schema.Union([
-	Schema.Struct({ status: Schema.Literals(["pending", "expired", "declined"]) }),
+	/** `superseded`: another connect for this machine and workspace was activated first. */
+	Schema.Struct({ status: Schema.Literals(["pending", "expired", "declined", "superseded"]) }),
 	Schema.Struct({ status: Schema.Literal("approved"), connected: Connected }),
 ]);
 export type PairingStatus = typeof PairingStatus.Type;
@@ -102,6 +117,13 @@ export class Unauthorized extends Schema.TaggedError<Unauthorized>()(
 	"Relay.Unauthorized",
 	{ message: Schema.String },
 	{ httpApiStatus: 401 },
+) {}
+
+/** The relay couldn't check the request just now (its auth vendor is unreachable): try again shortly. */
+export class Unavailable extends Schema.TaggedError<Unavailable>()(
+	"Relay.Unavailable",
+	{ message: Schema.String },
+	{ httpApiStatus: 503 },
 ) {}
 
 /** The machine's link to the workspace is gone: revoked, replaced, or its owner left. Reconnect to restore it. */
@@ -131,7 +153,7 @@ export class PersonAuth extends HttpApiMiddleware.Service<PersonAuth, { provides
 	"relay/PersonAuth",
 	{
 		security: { bearer: HttpApiSecurity.bearer },
-		error: Unauthorized,
+		error: [Unauthorized, Unavailable],
 	},
 ) {}
 
@@ -143,6 +165,10 @@ export class MeGroup extends HttpApiGroup.make("me")
 export class PendingPairing extends Schema.Class<PendingPairing>("Relay.PendingPairing")({
 	userCode: Schema.String,
 	machine: MachineInfo,
+	/** `approved`: a member approved it and the machine's next poll links it. */
+	status: Schema.Literals(["pending", "approved"]),
+	/** A machine with this id is already in the workspace; approving replaces its link. */
+	replaces: Schema.Boolean,
 	createdAt: Schema.String,
 	expiresAt: Schema.String,
 }) {}
@@ -156,30 +182,31 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 			payload: Schema.Struct({ name: WorkspaceName }),
 			success: Workspace,
 		}),
+		/** Approves a code; the machine's next poll links it, so it answers with what the machine said. */
 		HttpApiEndpoint.post("approve", "/v1/pairings/approve", {
-			payload: Schema.Struct({ userCode: Schema.String, workspaceId: Schema.String }),
-			success: Machine,
+			payload: Schema.Struct({ userCode: Schema.String, workspaceId: WorkspaceId }),
+			success: Schema.Struct({ machine: MachineInfo }),
 			error: [NotFound, Forbidden],
 		}),
 		HttpApiEndpoint.get("machines", "/v1/workspaces/:workspaceId/machines", {
-			params: { workspaceId: Schema.String },
+			params: { workspaceId: WorkspaceId },
 			success: Schema.Array(Machine),
 			error: Forbidden,
 		}),
 		/** The workspace's pending connects, each with the code its machine shows. */
 		HttpApiEndpoint.get("pairings", "/v1/workspaces/:workspaceId/pairings", {
-			params: { workspaceId: Schema.String },
+			params: { workspaceId: WorkspaceId },
 			success: Schema.Array(PendingPairing),
 			error: Forbidden,
 		}),
 		/** Turns a pending connect away; the waiting machine hears it was declined. */
 		HttpApiEndpoint.post("decline", "/v1/pairings/decline", {
-			payload: Schema.Struct({ userCode: Schema.String, workspaceId: Schema.String }),
+			payload: Schema.Struct({ userCode: Schema.String, workspaceId: WorkspaceId }),
 			error: [NotFound, Forbidden],
 		}),
 		/** Disconnects a machine from the workspace: its owner, or a workspace owner or admin, may. */
 		HttpApiEndpoint.post("remove", "/v1/workspaces/:workspaceId/machines/:machineId/remove", {
-			params: { workspaceId: Schema.String, machineId: Schema.String },
+			params: { workspaceId: WorkspaceId, machineId: MachineId },
 			error: [NotFound, Forbidden],
 		}),
 	)
@@ -190,12 +217,12 @@ export class MachineGroup extends HttpApiGroup.make("machine").add(
 	HttpApiEndpoint.post("pair", "/v1/pairings", {
 		payload: SignedRequest,
 		success: PairingCreated,
-		error: Unauthorized,
+		error: [Unauthorized, NotFound],
 	}),
 	HttpApiEndpoint.post("poll", "/v1/pairings/poll", {
-		payload: Schema.Struct({ deviceCode: Schema.String }),
+		payload: SignedRequest,
 		success: PairingStatus,
-		error: NotFound,
+		error: [Unauthorized, NotFound],
 	}),
 	HttpApiEndpoint.post("heartbeat", "/v1/machines/heartbeat", {
 		payload: SignedRequest,

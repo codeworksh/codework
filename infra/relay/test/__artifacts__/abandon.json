@@ -1,0 +1,27 @@
+{
+	"kept": {
+		"exitCode": 0
+	},
+	"raceApprove": {
+		"status": 200
+	},
+	"afterRace": {
+		"online": true,
+		"relayKeyIsLocalKey": true,
+		"machineFileWorkspaces": 1
+	},
+	"stale": {
+		"status": 404,
+		"error": "Relay.NotFound"
+	},
+	"competing": [
+		{
+			"exitCode": 0,
+			"error": ""
+		},
+		{
+			"exitCode": 1,
+			"error": "error: Another connect for this machine finished first"
+		}
+	]
+}

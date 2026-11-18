@@ -2,9 +2,11 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { CaretRightIcon, CheckCircleIcon, DesktopTowerIcon, DotsThreeIcon } from "@phosphor-icons/react";
 import type { Relay } from "@codeworksh/schema";
 import { Link } from "@tanstack/react-router";
+import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { Collapse } from "@/components/collapse";
 import { CopyCommand } from "@/components/copyable";
 import {
 	AlertDialog,
@@ -32,6 +34,7 @@ import {
 	machinesAtom,
 	meAtom,
 	pairingsAtom,
+	reachAtom,
 	relayFailure,
 	removeMachineAtom,
 } from "../kernel/relay";
@@ -161,6 +164,14 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 	}, [refreshPairings]);
 
 	const list = AsyncResult.isSuccess(pairings) ? pairings.value : [];
+	// A connect leaves the list once its machine takes the link (or gives up): the machines list moves.
+	const codes = list.map((pairing) => pairing.userCode).join(" ");
+	const previous = useRef(codes);
+	useEffect(() => {
+		const now = new Set(codes.split(" "));
+		if (previous.current.split(" ").some((code) => code !== "" && !now.has(code))) refreshMachines();
+		previous.current = codes;
+	}, [codes, refreshMachines]);
 	const act = (pairing: Relay.PendingPairing, how: "approve" | "decline") => {
 		setBusy((codes) => new Set(codes).add(pairing.userCode));
 		setError(null);
@@ -186,15 +197,11 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 				<h2 className="text-section font-medium">
 					Waiting to Join{list.length > 0 && <span className="text-ink-muted"> · {list.length}</span>}
 				</h2>
-				{list.length > 1 && (
-					<Button size="sm" variant="outline" onClick={() => list.forEach((pairing) => act(pairing, "approve"))}>
-						Approve All
-					</Button>
-				)}
 			</div>
 			<Group>
 				{list.map((pairing) => {
-					const working = busy.has(pairing.userCode);
+					const approved = pairing.status === "approved";
+					const working = busy.has(pairing.userCode) || approved;
 					return (
 						<div
 							key={pairing.userCode}
@@ -206,6 +213,7 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 									<>
 										{pairing.machine.os} {pairing.machine.arch} · {pairing.machine.id} · Code{" "}
 										<code className="font-mono tracking-wider text-ink">{pairing.userCode}</code>
+										{pairing.replaces && <> · Replaces the connected Machine</>}
 									</>
 								}
 							>
@@ -219,7 +227,7 @@ function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) {
 										disabled={working}
 										onClick={() => act(pairing, "approve")}
 									>
-										{working ? "Approving…" : "Approve"}
+										{approved ? "Connecting…" : working ? "Approving…" : "Approve"}
 									</Button>
 								</div>
 							</Row>
@@ -260,7 +268,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 		setBusy(true);
 		setError(null);
 		approve({ userCode: code.trim().toUpperCase(), workspaceId: workspace.id })
-			.then((machine) => {
+			.then(({ machine }) => {
 				setAdded(machine.givenName ?? machine.localHostName);
 				setCode("");
 				onAdded();
@@ -276,10 +284,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 			<button
 				type="button"
 				aria-expanded={open}
-				onClick={() => {
-					setOpen((shown) => !shown);
-					requestAnimationFrame(() => input.current?.focus());
-				}}
+				onClick={() => setOpen((shown) => !shown)}
 				className="flex w-fit items-center gap-1 rounded-md text-xs text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<CaretRightIcon
@@ -290,9 +295,9 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 				/>
 				Enter a Code Instead
 			</button>
-			<Collapse open={open}>
+			<Collapse open={open} onOpened={() => input.current?.focus({ preventScroll: true })}>
 				<form
-					className="flex items-start gap-2 pt-1"
+					className="flex items-start gap-2 pt-2"
 					onSubmit={(event) => {
 						event.preventDefault();
 						submit();
@@ -321,7 +326,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 								className="flex animate-in items-center gap-1.5 text-xs text-ink-secondary duration-200 fade-in-0 motion-reduce:animate-none"
 							>
 								<CheckCircleIcon size={14} weight="fill" className="text-success" aria-hidden />
-								Added {added}
+								Approved {added}
 							</p>
 						)}
 					</div>
@@ -334,18 +339,6 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 	);
 }
 
-/** Opens and closes by height and opacity together; closed content stays mounted, inert, to animate out. */
-function Collapse({ open, children }: { readonly open: boolean; readonly children: ReactNode }) {
-	return (
-		<div
-			inert={!open}
-			className={`grid transition-[grid-template-rows,opacity] duration-250 ease-(--ease-out) motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
-		>
-			<div className="-mx-1 min-h-0 overflow-hidden px-1">{children}</div>
-		</div>
-	);
-}
-
 function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace }) {
 	const machines = useAtomValue(machinesAtom(workspace.id));
 	const refresh = useAtomRefresh(machinesAtom(workspace.id));
@@ -353,20 +346,26 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 	const refreshLocal = useAtomRefresh(machineAtom);
 	const me = useAtomValue(meAtom);
 	const localId = AsyncResult.isSuccess(local) ? local.value.id : null;
+	const localKey = AsyncResult.isSuccess(local)
+		? local.value.workspaces.find((option) => option.id === workspace.id)?.keyId
+		: undefined;
 	const accountId = AsyncResult.isSuccess(me) ? me.value.account.id : null;
 	// Machines seen when the page opened; any other is new and arrives with a highlight.
 	const [seen, setSeen] = useState<ReadonlySet<string> | null>(null);
+	// The relay's list and this machine's own record both move: a link removed elsewhere is forgotten on
+	// the machine's next heartbeat, and a terminal can connect or disconnect it.
 	useEffect(() => {
-		const timer = setInterval(refresh, REFRESH_MS);
+		const timer = setInterval(() => {
+			refresh();
+			refreshLocal();
+		}, REFRESH_MS);
 		return () => clearInterval(timer);
-	}, [refresh]);
-	// This machine's own record of its links lags the relay: removed elsewhere, it forgets the link on its
-	// next heartbeat. Read it again with each refresh until the two agree.
-	const linked = AsyncResult.isSuccess(local) && local.value.workspaces.some((option) => option.id === workspace.id);
-	const listed = AsyncResult.isSuccess(machines) && machines.value.some((machine) => machine.id === localId);
+	}, [refresh, refreshLocal]);
+	// Back in reach: ask now instead of on the next tick.
+	const reach = useAtomValue(reachAtom);
 	useEffect(() => {
-		if (AsyncResult.isSuccess(machines) && linked !== listed) refreshLocal();
-	}, [machines, linked, listed, refreshLocal]);
+		if (reach === "ok") refresh();
+	}, [reach, refresh]);
 
 	if (AsyncResult.isInitial(machines)) {
 		return (
@@ -375,14 +374,17 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 			</Section>
 		);
 	}
-	if (AsyncResult.isFailure(machines)) {
+	// Out of reach, the list the relay last gave stays, marked as such; with none yet, there is nothing to show.
+	const last = AsyncResult.isFailure(machines) ? Option.getOrUndefined(machines.previousSuccess) : undefined;
+	if (AsyncResult.isFailure(machines) && last === undefined) {
 		return (
 			<Section title={`In ${workspace.name}`}>
 				<EmptyState title="Unavailable" description={relayFailure(machines.cause)} />
 			</Section>
 		);
 	}
-	const list = AsyncResult.isSuccess(machines) ? machines.value : [];
+	const stale = last !== undefined;
+	const list = AsyncResult.isSuccess(machines) ? machines.value : (last?.value ?? []);
 	if (seen === null && AsyncResult.isSuccess(machines)) setSeen(new Set(list.map((machine) => machine.id)));
 	// This machine first, then the newest: a machine just added appears where you are looking.
 	const ordered = [
@@ -390,7 +392,10 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 		...list.filter((machine) => machine.id !== localId).reverse(),
 	];
 	return (
-		<Section title={`In ${workspace.name}${list.length > 0 ? ` · ${list.length}` : ""}`}>
+		<Section
+			title={`In ${workspace.name}${list.length > 0 ? ` · ${list.length}` : ""}`}
+			description={stale ? "As CodeWork last said; it can't be reached now." : undefined}
+		>
 			<Loaded>
 				{list.length === 0 ? (
 					<EmptyState
@@ -405,9 +410,11 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 								key={machine.id}
 								machine={machine}
 								workspace={workspace}
-								isLocal={machine.id === localId}
+								isLocal={machine.id === localId && machine.keyId === localKey}
+								strayLocal={machine.id === localId && machine.keyId !== localKey}
 								fresh={seen !== null && !seen.has(machine.id)}
 								canRemove={workspace.role !== "member" || machine.ownerId === accountId}
+								stale={stale}
 								onGone={refresh}
 							/>
 						))}
@@ -422,13 +429,19 @@ function MachineRow({
 	machine,
 	workspace,
 	isLocal,
+	strayLocal,
 	fresh,
 	canRemove,
+	stale,
 	onGone,
 }: {
 	readonly machine: Relay.Machine;
 	readonly workspace: Relay.Workspace;
 	readonly isLocal: boolean;
+	/** This machine's id under a key it doesn't hold: a link it lost, which only Remove clears. */
+	readonly strayLocal: boolean;
+	/** The last list the relay gave, while it can't be reached: online state is unknown and nothing acts. */
+	readonly stale: boolean;
 	readonly fresh: boolean;
 	readonly canRemove: boolean;
 	readonly onGone: () => void;
@@ -454,11 +467,14 @@ function MachineRow({
 							<span className="flex min-w-0 items-center gap-2">
 								<span className="truncate">{name}</span>
 								{isLocal && <Badge tone="info">This Machine</Badge>}
+								{strayLocal && <Badge tone="muted">This Machine · Not Connected Here</Badge>}
 							</span>
 						}
 						description={`${machine.os} ${machine.arch} · v${machine.version} · ${machine.id}`}
 					>
-						{machine.online ? (
+						{stale ? (
+							<StatusDot tone="muted">Unknown</StatusDot>
+						) : machine.online ? (
 							<StatusDot tone="success">Online</StatusDot>
 						) : machine.lastSeenAt === null ? (
 							<StatusDot tone="muted">Never Seen</StatusDot>
@@ -467,7 +483,7 @@ function MachineRow({
 								Last Seen <Ago time={Date.parse(machine.lastSeenAt)} />
 							</StatusDot>
 						)}
-						{(isLocal || canRemove) && (
+						{!stale && (isLocal || canRemove || strayLocal) && (
 							<MachineMenu
 								name={name}
 								machineId={machine.id}
@@ -509,9 +525,21 @@ function MachineMenu({
 	const confirm = () => {
 		setBusy(true);
 		setError(null);
+		const removeAsPerson = () => remove({ workspaceId: workspace.id, machineId });
 		(isLocal
-			? disconnect({ payload: { workspaceId: workspace.id } }).then(refreshLocal)
-			: remove({ workspaceId: workspace.id, machineId })
+			? disconnect({ payload: { workspaceId: workspace.id } })
+					// The relay didn't confirm the machine's own revoke: remove it as the signed-in person instead.
+					.then(({ revoked }) =>
+						revoked
+							? undefined
+							: removeAsPerson().catch(() => {
+									throw new Error(
+										"Disconnected here, but CodeWork's servers didn't confirm. Remove it from the list when you're back online.",
+									);
+								}),
+					)
+					.finally(refreshLocal)
+			: removeAsPerson()
 		)
 			.then(() => {
 				setAsking(false);

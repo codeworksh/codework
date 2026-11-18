@@ -28,6 +28,7 @@ import {
 	SidebarInput,
 	SidebarRail,
 } from "@/components/ui/sidebar";
+import { ConnectionStatus } from "../shell/status";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress, threadRef } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
@@ -257,12 +258,13 @@ export function SessionsSidebar() {
 					</div>
 				)}
 			</SidebarContent>
-			<SidebarFooter className="flex-row items-center justify-end gap-0.5 p-2">
+			<SidebarFooter className="flex-row items-center gap-0.5 p-2">
+				<ConnectionStatus />
 				<Link
 					to="/metrics"
 					aria-label="Metrics"
 					title="Metrics"
-					className="active:scale-[0.97] grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection-current aria-[current=page]:text-ink"
+					className="active:scale-[0.97] ml-auto grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection-current aria-[current=page]:text-ink"
 				>
 					<ChartBarIcon size={15} aria-hidden />
 				</Link>

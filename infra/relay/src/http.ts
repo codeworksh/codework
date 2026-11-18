@@ -79,7 +79,7 @@ const MachineHandlers = HttpApiBuilder.group(
 		const machines = yield* Machines;
 		return handlers
 			.handle("pair", ({ payload }) => machines.pair(payload.jws))
-			.handle("poll", ({ payload }) => machines.poll(payload.deviceCode))
+			.handle("poll", ({ payload }) => machines.poll(payload.jws))
 			.handle("heartbeat", ({ payload }) => machines.heartbeat(payload.jws))
 			.handle("revoke", ({ payload }) => machines.revoke(payload.jws));
 	}),

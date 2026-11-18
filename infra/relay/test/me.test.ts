@@ -38,6 +38,24 @@ describe.skipIf(secretKey === undefined)("relay /v1/me", () => {
 		expect(bodies[2]).toEqual(bodies[0]);
 
 		const body = bodies[0]!;
+
+		// A person who deletes their sign-in and signs up again with the same email is a new account.
+		await user.remove();
+		user = await clerkUser(run);
+		const resignup = await me(await user.token());
+		const resignupBody = resignup.status === 200 ? decodeMe(await resignup.json()) : undefined;
+
+		// With the sign-in vendor out of reach a good token is "try again" (503), not "signed out" (401).
+		const down = await startRelay(`${run}d`, { CLERK_API_URL: "http://127.0.0.1:9" });
+		const vendorDown = await fetch(`${down.base}/v1/me`, {
+			headers: { authorization: `Bearer ${await user.token()}` },
+		});
+		const vendorDownForged = await fetch(`${down.base}/v1/me`, { headers: { authorization: "Bearer not-a-token" } });
+		const vendorDownBodies = [await vendorDown.json(), await vendorDownForged.json()].map((body) =>
+			decodeError(body),
+		);
+		down.stop();
+
 		const artifact = {
 			missingToken: { status: missing.status, tag: decodeError(await missing.json())._tag },
 			forgedToken: { status: forged.status, tag: decodeError(await forged.json())._tag },
@@ -48,6 +66,15 @@ describe.skipIf(secretKey === undefined)("relay /v1/me", () => {
 					name: workspace.name,
 					role: workspace.role,
 				})),
+			},
+			resignup: {
+				status: resignup.status,
+				differentAccount: resignupBody !== undefined && resignupBody.account.id !== body.account.id,
+				sameEmail: resignupBody?.account.email === body.account.email,
+			},
+			vendorDown: {
+				token: { status: vendorDown.status, tag: vendorDownBodies[0]!._tag },
+				forgedToken: { status: vendorDownForged.status, tag: vendorDownBodies[1]!._tag },
 			},
 			rows: {
 				account: Number(relay.psql("SELECT count(*) FROM account")),

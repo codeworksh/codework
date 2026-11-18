@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useEffect, useState } from "react";
 
+import { Collapse } from "@/components/collapse";
 import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
@@ -249,22 +250,6 @@ function BusyLabel({
 	);
 }
 
-/**
- * Opens and closes its content by height and opacity together, so the card grows and shrinks instead of
- * jumping. Closed content stays mounted, inert, so it can animate out.
- */
-function Reveal({ open, children }: { readonly open: boolean; readonly children: ReactNode }) {
-	return (
-		<div
-			inert={!open}
-			className={`grid transition-[grid-template-rows,opacity] duration-250 ease-(--ease-out) motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
-		>
-			{/* Room around the content so focus rings aren't clipped by the overflow. */}
-			<div className="-mx-1 min-h-0 overflow-hidden px-1">{children}</div>
-		</div>
-	);
-}
-
 function Step({
 	index,
 	current,
@@ -319,7 +304,7 @@ function Step({
 						</span>
 					)}
 				</div>
-				<Reveal open={open}>
+				<Collapse open={open}>
 					<p className="pt-0.5 text-xs font-book text-ink-muted">{line}</p>
 					<div className="flex flex-col gap-2 pt-3">
 						<div>{children}</div>
@@ -340,13 +325,13 @@ function Step({
 							/>
 							Or use a terminal
 						</button>
-						<Reveal open={terminal}>
+						<Collapse open={terminal}>
 							<div className="pt-2">
 								<CopyCommand command={command} />
 							</div>
-						</Reveal>
+						</Collapse>
 					</div>
-				</Reveal>
+				</Collapse>
 			</div>
 		</li>
 	);

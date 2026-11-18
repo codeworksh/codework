@@ -1,6 +1,6 @@
 import { Relay } from "@codeworksh/schema";
-import { Context, Effect, Layer, Schedule, Schema } from "effect";
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
+import { Cause, Context, Effect, Layer, Schema } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -12,50 +12,136 @@ const relayUrl = typeof configured === "string" && configured !== "" ? configure
 
 // The signed-in person's session token, read fresh for each call (Clerk's tokens live a minute). The auth
 // gate sets it once Clerk has loaded; until then calls go without one and the relay refuses them.
-let sessionToken: () => Promise<string | null> = () => Promise.resolve(null);
-export const setSessionToken = (source: () => Promise<string | null>) => {
+type TokenSource = (options?: { readonly skipCache?: boolean }) => Promise<string | null>;
+let sessionToken: TokenSource = () => Promise.resolve(null);
+/** Where the signed-in person's account is remembered on this device, so it shows while out of reach. */
+let accountKey: string | undefined;
+export const setSession = (source: TokenSource, userId: string | null | undefined) => {
 	sessionToken = source;
+	accountKey = userId == null ? undefined : `codework.account.${userId}`;
 };
+
+const remembered = (): Relay.Me | undefined => {
+	try {
+		const saved = accountKey === undefined ? null : localStorage.getItem(accountKey);
+		return saved === null ? undefined : Schema.decodeUnknownSync(Relay.Me)(JSON.parse(saved));
+	} catch {
+		// Unreadable or from an older shape: nothing remembered.
+		return undefined;
+	}
+};
+const remember = (me: Relay.Me) => {
+	try {
+		if (accountKey !== undefined) localStorage.setItem(accountKey, JSON.stringify(Schema.encodeSync(Relay.Me)(me)));
+	} catch {
+		// Unsaved, the account still shows until the app quits.
+	}
+};
+
+/**
+ * Whether the relay answers, as the latest call to it found: `unreachable` (no answer at all) or
+ * `unavailable` (it answered that its sign-in vendor is out of reach).
+ */
+export type Reach = "ok" | "unreachable" | "unavailable";
+let reach: Reach = "ok";
+const reachListeners = new Set<(next: Reach) => void>();
+const report = (next: Reach) => {
+	if (next === reach) return;
+	reach = next;
+	for (const listener of reachListeners) listener(next);
+};
+export const reachAtom = Atom.make((get) => {
+	const listener = (next: Reach) => get.setSelf(next);
+	reachListeners.add(listener);
+	get.addFinalizer(() => reachListeners.delete(listener));
+	return reach;
+}).pipe(Atom.keepAlive);
+
+/** No session token yet: Clerk is still loading or unreachable. Worth asking again. */
+class SessionPending extends Schema.TaggedError<SessionPending>()("Relay.SessionPending", {
+	message: Schema.String,
+}) {}
+const pending = () => new SessionPending({ message: "Waiting for your sign-in to load" });
+/** The current token, or none when Clerk can't give one (still loading, offline). */
+const currentToken = Effect.tryPromise(() => sessionToken()).pipe(Effect.orElseSucceed(() => null));
 
 class Client extends Context.Service<Client, HttpApiClient.ForApi<typeof Relay.Api>>()("codework/web/Relay") {
 	static readonly layer = Layer.effect(
 		Client,
 		HttpApiClient.make(Relay.Api, {
 			baseUrl: relayUrl,
-			transformClient: HttpClient.mapRequestEffect((request) =>
-				Effect.promise(() => sessionToken()).pipe(
-					Effect.map((token) => (token === null ? request : HttpClientRequest.bearerToken(request, token))),
+			transformClient: (client) =>
+				client.pipe(
+					HttpClient.mapRequestEffect((request) =>
+						currentToken.pipe(
+							Effect.map((token) => (token === null ? request : HttpClientRequest.bearerToken(request, token))),
+						),
+					),
+					// Every answer, and every call that got none, says whether the relay is in reach.
+					HttpClient.tap((response) => Effect.sync(() => report(response.status === 503 ? "unavailable" : "ok"))),
+					HttpClient.tapError((error) =>
+						Effect.sync(() => {
+							if (error.reason._tag === "TransportError") report("unreachable");
+						}),
+					),
 				),
-			),
 		}),
 	).pipe(Layer.provide(FetchHttpClient.layer));
 }
 
 const runtime = Atom.runtime(Client.layer);
 
+const isUnauthorized = Schema.is(Relay.Unauthorized);
+
 const unreachable = /transport error|fetch failed|econnrefused|enotfound|etimedout|network/i;
 
 /** A relay failure in people's words: a network failure reads as one; the relay's own message otherwise. */
 export const relayFailure = (cause: unknown) => {
+	if (isUnauthorized(Cause.isCause(cause) ? Cause.squash(cause) : cause))
+		return "Your sign-in expired. Sign in again.";
 	const message = messageOf(cause);
 	return unreachable.test(message)
 		? "Can't reach CodeWork's servers. Check your connection, then try again."
 		: message;
 };
 
-const isUnauthorized = Schema.is(Relay.Unauthorized);
+/** A failure that passes on its own: the relay or its sign-in vendor out of reach, or no session yet. */
+export const isTransient = (cause: unknown) => {
+	const error = Cause.isCause(cause) ? Cause.squash(cause) : cause;
+	return (
+		Schema.is(Relay.Unavailable)(error) ||
+		Schema.is(SessionPending)(error) ||
+		(HttpClientError.isHttpClientError(error) && error.reason._tag === "TransportError")
+	);
+};
+
+/** The relay refused the session even with a fresh token: the person has to sign in again. */
+export const isSignedOut = (cause: unknown) => isUnauthorized(Cause.isCause(cause) ? Cause.squash(cause) : cause);
 
 /**
- * The signed-in account and the workspaces it belongs to. An unreachable relay is asked again every few
- * seconds, so the account and its workspaces come back with it; a refused session is final.
+ * The signed-in account and the workspaces it belongs to. A refused session gets one more try with a
+ * fresh token (it may only be stale after sleep). Out of reach, it is what the relay last said on this
+ * device, and the status slot says so; it fails only when nothing was remembered yet.
  */
 export const meAtom = runtime
 	.atom(
 		Effect.gen(function* () {
 			const client = yield* Client;
-			return yield* client.me
-				.get()
-				.pipe(Effect.retry({ schedule: Schedule.spaced("3 seconds"), while: (error) => !isUnauthorized(error) }));
+			// Without a session yet there is nothing to ask the relay with; wait for one.
+			const get = Effect.gen(function* () {
+				if ((yield* currentToken) === null) return yield* pending();
+				return yield* client.me.get();
+			});
+			return yield* get.pipe(
+				Effect.catchIf(isUnauthorized, () =>
+					Effect.promise(() => sessionToken({ skipCache: true }).catch(() => null)).pipe(Effect.andThen(get)),
+				),
+				Effect.tap((me) => Effect.sync(() => remember(me))),
+				Effect.catchIf(isTransient, (error) => {
+					const known = remembered();
+					return known === undefined ? Effect.fail(error) : Effect.succeed(known);
+				}),
+			);
 		}),
 	)
 	.pipe(Atom.keepAlive);

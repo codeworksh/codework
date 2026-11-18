@@ -21,9 +21,24 @@
 			}
 		]
 	},
+	"resignup": {
+		"status": 200,
+		"differentAccount": true,
+		"sameEmail": true
+	},
+	"vendorDown": {
+		"token": {
+			"status": 503,
+			"tag": "Relay.Unavailable"
+		},
+		"forgedToken": {
+			"status": 401,
+			"tag": "Relay.Unauthorized"
+		}
+	},
 	"rows": {
-		"account": 1,
-		"workspace": 1,
-		"member": 1
+		"account": 2,
+		"workspace": 2,
+		"member": 2
 	}
 }

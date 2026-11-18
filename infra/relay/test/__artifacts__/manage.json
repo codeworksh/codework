@@ -3,7 +3,9 @@
 		"listed": [
 			{
 				"code": "<code>",
-				"machine": "e2e-box"
+				"machine": "e2e-box",
+				"status": "pending",
+				"replaces": false
 			}
 		],
 		"status": 204,
@@ -24,5 +26,16 @@
 			"status": 404,
 			"tag": "Relay.NotFound"
 		}
+	},
+	"badWorkspace": {
+		"exitCode": 1,
+		"error": "error: --workspace must be a Workspace ID; copy it from Settings → Machines in the CodeWork app"
+	},
+	"unknownWorkspace": {
+		"exitCode": 1,
+		"error": "error: No such workspace"
+	},
+	"badParam": {
+		"status": 400
 	}
 }

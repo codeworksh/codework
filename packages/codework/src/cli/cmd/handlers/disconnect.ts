@@ -9,30 +9,26 @@ import { Cmd } from "../cmd.ts";
 
 export default Runtime.handler(
 	Cmd.commands.disconnect,
-	Effect.fn("CLI.disconnect")(
-		function* ({ workspace }) {
-			const paths = yield* Service.home(yield* Cmd.spec);
-			const connected = Option.match(yield* File.read(paths.home), {
-				onNone: () => [],
-				onSome: (machine) => Object.keys(machine.workspaces),
+	Effect.fn("CLI.disconnect")(function* ({ workspace }) {
+		const paths = yield* Service.home(yield* Cmd.spec);
+		const connected = Option.match(yield* File.read(paths.home), {
+			onNone: () => [],
+			onSome: (machine) => Object.keys(machine.workspaces),
+		});
+		const workspaceId = Option.getOrUndefined(workspace) ?? (connected.length === 1 ? connected[0] : undefined);
+		if (workspaceId === undefined) {
+			return yield* new InvalidInputError({
+				message:
+					connected.length === 0
+						? "This machine is not connected to any workspace"
+						: `Connected to ${connected.length} workspaces; name one with --workspace (${connected.join(", ")})`,
 			});
-			const workspaceId = Option.getOrUndefined(workspace) ?? (connected.length === 1 ? connected[0] : undefined);
-			if (workspaceId === undefined) {
-				return yield* new InvalidInputError({
-					message:
-						connected.length === 0
-							? "This machine is not connected to any workspace"
-							: `Connected to ${connected.length} workspaces; name one with --workspace (${connected.join(", ")})`,
-				});
-			}
-			const result = yield* Relay.disconnect(paths.home, workspaceId);
-			yield* writeOut(
-				result.revoked
-					? `Disconnected from ${result.workspace}\n`
-					: `Disconnected locally from ${result.workspace}; the relay could not be reached, so its link stays until a workspace admin removes it\n`,
-			);
-		},
-		Effect.provide(Relay.Client.layer),
-		Effect.catch(reportFailure),
-	),
+		}
+		const result = yield* Relay.disconnect(paths.home, workspaceId);
+		yield* writeOut(
+			result.revoked
+				? `Disconnected from ${result.workspace}\n`
+				: `Disconnected locally from ${result.workspace}; the relay could not be reached, so its link stays until a workspace admin removes it\n`,
+		);
+	}, Effect.catch(reportFailure)),
 );
