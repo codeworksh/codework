@@ -16,7 +16,11 @@
 	--cw-frame: var(--t-surface);
 	--cw-frame-top: var(--t-surface-2);
 	--cw-edge: var(--t-border-subtle);
-	--cw-edge-focus: color-mix(in srgb, var(--t-text) 20%, transparent);
+	/* Field borders: a hairline in dark, as Linear draws them. */
+	--cw-edge-focus: light-dark(
+		color-mix(in srgb, var(--t-text) 20%, transparent),
+		color-mix(in srgb, var(--t-text) 10%, transparent)
+	);
 	--cw-ink: var(--t-text);
 	--cw-ink-secondary: var(--t-text-secondary);
 	--cw-ink-muted: var(--t-text-muted);
@@ -27,23 +31,23 @@
 	--cw-content-width: 832px;
 	--cw-selection-subtle: light-dark(
 		color-mix(in srgb, var(--cw-ink) 5%, transparent),
-		color-mix(in srgb, var(--cw-ink) 8%, transparent)
+		color-mix(in srgb, var(--cw-ink) 6%, transparent)
 	);
 	--cw-selection: light-dark(
 		color-mix(in srgb, var(--cw-ink) 6%, transparent),
-		color-mix(in srgb, var(--cw-ink) 10%, transparent)
+		color-mix(in srgb, var(--cw-ink) 8%, transparent)
 	);
 	--cw-selection-strong: light-dark(
 		color-mix(in srgb, var(--cw-ink) 7%, transparent),
-		color-mix(in srgb, var(--cw-ink) 12%, transparent)
+		color-mix(in srgb, var(--cw-ink) 9%, transparent)
 	);
 	--cw-selection-hover: light-dark(
 		color-mix(in srgb, var(--cw-ink) 7%, transparent),
-		color-mix(in srgb, var(--cw-ink) 15%, transparent)
+		color-mix(in srgb, var(--cw-ink) 11%, transparent)
 	);
-	/* Primary actions: the accent in light, as Linear does; ink in dark. */
-	--cw-primary: light-dark(var(--cw-brand), var(--cw-ink));
-	--cw-primary-ink: var(--cw-frame);
+	/* Primary actions: the accent, as Linear does. */
+	--cw-primary: var(--cw-brand);
+	--cw-primary-ink: light-dark(var(--cw-frame), var(--cw-brand-ink));
 	--cw-message: light-dark(#0a0a0a, var(--cw-selection));
 	--cw-message-ink: light-dark(#ffffff, var(--cw-ink));
 	--cw-composer: light-dark(var(--cw-frame), color-mix(in srgb, var(--cw-ink) 3%, transparent));
@@ -52,10 +56,11 @@
 		0 2px 6px light-dark(color-mix(in srgb, var(--cw-ink) 6%, transparent), transparent),
 		0 6px 24px light-dark(color-mix(in srgb, var(--cw-ink) 9%, transparent), transparent);
 	--cw-scrollbar: var(--t-scrollbar);
-	--cw-danger: light-dark(#dc2626, #f87171);
-	--cw-warning: light-dark(#d97706, #fbbf24);
-	--cw-success: light-dark(#16a34a, #4ade80);
-	--cw-info: light-dark(#2563eb, #60a5fa);
+	/* Dark takes Linear's status colours. */
+	--cw-danger: light-dark(#dc2626, #eb5757);
+	--cw-warning: light-dark(#d97706, #f2c94c);
+	--cw-success: light-dark(#16a34a, #4cb782);
+	--cw-info: light-dark(#2563eb, #4ea7fc);
 	--cw-link: light-dark(hsl(211 92% 40%), #7dd3fc);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
 	--cw-drop-shadow: color-mix(in oklab, var(--t-text) 20%, transparent);
@@ -153,7 +158,8 @@
 	--color-info: var(--cw-info);
 	--color-border: var(--cw-edge);
 	--color-input: var(--cw-edge-focus);
-	--color-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
+	/* Focus rings: the accent at full strength in dark, where half of it sinks into the surface. */
+	--color-ring: light-dark(color-mix(in oklab, var(--cw-brand) 50%, transparent), var(--cw-brand));
 	--color-sidebar: var(--cw-sidebar);
 	--color-sidebar-foreground: var(--cw-ink);
 	--color-sidebar-primary: var(--cw-ink);
