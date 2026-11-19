@@ -85,11 +85,14 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 	const machine = yield* File.update(options.home, { machineId: options.machineId }, Effect.succeed);
 	const key = yield* Jws.generate();
 	const keyId = yield* Jws.thumbprint(Jws.publicOf(key));
+	const iat = yield* Clock.currentTimeMillis;
+	const binding: Relay.IdentityClaims = { op: "identity.bind", iat, keyId };
 	const claims: Relay.PairingClaims = {
 		op: "pairing.create",
-		iat: yield* Clock.currentTimeMillis,
+		iat,
 		machine: yield* describe(machine),
 		workspaceId: options.workspaceId ?? null,
+		identity: yield* Jws.sign(binding, machine.identity.key, { embed: true }),
 	};
 	const pairing = yield* client.api.machine
 		.pair({ payload: { jws: yield* Jws.sign(claims, key, { embed: true }) } })

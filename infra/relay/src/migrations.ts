@@ -43,7 +43,8 @@ export const migrations = {
 		const sql = yield* SqlClient.SqlClient;
 
 		// A machine's link to one workspace. Each link has its own key, so one home connected to N
-		// workspaces is N rows, and the key's thumbprint (key_id) finds exactly one of them.
+		// workspaces is N rows, and the key's thumbprint (key_id) finds exactly one of them. The home's
+		// identity key vouched for that key at pairing: rows sharing identity_key_id are one machine.
 		yield* sql`
 			CREATE TABLE machine (
 				workspace_id    uuid NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
@@ -57,6 +58,7 @@ export const migrations = {
 				owner_id        uuid NOT NULL REFERENCES account(id),
 				key             jsonb NOT NULL,
 				key_id          text NOT NULL UNIQUE,
+				identity_key_id text NOT NULL,
 				last_seen_at    timestamptz,
 				created_at      timestamptz NOT NULL DEFAULT now(),
 				revoked_at      timestamptz,
@@ -75,6 +77,7 @@ export const migrations = {
 				machine      jsonb NOT NULL,
 				key          jsonb NOT NULL,
 				key_id       text NOT NULL UNIQUE,
+				identity_key_id text NOT NULL,
 				status       text NOT NULL CHECK (status IN ('pending', 'approved', 'active', 'declined', 'superseded')),
 				approved_by  uuid REFERENCES account(id),
 				connected    jsonb,
