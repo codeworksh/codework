@@ -2,7 +2,10 @@ import { defineConfig } from "vite-plus";
 
 // The main process is bundled to CJS; only `electron` (and Node built-ins)
 // stay external — everything else is inlined into the artifact.
-const isExternal = (id: string) => id === "electron" || id.startsWith("electron/") || id.startsWith("node:");
+// `@clerk/electron-passkeys` is an optional native module Clerk imports only when passkeys are on,
+// which they are not.
+const isExternal = (id: string) =>
+	id === "electron" || id.startsWith("electron/") || id.startsWith("node:") || id === "@clerk/electron-passkeys";
 
 // One config per entry: a sandboxed preload cannot require sibling files, so
 // modules shared with main must be inlined rather than split into a chunk.

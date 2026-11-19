@@ -1,3 +1,4 @@
+import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL, SERVER_CHANNEL } from "./ipc.ts";
 
@@ -12,3 +13,6 @@ contextBridge.exposeInMainWorld("desktopBridge", {
 		reveal: (path: string) => ipcRenderer.invoke(REVEAL_CHANNEL, path) as Promise<void>,
 	}),
 });
+
+// The narrow bridge @clerk/electron/react uses for token storage and OAuth.
+exposeClerkBridge();

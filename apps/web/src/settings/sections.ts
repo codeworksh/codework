@@ -3,6 +3,7 @@ import {
 	ChatTextIcon,
 	CpuIcon,
 	CubeIcon,
+	DesktopTowerIcon,
 	HardDrivesIcon,
 	type Icon,
 	KeyboardIcon,
@@ -12,10 +13,18 @@ import {
 	SlidersHorizontalIcon,
 	SparkleIcon,
 	StackIcon,
+	UserIcon,
+	WrenchIcon,
 } from "@phosphor-icons/react";
+
+/** Whether a path is a settings page: the app's own, or the account's and workspace's under a workspace. */
+export const isSettingsPath = (pathname: string) =>
+	pathname.startsWith("/settings") || /^\/workspaces\/[^/]+\/settings(\/|$)/.test(pathname);
 
 export interface SettingsSection {
 	readonly to:
+		| "/workspaces/$workspaceId/settings/account/profile"
+		| "/workspaces/$workspaceId/settings/machines/setup"
 		| "/settings/general"
 		| "/settings/tabs"
 		| "/settings/themes"
@@ -26,57 +35,65 @@ export interface SettingsSection {
 		| "/settings/mcp"
 		| "/settings/skills"
 		| "/settings/plugins"
+		| "/workspaces/$workspaceId/settings/machines"
 		| "/settings/sandboxes"
 		| "/settings/archive";
 	readonly label: string;
 	readonly icon: Icon;
 	/** Sidebar heading the section sits under. */
-	readonly group: string;
+	readonly group: "Personal" | "Application" | "Administration";
 	/** Extra words the search matches, beyond the label. */
 	readonly keywords: readonly string[];
 }
 
 const sections: readonly SettingsSection[] = [
 	{
+		to: "/workspaces/$workspaceId/settings/account/profile",
+		label: "Profile",
+		icon: UserIcon,
+		group: "Personal",
+		keywords: ["account", "name", "email", "picture", "photo", "avatar"],
+	},
+	{
 		to: "/settings/general",
 		label: "General",
 		icon: SlidersHorizontalIcon,
-		group: "App",
+		group: "Application",
 		keywords: ["notifications", "sounds", "alerts", "quick", "composer", "editor", "terminal", "version", "updates"],
 	},
 	{
 		to: "/settings/tabs",
 		label: "Tabs",
 		icon: StackIcon,
-		group: "App",
+		group: "Application",
 		keywords: ["tabs", "shortcuts", "reorder", "rename", "delete"],
 	},
 	{
 		to: "/settings/themes",
 		label: "Themes",
 		icon: PaletteIcon,
-		group: "App",
+		group: "Application",
 		keywords: ["appearance", "colors", "dark", "light"],
 	},
 	{
 		to: "/settings/servers",
 		label: "Providers",
 		icon: HardDrivesIcon,
-		group: "App",
+		group: "Application",
 		keywords: ["servers", "provider", "local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
 	},
 	{
 		to: "/settings/keybindings",
 		label: "Keybindings",
 		icon: KeyboardIcon,
-		group: "App",
+		group: "Application",
 		keywords: ["shortcuts", "hotkeys", "keyboard", "bindings", "keys", "palette"],
 	},
 	{
 		to: "/settings/models",
 		label: "Models",
 		icon: CpuIcon,
-		group: "Agents",
+		group: "Application",
 		keywords: [
 			"accounts",
 			"oauth",
@@ -95,14 +112,14 @@ const sections: readonly SettingsSection[] = [
 		to: "/settings/chat",
 		label: "Chat",
 		icon: ChatTextIcon,
-		group: "Agents",
+		group: "Application",
 		keywords: ["transcript", "composer", "prompt", "steer", "queue", "follow-up", "usage", "tokens", "games"],
 	},
 	{
 		to: "/settings/mcp",
 		label: "MCP",
 		icon: PlugsConnectedIcon,
-		group: "Agents",
+		group: "Application",
 		keywords: [
 			"mcp",
 			"tools",
@@ -120,28 +137,42 @@ const sections: readonly SettingsSection[] = [
 		to: "/settings/skills",
 		label: "Skills",
 		icon: SparkleIcon,
-		group: "Agents",
+		group: "Application",
 		keywords: ["skills", "skill.md", "instructions", "workflows", "project", "personal"],
 	},
 	{
 		to: "/settings/plugins",
 		label: "Plugins",
 		icon: PuzzlePieceIcon,
-		group: "Agents",
+		group: "Application",
 		keywords: ["plugins", "extensions", "npm", "tools", "prompt", "bash", "grep", "find", "reload"],
+	},
+	{
+		to: "/workspaces/$workspaceId/settings/machines/setup",
+		label: "Setup",
+		icon: WrenchIcon,
+		group: "Administration",
+		keywords: ["set up", "install", "cli", "start", "server", "connect", "this machine", "onboarding"],
+	},
+	{
+		to: "/workspaces/$workspaceId/settings/machines",
+		label: "Machines",
+		icon: DesktopTowerIcon,
+		group: "Administration",
+		keywords: ["machines", "connect", "online", "offline", "rename", "name", "relay", "harness", "computer"],
 	},
 	{
 		to: "/settings/sandboxes",
 		label: "Sandboxes",
 		icon: CubeIcon,
-		group: "Workspace",
+		group: "Application",
 		keywords: ["sandboxes", "worktrees", "git", "branch", "vercel", "daytona", "memory", "isolation"],
 	},
 	{
 		to: "/settings/archive",
 		label: "Archive",
 		icon: ArchiveIcon,
-		group: "Workspace",
+		group: "Application",
 		keywords: ["archived", "restore", "unarchive", "sessions", "projects", "hidden"],
 	},
 ];

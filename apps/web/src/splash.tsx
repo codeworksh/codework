@@ -7,7 +7,7 @@ import { serversAtom } from "./kernel/servers";
 const LONGEST = 2_000;
 
 /** Fades the splash in index.html away; it is gone once the fade ends. */
-function reveal() {
+export function reveal() {
 	const shell = document.getElementById("boot-shell");
 	if (shell === null || shell.classList.contains("done")) return;
 	shell.classList.add("done");

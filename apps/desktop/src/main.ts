@@ -1,3 +1,5 @@
+import { createClerkBridge } from "@clerk/electron";
+import { storage } from "@clerk/electron/storage";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -14,7 +16,7 @@ app.setPath(
 	path.join(app.getPath("appData"), channel() === "latest" ? "codework" : `codework${channel()}`),
 );
 
-const SCHEME = app.isPackaged ? "codework" : "codework-dev";
+const SCHEME = app.isPackaged ? "codework" : "codeworkdev";
 const HOST = "app";
 const APP_URL = `${SCHEME}://${HOST}/`;
 
@@ -50,10 +52,16 @@ const MIME_TYPES: Record<string, string> = {
 	".txt": "text/plain",
 };
 
-// Must run synchronously before Electron emits `ready`.
-protocol.registerSchemesAsPrivileged([
-	{
+// Must run synchronously before Electron emits `ready`. Clerk's bridge registers the renderer's scheme
+// as privileged (one registration per process), keeps the signed-in session encrypted under userData,
+// and carries OAuth back to the renderer on the same origin.
+createClerkBridge({
+	storage: storage({ path: path.join(app.getPath("userData"), "clerk") }),
+	// The app takes the lock itself, below, before any window opens.
+	manageSingleInstanceLock: false,
+	renderer: {
 		scheme: SCHEME,
+		host: HOST,
 		privileges: {
 			standard: true,
 			secure: true,
@@ -63,7 +71,7 @@ protocol.registerSchemesAsPrivileged([
 			codeCache: true,
 		},
 	},
-]);
+});
 
 async function serveAsset(request: Request): Promise<Response> {
 	const url = new URL(request.url);
@@ -105,7 +113,7 @@ function handleRequest(request: Request): Promise<Response> {
 	if (DEV_SERVER_URL) {
 		const url = new URL(request.url);
 		if (url.host !== HOST) return Promise.resolve(new Response(null, { status: 404 }));
-		// Module scripts carry `Origin: codework-dev://app`; forwarding it makes
+		// Module scripts carry `Origin: codeworkdev://app`; forwarding it makes
 		// net.fetch a CORS request the dev server never allows, failing every script.
 		const headers = new Headers(request.headers);
 		headers.delete("origin");

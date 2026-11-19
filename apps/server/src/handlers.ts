@@ -110,6 +110,33 @@ export const layer = Contract.Api.toLayer(
 			"metrics.usage": (input) => Metrics.usage(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"metrics.hours": (input) => Metrics.hours(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
+			"machine.info": Effect.fn("machine.info")(function* () {
+				return yield* call((client) => client("machine.info", {}));
+			}),
+			"machine.rename": Effect.fn("machine.rename")(function* ({ givenName }) {
+				return yield* call((client) => client("machine.rename", { givenName }));
+			}),
+			// The CLI's own failure (not connected to that workspace) keeps its message.
+			"machine.disconnect": Effect.fn("machine.disconnect")(function* (input) {
+				const reply = yield* call((client) =>
+					client("machine.disconnect", input).pipe(
+						Effect.map((disconnected) => ({ disconnected })),
+						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
+					),
+				);
+				return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.disconnected);
+			}),
+			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
+			// a dropped server reads as unavailable.
+			"machine.connect": ({ workspaceId }) =>
+				Codework.stream((client) =>
+					client("machine.connect", { workspaceId }).pipe(
+						Stream.map((event) => ({ event })),
+						Stream.catchTag("Machine.ConnectError", (failed) => Stream.succeed({ failed })),
+					),
+				).pipe(
+					Stream.flatMap((item) => ("failed" in item ? Stream.fail(item.failed) : Stream.succeed(item.event))),
+				),
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));
 			}),
@@ -205,6 +232,9 @@ export const layer = Contract.Api.toLayer(
 			"servers.setDefault": Effect.fn("servers.setDefault")(function* ({ id }: { readonly id: string }) {
 				yield* changingDefault(servers.setDefault(id));
 				yield* health.check;
+			}),
+			"servers.install": Effect.fn("servers.install")(function* ({ id }: { readonly id: string }) {
+				yield* Cli.install(yield* servers.getLocal(id)).pipe(Effect.ensuring(health.check));
 			}),
 			"servers.service": Effect.fn("servers.service")(function* ({
 				id,

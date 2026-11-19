@@ -1,0 +1,20 @@
+# Local Postgres for development and the E2E tests. Production is managed Postgres behind Hyperdrive.
+services:
+   postgres:
+      image: postgres:18
+      environment:
+         POSTGRES_USER: relay
+         POSTGRES_PASSWORD: relay
+         POSTGRES_DB: relay
+      ports:
+         - "55432:5432"
+      volumes:
+         - relay-postgres:/var/lib/postgresql
+      healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+         interval: 2s
+         timeout: 3s
+         retries: 15
+
+volumes:
+   relay-postgres:

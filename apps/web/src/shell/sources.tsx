@@ -11,7 +11,6 @@ import {
 } from "@phosphor-icons/react";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
-import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
 
@@ -77,9 +76,7 @@ const cloneAtom = Server.mutation("host.clone");
 const lookupAtom = Server.mutation("github.lookup");
 
 const failureOf = <A, E>(result: AsyncResult.AsyncResult<A, E>) =>
-	AsyncResult.isFailure(result)
-		? messageOf(Option.getOrElse(Cause.findErrorOption(result.cause), () => Cause.squash(result.cause)))
-		: undefined;
+	AsyncResult.isFailure(result) ? messageOf(result.cause) : undefined;
 
 /** The palette's Add Project steps: pick a source, then browse, name, or clone into a folder. */
 export function AddProject(nav: Nav) {

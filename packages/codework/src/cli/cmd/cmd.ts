@@ -350,6 +350,36 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 		}),
+		Spec.make("connect", {
+			description: "Connect this machine to a workspace",
+			params: {
+				workspace: Flag.String("workspace").pipe(
+					Flag.withDescription("Workspace to connect to; otherwise the approver picks it"),
+					Flag.optional,
+				),
+				machineId: Flag.String("machine-id").pipe(
+					Flag.withDescription("Set this home's machine id instead of generating one, e.g. build-box-1"),
+					Flag.optional,
+				),
+			},
+			examples: [
+				{ command: "codework connect", description: "Show a code to approve in the CodeWork app" },
+				{
+					command: "codework connect --machine-id build-box-1",
+					description: "Connect with a fixed id, replacing a rebuilt machine's old link",
+				},
+			],
+		}),
+		Spec.make("disconnect", {
+			description: "Disconnect this machine from a workspace",
+			params: {
+				workspace: Flag.String("workspace").pipe(
+					Flag.withDescription("Workspace to leave; optional when only one is connected"),
+					Flag.optional,
+				),
+			},
+			examples: [{ command: "codework disconnect", description: "Leave the only connected workspace" }],
+		}),
 		Spec.make("serve", {
 			description: "Start the CodeWork RPC server",
 			params: {

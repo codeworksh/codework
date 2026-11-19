@@ -16,31 +16,48 @@ export function Page({
 	children: ReactNode;
 }) {
 	return (
-		<div className="@container mx-auto flex w-full max-w-conversation flex-col gap-6 px-5 py-8 text-ui sm:px-8">
-			<header className="flex flex-col gap-2">
+		// A 640px column, set well below the panel's top edge: settings read as a document, not a dashboard.
+		<div className="@container mx-auto flex w-full max-w-settings flex-col gap-8 px-5 pt-16 pb-16 text-ui sm:px-8">
+			<header className="flex flex-col gap-1.5">
 				<div className="flex items-center gap-4">
-					<h1 className="min-w-0 flex-1 text-[22px]/tight font-semibold tracking-tight">{title}</h1>
+					<h1 className="min-w-0 flex-1 text-2xl/8 font-medium text-balance">{title}</h1>
 					{actions}
 				</div>
-				{description !== undefined && <p className="text-ink-muted">{description}</p>}
+				{description !== undefined && <p className="font-book text-ink-muted">{description}</p>}
 			</header>
 			{children}
 		</div>
 	);
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({
+	title,
+	description,
+	children,
+}: {
+	title: string;
+	/** A line under the title, for what is true of the whole section. */
+	description?: string | undefined;
+	children: ReactNode;
+}) {
 	return (
 		<section className="flex flex-col gap-2">
-			<h2 className="flex min-h-7 items-center text-ui font-medium text-ink-muted">{title}</h2>
+			<div className="flex flex-col">
+				<h2 className="flex min-h-7 items-center text-section font-medium">{title}</h2>
+				{description !== undefined && <p className="text-xs font-book text-ink-muted">{description}</p>}
+			</div>
 			{children}
 		</section>
 	);
 }
 
-/** A card of rows with a divider between each. */
+/** A card of rows with a divider between each, raised on the page's brightest surface. */
 export function Group({ children }: { children: ReactNode }) {
-	return <div className="flex flex-col divide-y divide-edge/60 rounded-lg border border-edge/60">{children}</div>;
+	return (
+		<div className="flex flex-col divide-y divide-edge/60 rounded-[10px] bg-frame-top shadow-(--cw-card-shadow)">
+			{children}
+		</div>
+	);
 }
 
 /** A labelled setting: title and a one-line description on the left, its control on the right. */
@@ -54,10 +71,10 @@ export function Row({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex flex-col items-start gap-3 px-4 py-3 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:gap-4">
+		<div className="flex min-h-15 flex-col items-start gap-3 px-4 py-3 @min-[560px]:flex-row @min-[560px]:items-center @min-[560px]:gap-4">
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<span className="font-medium">{title}</span>
-				{description !== undefined && <span className="text-ui text-ink-muted">{description}</span>}
+				{description !== undefined && <span className="text-xs font-book text-ink-muted">{description}</span>}
 			</div>
 			{children}
 		</div>
@@ -118,7 +135,7 @@ export function SavingInput({
 }
 
 /** The quiet look of a settings field on every theme; the stock input fills in dark ones. */
-export const quietField = "rounded-lg border-edge bg-ink/3 shadow-none dark:bg-ink/3";
+export const quietField = "rounded-lg border-edge shadow-none";
 
 /** A name as it is typed in a shell: a variable, a command or a flag. */
 export const Code = ({ children }: { children: ReactNode }) => (

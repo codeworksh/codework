@@ -32,6 +32,9 @@ allowBuilds:
    workerd: true
    # electron-builder's Windows installer; the desktop app builds no Windows targets.
    electron-winstaller: false
+   # Pulled in by Clerk's browser SDK; their install scripts only print messages.
+   browser-tabs-lock: false
+   core-js: false
 
 patchedDependencies:
    "@legendapp/list@3.3.5": patches/@legendapp__list@3.3.5.patch

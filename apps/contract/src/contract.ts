@@ -1,3 +1,4 @@
+import { Machine } from "@codeworksh/schema";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import {
@@ -817,6 +818,30 @@ export const Api = RpcGroup.make(
 		success: ModelList,
 		error: Schema.Union([CodeworkUnavailable, ModelsError]),
 	}),
+	/** The default machine and the workspaces it is connected to. */
+	Rpc.make("machine.info", {
+		success: Machine.Status,
+		error: CodeworkUnavailable,
+	}),
+	/** Names the default machine for people; an empty name goes back to the OS's. */
+	Rpc.make("machine.rename", {
+		payload: { givenName: Schema.String },
+		success: Machine.Status,
+		error: CodeworkUnavailable,
+	}),
+	/** Disconnects the default machine from a workspace. */
+	Rpc.make("machine.disconnect", {
+		payload: Machine.Disconnect,
+		success: Machine.Disconnected,
+		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+	}),
+	/** Connects the default machine to a workspace: the code to approve, then the link. */
+	Rpc.make("machine.connect", {
+		payload: { workspaceId: Schema.String },
+		success: Machine.ConnectEvent,
+		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		stream: true,
+	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {
 		success: Schema.Struct({ home: Schema.String, projects: Schema.String }),
@@ -990,6 +1015,12 @@ export const Api = RpcGroup.make(
 	/** The app reconnects through the new default's home at once; only a local server can be the default. */
 	Rpc.make("servers.setDefault", {
 		payload: ServerId,
+		success: Schema.Void,
+		error: ServersError,
+	}),
+	/** Installs codework with the install script, into its default folder, then starts the local server `id`. */
+	Rpc.make("servers.install", {
+		payload: { id: Schema.String },
 		success: Schema.Void,
 		error: ServersError,
 	}),

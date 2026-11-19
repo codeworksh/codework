@@ -25,6 +25,8 @@ const Handlers = Runtime.handlers(Cmd, {
 		reconnect: () => import("./cli/cmd/handlers/mcp/reconnect.ts"),
 		disconnect: () => import("./cli/cmd/handlers/mcp/disconnect.ts"),
 	},
+	connect: () => import("./cli/cmd/handlers/connect.ts"),
+	disconnect: () => import("./cli/cmd/handlers/disconnect.ts"),
 	run: () => import("./cli/cmd/handlers/run.ts"),
 	serve: () => import("./cli/cmd/handlers/serve.ts"),
 	service: {

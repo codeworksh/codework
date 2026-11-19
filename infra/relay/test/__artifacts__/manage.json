@@ -1,0 +1,43 @@
+{
+	"decline": {
+		"listed": [
+			{
+				"code": "<code>",
+				"machine": "e2e-box",
+				"status": "pending",
+				"replaces": false
+			}
+		],
+		"status": 204,
+		"exitCode": 1,
+		"error": "error: The connect was declined; run connect again for a new code",
+		"pendingAfter": 0
+	},
+	"typedCode": {
+		"status": 200,
+		"exitCode": 0,
+		"output": "Approve this machine in the CodeWork app with code <code>\nConnected to Ada's Workspace\nIt shows online once its server runs: codework service start --home <home>\n"
+	},
+	"remove": {
+		"status": 204,
+		"staleKey": 404,
+		"pollAfterRemove": "superseded",
+		"machinesAfter": 0,
+		"machineFileForgot": true,
+		"again": {
+			"status": 404,
+			"tag": "Relay.NotFound"
+		}
+	},
+	"badWorkspace": {
+		"exitCode": 1,
+		"error": "error: --workspace must be a Workspace ID; copy it from Settings → Machines in the CodeWork app"
+	},
+	"unknownWorkspace": {
+		"exitCode": 1,
+		"error": "error: No such workspace"
+	},
+	"badParam": {
+		"status": 400
+	}
+}

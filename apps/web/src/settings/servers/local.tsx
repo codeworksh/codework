@@ -1,4 +1,4 @@
-import { ArrowCounterClockwiseIcon, CheckIcon, CopyIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useAtomSet } from "@effect/atom-react";
 import { type CliAction, LOCAL_SERVER, type LocalServerStatus, type ServerUpdate } from "@codeworksh/contract";
 
@@ -19,15 +19,14 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import brand from "../../assets/codework.png";
 import { Server } from "../../kernel/rpc";
+import { INSTALL, installAtom, serviceAtom } from "../../kernel/servers";
 import { Code, Group as Card, quietField as field, SavingInput } from "../blocks";
 import { Variables } from "./variables";
+import { CopyCommand } from "@/components/copyable";
 
-const serviceAtom = Server.mutation("servers.service");
 const updateAtom = Server.mutation("servers.update");
 const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
-
-const INSTALL = "curl -fsSL https://codework.sh/install | sh";
 
 type Tone = "success" | "warning" | "danger" | "info" | "muted";
 
@@ -232,7 +231,12 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						placeholder={cli !== null && !cli.custom ? cli.path : "codework"}
 						onSave={(next) => configure({ executable: next || null })}
 					>
-						{cli === null && <CopyCommand command={INSTALL} />}
+						{cli === null && (
+							<span className="flex flex-col items-start gap-2">
+								<Install id={status.id} />
+								<CopyCommand command={INSTALL} />
+							</span>
+						)}
 						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
@@ -446,25 +450,27 @@ function ServerLine({ status }: { status: LocalServerStatus }) {
 	return "Not running. Once started, it keeps running in the background after the app quits.";
 }
 
-function CopyCommand({ command }: { command: string }) {
-	const [copied, setCopied] = useState(false);
+/** Runs the install command for the user, then starts this server; the status shows the result. */
+function Install({ id }: { id: string }) {
+	const install = useAtomSet(installAtom, { mode: "promise" });
+	const [installing, setInstalling] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	return (
-		<span className="flex items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">
-			<code className="flex-1 font-mono text-xs">{command}</code>
+		<span className="flex flex-col items-start gap-1">
 			<Button
-				size="icon-xs"
-				variant="ghost"
-				aria-label="Copy install command"
-				title="Copy"
-				onClick={() =>
-					void navigator.clipboard.writeText(command).then(() => {
-						setCopied(true);
-						setTimeout(() => setCopied(false), 1500);
-					})
-				}
+				size="sm"
+				disabled={installing}
+				onClick={() => {
+					setInstalling(true);
+					setError(null);
+					install({ payload: { id } })
+						.catch((cause: unknown) => setError(messageOf(cause)))
+						.finally(() => setInstalling(false));
+				}}
 			>
-				{copied ? <CheckIcon /> : <CopyIcon />}
+				{installing ? "Installing…" : "Install CodeWork"}
 			</Button>
+			{error !== null && <span className="text-sm text-destructive">{error}</span>}
 		</span>
 	);
 }

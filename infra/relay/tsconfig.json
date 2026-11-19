@@ -1,0 +1,7 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "../../.cache/typescript/relay.tsbuildinfo"
+	},
+	"include": ["src", "test", "vite.config.ts"]
+}
