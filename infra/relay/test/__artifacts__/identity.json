@@ -1,0 +1,31 @@
+{
+	"machineFile": {
+		"identityKty": "OKP",
+		"identityCrv": "Ed25519",
+		"identityIsALinkKey": false
+	},
+	"links": [
+		{
+			"id": "e2e-box",
+			"workspace": "<first>",
+			"identityIsHomeIdentity": true
+		},
+		{
+			"id": "e2e-box",
+			"workspace": "<second>",
+			"identityIsHomeIdentity": true
+		}
+	],
+	"linkKeysDiffer": true,
+	"replayedBinding": {
+		"status": 401,
+		"tag": "Relay.Unauthorized",
+		"message": "The identity vouches for another key"
+	},
+	"malformedBinding": {
+		"status": 401,
+		"tag": "Relay.Unauthorized",
+		"message": "Malformed identity"
+	},
+	"forgedPairings": 0
+}

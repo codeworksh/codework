@@ -29,6 +29,7 @@ interface MachineRow {
 	readonly ownerId: string;
 	readonly key: Jws.PublicKey;
 	readonly keyId: string;
+	readonly identityKeyId: string;
 	readonly online: boolean;
 	readonly lastSeenAt: Date | null;
 	readonly revokedAt: Date | null;
@@ -40,6 +41,7 @@ interface PairingRow {
 	readonly machine: Relay.MachineInfo;
 	readonly key: Jws.PublicKey;
 	readonly keyId: string;
+	readonly identityKeyId: string;
 	readonly status: "pending" | "approved" | "active" | "declined" | "superseded";
 	readonly approvedBy: string | null;
 	readonly connected: Relay.Connected | null;
@@ -57,6 +59,7 @@ const toMachine = (row: MachineRow) =>
 		arch: row.arch,
 		version: row.version,
 		keyId: row.keyId,
+		identityKeyId: row.identityKeyId,
 		ownerId: row.ownerId,
 		online: row.online,
 		lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
@@ -138,7 +141,7 @@ export class Machines extends Context.Service<
 
 			const machineColumns = sql`
 				workspace_id, id, source, local_host_name, given_name, os, arch, version, owner_id, key, key_id,
-				last_seen_at, revoked_at, coalesce(last_seen_at > now() - make_interval(secs => ${leaseSeconds}), false) AS online
+				identity_key_id, last_seen_at, revoked_at, coalesce(last_seen_at > now() - make_interval(secs => ${leaseSeconds}), false) AS online
 			`;
 
 			// A machine request names its key by thumbprint; the key finds the one link it may act on.
@@ -163,8 +166,22 @@ export class Machines extends Context.Service<
 				return { row, claims: decoded };
 			});
 
+			// The home's identity key vouches for a pairing's link key: it signs the link key's thumbprint, so
+			// a copied public key proves nothing and a binding made for one link can't serve another.
+			const identity = Effect.fn("Machines.identity")(function* (binding: string, keyId: string) {
+				const header = yield* Jws.peek(binding).pipe(Effect.mapError(() => invalid("Malformed identity")));
+				if (header.jwk === undefined) return yield* invalid("An identity embeds its key");
+				const claims = yield* Jws.verify(binding, header.jwk).pipe(
+					Effect.flatMap(Schema.decodeUnknownEffect(Relay.IdentityClaims)),
+					Effect.mapError(() => invalid("Invalid identity")),
+				);
+				yield* fresh(claims.iat);
+				if (claims.keyId !== keyId) return yield* invalid("The identity vouches for another key");
+				return yield* Jws.thumbprint(header.jwk).pipe(Effect.orDie);
+			});
+
 			const pairingColumns = sql`
-				id, workspace_id, machine, key, key_id, approved_by, connected, expires_at < now() AS expired,
+				id, workspace_id, machine, key, key_id, identity_key_id, approved_by, connected, expires_at < now() AS expired,
 				CASE WHEN status = 'active' AND NOT EXISTS (
 					SELECT 1 FROM machine m WHERE m.key_id = pairing.key_id AND m.revoked_at IS NULL
 				) THEN 'superseded' ELSE status END AS status
@@ -188,16 +205,18 @@ export class Machines extends Context.Service<
 						// Replacing a live link keeps its owner; a new or revoked one belongs to the approver.
 						const [row] = yield* sql<MachineRow>`
 							INSERT INTO machine (
-								workspace_id, id, source, local_host_name, given_name, os, arch, version, owner_id, key, key_id
+								workspace_id, id, source, local_host_name, given_name, os, arch, version, owner_id, key, key_id,
+								identity_key_id
 							) VALUES (
 								${workspaceId}, ${info.id}, ${info.source}, ${info.localHostName}, ${info.givenName},
 								${info.os}, ${info.arch}, ${info.version}, ${pairing.approvedBy},
-								${JSON.stringify(pairing.key)}::jsonb, ${pairing.keyId}
+								${JSON.stringify(pairing.key)}::jsonb, ${pairing.keyId}, ${pairing.identityKeyId}
 							)
 							ON CONFLICT (workspace_id, id) DO UPDATE SET
 								source = excluded.source, local_host_name = excluded.local_host_name,
 								given_name = excluded.given_name, os = excluded.os, arch = excluded.arch,
 								version = excluded.version, key = excluded.key, key_id = excluded.key_id,
+								identity_key_id = excluded.identity_key_id,
 								owner_id = CASE WHEN machine.revoked_at IS NULL THEN machine.owner_id ELSE excluded.owner_id END,
 								last_seen_at = NULL, revoked_at = NULL
 							RETURNING ${machineColumns}
@@ -238,6 +257,7 @@ export class Machines extends Context.Service<
 						);
 						yield* fresh(claims.iat);
 						const keyId = yield* Jws.thumbprint(header.jwk).pipe(Effect.orDie);
+						const identityKeyId = yield* identity(claims.identity, keyId);
 						// A key registers once: reused, it would answer for another connect or link.
 						const taken = yield* sql`
 							SELECT 1 FROM machine WHERE key_id = ${keyId} UNION ALL SELECT 1 FROM pairing WHERE key_id = ${keyId}
@@ -251,10 +271,10 @@ export class Machines extends Context.Service<
 						yield* sql`DELETE FROM pairing WHERE expires_at < now() - interval '1 day'`;
 						const code = userCode();
 						yield* sql`
-							INSERT INTO pairing (user_code, workspace_id, machine, key, key_id, status, expires_at)
+							INSERT INTO pairing (user_code, workspace_id, machine, key, key_id, identity_key_id, status, expires_at)
 							VALUES (
 								${code}, ${claims.workspaceId}, ${JSON.stringify(claims.machine)}::jsonb,
-								${JSON.stringify(header.jwk)}::jsonb, ${keyId}, 'pending',
+								${JSON.stringify(header.jwk)}::jsonb, ${keyId}, ${identityKeyId}, 'pending',
 								now() + make_interval(secs => ${pairingSeconds})
 							)
 						`;

@@ -49,6 +49,8 @@ export class Machine extends Schema.Class<Machine>("Relay.Machine")({
 	workspaceId: WorkspaceId,
 	/** The thumbprint of the key the link is live under; a home holds that key for this workspace. */
 	keyId: Schema.String,
+	/** The thumbprint of the home's identity key: links with the same one, in any workspace, are one machine. */
+	identityKeyId: Schema.String,
 	ownerId: Schema.String,
 	online: Schema.Boolean,
 	lastSeenAt: Schema.NullOr(Schema.String),
@@ -65,8 +67,21 @@ export const PairingClaims = Schema.Struct({
 	machine: MachineInfo,
 	/** The workspace the connect started from; the approver may pick another when it is null. */
 	workspaceId: Schema.NullOr(WorkspaceId),
+	/** An {@link IdentityClaims} JWS by the home's identity key, naming this request's key. */
+	identity: Schema.String,
 });
 export type PairingClaims = typeof PairingClaims.Type;
+
+/**
+ * A home's identity key vouching for one of its link keys. It embeds the identity key and names the link
+ * key's thumbprint, so the binding can't be replayed for another link.
+ */
+export const IdentityClaims = Schema.Struct({
+	op: Schema.Literal("identity.bind"),
+	iat: Schema.Number,
+	keyId: Schema.String,
+});
+export type IdentityClaims = typeof IdentityClaims.Type;
 
 /** A pairing's poll, signed with the key it registered: only that process learns the outcome. */
 export const PollClaims = Schema.Struct({

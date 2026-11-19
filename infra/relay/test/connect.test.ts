@@ -399,4 +399,85 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			gateway.closeAllConnections();
 		}
 	}, 30_000);
+
+	it("binds every link of a home to one identity, and refuses a binding made for another key", async () => {
+		const first = decodeMe(await (await asPerson("/v1/me")).json()).workspaces[0]!;
+		const created = await asPerson("/v1/workspaces", { method: "POST", body: JSON.stringify({ name: "Second" }) });
+		const second = Schema.decodeUnknownSync(Relay.Workspace)(await created.json());
+		const link = async (workspaceId: string) => {
+			const connect = codework(["connect", "--workspace", workspaceId]);
+			const done = finished(connect);
+			const userCode = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+			const approve = await asPerson("/v1/pairings/approve", {
+				method: "POST",
+				body: JSON.stringify({ userCode, workspaceId }),
+			});
+			expect(approve.status).toBe(200);
+			expect((await done).code).toBe(0);
+		};
+
+		// One home, two workspaces: two link keys, one identity behind both.
+		await link(first.id);
+		await link(second.id);
+		const file = machineFile();
+		const [inFirst] = await machines(first.id);
+		const [inSecond] = await machines(second.id);
+
+		// Even the home's real identity key can't vouch for a link key its binding doesn't name.
+		const forger: Relay.MachineInfo = {
+			id: "e2e-forger",
+			source: "flag",
+			localHostName: "forger",
+			givenName: null,
+			os: "linux",
+			arch: "arm64",
+			version: "0.0.0",
+		};
+		const pair = async (identity: (keyId: string) => Promise<string>) => {
+			const key = await Effect.runPromise(Jws.generate());
+			const keyId = await Effect.runPromise(Jws.thumbprint(Jws.publicOf(key)));
+			const claims: Relay.PairingClaims = {
+				op: "pairing.create",
+				iat: Date.now(),
+				machine: forger,
+				workspaceId: first.id,
+				identity: await identity(keyId),
+			};
+			const response = await fetch(`${relay.base}/v1/pairings`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ jws: await Effect.runPromise(Jws.sign(claims, key, { embed: true })) }),
+			});
+			const body = Schema.decodeUnknownSync(Schema.Struct({ _tag: Schema.String, message: Schema.String }))(
+				await response.json(),
+			);
+			return { status: response.status, tag: body._tag, message: body.message };
+		};
+		const bindingFor = (keyId: string) =>
+			Effect.runPromise(
+				Jws.sign({ op: "identity.bind", iat: Date.now(), keyId }, file.identity.key, { embed: true }),
+			);
+		const replayed = await pair(async () => bindingFor(inFirst!.keyId));
+		const malformed = await pair(async () => "not-a-jws");
+
+		const artifact = {
+			machineFile: {
+				identityKty: file.identity.key.kty,
+				identityCrv: file.identity.key.crv,
+				identityIsALinkKey: Object.values<{ keyId: string }>(file.workspaces).some(
+					(entry) => entry.keyId === file.identity.keyId,
+				),
+			},
+			links: [inFirst!, inSecond!].map((machine) => ({
+				id: machine.id,
+				workspace: machine.workspaceId === first.id ? "<first>" : "<second>",
+				identityIsHomeIdentity: machine.identityKeyId === file.identity.keyId,
+			})),
+			linkKeysDiffer: inFirst!.keyId !== inSecond!.keyId,
+			replayedBinding: replayed,
+			malformedBinding: malformed,
+			forgedPairings: Number(relay.psql("SELECT count(*) FROM pairing WHERE machine->>'id' = 'e2e-forger'")),
+		};
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/identity.json");
+	}, 60_000);
 });

@@ -17,14 +17,22 @@ const Link = Schema.Struct({
 	keyId: Schema.String,
 });
 
+/** One key per home, vouching for each link key, so the relay knows every link of this home is one machine. */
+const Identity = Schema.Struct({ key: Jws.PrivateKey, keyId: Schema.String });
+type Identity = typeof Identity.Type;
+
 export const Machine = Schema.Struct({
 	id: Schema.String,
 	source: Relay.IdSource,
 	/** The user's own name for the machine; shown in place of the OS host name when set. */
 	givenName: Schema.optional(Schema.String),
+	// Optional only for homes connected before identities existed; `update` gives every home one.
+	identity: Schema.optional(Identity),
 	workspaces: Schema.Record(Schema.String, Link),
 });
 export type Machine = typeof Machine.Type;
+/** The machine as {@link update} hands it out: always with its identity. */
+type Identified = Machine & { readonly identity: Identity };
 
 const json = Schema.fromJsonString(Machine);
 
@@ -68,11 +76,16 @@ const write = Effect.fn("Machine.write")(function* (home: string, machine: Machi
 	yield* fs.rename(temp, path);
 });
 
+const newIdentity = Effect.gen(function* () {
+	const key = yield* Jws.generate();
+	return { key, keyId: yield* Jws.thumbprint(Jws.publicOf(key)) } satisfies Identity;
+});
+
 /** Reads, changes and writes the machine under the lock, creating its identity on first use. */
 export const update = <E, R>(
 	home: string,
 	options: { readonly machineId?: string | undefined },
-	change: (machine: Machine) => Effect.Effect<Machine, E, R>,
+	change: (machine: Identified) => Effect.Effect<Identified, E, R>,
 ) =>
 	locked(
 		home,
@@ -89,7 +102,8 @@ export const update = <E, R>(
 								}),
 							),
 			});
-			const next = yield* change(machine);
+			const identity = machine.identity ?? (yield* newIdentity);
+			const next = yield* change({ ...machine, identity });
 			yield* write(home, next);
 			return next;
 		}),
