@@ -10,10 +10,7 @@
 		],
 		"url": "ws://127.0.0.1:<port>/rpc/v1"
 	},
-	"token": {
-		"file": "token",
-		"mode": "600"
-	},
+	"token file": false,
 	"upgrade": {
 		"no protocol header": 401,
 		"fixed name only": 401,
@@ -106,5 +103,5 @@
 			"stderr": "error: no CodeWork server is running for this home\nhint: start one with `codework service start`\n"
 		}
 	},
-	"same token after a restart": true
+	"a new token after a restart": true
 }

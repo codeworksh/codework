@@ -413,6 +413,8 @@ export const RemoteServerStatus = Schema.Struct({
 	...ServerNaming,
 	isDefault: Schema.Boolean,
 	url: Schema.String,
+	/** Whether this app holds a session on it; false once the server refuses it (revoked or lapsed): pair again. */
+	paired: Schema.Boolean,
 });
 export type RemoteServerStatus = typeof RemoteServerStatus.Type;
 
@@ -433,8 +435,8 @@ export type CliAction = typeof CliAction.Type;
 
 /**
  * A new server. A local one needs a home of its own, since a home names one server; a remote one
- * needs its WebSocket URL and the token in `<home>/token` of its CodeWork home. A blank or absent
- * `name` is no override.
+ * needs its WebSocket URL and a pairing code from `codework service pair` on that machine. A blank or
+ * absent `name` is no override.
  */
 export const ServerAdd = Schema.Union([
 	Schema.Struct({
@@ -448,14 +450,15 @@ export const ServerAdd = Schema.Union([
 		kind: Schema.Literal("remote"),
 		name: Schema.optionalKey(Schema.String),
 		url: Schema.String,
-		token: Schema.String,
+		code: Schema.String,
 	}),
 ]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * a blank `name` removes the override; `env` replaces every variable. `url` and `token` are for a remote server only, the rest but `name` for a local one.
+ * a blank `name` removes the override; `env` replaces every variable. `url` and `code` are for a remote
+ * server only, the rest but `name` for a local one; a `code` pairs again, at the new `url` when given.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -465,13 +468,18 @@ export const ServerUpdate = Schema.Struct({
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
 	url: Schema.optionalKey(Schema.String),
-	token: Schema.optionalKey(Schema.String),
+	code: Schema.optionalKey(Schema.String),
 });
 export type ServerUpdate = typeof ServerUpdate.Type;
 
 export const ServerId = Schema.Struct({ id: Schema.String });
 
 export class ServersError extends Schema.TaggedError<ServersError>()("Server.ServersError", {
+	message: Schema.String,
+}) {}
+
+/** A remote server refused the pairing code: wrong, used or expired. */
+export class PairingRefused extends Schema.TaggedError<PairingRefused>()("Server.PairingRefused", {
 	message: Schema.String,
 }) {}
 
@@ -1002,16 +1010,17 @@ export const Api = RpcGroup.make(
 		payload: ServerHealth,
 		success: Schema.Void,
 	}),
+	/** A remote server is paired with its code before it is stored. */
 	Rpc.make("servers.add", {
 		payload: ServerAdd,
 		success: Schema.String,
-		error: ServersError,
+		error: Schema.Union([ServersError, PairingRefused]),
 	}),
 	/** A new home for the default server reconnects the app at once. */
 	Rpc.make("servers.update", {
 		payload: ServerUpdate,
 		success: Schema.Void,
-		error: ServersError,
+		error: Schema.Union([ServersError, PairingRefused]),
 	}),
 	/** The default server and the built-in one stay. */
 	Rpc.make("servers.remove", {

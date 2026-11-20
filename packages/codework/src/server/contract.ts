@@ -30,6 +30,17 @@ import * as Principal from "./principal.ts";
 /** The HTTP path the RPC endpoint is served on; the version moves with breaking wire changes. */
 export const path = "/rpc/v1";
 
+/** A computer paired with this machine. */
+export const DeviceInfo = Schema.Struct({
+	id: Schema.String,
+	label: Schema.String,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	/** When it last took a ticket, epoch milliseconds; a session unseen for 30 days is refused. */
+	seenAt: Schema.Finite,
+});
+export type DeviceInfo = typeof DeviceInfo.Type;
+
 export const SandboxInfo = Schema.Struct({
 	id: Sandbox.SandboxInstance.ID,
 	driver: Schema.String,
@@ -945,6 +956,27 @@ export const Api = RpcGroup.make(
 		success: Machine.ConnectEvent,
 		error: Machine.ConnectError,
 		stream: true,
+	}),
+	/**
+	 * A one-time code another computer exchanges at `POST /pair` for a device session of its own.
+	 * Valid 10 minutes, once; held in memory, so a restart forgets it. Local callers only.
+	 */
+	Rpc.make("device.pair", {
+		payload: {},
+		success: Schema.Struct({ code: Schema.String, expiresAt: Schema.Finite }),
+		error: Principal.Forbidden,
+	}),
+	/** Every paired device, oldest first. Local callers only. */
+	Rpc.make("device.list", {
+		payload: {},
+		success: Schema.Array(DeviceInfo),
+		error: Principal.Forbidden,
+	}),
+	/** Forgets a device and ends its open connections; `applied` is false when none has `id`. Local callers only. */
+	Rpc.make("device.revoke", {
+		payload: { id: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: Principal.Forbidden,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {

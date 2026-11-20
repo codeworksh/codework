@@ -330,7 +330,7 @@ const migrations = {
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
 
-	// A remote machine's token, offered as its socket opens; a row from before has none and is refused.
+	// A remote machine's session token, which its pairing gave and each socket's ticket is taken with.
 	"202611200001_token": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`ALTER TABLE machine ADD COLUMN token TEXT`;

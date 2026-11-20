@@ -8,6 +8,7 @@ import { Socket } from "effect/socket";
 import path from "node:path";
 import { CodeworkUnavailable, HostError } from "@codeworksh/contract";
 import { Door } from "@codeworksh/schema";
+import { Pairing } from "./pairing.ts";
 import { Servers } from "./servers.ts";
 
 /** How a running server advertises itself: `<home>/service.json`, written by `codework serve`. */
@@ -31,7 +32,7 @@ export const registrationAt = (home: string) =>
 			.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Registration)), Effect.option);
 	});
 
-/** Where a server is reached, and the token its door takes; a remote row without one is refused. */
+/** Where a server is reached, and the credential its door takes: the home's token, or a ticket. */
 interface Target {
 	readonly url: string;
 	readonly token: string | undefined;
@@ -41,7 +42,10 @@ interface Target {
  * A socket to the server `target` reads, read afresh on every open, so its URL and token always
  * belong to the same server: a restarted one may have another port.
  */
-const open = <R>(target: Effect.Effect<Target, never, R>, options?: { readonly openTimeout?: Duration.Input }) =>
+const open = <R>(
+	target: Effect.Effect<Target, Socket.SocketError, R>,
+	options?: { readonly openTimeout?: Duration.Input },
+) =>
 	Socket.WebSocketConstructor.use((make) =>
 		Socket.fromWebSocket(
 			Effect.acquireRelease(
@@ -133,12 +137,32 @@ export const layer = local(registration, (socket) =>
 );
 
 /**
- * A connection to one machine's server: a remote one at its URL with the token stored for it, a local
+ * A remote server's URL with a fresh ticket for the row's session, taken on every connect. A server
+ * that refuses the session (revoked or lapsed) has it dropped from the row, which ends this connection
+ * (the sync follows the row), so it waits rather than asking again; so does a row without one.
+ * Interruptible, as {@link waitFor} is.
+ */
+const ticketed = (row: Servers.RemoteRow) =>
+	Effect.gen(function* () {
+		const session = row.token;
+		if (session === null) return yield* Effect.never;
+		const ticket = yield* Pairing.ticket(row.url, session).pipe(
+			Effect.mapError(
+				(cause) => new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) }),
+			),
+		);
+		if (ticket !== undefined) return { url: row.url, token: ticket };
+		yield* Servers.Service.use((servers) => servers.unpair(row.id, session));
+		return yield* Effect.never;
+	}).pipe(Effect.interruptible);
+
+/**
+ * A connection to one machine's server: a remote one at its URL with a ticket per socket, a local
  * one at what its home registers, read on every connect as {@link layer} does.
  */
 export const machine = (row: Servers.Row) =>
 	row.kind === "remote"
-		? connect(Layer.effect(Socket.Socket, open(Effect.succeed({ url: row.url, token: row.token ?? undefined }))))
+		? connect(Layer.effect(Socket.Socket, open(ticketed(row))))
 		: local(
 				Effect.gen(function* () {
 					return yield* registrationAt((yield* Servers.Service).homeOf(row).path);

@@ -1,11 +1,11 @@
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
 import * as Service from "../../../service.ts";
 import { type ThreadInfo, ThreadInfo as ThreadInfoSchema } from "../../../../server/contract.ts";
 import { reportFailure } from "../../../error.ts";
 import { sessionId } from "../../../ids.ts";
-import { writeJson, writeOut } from "../../../output.ts";
+import { table, writeJson, writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
 
 const origin = (info: ThreadInfo): string => {
@@ -37,15 +37,9 @@ export default Runtime.handler(
 				`${info.usage.input + info.usage.output} tok ${cost(info)}`,
 				info.title ?? "(untitled)",
 			]);
-			const widths = rows[0]?.map((_, column) => Math.max(...rows.map((row) => row[column]?.length ?? 0))) ?? [];
-			for (const row of rows) {
-				const last = row.length - 1;
-				yield* writeOut(
-					`${row.map((cell, column) => (column === last ? cell : cell.padEnd(widths[column] ?? 0))).join("  ")}\n`,
-				);
-			}
+			yield* writeOut(table(rows));
 		});
 
-		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

@@ -14,20 +14,75 @@
 		"token in the response": false
 	},
 	"the last start's token": 401,
-	"right token": {
+	"after the local server restarts": {
 		"synced": true
 	},
-	"wrong token and none": {
-		"wrong": {
+	"a good code": {
+		"synced": true,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Scripted",
+			"host": "Fixture",
+			"override": "Scripted",
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": true
+		}
+	},
+	"a wrong code": {
+		"_tag": "Server.PairingRefused",
+		"message": "That pairing code was not accepted. Run `codework service pair` on that machine for a new one."
+	},
+	"a row from before pairing": {
+		"row": {
 			"store_id": null,
 			"cursor": 0
 		},
-		"stored": {
-			"store_id": null,
-			"cursor": 0
+		"status": {
+			"id": "stored",
+			"kind": "remote",
+			"name": "<good host>",
+			"host": null,
+			"override": null,
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": false
 		}
 	},
-	"wrong token, replaced": {
+	"after the machine restarts": {
 		"synced": true
+	},
+	"after device.revoke": {
+		"session": null,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Scripted",
+			"host": "Fixture",
+			"override": "Scripted",
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": false
+		}
+	},
+	"devices": [
+		{
+			"label": "Fixture"
+		}
+	],
+	"paired again": {
+		"synced": true,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Scripted",
+			"host": "Fixture",
+			"override": "Scripted",
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": true
+		},
+		"a new session": true
 	}
 }

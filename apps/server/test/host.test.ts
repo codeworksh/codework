@@ -85,11 +85,11 @@ it("a machine is named by its server's host unless the user names it, else by wh
 
 	registerLocal(appHome, local, localPort);
 	const desk = await app(appHome);
-	const remoteId = await desk.run((rpc) =>
-		rpc["servers.add"]({ kind: "remote", url: remote.url, token: remote.token }),
-	);
+	const remoteCode = await remote.pair();
+	const remoteId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: remote.url, code: remoteCode }));
+	const olderCode = await older.pair();
 	const olderId = await desk.run((rpc) =>
-		rpc["servers.add"]({ kind: "remote", name: "  ", url: older.url, token: older.token }),
+		rpc["servers.add"]({ kind: "remote", name: "  ", url: older.url, code: olderCode }),
 	);
 	await synced(appHome, Contract.LOCAL_SERVER, local);
 	await synced(appHome, remoteId, remote);

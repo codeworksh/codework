@@ -253,7 +253,7 @@
 	},
 	"servers": {
 		"badUrl": "Use a WebSocket URL, such as wss://codework.example.com/rpc.",
-		"badToken": "Use the token in `token` in that machine's CodeWork home.",
+		"badCode": "That pairing code was not accepted. Run `codework service pair` on that machine for a new one.",
 		"added": [
 			{
 				"id": "local",
@@ -265,10 +265,11 @@
 				"id": "<remote>",
 				"kind": "remote",
 				"name": "Cloud",
-				"host": null,
+				"host": "Fixture",
 				"override": "Cloud",
 				"isDefault": false,
-				"url": "wss://cloud.example.test/rpc"
+				"url": "<remote url>",
+				"paired": true
 			}
 		],
 		"updated": [
@@ -282,16 +283,17 @@
 				"id": "<remote>",
 				"kind": "remote",
 				"name": "Cloud tunnel",
-				"host": null,
+				"host": "Fixture",
 				"override": "Cloud tunnel",
 				"isDefault": false,
-				"url": "wss://tunnel.example.test/rpc"
+				"url": "wss://tunnel.example.test/rpc",
+				"paired": true
 			}
 		],
 		"refused": {
 			"localPatch": "A remote server has no executable, home, arguments or variables.",
 			"urlOnLocal": "Only a remote server has a URL.",
-			"tokenOnLocal": "Only a remote server has a token.",
+			"codeOnLocal": "Only a remote server has a pairing code.",
 			"defaultRemote": "Cloud tunnel is a remote server.",
 			"serviceRemote": "Cloud tunnel is a remote server."
 		},
@@ -299,7 +301,7 @@
 			"id": "<remote>",
 			"kind": "remote",
 			"name": "Cloud tunnel",
-			"host": null,
+			"host": "Fixture",
 			"executable": null,
 			"home": null,
 			"args": "",
@@ -308,14 +310,14 @@
 			"namespace": "codework",
 			"is_default": 0,
 			"pos": 1,
-			"store_id": null,
+			"store_id": "<store>",
 			"cursor": 0,
-			"boot": null,
+			"boot": "<boot>",
 			"rollup": 0,
-			"rollup_store": null,
-			"rollup_boot": null,
+			"rollup_store": "<store>",
+			"rollup_boot": "<boot>",
 			"created_at": "<time>",
-			"token": "<tunnel token>"
+			"token": "<session token>"
 		},
 		"cascade": {
 			"before": {

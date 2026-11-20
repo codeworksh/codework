@@ -16,13 +16,13 @@ const answer = (status: number | undefined, headers: IncomingHttpHeaders, raw: R
 	raw: raw.join("\n"),
 });
 
-/** One WebSocket upgrade request to `127.0.0.1:<port><path>` with `headers` added, and how it was answered. */
-const knock = (port: number, path: string, headers: Readonly<Record<string, string>>) =>
+/** One WebSocket upgrade request to `<host>:<port><path>` with `headers` added, and how it was answered. */
+export const knock = (port: number, path: string, headers: Readonly<Record<string, string>>, host = "127.0.0.1") =>
 	new Promise<Answer>((resolve, reject) => {
 		// A connection of its own: a refused upgrade ends the one it came on.
 		const req = request({
 			agent: false,
-			host: "127.0.0.1",
+			host,
 			port,
 			path,
 			headers: {

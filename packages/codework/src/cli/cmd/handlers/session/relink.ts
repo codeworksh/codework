@@ -31,6 +31,6 @@ export default Runtime.handler(
 			);
 		});
 
-		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

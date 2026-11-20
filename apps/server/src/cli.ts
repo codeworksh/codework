@@ -158,10 +158,10 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
-				// Its token stays here: the renderer is never sent one.
+				// Its session token stays here: the renderer is never sent one.
 				if (row.kind === "remote") {
-					const { token: _, ...status } = row;
-					return status satisfies ServerStatus;
+					const { token, ...status } = row;
+					return { ...status, paired: token !== null } satisfies ServerStatus;
 				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(

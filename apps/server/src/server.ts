@@ -106,7 +106,9 @@ const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "
 export const layer = Layer.unwrap(
 	Effect.map(Door.make, (token) =>
 		Layer.mergeAll(
-			HttpRouter.serve(Layer.merge(rpc, Door.layer({ token, origins: ORIGINS })), { disableListenLog: true }),
+			HttpRouter.serve(Layer.merge(rpc, Door.layer({ admit: Door.token(token), origins: ORIGINS })), {
+				disableListenLog: true,
+			}),
 			Widgets.layer,
 			exitWithParent,
 		).pipe(

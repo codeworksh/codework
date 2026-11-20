@@ -1,8 +1,8 @@
-/* @effect-diagnostics nodeBuiltinImport:off -- the suite reads service.json and the token file and runs the CLI in temporary homes. */
+/* @effect-diagnostics nodeBuiltinImport:off -- the suite reads service.json and runs the CLI in temporary homes. */
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Stream } from "effect";
 import { HttpServer } from "effect/http";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,6 @@ import { expect, it, onTestFinished } from "vite-plus/test";
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import * as MachineFile from "../src/machine/file.ts";
 import * as Client from "../src/server/client.ts";
-import * as Principal from "../src/server/principal.ts";
 import * as Registration from "../src/server/registration.ts";
 import * as Server from "../src/server/server.ts";
 import { models, runCli } from "./fixtures/cli.ts";
@@ -44,6 +43,8 @@ const serve = (dir: string) =>
 
 it("the loopback server opens its socket only to a caller with its home's token", async () => {
 	const local = home("local");
+	// A token file an earlier build kept, which a start deletes.
+	writeFileSync(join(local, "token"), "leftover");
 	const other = home("other");
 	const env = { ...process.env, HOME: other, CODEWORK_MODELS_FILE: models };
 	const cli = (...args: Array<string>) =>
@@ -61,8 +62,7 @@ it("the loopback server opens its socket only to a caller with its home's token"
 		const file = join(local, "service.json");
 		const filed = yield* registered(local);
 		expect(filed.url).toBe(url);
-		const token = readFileSync(Principal.file(local), "utf8").trim();
-		expect(filed.token).toBe(token);
+		const token = filed.token;
 		const serviceJson = {
 			mode: mode(file),
 			keys: Object.keys(filed).sort(),
@@ -157,7 +157,7 @@ it("the loopback server opens its socket only to a caller with its home's token"
 			token,
 			result: {
 				serviceJson,
-				token: { file: "token", mode: mode(Principal.file(local)) },
+				"token file": existsSync(join(local, "token")),
 				upgrade,
 				"a call with another token goes through": !refused,
 				"sessions made by the refused call": index.filter((item) => item._tag === "Session").length,
@@ -183,7 +183,7 @@ it("the loopback server opens its socket only to a caller with its home's token"
 		};
 	}).pipe(Effect.scoped, Effect.provide(serve(local)), Effect.timeout("60 seconds"), Effect.runPromise);
 
-	// The token is the home's: a restart in the same home files the same one.
+	// The token is the server's: a restart in the same home files a new one.
 	const restarted = await registered(local).pipe(
 		Effect.provide(serve(local)),
 		Effect.scoped,
@@ -192,7 +192,7 @@ it("the loopback server opens its socket only to a caller with its home's token"
 	);
 	const artifact = {
 		...result.result,
-		"same token after a restart": restarted.token === result.token,
+		"a new token after a restart": restarted.token !== result.token,
 	};
 	const text = `${JSON.stringify(artifact, null, "\t")}\n`;
 	expect(text).not.toContain(result.token);

@@ -1,5 +1,6 @@
-import { Effect, FileSystem, Layer, Path, Schedule, Schema } from "effect";
+import { Effect, FileSystem, Layer, Schedule, Schema } from "effect";
 import { isSea } from "node:sea";
+import * as Private from "../framework/private.ts";
 
 /**
  * How a running server advertises itself so later invocations can find it
@@ -44,17 +45,9 @@ export const read = (path: string) =>
 		);
 	});
 
-const write = Effect.fn("ServerRegistration.write")(function* (path: string, info: Info) {
-	const fs = yield* FileSystem.FileSystem;
-	const paths = yield* Path.Path;
-	yield* fs.makeDirectory(paths.dirname(path), { recursive: true });
-	const encoded = yield* Schema.encodeEffect(infoJson)(info);
-	// Write beside the target and rename, so a reader never sees a half-written
-	// file. 0600 because it carries the token.
-	const temp = `${path}.${info.pid}.tmp`;
-	yield* fs.writeFileString(temp, encoded, { mode: 0o600 });
-	yield* fs.rename(temp, path);
-});
+// Private because it carries the token.
+const write = (path: string, info: Info) =>
+	Schema.encodeEffect(infoJson)(info).pipe(Effect.flatMap((encoded) => Private.write(path, encoded)));
 
 /**
  * Publishes a registration for as long as this server lives, removing it on the

@@ -3,8 +3,15 @@ import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
 import path from "node:path";
-import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "@codeworksh/contract";
-import { Door } from "@codeworksh/schema";
+import {
+	type CliEnvVar,
+	LOCAL_SERVER,
+	PairingRefused,
+	type ServerAdd,
+	ServersError,
+	type ServerUpdate,
+} from "@codeworksh/contract";
+import { Pairing } from "./pairing.ts";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
 export const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(
@@ -59,12 +66,12 @@ export interface LocalRow extends Naming {
 	readonly isDefault: boolean;
 }
 
-/** A remote server as stored: where the app reaches it, and the token its door takes. */
+/** A remote server as stored: where the app reaches it, and the session it paired for. */
 export interface RemoteRow extends Naming {
 	readonly id: string;
 	readonly kind: "remote";
 	readonly url: string;
-	/** None on a row added before remote servers took one: it cannot connect until given one. */
+	/** The session token its pairing gave; none once the server refused it, or on a row from before pairing. */
 	readonly token: string | null;
 	readonly isDefault: boolean;
 }
@@ -86,14 +93,6 @@ const chosenPath = (input: string | null) =>
 			return yield* fail("Use a full path, such as ~/.codework or /usr/local/bin/codework.");
 		return path.normalize(expanded);
 	});
-
-/** A remote server's token as pasted in Settings. */
-const chosenToken = (input: string) => {
-	const trimmed = input.trim();
-	return Door.isToken(trimmed)
-		? Effect.succeed(trimmed)
-		: Effect.fail(fail("Use the token in `token` in that machine's CodeWork home."));
-};
 
 /** A remote server's URL typed in Settings: CodeWork answers over a WebSocket. */
 const chosenUrl = (input: string) => {
@@ -173,8 +172,10 @@ export class Service extends Context.Service<
 		readonly watch: Stream.Stream<ReadonlyArray<Row>>;
 		/** Stores the name a server reports, when it is not the one stored. */
 		readonly setHost: (id: string, host: string | null) => Effect.Effect<void>;
-		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError>;
-		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError>;
+		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError | PairingRefused>;
+		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError | PairingRefused>;
+		/** Drops a remote server's session once the server refused it, unless the row paired again since. */
+		readonly unpair: (id: string, token: string) => Effect.Effect<void>;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
 		readonly setDefault: (id: string) => Effect.Effect<void, ServersError>;
 	}
@@ -269,6 +270,22 @@ export const layer = Layer.effect(
 			return trimmed === "" ? null : trimmed;
 		};
 
+		/** A session on the remote server at `url` for the code typed in Settings, named after this computer. */
+		const pair = (url: string, code: string) =>
+			Effect.gen(function* () {
+				const label = ((yield* list).find((row) => row.id === LOCAL_SERVER)?.host ?? os.hostname()).slice(0, 100);
+				const device = yield* Pairing.exchange(url, code.trim(), label).pipe(
+					Effect.timeout("10 seconds"),
+					Effect.mapError(() => fail("Couldn't pair with the server at that URL. Check the URL, then try again.")),
+				);
+				if (device === undefined)
+					return yield* new PairingRefused({
+						message:
+							"That pairing code was not accepted. Run `codework service pair` on that machine for a new one.",
+					});
+				return device.token;
+			});
+
 		const transaction = <A, E>(effect: Effect.Effect<A, E>) =>
 			sql.withTransaction(effect).pipe(Effect.catchTag("SqlError", Effect.die));
 
@@ -294,7 +311,10 @@ export const layer = Layer.effect(
 				const route =
 					input.kind === "local"
 						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
-						: { url: yield* chosenUrl(input.url), token: yield* chosenToken(input.token) };
+						: yield* Effect.gen(function* () {
+								const url = yield* chosenUrl(input.url);
+								return { url, token: yield* pair(url, input.code) };
+							});
 				yield* transaction(
 					Effect.gen(function* () {
 						if (home !== null) yield* ensureOwnHome(null, home);
@@ -315,6 +335,21 @@ export const layer = Layer.effect(
 			}),
 
 			update: Effect.fn("Servers.update")(function* ({ id, ...patch }) {
+				// Paired before the transaction, which would otherwise hold the database through a network call.
+				const { code } = patch;
+				const session =
+					code === undefined
+						? undefined
+						: yield* get(id).pipe(
+								Effect.flatMap((row) =>
+									row.kind === "remote"
+										? Effect.flatMap(
+												patch.url === undefined ? Effect.succeed(row.url) : chosenUrl(patch.url),
+												(url) => pair(url, code),
+											)
+										: Effect.fail(fail("Only a remote server has a pairing code.")),
+								),
+							);
 				yield* transaction(
 					Effect.gen(function* () {
 						const row = yield* get(id);
@@ -324,10 +359,9 @@ export const layer = Layer.effect(
 							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
 								return yield* fail("A remote server has no executable, home, arguments or variables.");
 							if (patch.url !== undefined) fields.url = yield* chosenUrl(patch.url);
-							if (patch.token !== undefined) fields.token = yield* chosenToken(patch.token);
+							if (session !== undefined) fields.token = session;
 						} else {
 							if (patch.url !== undefined) return yield* fail("Only a remote server has a URL.");
-							if (patch.token !== undefined) return yield* fail("Only a remote server has a token.");
 							if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
 							if (patch.args !== undefined) fields.args = patch.args.trim();
 							if (patch.env !== undefined) fields.env = JSON.stringify(yield* nextEnv(patch.env, row.env));
@@ -344,6 +378,13 @@ export const layer = Layer.effect(
 					}),
 				);
 				yield* announce;
+			}),
+
+			unpair: Effect.fn("Servers.unpair")(function* (id, token) {
+				const changed = yield* sql`
+					UPDATE machine SET token = NULL WHERE id = ${id} AND token = ${token} RETURNING id
+				`.pipe(Effect.orDie);
+				if (changed.length > 0) yield* announce;
 			}),
 
 			// What was synced from the server goes with it, its rows cascading, except its usage: history.

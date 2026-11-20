@@ -71,10 +71,12 @@ export const layer = Layer.effect(
 
 		yield* check.pipe(Effect.forkScoped);
 
-		// A name a server reports reaches Settings without waiting for the next check; the app's own
-		// edits are checked by their handlers.
+		// A name a server reports, or a session it refused, reaches Settings without waiting for the next
+		// check; the app's own edits are checked by their handlers.
 		yield* servers.watch.pipe(
-			Stream.map((rows) => rows.map((row) => `${row.id}=${row.host}`).join("\n")),
+			Stream.map((rows) =>
+				rows.map((row) => `${row.id}=${row.host} ${row.kind === "remote" && row.token === null}`).join("\n"),
+			),
 			Stream.changes,
 			Stream.drop(1),
 			Stream.runForEach(() => check),
