@@ -225,9 +225,6 @@ export function TabsSettings() {
 					<Row title="Open settings">
 						<Keys>{isMac ? "⌘," : "Ctrl+,"}</Keys>
 					</Row>
-					<Row title="Close settings" description="Return to your last tab.">
-						<Keys>Esc</Keys>
-					</Row>
 				</Group>
 			</Section>
 		</Page>
