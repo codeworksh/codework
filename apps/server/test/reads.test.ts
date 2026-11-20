@@ -1,5 +1,5 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite registers CodeWork servers in temp homes. */
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vite-plus/test";
@@ -71,7 +71,7 @@ const registerLocal = (appHome: string, server: Codework, port: number) => {
 	mkdirSync(cli, { recursive: true });
 	writeFileSync(
 		join(cli, "service.json"),
-		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port }),
+		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port, token: server.token }),
 	);
 };
 
@@ -394,9 +394,21 @@ it("each read's topics fire after the change it shows, and the session backend f
 	await desk.run((rpc) => rpc["sync.open"](ref));
 	const lineTopics = await follow(desk, Contract.readTopics.line(ref.threadId));
 	await server.run((rpc) => rpc["thread.prompt"]({ ...ref, text: "gate" }));
+	// The first chunk comes as its delta, or in the reply's draft row when that row reaches the app first.
 	await waitFor(
-		() => lineTopics.events.find((event) => event.topic === Contract.syncTopics.delta(ref.threadId)),
-		"the first delta",
+		() =>
+			lineTopics.events.find(
+				(event) =>
+					event.topic === Contract.syncTopics.delta(ref.threadId) ||
+					(event.payload.threadId === ref.threadId &&
+						query(
+							appHome,
+							`SELECT entry.id FROM entry JOIN part ON part.entry_id = entry.id
+							 WHERE entry.thread_id = ? AND entry.state = 'draft' AND json_extract(part.data, '$.text') <> ''`,
+							ref.threadId,
+						).length > 0),
+			),
+		"the reply's first chunk",
 	);
 	for (let step = 0; step < 4; step++) server.release();
 	await server.run((rpc) => rpc["thread.wait"](ref));
@@ -423,20 +435,37 @@ it("each read's topics fire after the change it shows, and the session backend f
 	const window = await request("codework/session.page", { sessionId: ref.sessionId, limit: 10 });
 	expect(followed).toEqual({ _tag: "Done" });
 	expect((window.messages as Array<Row>).map((message) => message.id)).toEqual(read.entries.map((entry) => entry.id));
-	const updates: Array<Row> = [];
-	const thread = desk.background((rpc) =>
-		rpc["event.subscribe"]({ topics: [`codework/session/${ref.sessionId}`], after: window.seq as number }).pipe(
-			Stream.runForEach((item) => Effect.sync(() => "_tag" in item || updates.push(item.payload as Row))),
-		),
-	);
+	const thread = await follow(desk, [`codework/session/${ref.sessionId}`], window.seq as number);
+	const updates = () => thread.events.map((event) => event.payload);
 	const messageId = crypto.randomUUID();
 	await request("codework/session.prompt", { sessionId: ref.sessionId, messageId, text: "gate" });
-	await waitFor(() => updates.find((update) => update._tag === "Delta"), "a forwarded delta");
-	for (let step = 0; step < 4; step++) server.release();
+	// A step reaches the view as its delta, or in a draft message when a draft row already holding it
+	// reaches the app first and the sync drops the delta as held. One step at a time, a step's delta
+	// can lose only to the reply's first row or a checkpoint, which comes at most once a second.
+	const shown = (length: number) =>
+		updates().some((update) => {
+			if (update._tag === "Delta") {
+				const { offset, delta } = update.delta as { offset: number; delta: string };
+				return offset + delta.length >= length;
+			}
+			const message = update.message as { role: string; state: string; parts: Array<{ text?: string }> };
+			return (
+				update._tag === "Message" &&
+				message.role === "assistant" &&
+				message.state === "draft" &&
+				message.parts.some((part) => (part.text?.length ?? 0) >= length)
+			);
+		});
+	// The reply's length after each of "Hello " | "wor" | "ld" | "!"; one more release ends it.
+	for (const [step, length] of [6, 9, 11, 12].entries()) {
+		if (step > 0) server.release();
+		await waitFor(() => (shown(length) ? true : undefined), `the reply's first ${length} characters`);
+	}
+	server.release();
 	await server.run((rpc) => rpc["thread.wait"](ref));
 	const answered = await waitFor(
 		() =>
-			updates.find(
+			updates().find(
 				(update) =>
 					update._tag === "Message" &&
 					(update.message as Row).role === "assistant" &&
@@ -445,15 +474,16 @@ it("each read's topics fire after the change it shows, and the session backend f
 		"the committed reply on the thread's topic",
 	);
 	await waitFor(
-		() => updates.findLast((update) => update._tag === "Info" && (update.info as Row).runState === "idle"),
+		() => updates().findLast((update) => update._tag === "Info" && (update.info as Row).runState === "idle"),
 		"the idle thread",
 	);
 	thread.stop();
-	const infos = updates.flatMap((update) => (update._tag === "Info" ? [(update.info as Row).runState] : []));
+	const forwarded = updates();
+	const infos = forwarded.flatMap((update) => (update._tag === "Info" ? [(update.info as Row).runState] : []));
 	// Whether a queue or a `starting` row shows depends on how the batches fall, so they are left out.
-	const tags = ["Delta", "Info", "Message"].filter((tag) => updates.some((update) => update._tag === tag));
+	const tags = ["Delta", "Info", "Message"].filter((tag) => forwarded.some((update) => update._tag === tag));
 	const runStates = ["running", "idle"].filter((state) => infos.includes(state));
-	expect(updates.some((update) => update._tag === "Message" && (update.message as Row).id === messageId)).toBe(true);
+	expect(forwarded.some((update) => update._tag === "Message" && (update.message as Row).id === messageId)).toBe(true);
 	expect(runStates).toContain("running");
 	expect(infos.at(-1)).toBe("idle");
 

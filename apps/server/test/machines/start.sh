@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
 # Starts the CodeWork fixture server (scripted model) in an OrbStack machine, on 0.0.0.0:7433 with
-# the home ~/cw-home, after overlaying the checkout's sources on the machine's install:
-#   orb -m <name> bash start.sh <checkout> [sweep]
+# the home ~/cw-home, from the copy of the checkout setup.sh made:
+#   orb -m <name> bash start.sh [sweep]
 # It logs to ~/cw.log and reads control lines (`release`) from the FIFO ~/cw.ctl. With `sweep` it
 # only sweeps the store's open runs, in the foreground, and exits.
 set -euo pipefail
 
-SRC=$1
-MODE=${2:-}
+MODE=${1:-}
 DIR=$HOME/codework
 export PATH=$HOME/.local/node/bin:$PATH
 
 bash "$(dirname "$0")/stop.sh" KILL
-
-# The sources under test, not the install's commit; node_modules stay the machine's own.
-tar -C "$SRC" --exclude=node_modules --exclude=__artifacts__ -cf - apps/server packages/aikit packages/codework \
-	packages/harness packages/plugin | tar -C "$DIR" -xf -
-cp "$SRC/models.gen.json" "$DIR/models.gen.json"
 
 cd "$DIR"
 run=(node --conditions=development apps/server/test/fixtures/codework.ts "$HOME/cw-home" 7433 0.0.0.0)

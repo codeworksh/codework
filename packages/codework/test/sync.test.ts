@@ -1,17 +1,16 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- starts the real server in a temporary home. */
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Effect, Queue, Stream } from "effect";
 import { Session } from "@codeworksh/harness/effect";
-import { HttpServer } from "effect/http";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import type * as LLM from "../../harness/src/runner/llm.ts";
 import { assistant, immediateOpen } from "../../harness/test/fixtures/llm.ts";
-import * as Client from "../src/server/client.ts";
 import type { IndexItem, ThreadItem } from "../src/server/contract.ts";
 import * as Server from "../src/server/server.ts";
+import { connect } from "./utils/client.ts";
 import { testModel } from "./utils/model.ts";
 
 type Synced = Extract<IndexItem, { _tag: "Synced" }>;
@@ -21,10 +20,7 @@ it("index.sync sends the index, resumes from a revision, and follows configure, 
 	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
-			const listener = yield* HttpServer.HttpServer;
-			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+			const rpc = yield* connect(home);
 
 			// Up to and including the first `Synced`: one catch-up.
 			const catchUp = (after: number) =>
@@ -147,10 +143,7 @@ it("updatedAt moves a thread with any change to it or below it, and its session 
 	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
-			const listener = yield* HttpServer.HttpServer;
-			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+			const rpc = yield* connect(home);
 
 			/** Every session's and thread's `updatedAt`, by id, as the index sends them. */
 			const times = Effect.gen(function* () {
@@ -319,10 +312,7 @@ it("thread.sync opens a fork's line within a budget, resumes from a revision, an
 	]);
 	try {
 		const artifact = await Effect.gen(function* () {
-			const listener = yield* HttpServer.HttpServer;
-			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+			const rpc = yield* connect(home);
 
 			const created = yield* rpc["session.create"]({ directory: home });
 			const sessionId = created.session.id;
@@ -497,10 +487,7 @@ it("thread.page reads a fork's line below thread.sync's floor, page by page, wit
 	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
-			const listener = yield* HttpServer.HttpServer;
-			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+			const rpc = yield* connect(home);
 
 			const created = yield* rpc["session.create"]({ directory: home });
 			const sessionId = created.session.id;

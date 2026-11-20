@@ -13,8 +13,14 @@ const ENTRY = app.isPackaged
 // How long the server gets to stop by itself on quit before it is killed.
 const STOP_GRACE_MS = 5000;
 
-/** Starts the app server and resolves with its RPC URL once it listens. */
-export function startServer(): Promise<string> {
+/** Where the renderer reaches the app server, and the token its door takes. */
+export interface Endpoint {
+	readonly url: string;
+	readonly token: string;
+}
+
+/** Starts the app server and resolves with its RPC endpoint once it listens. */
+export function startServer(): Promise<Endpoint> {
 	// Electron's own binary in Node mode: no system Node needed, and the child
 	// does not become a second GUI app instance.
 	const child = spawn(process.execPath, [ENTRY], {
@@ -56,14 +62,15 @@ export function startServer(): Promise<string> {
 		});
 
 		createInterface({ input: child.stdout }).on("line", (line) => {
+			// The ready line carries the token, so it is the one line never echoed.
 			if (!ready && line.startsWith('{"type":"ready"')) {
 				ready = true;
-				const { port } = JSON.parse(line) as { port: number };
-				const url = `ws://127.0.0.1:${port}/rpc`;
+				const { port, token } = JSON.parse(line) as { port: number; token: string };
+				const endpoint: Endpoint = { url: `ws://127.0.0.1:${port}/rpc`, token };
 				ipcMain.on(SERVER_CHANNEL, (event) => {
-					event.returnValue = url;
+					event.returnValue = endpoint;
 				});
-				resolve(url);
+				resolve(endpoint);
 				return;
 			}
 			console.log(`[server] ${line}`);

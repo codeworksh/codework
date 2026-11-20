@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Layer, Option, Path, Schedule, Schema } from "effect";
+import { Effect, FileSystem, Layer, Path, Schedule, Schema } from "effect";
 import { isSea } from "node:sea";
 
 /**
@@ -19,10 +19,12 @@ export const Info = Schema.Struct({
 	url: Schema.String,
 	/** The TCP port the server bound, for a caller that would rather reuse it than default. */
 	port: Schema.Int,
+	/** The server's token for the life of its process: a local client sends it on every call. */
+	token: Schema.String,
 });
 export type Info = typeof Info.Type;
 
-export const infoJson = Schema.fromJsonString(Info);
+const infoJson = Schema.fromJsonString(Info);
 
 /** The registration file for a CodeWork home: `<home>/service.json`. */
 export const file = (home: string) => `${home}/service.json`;
@@ -32,13 +34,23 @@ export const log = (logDir: string) => `${logDir}/server.log`;
 
 const decode = Schema.decodeUnknownEffect(infoJson);
 
+/** The registration at `path`; a missing or unreadable file is none. */
+export const read = (path: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return yield* fs.readFileString(path).pipe(
+			Effect.flatMap(decode),
+			Effect.orElseSucceed(() => undefined),
+		);
+	});
+
 const write = Effect.fn("ServerRegistration.write")(function* (path: string, info: Info) {
 	const fs = yield* FileSystem.FileSystem;
 	const paths = yield* Path.Path;
 	yield* fs.makeDirectory(paths.dirname(path), { recursive: true });
 	const encoded = yield* Schema.encodeEffect(infoJson)(info);
 	// Write beside the target and rename, so a reader never sees a half-written
-	// file. 0600 because a future registration may carry a credential.
+	// file. 0600 because it carries the token.
 	const temp = `${path}.${info.pid}.tmp`;
 	yield* fs.writeFileString(temp, encoded, { mode: 0o600 });
 	yield* fs.rename(temp, path);
@@ -59,22 +71,22 @@ export const register = (options: { readonly home: string; readonly info: Info }
 		Effect.gen(function* () {
 			const path = file(options.home);
 			const fs = yield* FileSystem.FileSystem;
-			const current = fs.readFileString(path).pipe(Effect.flatMap(decode), Effect.option);
+			const current = read(path);
 			const owns = (found: Info) => found.pid === options.info.pid && found.url === options.info.url;
 
 			yield* write(path, options.info);
 			yield* Effect.addFinalizer(() =>
 				current.pipe(
-					Effect.flatMap((found) => (Option.isSome(found) && owns(found.value) ? fs.remove(path) : Effect.void)),
+					Effect.flatMap((found) => (found !== undefined && owns(found) ? fs.remove(path) : Effect.void)),
 					Effect.ignore,
 				),
 			);
 			// Forked after the finalizer, so shutdown stops the watch before the file is removed.
 			yield* current.pipe(
 				Effect.flatMap((found) =>
-					Option.isNone(found)
+					found === undefined
 						? write(path, options.info).pipe(Effect.ignore, Effect.as(true))
-						: Effect.succeed(owns(found.value)),
+						: Effect.succeed(owns(found)),
 				),
 				Effect.repeat({ while: (ours) => ours, schedule: Schedule.spaced("5 seconds") }),
 				Effect.andThen(Effect.logWarning(`${path} names another server; shutting down`)),

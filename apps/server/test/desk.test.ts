@@ -1,20 +1,19 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite spawns the real server in a temp dir. */
-import { Effect, Layer } from "effect";
-import { RpcClient, RpcSerialization } from "effect/rpc";
-import { Socket } from "effect/socket";
+import { Effect } from "effect";
+import { RpcClient } from "effect/rpc";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { Contract } from "@codeworksh/contract";
+import { appProtocol, ready, type Ready } from "./fixtures/apps.ts";
 
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "codework-desk-"));
 let server: ChildProcess;
-let port: number;
+let started: Ready;
 
 // CODEWORK_HOME_DIR keeps the server from finding a real CodeWork service; desk and tab
 // RPCs never need one. The same database is reused across starts.
@@ -23,13 +22,7 @@ async function start() {
 		env: { ...process.env, CODEWORK_DATABASE: join(home, "app.db"), CODEWORK_HOME_DIR: home },
 		stdio: ["ignore", "pipe", "inherit"],
 	});
-	port = await new Promise<number>((resolve, reject) => {
-		server.once("exit", (code) => reject(new Error(`server exited before ready (code ${code})`)));
-		createInterface({ input: server.stdout! }).on("line", (line) => {
-			const message = JSON.parse(line) as { type?: string; port?: number };
-			if (message.type === "ready" && message.port !== undefined) resolve(message.port);
-		});
-	});
+	started = await ready(server);
 }
 
 async function stop() {
@@ -47,12 +40,7 @@ afterAll(async () => {
 });
 
 // Provided around the whole scenario: the socket lives as long as the layer does.
-const protocol = () =>
-	RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerNdjson),
-	);
+const protocol = () => appProtocol(started);
 
 it("desk round-trips and follows tab deletion", async () => {
 	// Instances are listed in tile order, as desk.get returns them.

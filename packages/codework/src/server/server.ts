@@ -3,7 +3,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
-import { RpcSerialization, RpcServer } from "effect/rpc";
+import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
 import * as Heartbeat from "../machine/heartbeat.ts";
@@ -14,6 +14,7 @@ import * as Handlers from "./handlers.ts";
 import * as Host from "./host.ts";
 import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
+import * as Principal from "./principal.ts";
 import * as Registration from "./registration.ts";
 
 // Managed instances outlive any single RPC; the serve scope is what stops them.
@@ -70,25 +71,39 @@ const resumeUnfinished = Layer.effectDiscard(
 );
 
 /**
- * Advertises the listener once it has an address: logs the endpoint and files
- * the registration later invocations discover it through.
+ * Advertises the listener once it has an address: files the registration later
+ * invocations discover it through, with the token they call it with, then logs
+ * the endpoint, so whoever reads that line finds the server registered.
  */
 const announce = Layer.unwrap(
 	Effect.gen(function* () {
 		const server = yield* HttpServer.HttpServer;
+		const token = yield* Principal.Token;
 		const global = yield* Global.Service;
 		const identity = yield* Identity.Service;
 		// A ws server always binds TCP; the guard keeps the logger honest if that ever changes.
 		const address = server.address;
 		const url = `${NetAddress.formatUrlUnsafe(address, "ws")}${Contract.path}`;
-		yield* Effect.log(`codework serve listening on ${url}`);
-		if (!NetAddress.isInetAddress(address)) return Layer.empty;
-		return Registration.register({
-			home: global.home,
-			info: { pid: identity.pid, version: identity.version, url, port: address.port },
-		});
+		const listening = Layer.effectDiscard(Effect.log(`codework serve listening on ${url}`));
+		if (!NetAddress.isInetAddress(address)) return listening;
+		return listening.pipe(
+			Layer.provide(
+				Registration.register({
+					home: global.home,
+					info: { pid: identity.pid, version: identity.version, url, port: address.port, token },
+				}),
+			),
+		);
 	}),
 );
+
+/** The RPC endpoint for `group` behind the home token's door, which turns a refused upgrade away. */
+export const endpoint = <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>) =>
+	RpcServer.layerHttp({ group, path: Contract.path, protocol: "websocket" }).pipe(
+		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
+		Layer.provide(Principal.local),
+		Layer.merge(Principal.listener),
+	);
 
 export const layer = (options: {
 	host: string;
@@ -97,10 +112,7 @@ export const layer = (options: {
 	/** Who the server says it is; tests name its host. */
 	identity?: Layer.Layer<Identity.Service>;
 }) => {
-	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: Contract.path, protocol: "websocket" }).pipe(
-		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
-	);
-	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
+	const app = HttpRouter.serve(endpoint(Contract.Api), { disableListenLog: true }).pipe(
 		Layer.provideMerge(managedShutdown),
 		Layer.provideMerge(resumeUnfinished),
 		Layer.provideMerge(Heartbeat.layer),
@@ -113,6 +125,7 @@ export const layer = (options: {
 		Layer.provideMerge(NodeHttpServer.layer(createServer, { host: options.host, port: options.port })),
 		Layer.provide(RpcSerialization.layerNdjson),
 		Layer.provide(options.identity ?? Identity.layer),
+		Layer.provide(Principal.layerToken),
 		// Built after the harness and before everything above it, the listener included.
 		Layer.provide(sweep),
 		Layer.provide(Harness.layer(options.harness)),

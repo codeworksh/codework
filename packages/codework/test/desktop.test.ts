@@ -1,5 +1,6 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- starts the real desktop server in a temporary home. */
 import { Session } from "@codeworksh/harness/effect";
+import { Door } from "@codeworksh/schema";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
 import { RpcClient, RpcSerialization } from "effect/rpc";
@@ -15,13 +16,14 @@ import { Contract as Desktop } from "../../../apps/contract/src/contract.ts";
 import { Codework as Mirror } from "../../../apps/widget/src/codework.ts";
 import { Json, threadKey, topics, type ThreadRef } from "../../../apps/web/src/widgets/session/schema.ts";
 import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
-import * as Client from "../src/server/client.ts";
 import * as Server from "../src/server/server.ts";
+import { connect, registered } from "./utils/client.ts";
 import { testModel } from "./utils/model.ts";
 
-const protocol = (url: string) =>
+/** A socket to the listener at `url`, opened with `token` as every client opens one. */
+const protocol = (url: string, token: string) =>
 	RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(url)),
+		Layer.provide(Socket.layerWebSocket(url, { protocols: Door.protocols(token) })),
 		Layer.provide(Socket.layerWebSocketConstructorGlobal),
 		Layer.provide(RpcSerialization.layerNdjson),
 	);
@@ -34,9 +36,9 @@ it("desktop keeps fork history, configuration and prompts separate from main", a
 			const listener = yield* HttpServer.HttpServer;
 			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const url = `ws://127.0.0.1:${listener.address.port}/rpc/v1`;
-			const rpcContext = yield* Layer.build(Client.layer(url));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(rpcContext));
-			const mirrorContext = yield* Layer.build(protocol(url));
+			const rpc = yield* connect(home);
+			const { token } = yield* registered(home);
+			const mirrorContext = yield* Layer.build(protocol(url, token));
 			const mirror = yield* RpcClient.make(Mirror.Api).pipe(Effect.provideContext(mirrorContext));
 			const created = yield* mirror["session.create"]({ directory: home });
 			const sessionId = Session.SessionSchema.ID.make(created.session.id);
@@ -62,16 +64,17 @@ it("desktop keeps fork history, configuration and prompts separate from main", a
 							}),
 					),
 			);
-			const port = yield* Effect.tryPromise(
+			const ready = yield* Effect.tryPromise(
 				() =>
-					new Promise<number>((resolve, reject) => {
+					new Promise<{ port: number; token: string }>((resolve, reject) => {
 						child.once("exit", (code) => reject(new Error(`App server exited: ${code}`)));
 						createInterface({ input: child.stdout! }).on("line", (line) => {
-							if (line.startsWith('{"type":"ready"')) resolve((JSON.parse(line) as { port: number }).port);
+							if (line.startsWith('{"type":"ready"'))
+								resolve(JSON.parse(line) as { port: number; token: string });
 						});
 					}),
 			);
-			const appContext = yield* Layer.build(protocol(`ws://127.0.0.1:${port}/rpc`));
+			const appContext = yield* Layer.build(protocol(`ws://127.0.0.1:${ready.port}/rpc`, ready.token));
 			const app = yield* RpcClient.make(Desktop.Api).pipe(Effect.provideContext(appContext));
 			const ask = (topic: string, payload: Schema.Json) => app["event.request"]({ topic, payload, source: "test" });
 			for (const target of [{ sessionId }, ref])

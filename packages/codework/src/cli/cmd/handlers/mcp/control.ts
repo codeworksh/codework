@@ -2,6 +2,7 @@ import { Session } from "@codeworksh/harness/effect";
 import { Effect, type Option } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { threadFlag } from "../../../thread.ts";
@@ -39,7 +40,7 @@ const control = (operation: "connect" | "disconnect") =>
 			yield* writeOut(`${lines.join("\n")}\n`);
 			if (status.state !== (operation === "connect" ? "connected" : "disconnected")) process.exitCode = 1;
 		});
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
 	});
 
 export const reconnect = Runtime.handler(Cmd.commands.mcp.commands.reconnect, control("connect"));

@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL )"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT)"
 		},
 		{
 			"type": "table",
@@ -238,7 +238,8 @@
 				"rollup": 0,
 				"rollup_store": null,
 				"rollup_boot": null,
-				"created_at": "<time>"
+				"created_at": "<time>",
+				"token": null
 			}
 		],
 		"organization": [
@@ -252,6 +253,7 @@
 	},
 	"servers": {
 		"badUrl": "Use a WebSocket URL, such as wss://codework.example.com/rpc.",
+		"badToken": "Use the token in `token` in that machine's CodeWork home.",
 		"added": [
 			{
 				"id": "local",
@@ -289,6 +291,7 @@
 		"refused": {
 			"localPatch": "A remote server has no executable, home, arguments or variables.",
 			"urlOnLocal": "Only a remote server has a URL.",
+			"tokenOnLocal": "Only a remote server has a token.",
 			"defaultRemote": "Cloud tunnel is a remote server.",
 			"serviceRemote": "Cloud tunnel is a remote server."
 		},
@@ -311,7 +314,8 @@
 			"rollup": 0,
 			"rollup_store": null,
 			"rollup_boot": null,
-			"created_at": "<time>"
+			"created_at": "<time>",
+			"token": "<tunnel token>"
 		},
 		"cascade": {
 			"before": {

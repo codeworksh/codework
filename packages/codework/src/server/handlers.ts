@@ -26,6 +26,7 @@ import {
 import { Machine } from "@codeworksh/schema";
 import { DateTime, Effect, Option, Predicate, Queue, Schema, Stream } from "effect";
 import { NodeServices } from "@effect/platform-node";
+import * as MachineFile from "../machine/file.ts";
 import * as MachineRelay from "../machine/relay.ts";
 import * as Contract from "./contract.ts";
 import {
@@ -306,7 +307,18 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			"server.info": Effect.fnUntraced(function* () {
 				const head = yield* store.head;
-				return { ...identity, storeId: head.id, rev: head.rev };
+				// Read per call, so a `codework connect` made while the server runs shows without a restart. An
+				// unreadable file reads as none: this is the health probe, and must still answer.
+				const machine = yield* MachineFile.read(global.home).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.orElseSucceed(() => Option.none<MachineFile.Machine>()),
+				);
+				return {
+					...identity,
+					storeId: head.id,
+					rev: head.rev,
+					...(Option.isSome(machine) ? { machineId: machine.value.id } : {}),
+				};
 			}),
 			"index.sync": ({ after, boot }) =>
 				Rows.resume(

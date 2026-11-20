@@ -1,15 +1,14 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite spawns the real server in a temp dir. */
-import { Effect, Layer, Option, Stream } from "effect";
-import { RpcClient, RpcSerialization } from "effect/rpc";
-import { Socket } from "effect/socket";
+import { Effect, Option, Stream } from "effect";
+import { RpcClient } from "effect/rpc";
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { Contract, type ServerStatus } from "@codeworksh/contract";
+import { appProtocol, ready, type Ready } from "./fixtures/apps.ts";
 
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const cli = fileURLToPath(new URL("../../../packages/codework/src/index.ts", import.meta.url));
@@ -19,7 +18,7 @@ const home = mkdtempSync(join(tmpdir(), "codework-health-"));
 const otherHome = mkdtempSync(join(tmpdir(), "codework-health-other-"));
 let server: ChildProcess;
 let codework: ChildProcess | undefined;
-let port: number;
+let started: Ready;
 
 const kill = (child: ChildProcess) =>
 	new Promise<void>((resolve) => {
@@ -39,15 +38,7 @@ beforeAll(async () => {
 		},
 		stdio: ["ignore", "pipe", "inherit"],
 	});
-	port = await new Promise<number>((resolve, reject) => {
-		server.once("exit", (code) => reject(new Error(`server exited before ready (code ${code})`)));
-		// Its other lines are logs, as the desktop app reads them.
-		createInterface({ input: server.stdout! }).on("line", (line) => {
-			if (!line.startsWith('{"type":"ready"')) return;
-			const message = JSON.parse(line) as { type?: string; port?: number };
-			if (message.type === "ready" && message.port !== undefined) resolve(message.port);
-		});
-	});
+	started = await ready(server);
 }, 20_000);
 
 afterAll(async () => {
@@ -57,12 +48,7 @@ afterAll(async () => {
 	rmSync(otherHome, { recursive: true, force: true });
 });
 
-const protocol = () =>
-	RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerNdjson),
-	);
+const protocol = () => appProtocol(started);
 
 const tagOf = (statuses: ReadonlyArray<ServerStatus>, found: (status: ServerStatus) => boolean) => {
 	const status = statuses.find(found);
@@ -120,7 +106,7 @@ it("tells a server runs from its URL, whatever its registered pid", async () => 
 		// A registration whose pid lives (this test) but whose URL nobody answers: stopped, not unreachable.
 		writeFileSync(
 			registration,
-			JSON.stringify({ pid: process.pid, version: "0.0.0", url: "ws://127.0.0.1:9/rpc", port: 9 }),
+			JSON.stringify({ pid: process.pid, version: "0.0.0", url: "ws://127.0.0.1:9/rpc", port: 9, token: "stale" }),
 		);
 		const stale = defaultTag(yield* checked);
 

@@ -1,0 +1,33 @@
+{
+	"upgrade": {
+		"no protocol header": 401,
+		"fixed name only": 401,
+		"token first": 401,
+		"wrong token": 401,
+		"right token, foreign Origin": 403,
+		"right token, Host evil.example": 403,
+		"right token, Host localhost": 101,
+		"right token, Origin codework://app": 101,
+		"right token, Origin codeworkdev://app": 101,
+		"right token": 101,
+		"protocol selected": "codework",
+		"token in the response": false
+	},
+	"the last start's token": 401,
+	"right token": {
+		"synced": true
+	},
+	"wrong token and none": {
+		"wrong": {
+			"store_id": null,
+			"cursor": 0
+		},
+		"stored": {
+			"store_id": null,
+			"cursor": 0
+		}
+	},
+	"wrong token, replaced": {
+		"synced": true
+	}
+}

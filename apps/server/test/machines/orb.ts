@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 const scripts = fileURLToPath(new URL(".", import.meta.url));
-/** The checkout under test: each machine overlays its sources from here through the Mac mount. */
+/** The checkout under test: each machine's setup copies it from here through the Mac mount. */
 export const checkout = fileURLToPath(new URL("../../../../", import.meta.url)).replace(/\/$/, "");
 
 export const available = spawnSync("which", ["orb"]).status === 0;
@@ -66,9 +66,8 @@ export const machine = (name: string) => {
 					name,
 					"bash",
 					"-c",
-					'while IFS= read -r line && [ -n "$line" ]; do export "$line"; done; exec bash "$0" "$1"',
+					'while IFS= read -r line && [ -n "$line" ]; do export "$line"; done; exec bash "$0"',
 					join(scripts, "start.sh"),
-					checkout,
 				],
 				{
 					input: `${Object.entries(env)
@@ -78,11 +77,13 @@ export const machine = (name: string) => {
 				},
 			),
 		/** Sweeps the store's open runs as a start would, without listening. */
-		sweep: () => script("start.sh", [checkout, "sweep"]),
+		sweep: () => script("start.sh", ["sweep"]),
 		stop: (signal: "TERM" | "KILL" = "TERM") => script("stop.sh", [signal]),
 		net: (mode: "cut" | "restore" | "slow" | "fast") => script("net.sh", [mode]),
-		/** A fresh CodeWork home: a new store. */
-		wipe: () => sh(`rm -rf ${cwHome}`),
+		/** A fresh CodeWork home: a new store, under the token the app was given for it. */
+		wipe: () => sh(`[ ! -d ${cwHome} ] || find ${cwHome} -mindepth 1 -maxdepth 1 ! -name token -exec rm -rf {} +`),
+		/** The home's token, made by the server's first start. */
+		token: async () => (await sh(`cat ${cwHome}/token`)).trim(),
 		sh,
 		/** The oldest held reply takes its next step. */
 		release: () => sh(`echo release > ${home}/cw.ctl`),
@@ -107,10 +108,12 @@ export const machine = (name: string) => {
 			);
 			return JSON.parse(out.trim().split("\n").at(-1)!) as Array<unknown>;
 		},
-		run: <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
-			Effect.gen(function* () {
+		run: async <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) => {
+			const { token } = JSON.parse(await sh(`cat ${cwHome}/service.json`)) as { token: string };
+			return Effect.gen(function* () {
 				return yield* use(yield* Client.make);
-			}).pipe(Effect.scoped, Effect.provide(Client.layer(url)), Effect.runPromise),
+			}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise);
+		},
 	};
 };
 export type Machine = ReturnType<typeof machine>;

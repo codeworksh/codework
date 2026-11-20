@@ -30,7 +30,7 @@ const registerLocal = (appHome: string, server: Codework, port: number) => {
 	mkdirSync(cli, { recursive: true });
 	writeFileSync(
 		join(cli, "service.json"),
-		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port }),
+		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port, token: server.token }),
 	);
 };
 
@@ -85,8 +85,12 @@ it("a machine is named by its server's host unless the user names it, else by wh
 
 	registerLocal(appHome, local, localPort);
 	const desk = await app(appHome);
-	const remoteId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: remote.url }));
-	const olderId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", name: "  ", url: older.url }));
+	const remoteId = await desk.run((rpc) =>
+		rpc["servers.add"]({ kind: "remote", url: remote.url, token: remote.token }),
+	);
+	const olderId = await desk.run((rpc) =>
+		rpc["servers.add"]({ kind: "remote", name: "  ", url: older.url, token: older.token }),
+	);
 	await synced(appHome, Contract.LOCAL_SERVER, local);
 	await synced(appHome, remoteId, remote);
 	await synced(appHome, olderId, older);
