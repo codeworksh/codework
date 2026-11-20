@@ -10,7 +10,9 @@
 		"paired": true,
 		"online": true,
 		"seenAt": "<time>",
-		"version": "<version>"
+		"version": "<version>",
+		"machineId": null,
+		"workspaces": []
 	},
 	"servers.label": {
 		"reply": "labelled",
@@ -25,7 +27,9 @@
 			"paired": true,
 			"online": true,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		},
 		"machine.info givenName": "Build Box"
 	},
@@ -42,7 +46,9 @@
 			"paired": true,
 			"online": true,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		},
 		"machine.info givenName": null
 	},
@@ -58,7 +64,9 @@
 			"paired": true,
 			"online": false,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		},
 		"servers.label": {
 			"_tag": "Server.ServersError",
@@ -76,7 +84,9 @@
 		"paired": true,
 		"online": true,
 		"seenAt": "<time>",
-		"version": "<version>"
+		"version": "<version>",
+		"machineId": "<machine id>",
+		"workspaces": []
 	},
 	"servers.update with a name": {
 		"_tag": "Server.ServersError",
@@ -98,7 +108,9 @@
 			"paired": false,
 			"online": false,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
 		},
 		"servers.label": {
 			"_tag": "Server.ServersError",

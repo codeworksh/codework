@@ -1,4 +1,4 @@
-import { Clock, Config, Context, Effect, FileSystem, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import { Clock, Config, Context, Effect, FileSystem, Layer, Option, Schema, Stream, SubscriptionRef } from "effect";
 import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
@@ -7,10 +7,12 @@ import {
 	type CliEnvVar,
 	LOCAL_SERVER,
 	PairingRefused,
+	RemoteServerStatus,
 	type ServerAdd,
 	ServersError,
 	type ServerUpdate,
 } from "@codeworksh/contract";
+import type { Machine } from "@codeworksh/schema";
 import { Pairing } from "./pairing.ts";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
@@ -77,6 +79,10 @@ export interface RemoteRow {
 	readonly seenAt: number | null;
 	/** Whether its sync connection is up now. */
 	readonly online: boolean;
+	/** The machine's own id, as it last reported it. */
+	readonly machineId: string | null;
+	/** The workspaces it is linked to, as it last reported them. */
+	readonly workspaces: RemoteServerStatus["workspaces"];
 	readonly url: string;
 	/** The session token its pairing gave; none once the server refused it, or on a row from before pairing. */
 	readonly token: string | null;
@@ -90,7 +96,20 @@ export interface Facts {
 	readonly host?: string | null;
 	readonly label?: string | null;
 	readonly version?: string;
+	readonly machineId?: string | null;
+	readonly workspaces?: RemoteServerStatus["workspaces"];
 }
+
+/** What a remote machine's own record says about it: its label, its id and its links. */
+export const factsOf = (status: Machine.Status): Facts => ({
+	label: status.givenName,
+	machineId: status.id,
+	workspaces: status.workspaces.map(({ id, keyId }) => ({ id, keyId })),
+});
+
+const Workspaces = Schema.fromJsonString(RemoteServerStatus.fields.workspaces);
+const decodeWorkspaces = Schema.decodeUnknownOption(Workspaces);
+const encodeWorkspaces = Schema.encodeSync(Workspaces);
 
 const decodeEnv = Schema.decodeUnknownEffect(Schema.fromJsonString(StoredEnv));
 
@@ -216,40 +235,47 @@ export const layer = Layer.effect(
 				label: string | null;
 				version: string | null;
 				seenAt: number | null;
+				identity: string | null;
+				workspaces: string | null;
 				isDefault: number;
 			}
 		>`
-			SELECT id, kind, name AS override, host, label, version, seen_at, executable, home, args, env, url, token,
-				is_default
+			SELECT id, kind, name AS override, host, label, version, seen_at, identity, workspaces, executable, home, args,
+				env, url, token, is_default
 			FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
-				Effect.forEach(rows, ({ kind, url, token, env, isDefault, label, version, seenAt, ...row }) => {
-					const name = nameOf({ kind, url, label, ...row });
-					return kind === "remote" && url !== null
-						? Effect.succeed<Row>({
-								id: row.id,
-								kind,
-								name,
-								host: row.host,
-								label,
-								version,
-								seenAt,
-								online: online.has(row.id),
-								url,
-								token,
-								isDefault: isDefault === 1,
-							})
-						: decodeEnv(env).pipe(
-								Effect.map((env): Row => ({
-									...row,
+				Effect.forEach(
+					rows,
+					({ kind, url, token, env, isDefault, label, version, seenAt, identity, workspaces, ...row }) => {
+						const name = nameOf({ kind, url, label, ...row });
+						return kind === "remote" && url !== null
+							? Effect.succeed<Row>({
+									id: row.id,
+									kind,
 									name,
-									kind: "local",
-									env,
+									host: row.host,
+									label,
+									version,
+									seenAt,
+									online: online.has(row.id),
+									machineId: identity,
+									workspaces: Option.getOrElse(decodeWorkspaces(workspaces), () => []),
+									url,
+									token,
 									isDefault: isDefault === 1,
-								})),
-							);
-				}),
+								})
+							: decodeEnv(env).pipe(
+									Effect.map((env): Row => ({
+										...row,
+										name,
+										kind: "local",
+										env,
+										isDefault: isDefault === 1,
+									})),
+								);
+					},
+				),
 			),
 			Effect.orDie,
 		);
@@ -333,9 +359,15 @@ export const layer = Layer.effect(
 			defaultHome,
 			homeChanges: SubscriptionRef.changes(current).pipe(Stream.drop(1)),
 			watch: SubscriptionRef.changes(machines),
-			reached: Effect.fn("Servers.reached")(function* (id, facts) {
+			reached: Effect.fn("Servers.reached")(function* (id, { machineId, workspaces, ...facts }) {
 				const seenAt = yield* Clock.currentTimeMillis;
-				yield* sql`UPDATE machine SET ${sql.update({ ...facts, seenAt })} WHERE id = ${id}`.pipe(Effect.orDie);
+				const fields = {
+					...facts,
+					...(machineId === undefined ? {} : { identity: machineId }),
+					...(workspaces === undefined ? {} : { workspaces: encodeWorkspaces(workspaces) }),
+					seenAt,
+				};
+				yield* sql`UPDATE machine SET ${sql.update(fields)} WHERE id = ${id}`.pipe(Effect.orDie);
 				online.add(id);
 				yield* announce;
 			}),

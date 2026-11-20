@@ -107,7 +107,7 @@ export function AddServer({
 
 				{step === 1 && (
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Name" description="Shown in the provider list.">
+						<DialogRow title="Name" description="Shown in the provider list">
 							<Input
 								aria-label="Name"
 								value={name}
@@ -123,7 +123,7 @@ export function AddServer({
 
 				{step === 2 && (
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Executable" description="Path to the codework binary used by this instance.">
+						<DialogRow title="Executable" description="Path to the codework binary used by this instance">
 							<Input
 								aria-label="Executable"
 								value={executable}
@@ -138,7 +138,7 @@ export function AddServer({
 									<Code>CODEWORK_HOME_DIR</Code> path
 								</>
 							}
-							description="codework home and config directory, its own: a home names one server."
+							description="codework home and config directory, its own: a home names one server"
 						>
 							<Input
 								aria-label="CODEWORK_HOME_DIR path"

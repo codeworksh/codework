@@ -30,7 +30,9 @@
 			"paired": true,
 			"online": true,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"a wrong code": {
@@ -53,7 +55,9 @@
 			"paired": false,
 			"online": false,
 			"seenAt": null,
-			"version": null
+			"version": null,
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"after the machine restarts": {
@@ -72,7 +76,9 @@
 			"paired": false,
 			"online": false,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"devices": [
@@ -93,7 +99,9 @@
 			"paired": true,
 			"online": true,
 			"seenAt": "<time>",
-			"version": "<version>"
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		},
 		"a new session": true
 	}

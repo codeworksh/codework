@@ -94,15 +94,20 @@ export const waitFor = async <A>(
 /**
  * A CodeWork server of the fixture in `home` on `port`, with its scripted model; `older` lacks
  * `usage.sync` and a host name. `host` is the host name it reports (`null` for none), else `Fixture`.
+ * `relay` is where its connects go (`CODEWORK_RELAY_URL`).
  */
 export const codework = async (
 	home: string,
 	port: number,
-	options: { readonly older?: boolean; readonly host?: string | null } = {},
+	options: { readonly older?: boolean; readonly host?: string | null; readonly relay?: string } = {},
 ) => {
 	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
 	const proc = spawn(process.execPath, ["--conditions=development", ...args], {
-		env: options.host === undefined ? process.env : { ...process.env, CODEWORK_FIXTURE_HOST: options.host ?? "" },
+		env: {
+			...process.env,
+			...(options.host === undefined ? {} : { CODEWORK_FIXTURE_HOST: options.host ?? "" }),
+			...(options.relay === undefined ? {} : { CODEWORK_RELAY_URL: options.relay }),
+		},
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	processes.add(proc);
@@ -128,13 +133,14 @@ export const codework = async (
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
 
-/** A status as an artifact keeps it: a remote one's build and last answer vary per run. */
+/** A status as an artifact keeps it: a remote one's build, last answer and machine id vary per run. */
 export const stable = (status: ServerStatus | undefined) =>
 	status?.kind === "remote"
 		? {
 				...status,
 				version: status.version === null ? null : "<version>",
 				seenAt: status.seenAt === null ? null : "<time>",
+				machineId: status.machineId === null ? null : "<machine id>",
 			}
 		: status;
 

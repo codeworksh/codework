@@ -171,7 +171,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 	const [code, setCode] = useState("");
 	const submit = form.submit({
 		check: () =>
-			urlOf(address) === "" ? { field: "address", text: "Enter the Machine's address." } : checkCode(code),
+			urlOf(address) === "" ? { field: "address", text: "Enter the Machine’s address." } : checkCode(code),
 		pair: () => add({ payload: { kind: "remote", url: urlOf(address), code } }),
 		done: onPaired,
 		other: "address",
@@ -188,16 +188,16 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 			>
 				<DialogHeader>
 					<DialogTitle>Pair a Machine</DialogTitle>
-					<DialogDescription>It stays outside your Workspaces. Only this computer reaches it.</DialogDescription>
+					<DialogDescription>Only this computer reaches it.</DialogDescription>
 				</DialogHeader>
 				<form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-5">
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Run on the Machine" description="It prints a Code, valid 10 minutes.">
+						<DialogRow title="Run on the Machine" description="It prints a Code, valid 10 minutes">
 							<CopyCommand command={PAIR_COMMAND} />
 						</DialogRow>
 						<DialogRow
 							title="Address"
-							description="Where this computer reaches it."
+							description="Where this computer reaches it"
 							htmlFor={form.field("address").id}
 						>
 							<Input
@@ -214,7 +214,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 						</DialogRow>
 						<DialogRow
 							title="Pairing Code"
-							description="The Code that command printed."
+							description="The Code that command printed"
 							htmlFor={form.field("code").id}
 						>
 							<CodeInput

@@ -43,10 +43,9 @@ export function Join() {
 						setPending(true);
 						setError(null);
 						create(trimmed)
-							.then((workspace) =>
+							.then(() =>
 								navigate({
-									to: "/workspaces/$workspaceId/settings/machines/setup",
-									params: { workspaceId: workspace.id },
+									to: "/settings/machines/setup",
 									// The form is done; Back from setup shouldn't land on it again.
 									replace: true,
 								}),

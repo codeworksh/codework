@@ -173,7 +173,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 			</header>
 
 			<Card>
-				<Field title="Name" description="Shown in your provider list.">
+				<Field title="Name" description="Shown in your provider list">
 					<SavingInput
 						label="Server name"
 						value={status.override ?? ""}
@@ -223,7 +223,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						description={
 							cli === null
 								? "No codework found in the install script's folder or on your login shell's PATH. Enter its path, or install it:"
-								: "Path to the codework binary used by this instance."
+								: "Path to the codework binary used by this instance"
 						}
 						value={cli?.custom ? cli.path : ""}
 						placeholder={cli !== null && !cli.custom ? cli.path : "codework"}
@@ -240,7 +240,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 					<SettingField
 						title="Home directory"
 						label="CODEWORK_HOME_DIR path"
-						description="Where this provider stores its sessions and configuration."
+						description="Where this provider stores its sessions and configuration"
 						// An added server always has its own home, so only the built-in one shows a default to reset to.
 						value={status.home.fallback === null || status.home.custom ? status.home.path : ""}
 						placeholder={status.home.fallback ?? "~/.codework-2"}
@@ -252,7 +252,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						label="Launch arguments"
 						description={
 							<>
-								Additional CLI arguments passed to <Code>codework service start</Code>.
+								Additional CLI arguments passed to <Code>codework service start</Code>
 							</>
 						}
 						value={status.args}

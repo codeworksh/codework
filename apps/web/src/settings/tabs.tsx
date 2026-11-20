@@ -105,7 +105,7 @@ export function TabsSettings() {
 	return (
 		<Page
 			title="Tabs"
-			description="Keep related sessions together, each tab with its own panel layout."
+			description="Keep related sessions together, each tab with its own panel layout"
 			actions={
 				<Button
 					size="sm"
@@ -217,7 +217,7 @@ export function TabsSettings() {
 			</Section>
 			<Section title="Shortcuts">
 				<Group>
-					<Row title="Switch tab" description="Jump to a tab by its position in your list.">
+					<Row title="Switch tab" description="Jump to a tab by its position in your list">
 						<Keys>
 							{shortcutLabel(1)}–{MAX_TABS}
 						</Keys>

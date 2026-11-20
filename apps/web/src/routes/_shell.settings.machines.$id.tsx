@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { PairedMachine } from "../settings/paired/machine";
+import { PairedMachine } from "../settings/machines/machine";
 
-export const Route = createFileRoute("/_shell/settings/paired/$id")({ component: Page });
+export const Route = createFileRoute("/_shell/settings/machines/$id")({ component: Page });
 
 function Page() {
 	const { id } = Route.useParams();

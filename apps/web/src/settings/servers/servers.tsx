@@ -45,7 +45,7 @@ export function ServersSettings() {
 	return (
 		<Page
 			title="Providers"
-			description="Manage the CodeWork servers that run your sessions."
+			description="Manage the CodeWork servers that run your sessions"
 			actions={
 				<div className="flex items-center gap-2">
 					<Button
@@ -152,7 +152,7 @@ function HealthInterval() {
 					</Button>
 				</span>
 			}
-			description={error ?? "Refresh provider status and versions in the background. Set to 0 to disable."}
+			description={error ?? "Refresh provider status and versions in the background, or set 0 to disable"}
 		>
 			{interval !== undefined && (
 				<div className="flex shrink-0 items-center gap-2">

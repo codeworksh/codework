@@ -86,6 +86,28 @@ export const layer = Contract.Api.toLayer(
 			).pipe(
 				Effect.flatMap((reply) => ("failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.value))),
 			);
+		/**
+		 * The connection to a paired machine, in the app's own words when there is none: refused once it is
+		 * not paired any more, or not answering.
+		 */
+		const paired = Effect.fn("paired")(function* (id: string) {
+			const row = yield* servers.get(id);
+			if (row.kind !== "remote")
+				return yield* new ServersError({ message: "Only a paired Machine is reached here." });
+			if (row.token === null)
+				return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
+			const unanswered = new ServersError({ message: `${row.name} did not answer.` });
+			const client = yield* sync.client(id).pipe(Effect.mapError(() => unanswered));
+			return { client, unanswered };
+		});
+		/** Stores what a paired machine's own record says now, so a link or an unlink shows at once. */
+		const reread = (id: string, client: typeof Client.Service) =>
+			Codework.call((rpc) => rpc("machine.info", {})).pipe(
+				Effect.provideService(Client, client),
+				Effect.flatMap((status) => servers.reached(id, Servers.factsOf(status))),
+				Effect.andThen(health.check),
+				Effect.ignore,
+			);
 		// A changed default reconnects the app; the status read after waits for it to reach the server.
 		const changingDefault = <A, E, R>(change: Effect.Effect<A, E, R>) =>
 			Effect.gen(function* () {
@@ -119,26 +141,52 @@ export const layer = Contract.Api.toLayer(
 				return yield* call((client) => client("machine.rename", { givenName }));
 			}),
 			// The CLI's own failure (not connected to that workspace) keeps its message.
-			"machine.disconnect": Effect.fn("machine.disconnect")(function* (input) {
-				const reply = yield* call((client) =>
+			"machine.disconnect": Effect.fn("machine.disconnect")(function* ({ serverId, ...input }) {
+				const disconnect = (client: typeof Client.Service) =>
 					client("machine.disconnect", input).pipe(
 						Effect.map((disconnected) => ({ disconnected })),
 						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
-					),
+					);
+				if (serverId === undefined) {
+					const reply = yield* call(disconnect);
+					return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.disconnected);
+				}
+				const { client, unanswered } = yield* paired(serverId);
+				const reply = yield* Codework.call(disconnect).pipe(
+					Effect.provideService(Client, client),
+					Effect.mapError(() => unanswered),
 				);
-				return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.disconnected);
+				if ("failed" in reply) return yield* reply.failed;
+				yield* servers.reached(serverId, Servers.factsOf(reply.disconnected.status));
+				yield* health.check;
+				return reply.disconnected;
 			}),
 			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
-			// a dropped server reads as unavailable.
-			"machine.connect": ({ workspaceId }) =>
-				Codework.stream((client) =>
+			// a dropped server reads as unavailable, and a paired machine as not answering.
+			"machine.connect": ({ workspaceId, serverId }) => {
+				const connect = (client: typeof Client.Service) =>
 					client("machine.connect", { workspaceId }).pipe(
 						Stream.map((event) => ({ event })),
 						Stream.catchTag("Machine.ConnectError", (failed) => Stream.succeed({ failed })),
+					);
+				const unwrap = Stream.flatMap((item: Stream.Success<ReturnType<typeof connect>>) =>
+					"failed" in item ? Stream.fail(item.failed) : Stream.succeed(item.event),
+				);
+				if (serverId === undefined) return Codework.stream(connect).pipe(unwrap);
+				return Stream.unwrap(
+					paired(serverId).pipe(
+						Effect.map(({ client, unanswered }) =>
+							Codework.stream(connect).pipe(
+								Stream.provideService(Client, client),
+								Stream.mapError(() => unanswered),
+								unwrap,
+								// Stored before the link reaches the app, so the machine's status already shows it.
+								Stream.tap((event) => (event._tag === "Connected" ? reread(serverId, client) : Effect.void)),
+							),
+						),
 					),
-				).pipe(
-					Stream.flatMap((item) => ("failed" in item ? Stream.fail(item.failed) : Stream.succeed(item.event))),
-				),
+				);
+			},
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));
 			}),
@@ -237,15 +285,10 @@ export const layer = Contract.Api.toLayer(
 				const row = yield* servers.get(id);
 				if (row.kind !== "remote")
 					return yield* new ServersError({ message: "Only a paired Machine has a Label." });
-				if (row.token === null)
-					return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
-				const status = yield* sync.client(id).pipe(
-					Effect.flatMap((client) =>
-						Codework.call((rpc) => rpc("machine.rename", { givenName: label.trim() })).pipe(
-							Effect.provideService(Client, client),
-						),
-					),
-					Effect.mapError(() => new ServersError({ message: `${row.name} did not answer.` })),
+				const { client, unanswered } = yield* paired(id);
+				const status = yield* Codework.call((rpc) => rpc("machine.rename", { givenName: label.trim() })).pipe(
+					Effect.provideService(Client, client),
+					Effect.mapError(() => unanswered),
 				);
 				yield* servers.reached(id, { label: status.givenName });
 				yield* health.check;

@@ -18,8 +18,8 @@ export function Page({
 }) {
 	return (
 		// A 640px column, set well below the panel's top edge: settings read as a document, not a dashboard.
-		<div className="@container mx-auto flex w-full max-w-settings flex-col gap-8 px-5 pt-16 pb-16 text-ui sm:px-8">
-			<header className="flex flex-col gap-1.5">
+		<div className="@container mx-auto flex w-full max-w-settings flex-col gap-12 px-5 pt-16 pb-16 text-ui sm:px-8">
+			<header className="-mb-4 flex flex-col gap-1.5">
 				<div className="flex items-center gap-4">
 					<h1 className="min-w-0 flex-1 text-2xl/8 font-medium text-balance wrap-break-word">{title}</h1>
 					{actions}
@@ -33,19 +33,35 @@ export function Page({
 
 export function Section({
 	title,
+	count,
 	description,
+	action,
 	children,
 }: {
 	title: string;
+	/** How many items it lists, after the title; none when there are none. */
+	count?: number | undefined;
 	/** A line under the title, for what is true of the whole section. */
 	description?: string | undefined;
+	/** A control at the right of the title. */
+	action?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
-		<section className="flex flex-col gap-2">
-			<div className="flex flex-col">
-				<h2 className="flex min-h-7 items-center text-section font-medium">{title}</h2>
-				{description !== undefined && <p className="text-xs font-book text-ink-muted">{description}</p>}
+		<section className="flex flex-col gap-3">
+			<div className="flex items-center justify-between gap-3">
+				<div className="flex min-w-0 flex-col">
+					<h2 className="flex min-h-7 min-w-0 items-center text-section font-medium">
+						<span className="truncate" title={title}>
+							{title}
+						</span>
+						{count !== undefined && count > 0 && (
+							<span className="shrink-0 whitespace-pre text-ink-muted tabular-nums"> · {count}</span>
+						)}
+					</h2>
+					{description !== undefined && <p className="font-book text-pretty text-ink-muted">{description}</p>}
+				</div>
+				{action}
 			</div>
 			{children}
 		</section>

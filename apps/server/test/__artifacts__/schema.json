@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT, label TEXT, version TEXT, seen_at INTEGER)"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT, label TEXT, version TEXT, seen_at INTEGER, identity TEXT, workspaces TEXT)"
 		},
 		{
 			"type": "table",
@@ -242,7 +242,9 @@
 				"token": null,
 				"label": null,
 				"version": null,
-				"seen_at": null
+				"seen_at": null,
+				"identity": null,
+				"workspaces": null
 			}
 		],
 		"organization": [
@@ -275,7 +277,9 @@
 				"paired": true,
 				"online": true,
 				"seenAt": "<time>",
-				"version": "<version>"
+				"version": "<version>",
+				"machineId": null,
+				"workspaces": []
 			}
 		],
 		"updated": [
@@ -296,7 +300,9 @@
 				"paired": true,
 				"online": false,
 				"seenAt": "<time>",
-				"version": "<version>"
+				"version": "<version>",
+				"machineId": null,
+				"workspaces": []
 			}
 		],
 		"refused": {
@@ -330,7 +336,9 @@
 			"token": "<session token>",
 			"label": null,
 			"version": "<version>",
-			"seen_at": "<time>"
+			"seen_at": "<time>",
+			"identity": null,
+			"workspaces": "[]"
 		},
 		"cascade": {
 			"before": {

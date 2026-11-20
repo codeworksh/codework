@@ -345,10 +345,10 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				const machineId = row.id;
 				const info = yield* client("server.info", {});
-				// Only a remote machine is named by its label; one that fails to read it still syncs, keeping the stored one.
+				// Only a remote machine is named by its label; one that fails to read its record still syncs, keeping the stored one.
 				const asked = row.kind === "remote" ? yield* Effect.exit(client("machine.info", {})) : undefined;
-				const label = asked !== undefined && Exit.isSuccess(asked) ? { label: asked.value.givenName } : {};
-				yield* servers.reached(machineId, { host: info.host?.name ?? null, version: info.version, ...label });
+				const own = asked !== undefined && Exit.isSuccess(asked) ? Servers.factsOf(asked.value) : {};
+				yield* servers.reached(machineId, { host: info.host?.name ?? null, version: info.version, ...own });
 				const [machine] = yield* sql<{
 					storeId: string | null;
 					cursor: number;

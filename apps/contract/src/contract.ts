@@ -429,6 +429,10 @@ export const RemoteServerStatus = Schema.Struct({
 	seenAt: Schema.NullOr(Schema.Number),
 	/** The build it last reported; none before it was ever reached. */
 	version: Schema.NullOr(Schema.String),
+	/** The machine's own id, as it last reported it; none before it was reached or before its first connect. */
+	machineId: Schema.NullOr(Schema.String),
+	/** The workspaces it is linked to, each with the thumbprint of its key, as it last reported them. */
+	workspaces: Schema.Array(Schema.Struct({ id: Schema.String, keyId: Schema.String })),
 });
 export type RemoteServerStatus = typeof RemoteServerStatus.Type;
 
@@ -857,17 +861,17 @@ export const Api = RpcGroup.make(
 		success: Machine.Status,
 		error: CodeworkUnavailable,
 	}),
-	/** Disconnects the default machine from a workspace. */
+	/** Disconnects the default machine, or the paired machine `serverId`, from a workspace. */
 	Rpc.make("machine.disconnect", {
-		payload: Machine.Disconnect,
+		payload: { ...Machine.Disconnect.fields, serverId: Schema.optionalKey(Schema.String) },
 		success: Machine.Disconnected,
-		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		error: Schema.Union([CodeworkUnavailable, ServersError, Machine.ConnectError]),
 	}),
-	/** Connects the default machine to a workspace: the code to approve, then the link. */
+	/** Connects the default machine, or the paired machine `serverId`, to a workspace: the code to approve, then the link. */
 	Rpc.make("machine.connect", {
-		payload: { workspaceId: Schema.String },
+		payload: { workspaceId: Schema.String, serverId: Schema.optionalKey(Schema.String) },
 		success: Machine.ConnectEvent,
-		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		error: Schema.Union([CodeworkUnavailable, ServersError, Machine.ConnectError]),
 		stream: true,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */

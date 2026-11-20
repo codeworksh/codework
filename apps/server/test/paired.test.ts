@@ -135,3 +135,64 @@ it("removing a paired machine ends its pairing there, and a stopped machine's ro
 		"rows left": rows(keptId) + rows(stoppedId),
 	});
 }, 90_000);
+
+// No relay runs here: a connect reaches none, so the machine's own failure is what comes back.
+it("a paired machine is linked and unlinked over its own connection, its failures kept and the app's own in its words", async () => {
+	const appHome = tempDir("link-app");
+	const machineHome = tempDir("link-machine");
+	const port = await freePort();
+	const relay = `http://127.0.0.1:${await freePort()}`;
+	let machine = await codework(machineHome, port, { relay });
+	const desk = await app(appHome);
+	const id = await addMachine(appHome, machine, desk.run);
+	const status = (what: string, test: (status: RemoteServerStatus) => boolean) =>
+		waitFor(async () => {
+			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
+			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
+			return found?.kind === "remote" && test(found) ? found : undefined;
+		}, what);
+	const reply = <A, E extends { readonly _tag: string; readonly message: string }>(effect: Effect.Effect<A, E>) =>
+		effect.pipe(Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }));
+	const connect = (serverId: string) =>
+		desk.run((rpc) =>
+			reply(
+				rpc["machine.connect"]({ workspaceId: "acme", serverId }).pipe(
+					Stream.runCollect,
+					Effect.map((events) => [...events]),
+				),
+			),
+		);
+	const disconnect = (serverId: string) =>
+		desk.run((rpc) => reply(rpc["machine.disconnect"]({ workspaceId: "acme", keyId: "key", serverId })));
+
+	const before = await status("the machine online", (each) => each.online);
+	const connected = await connect(id);
+	const disconnected = await disconnect(id);
+	const local = await connect(LOCAL_SERVER);
+
+	// The connect gave the machine its id; its status carries it once the machine reports it again.
+	const { id: machineId } = await machine.run((rpc) => rpc["machine.info"]({}));
+	await stop(machine.proc);
+	await status("the machine offline", (each) => !each.online);
+	const unanswered = await disconnect(id);
+	machine = await codework(machineHome, port, { relay });
+	const back = await status("the machine back with its id", (each) => each.online && each.machineId !== null);
+
+	const devices = await machine.run((rpc) => rpc["device.list"]({}));
+	await machine.run((rpc) => rpc["device.revoke"]({ id: devices[0]!.id }));
+	await status("the row unpaired", (each) => !each.paired);
+	const unpaired = { connect: await connect(id), disconnect: await disconnect(id) };
+
+	const text = JSON.stringify({
+		"once paired": { machineId: before.machineId, workspaces: before.workspaces },
+		"machine.connect": connected,
+		"machine.disconnect of a workspace it is not linked to": disconnected,
+		"machine.connect on the local server by id": local,
+		"machine.disconnect while it is stopped": unanswered,
+		"back after its first connect": { machineId: back.machineId, workspaces: back.workspaces },
+		"after device.revoke": unpaired,
+	})
+		.replaceAll(relay, "<relay>")
+		.replaceAll(machineId ?? "<none>", "<machine id>");
+	await snapshot("paired.link", JSON.parse(text));
+}, 90_000);
