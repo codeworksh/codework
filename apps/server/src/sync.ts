@@ -6,6 +6,7 @@ import {
 	Context,
 	Deferred,
 	Effect,
+	Exit,
 	FiberHandle,
 	FiberMap,
 	FileSystem,
@@ -340,10 +341,14 @@ export const layer = Layer.effect(
 		 * the store's line (by `boot`) comes back from zero with `reset`; a server older than boots is
 		 * read from zero only while its head is behind the cursor.
 		 */
-		const connected = (machineId: string, client: Connection) =>
+		const connected = (row: Servers.Row, client: Connection) =>
 			Effect.gen(function* () {
+				const machineId = row.id;
 				const info = yield* client("server.info", {});
-				yield* servers.setHost(machineId, info.host?.name ?? null);
+				// Only a remote machine is named by its label; one that fails to read it still syncs, keeping the stored one.
+				const asked = row.kind === "remote" ? yield* Effect.exit(client("machine.info", {})) : undefined;
+				const label = asked !== undefined && Exit.isSuccess(asked) ? { label: asked.value.givenName } : {};
+				yield* servers.reached(machineId, { host: info.host?.name ?? null, version: info.version, ...label });
 				const [machine] = yield* sql<{
 					storeId: string | null;
 					cursor: number;
@@ -502,12 +507,16 @@ export const layer = Layer.effect(
 						if (clients.get(row.id) === client) clients.delete(row.id);
 					}),
 				);
+				yield* Effect.addFinalizer(() => servers.lost(row.id));
 				yield* Effect.forkScoped(followUsage(row.id, client));
-				yield* connected(row.id, client).pipe(
+				yield* connected(row, client).pipe(
 					Effect.catchCause((cause) =>
-						Effect.logWarning("Machine sync stopped; reconnecting", cause).pipe(
-							Effect.annotateLogs({ machineId: row.id }),
-						),
+						servers
+							.lost(row.id)
+							.pipe(
+								Effect.andThen(Effect.logWarning("Machine sync stopped; reconnecting", cause)),
+								Effect.annotateLogs({ machineId: row.id }),
+							),
 					),
 					Effect.andThen(Effect.sleep("1 second")),
 					Effect.forever,

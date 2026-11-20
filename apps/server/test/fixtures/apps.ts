@@ -11,7 +11,7 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect } from "vite-plus/test";
-import { Contract } from "@codeworksh/contract";
+import { Contract, type ServerStatus } from "@codeworksh/contract";
 import { Door } from "@codeworksh/schema";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
@@ -128,6 +128,16 @@ export const codework = async (
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
 
+/** A status as an artifact keeps it: a remote one's build and last answer vary per run. */
+export const stable = (status: ServerStatus | undefined) =>
+	status?.kind === "remote"
+		? {
+				...status,
+				version: status.version === null ? null : "<version>",
+				seenAt: status.seenAt === null ? null : "<time>",
+			}
+		: status;
+
 const appClient = RpcClient.make(Contract.Api);
 export type AppRpc = Effect.Success<typeof appClient>;
 
@@ -192,7 +202,7 @@ export const machineRow = (home: string, id: string) =>
 /** Adds the CodeWork server as a remote machine, paired with a fresh code, then waits until the app holds its head. */
 export const addMachine = async (home: string, server: Codework, run: Awaited<ReturnType<typeof app>>["run"]) => {
 	const code = await server.pair();
-	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url, code }));
+	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", url: server.url, code }));
 	await synced(home, id, server);
 	return id;
 };

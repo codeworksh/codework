@@ -6,6 +6,7 @@
 					"id": "<id 1>",
 					"kind": "local",
 					"name": null,
+					"label": null,
 					"host": null
 				},
 				"id": "<id 1>",
@@ -18,12 +19,13 @@
 					"id": "<machine cw-a>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-a"
 				},
 				"id": "<machine cw-a>",
 				"name": "cw-a",
 				"host": "cw-a",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-a",
 				"allThreads": "cw-a"
 			},
@@ -32,12 +34,13 @@
 					"id": "<machine cw-b>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-b"
 				},
 				"id": "<machine cw-b>",
 				"name": "cw-b",
 				"host": "cw-b",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-b",
 				"allThreads": "cw-b"
 			},
@@ -46,12 +49,13 @@
 					"id": "<machine cw-c>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-c"
 				},
 				"id": "<machine cw-c>",
 				"name": "cw-c",
 				"host": "cw-c",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-c",
 				"allThreads": "cw-c"
 			}
@@ -62,6 +66,7 @@
 					"id": "<id 1>",
 					"kind": "local",
 					"name": null,
+					"label": null,
 					"host": null
 				},
 				"id": "<id 1>",
@@ -74,12 +79,13 @@
 					"id": "<machine cw-a>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-a"
 				},
 				"id": "<machine cw-a>",
 				"name": "cw-a",
 				"host": "cw-a",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-a",
 				"allThreads": "cw-a"
 			},
@@ -87,13 +93,14 @@
 				"stored": {
 					"id": "<machine cw-b>",
 					"kind": "remote",
-					"name": "Build Box",
+					"name": null,
+					"label": "Build Box",
 					"host": "cw-b"
 				},
 				"id": "<machine cw-b>",
 				"name": "Build Box",
 				"host": "cw-b",
-				"override": "Build Box",
+				"label": "Build Box",
 				"sidebar": "Build Box",
 				"allThreads": "Build Box"
 			},
@@ -102,12 +109,13 @@
 					"id": "<machine cw-c>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-c"
 				},
 				"id": "<machine cw-c>",
 				"name": "cw-c",
 				"host": "cw-c",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-c",
 				"allThreads": "cw-c"
 			}
@@ -122,6 +130,7 @@
 					"id": "<id 1>",
 					"kind": "local",
 					"name": null,
+					"label": null,
 					"host": null
 				},
 				"id": "<id 1>",
@@ -134,12 +143,13 @@
 					"id": "<machine cw-a>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-a"
 				},
 				"id": "<machine cw-a>",
 				"name": "cw-a",
 				"host": "cw-a",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-a",
 				"allThreads": "cw-a"
 			},
@@ -148,12 +158,13 @@
 					"id": "<machine cw-b>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-b"
 				},
 				"id": "<machine cw-b>",
 				"name": "cw-b",
 				"host": "cw-b",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-b",
 				"allThreads": "cw-b"
 			},
@@ -162,12 +173,13 @@
 					"id": "<machine cw-c>",
 					"kind": "remote",
 					"name": null,
+					"label": null,
 					"host": "cw-c"
 				},
 				"id": "<machine cw-c>",
 				"name": "cw-c",
 				"host": "cw-c",
-				"override": null,
+				"label": null,
 				"sidebar": "cw-c",
 				"allThreads": "cw-c"
 			}

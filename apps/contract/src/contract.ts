@@ -375,7 +375,7 @@ export const ServerKind = Schema.Literals(["local", "remote"]);
 /** The server the app always has, which cannot be removed. */
 export const LOCAL_SERVER = "local";
 
-/** How a server is named: the user's `override`, else the `host` name its server reports, else where it is. */
+/** How a local server is named: the user's `override`, else the `host` name its server reports. */
 const ServerNaming = {
 	/** As shown. */
 	name: Schema.String,
@@ -406,15 +406,29 @@ export const LocalServerStatus = Schema.Struct({
 });
 export type LocalServerStatus = typeof LocalServerStatus.Type;
 
-/** A remote server: only where to reach it; it has no executable or home here. */
+/**
+ * A paired machine: a server on another computer, reached with a pairing code. It has no executable or
+ * home here. Its hostname and label are the machine's own, as it last reported them.
+ */
 export const RemoteServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("remote"),
-	...ServerNaming,
+	/** As shown: its label, else its hostname, else where it is. */
+	name: Schema.String,
+	/** The computer's own name; none before the machine was ever reached. */
+	host: Schema.NullOr(Schema.String),
+	/** The friendly name stored on the machine; none when it has none. */
+	label: Schema.NullOr(Schema.String),
 	isDefault: Schema.Boolean,
 	url: Schema.String,
 	/** Whether this app holds a session on it; false once the server refuses it (revoked or lapsed): pair again. */
 	paired: Schema.Boolean,
+	/** Whether it is answering now. */
+	online: Schema.Boolean,
+	/** When it last answered, in epoch milliseconds; none before it ever did. */
+	seenAt: Schema.NullOr(Schema.Number),
+	/** The build it last reported; none before it was ever reached. */
+	version: Schema.NullOr(Schema.String),
 });
 export type RemoteServerStatus = typeof RemoteServerStatus.Type;
 
@@ -434,9 +448,9 @@ export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
 /**
- * A new server. A local one needs a home of its own, since a home names one server; a remote one
- * needs its WebSocket URL and a pairing code from `codework service pair` on that machine. A blank or
- * absent `name` is no override.
+ * A new server. A local one needs a home of its own, since a home names one server; a blank or absent
+ * `name` is no override. A remote one needs its WebSocket URL and a pairing code from
+ * `codework service pair` on that machine; it is named by its own label.
  */
 export const ServerAdd = Schema.Union([
 	Schema.Struct({
@@ -448,7 +462,6 @@ export const ServerAdd = Schema.Union([
 	}),
 	Schema.Struct({
 		kind: Schema.Literal("remote"),
-		name: Schema.optionalKey(Schema.String),
 		url: Schema.String,
 		code: Schema.String,
 	}),
@@ -458,7 +471,7 @@ export type ServerAdd = typeof ServerAdd.Type;
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
  * a blank `name` removes the override; `env` replaces every variable. `url` and `code` are for a remote
- * server only, the rest but `name` for a local one; a `code` pairs again, at the new `url` when given.
+ * server only, the rest for a local one; a `code` pairs again, at the new `url` when given.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -1021,6 +1034,15 @@ export const Api = RpcGroup.make(
 		payload: ServerUpdate,
 		success: Schema.Void,
 		error: Schema.Union([ServersError, PairingRefused]),
+	}),
+	/**
+	 * Sets the label stored on a paired machine, over its connection; an empty one clears it. Pairing is
+	 * direct access to the machine, so this needs nothing more.
+	 */
+	Rpc.make("servers.label", {
+		payload: { id: Schema.String, label: Schema.String },
+		success: Schema.Void,
+		error: ServersError,
 	}),
 	/** The default server and the built-in one stay. */
 	Rpc.make("servers.remove", {

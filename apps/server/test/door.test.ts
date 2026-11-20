@@ -14,6 +14,7 @@ import {
 	machineRow,
 	query,
 	snapshot,
+	stable,
 	stop,
 	synced,
 	tempDir,
@@ -56,16 +57,22 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 	await synced(appHome, LOCAL_SERVER, local);
 	const statuses = () =>
 		desk.run((rpc: AppRpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead, Effect.map(Option.getOrThrow)));
-	const remoteOf = (all: ReadonlyArray<ServerStatus>, id: string) => all.find((status) => status.id === id);
+	const remoteOf = (all: ReadonlyArray<ServerStatus>, id: string) => stable(all.find((status) => status.id === id));
+	// Its connection is up a moment after its sync caught up; the status follows without being asked.
+	const onlineOf = (id: string) =>
+		waitFor(async () => {
+			const status = remoteOf(await statuses(), id);
+			return status?.kind === "remote" && status.online ? status : undefined;
+		}, `machine ${id} online`);
 	const session = (id: string) =>
 		query(appHome, "SELECT token FROM machine WHERE id = ?", id)[0]!.token as string | null;
 	const sessions: Array<string> = [];
 
 	const goodId = await addMachine(appHome, good, desk.run);
 	sessions.push(session(goodId)!);
-	const added = remoteOf(await statuses(), goodId);
+	const added = await onlineOf(goodId);
 	const badCode = await desk.run((rpc) =>
-		rpc["servers.add"]({ kind: "remote", name: "Wrong", url: good.url, code: "00000-00000" }).pipe(
+		rpc["servers.add"]({ kind: "remote", url: good.url, code: "00000-00000" }).pipe(
 			Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: () => "added" }),
 		),
 	);
@@ -94,7 +101,7 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 	sessions.push(session(goodId)!);
 	await good.run((rpc) => rpc["session.create"]({}));
 	await synced(appHome, goodId, good);
-	const repaired = remoteOf(await statuses(), goodId);
+	const repaired = await onlineOf(goodId);
 
 	const all = await statuses();
 	const text = JSON.stringify({

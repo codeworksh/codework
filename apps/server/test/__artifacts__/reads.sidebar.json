@@ -3,7 +3,7 @@
 		{
 			"machine": {
 				"id": "<id 1>",
-				"name": "Scripted"
+				"name": "Fixture"
 			},
 			"id": "<id 2>",
 			"name": "Alpha",
@@ -43,7 +43,7 @@
 		{
 			"machine": {
 				"id": "<id 1>",
-				"name": "Scripted"
+				"name": "Fixture"
 			},
 			"id": "<id 2>",
 			"name": "Alpha",

@@ -22,12 +22,15 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": true
+			"paired": true,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>"
 		}
 	},
 	"a wrong code": {
@@ -44,10 +47,13 @@
 			"kind": "remote",
 			"name": "<good host>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": false
+			"paired": false,
+			"online": false,
+			"seenAt": null,
+			"version": null
 		}
 	},
 	"after the machine restarts": {
@@ -58,12 +64,15 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": false
+			"paired": false,
+			"online": false,
+			"seenAt": "<time>",
+			"version": "<version>"
 		}
 	},
 	"devices": [
@@ -76,12 +85,15 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": true
+			"paired": true,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>"
 		},
 		"a new session": true
 	}

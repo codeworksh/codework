@@ -38,15 +38,22 @@ const model = (provider: string | null, id: string | null) =>
 
 /** The machine columns a read selects to name it by {@link Servers.nameOf}. */
 export const MACHINE =
-	"machine.kind AS machine_kind, machine.name AS machine_override, machine.host AS machine_host, machine.url AS machine_url";
+	"machine.kind AS machine_kind, machine.name AS machine_override, machine.label AS machine_label, machine.host AS machine_host, machine.url AS machine_url";
 export interface MachineColumns {
 	readonly machineKind: string;
 	readonly machineOverride: string | null;
+	readonly machineLabel: string | null;
 	readonly machineHost: string | null;
 	readonly machineUrl: string | null;
 }
 export const machineName = (row: MachineColumns) =>
-	Servers.nameOf({ kind: row.machineKind, override: row.machineOverride, host: row.machineHost, url: row.machineUrl });
+	Servers.nameOf({
+		kind: row.machineKind,
+		override: row.machineOverride,
+		label: row.machineLabel,
+		host: row.machineHost,
+		url: row.machineUrl,
+	});
 
 /** The machine filter of `sidebar.list`. */
 const onMachines = (sql: SqlClient.SqlClient, machines: "default" | "all") =>

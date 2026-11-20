@@ -1,3 +1,4 @@
+import { Codework as Client } from "@codeworksh/widget/backend";
 import type * as Mirror from "@codeworksh/widget/codework";
 import { Effect, Predicate, Stream } from "effect";
 import { SqlClient } from "effect/sql";
@@ -10,6 +11,7 @@ import {
 	ModelsError,
 	ProjectError,
 	type ServerAdd,
+	ServersError,
 	SettingsConflict,
 	SettingsError,
 	type ServerUpdate,
@@ -223,6 +225,29 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"servers.update": Effect.fn("servers.update")(function* (input: ServerUpdate) {
 				yield* changingDefault(servers.update(input));
+				yield* health.check;
+			}),
+			"servers.label": Effect.fn("servers.label")(function* ({
+				id,
+				label,
+			}: {
+				readonly id: string;
+				readonly label: string;
+			}) {
+				const row = yield* servers.get(id);
+				if (row.kind !== "remote")
+					return yield* new ServersError({ message: "Only a paired Machine has a Label." });
+				if (row.token === null)
+					return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
+				const status = yield* sync.client(id).pipe(
+					Effect.flatMap((client) =>
+						Codework.call((rpc) => rpc("machine.rename", { givenName: label.trim() })).pipe(
+							Effect.provideService(Client, client),
+						),
+					),
+					Effect.mapError(() => new ServersError({ message: `${row.name} did not answer.` })),
+				);
+				yield* servers.reached(id, { label: status.givenName });
 				yield* health.check;
 			}),
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {

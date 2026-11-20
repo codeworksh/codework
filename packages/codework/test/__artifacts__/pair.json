@@ -3,7 +3,7 @@
 		"pair prints": {
 			"status": 0,
 			"stdout": "<code>\n",
-			"stderr": ""
+			"stderr": "note: this code gives the computer that uses it full access to this machine\n"
 		},
 		"a wrong code": 401,
 		"no label": 400,
