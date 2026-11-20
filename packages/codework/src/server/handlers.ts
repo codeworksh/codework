@@ -295,6 +295,11 @@ export const layer = Contract.Api.toLayer(
 		const global = yield* Global.Service;
 		const pairing = yield* Pairing.Service;
 		const connections = yield* Door.Connections;
+		/** Forgets a device and ends its open connections; false when none has `id`. */
+		const forget = (id: string) =>
+			pairing
+				.revoke(id)
+				.pipe(Effect.tap(() => Effect.forEach(connections.device(id), connections.end, { discard: true })));
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -706,14 +711,14 @@ export const layer = Contract.Api.toLayer(
 				),
 			"device.pair": () => Principal.local(pairing.code),
 			"device.list": () => Principal.local(pairing.list),
-			"device.revoke": ({ id }) =>
-				Principal.local(
-					Effect.gen(function* () {
-						const applied = yield* pairing.revoke(id);
-						yield* Effect.forEach(connections.device(id), connections.end, { discard: true });
-						return { applied };
-					}),
-				),
+			"device.revoke": ({ id }) => Principal.local(Effect.map(forget(id), (applied) => ({ applied }))),
+			"device.leave": () =>
+				Effect.gen(function* () {
+					const caller = yield* Principal.Current;
+					if (caller.kind !== "device")
+						return yield* new Principal.Forbidden({ message: "This computer has no pairing to leave" });
+					yield* forget(caller.id);
+				}),
 			"host.info": () => Effect.succeed(host.info),
 			"host.browse": ({ path }) => host.browse(path),
 			"host.create": ({ name }) => host.create(name),

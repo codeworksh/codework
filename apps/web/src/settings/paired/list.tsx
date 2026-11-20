@@ -32,8 +32,8 @@ export function Status({ server }: { server: RemoteServerStatus }) {
 export function PairedList() {
 	const paired = usePaired();
 	const [pairing, setPairing] = useState(false);
-	// The button that opened the dialog: it unmounts with its dialog, so focus is handed back by hand.
-	const opener = useRef<HTMLButtonElement | null>(null);
+	// The dialog unmounts rather than closing, so focus is handed back to its button by hand.
+	const opener = useRef<HTMLButtonElement>(null);
 	const close = () => {
 		setPairing(false);
 		requestAnimationFrame(() => opener.current?.focus());
@@ -50,13 +50,7 @@ export function PairedList() {
 			title={TITLE}
 			description="Machines this computer reaches with a pairing code, outside any Workspace."
 			actions={
-				<Button
-					size="sm"
-					onClick={(event) => {
-						opener.current = event.currentTarget;
-						setPairing(true);
-					}}
-				>
+				<Button ref={opener} size="sm" onClick={() => setPairing(true)}>
 					<PlusIcon aria-hidden />
 					Pair a Machine
 				</Button>
@@ -67,18 +61,6 @@ export function PairedList() {
 					<EmptyState
 						title="No Paired Machines"
 						description="A Machine you pair shows up here, and its threads in the sidebar."
-						action={
-							<Button
-								size="sm"
-								variant="secondary"
-								onClick={(event) => {
-									opener.current = event.currentTarget;
-									setPairing(true);
-								}}
-							>
-								Pair a Machine
-							</Button>
-						}
 					/>
 				) : (
 					<Group>

@@ -978,6 +978,15 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ applied: Schema.Boolean }),
 		error: Principal.Forbidden,
 	}),
+	/**
+	 * Ends the calling device's own pairing, as `device.revoke` would. Its sockets end with it, this one
+	 * too, so the reply may never arrive: the connection dropping after the call is sent means it left.
+	 * Devices only; a local caller has no pairing to leave.
+	 */
+	Rpc.make("device.leave", {
+		payload: {},
+		error: Principal.Forbidden,
+	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {
 		payload: {},

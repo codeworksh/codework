@@ -571,6 +571,11 @@ export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Server.Una
 	message: Schema.String,
 }) {}
 
+/** A call this caller may not make; here only so its failure decodes. */
+class Forbidden extends Schema.TaggedError<Forbidden>()("Server.Forbidden", {
+	message: Schema.String,
+}) {}
+
 /** The server's door on every call; here only so its failure decodes. */
 export class Door extends RpcMiddleware.Service<Door>()("@codeworksh/widget/codework/Door", {
 	error: Unauthorized,
@@ -826,6 +831,11 @@ export const Api = RpcGroup.make(
 		payload: Machine.Disconnect,
 		success: Machine.Disconnected,
 		error: Machine.ConnectError,
+	}),
+	/** Ends this app's own pairing with the machine; the connection dropping after the call means it left. */
+	Rpc.make("device.leave", {
+		payload: {},
+		error: Forbidden,
 	}),
 	/** Connects this machine to a workspace: the code a member approves, then the link once they have. */
 	Rpc.make("machine.connect", {

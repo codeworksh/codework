@@ -1,0 +1,12 @@
+{
+	"a running machine": {
+		"devices before": 1,
+		"servers.remove": "removed",
+		"devices after": 0
+	},
+	"a stopped machine": {
+		"servers.remove": "removed",
+		"within the bound": true
+	},
+	"rows left": 0
+}

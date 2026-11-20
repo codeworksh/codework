@@ -102,3 +102,36 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	for (const secret of [desk.token, machine.token, session]) expect(text).not.toContain(secret);
 	await snapshot("paired", JSON.parse(text));
 }, 90_000);
+
+it("removing a paired machine ends its pairing there, and a stopped machine's row goes all the same", async () => {
+	const appHome = tempDir("leave-app");
+	const kept = await codework(tempDir("leave-kept"), await freePort());
+	const stopped = await codework(tempDir("leave-stopped"), await freePort());
+	const desk = await app(appHome);
+	const keptId = await addMachine(appHome, kept, desk.run);
+	const stoppedId = await addMachine(appHome, stopped, desk.run);
+	const devices = () => kept.run((rpc) => rpc["device.list"]({})).then((list) => list.length);
+	const remove = async (id: string) => {
+		const started = Date.now();
+		const reply = await desk.run((rpc) =>
+			rpc["servers.remove"]({ id }).pipe(
+				Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: () => "removed" }),
+			),
+		);
+		return { reply, elapsed: Date.now() - started };
+	};
+	const rows = (id: string) => query(appHome, "SELECT id FROM machine WHERE id = ?", id).length;
+
+	const before = await devices();
+	const left = await remove(keptId);
+	const after = await devices();
+
+	await stop(stopped.proc);
+	const away = await remove(stoppedId);
+
+	await snapshot("paired.remove", {
+		"a running machine": { "devices before": before, "servers.remove": left.reply, "devices after": after },
+		"a stopped machine": { "servers.remove": away.reply, "within the bound": away.elapsed < 5_000 },
+		"rows left": rows(keptId) + rows(stoppedId),
+	});
+}, 90_000);

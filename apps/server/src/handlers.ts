@@ -251,6 +251,17 @@ export const layer = Contract.Api.toLayer(
 				yield* health.check;
 			}),
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {
+				const row = yield* servers.get(id);
+				// Best effort: the row goes whether the machine answers or not.
+				if (row.kind === "remote" && row.token !== null)
+					yield* sync.client(id).pipe(
+						Effect.flatMap((client) =>
+							Codework.call((rpc) => rpc("device.leave", {}), { timeout: "3 seconds" }).pipe(
+								Effect.provideService(Client, client),
+							),
+						),
+						Effect.ignore,
+					);
 				yield* servers.remove(id);
 				yield* health.check;
 			}),

@@ -116,6 +116,17 @@ const follow = Effect.fn(function* (rpc: Client.Client) {
 
 const isClientError = Schema.is(RpcClientError.RpcClientError);
 
+/** How a device's call or stream ended, as the artifact keeps it. */
+const ending = <A, E>(exit: Exit.Exit<A, E>) =>
+	Exit.match(exit, {
+		onSuccess: () => "completed",
+		onFailure: (cause) =>
+			Result.match(Cause.findError(cause), {
+				onSuccess: (error) => (isClientError(error) ? `failed: ${error.reason._tag}` : "failed otherwise"),
+				onFailure: () => "failed otherwise",
+			}),
+	});
+
 it("a paired device takes a ticket per socket, calls as a device, and is cut off when revoked", async () => {
 	const local = home("local");
 	// A token file an earlier build kept, which a start deletes.
@@ -226,14 +237,7 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 			}).pipe(Effect.timeout("5 seconds"));
 			const revocation = {
 				revoke: scrubbed(revoked),
-				"the revoked device's stream": Exit.match(ended, {
-					onSuccess: () => "completed",
-					onFailure: (cause) =>
-						Result.match(Cause.findError(cause), {
-							onSuccess: (error) => (isClientError(error) ? `failed: ${error.reason._tag}` : "failed otherwise"),
-							onFailure: () => "failed otherwise",
-						}),
-				}),
+				"the revoked device's stream": ending(ended),
 				"the other device's stream sees a session made after":
 					tabletFeed.fiber.pollUnsafe() === undefined ? "live" : "ended",
 				"a ticket it took before": yield* upgrade(listening, queued),
@@ -324,6 +328,63 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 	for (const secret of secrets) expect(text).not.toContain(secret);
 	await expect(text).toMatchFileSnapshot("./__artifacts__/pair.json");
 }, 180_000);
+
+it("a device leaves its own pairing; another device stays, and a local caller has none to leave", async () => {
+	const dir = home("leave");
+	const result = await Effect.gen(function* () {
+		const real = yield* Clock.Clock;
+		return yield* Effect.gen(function* () {
+			const listening = yield* port;
+			const http = routes(`http://127.0.0.1:${listening}`);
+			const url = `ws://127.0.0.1:${listening}/rpc/v1`;
+			const filed = yield* registered(dir);
+			const rpc = yield* connect(dir);
+			const names = new Map<string, string>();
+			const pairDevice = Effect.fn(function* (name: string) {
+				const paired = yield* http.pair((yield* rpc["device.pair"]({})).code, name);
+				names.set(paired.id, `<${name}>`);
+				return paired;
+			});
+			const desktop = yield* pairDevice("Desktop");
+			const tablet = yield* pairDevice("Tablet");
+			const desktopRpc = yield* device(url, yield* http.ticket(desktop.token));
+			const desktopFeed = yield* follow(yield* device(url, yield* http.ticket(desktop.token)));
+			const tabletRpc = yield* device(url, yield* http.ticket(tablet.token));
+			const tabletFeed = yield* follow(tabletRpc);
+			const queued = yield* http.ticket(desktop.token);
+
+			// The reply races its own socket's end, so either outcome means it left.
+			const left = ending(yield* Effect.exit(desktopRpc["device.leave"]({})));
+			// Refused or closed, by the same race.
+			const own = ending(yield* Effect.exit(desktopRpc["server.info"]({})));
+			const ended = yield* Fiber.await(desktopFeed.fiber).pipe(Effect.timeout("5 seconds"));
+			const after = yield* rpc["session.create"]({});
+			yield* Effect.gen(function* () {
+				while (!tabletFeed.live.some((item) => item._tag === "Session" && item.session.id === after.session.id))
+					yield* Effect.sleep("50 millis");
+			}).pipe(Effect.timeout("5 seconds"));
+			const devices = yield* rpc["device.list"]({});
+			const artifact = {
+				"device.leave": left === "completed" || left === "failed: SocketCloseError" ? "left" : left,
+				"its other socket's stream": ending(ended),
+				"a call on the socket it left on": own === "completed" ? "answered" : "ended",
+				"a ticket it took before": yield* upgrade(listening, queued),
+				"a new ticket": yield* http.ticketStatus(`Bearer ${desktop.token}`),
+				"device.list": devices.map((each) => names.get(each.id) ?? "<unknown>"),
+				"the other device's stream sees a session made after":
+					tabletFeed.fiber.pollUnsafe() === undefined ? "live" : "ended",
+				"the other device calls": (yield* tabletRpc["server.info"]({})).storeId.length > 0,
+				"device.leave from this computer": yield* rpc["device.leave"]({}).pipe(
+					Effect.match({ onFailure: (error) => error._tag, onSuccess: () => "left" }),
+				),
+			};
+			return { artifact, secrets: [filed.token, desktop.token, tablet.token, queued] };
+		}).pipe(Effect.provide(serve(dir, real)));
+	}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
+	const text = `${JSON.stringify(result.artifact, null, "\t")}\n`;
+	for (const secret of result.secrets) expect(text).not.toContain(secret);
+	await expect(text).toMatchFileSnapshot("./__artifacts__/pair.leave.json");
+}, 60_000);
 
 /** An IPv4 address of this computer other than loopback, as another computer on its network reaches it. */
 const lan = Object.values(networkInterfaces())
