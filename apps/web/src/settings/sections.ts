@@ -4,6 +4,7 @@ import {
 	CpuIcon,
 	CubeIcon,
 	DesktopTowerIcon,
+	DevicesIcon,
 	HardDrivesIcon,
 	type Icon,
 	KeyboardIcon,
@@ -27,6 +28,7 @@ export interface SettingsSection {
 		| "/settings/tabs"
 		| "/settings/themes"
 		| "/settings/servers"
+		| "/settings/paired"
 		| "/settings/keybindings"
 		| "/settings/models"
 		| "/settings/chat"
@@ -79,6 +81,13 @@ const sections: readonly SettingsSection[] = [
 		icon: HardDrivesIcon,
 		group: "Application",
 		keywords: ["servers", "provider", "local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
+	},
+	{
+		to: "/settings/paired",
+		label: "Paired Machines",
+		icon: DevicesIcon,
+		group: "Application",
+		keywords: ["pair", "paired", "remote", "machine", "code", "ssh", "address", "label"],
 	},
 	{
 		to: "/settings/keybindings",

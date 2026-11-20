@@ -19,13 +19,11 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import brand from "../../assets/codework.png";
 import { Server } from "../../kernel/rpc";
-import { INSTALL, installAtom, serviceAtom } from "../../kernel/servers";
+import { INSTALL, installAtom, removeAtom, serviceAtom, updateAtom } from "../../kernel/servers";
 import { Code, Group as Card, quietField as field, SavingInput } from "../blocks";
 import { Variables } from "./variables";
 import { CopyCommand } from "@/components/copyable";
 
-const updateAtom = Server.mutation("servers.update");
-const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
 
 type Tone = "success" | "warning" | "danger" | "info" | "muted";

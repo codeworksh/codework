@@ -1,7 +1,8 @@
-import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Ago } from "../widgets/time";
 import { quietField, SavingInput } from "./blocks";
 
 export type StatusTone = "success" | "warning" | "danger" | "info" | "muted";
@@ -20,6 +21,33 @@ export function StatusDot({ tone, children }: { readonly tone: StatusTone; reado
 		<span className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
 			<span className={`size-1.5 shrink-0 rounded-full ${DOTS[tone]}`} aria-hidden />
 			<span className="truncate">{children}</span>
+		</span>
+	);
+}
+
+/** Whether a machine answers now, else when it last did. */
+export function SeenStatus({ online, seenAt }: { readonly online: boolean; readonly seenAt: number | null }) {
+	if (online) return <StatusDot tone="success">Online</StatusDot>;
+	// Read as a number: a server that predates the field sends none.
+	if (typeof seenAt !== "number") return <StatusDot tone="muted">Never Seen</StatusDot>;
+	return (
+		<StatusDot tone="muted">
+			<span className="tabular-nums">
+				Last Seen <Ago time={seenAt} />
+			</span>
+		</StatusDot>
+	);
+}
+
+/** A short confirmation that something just worked, fading in where it appears. */
+export function Done({ children }: { readonly children: ReactNode }) {
+	return (
+		<span
+			role="status"
+			className="flex animate-in items-center gap-1.5 text-xs text-ink-secondary duration-200 fade-in-0 motion-reduce:animate-none"
+		>
+			<CheckCircleIcon size={14} weight="fill" className="shrink-0 text-success" aria-hidden />
+			{children}
 		</span>
 	);
 }

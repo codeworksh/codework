@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { CaretRightIcon, CheckCircleIcon, DesktopTowerIcon, DotsThreeIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, DesktopTowerIcon, DotsThreeIcon } from "@phosphor-icons/react";
 import type { Relay } from "@codeworksh/schema";
 import { Link } from "@tanstack/react-router";
 import { Option } from "effect";
@@ -26,7 +26,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { messageOf } from "@/lib/utils";
 import {
 	approveAtom,
@@ -40,9 +39,8 @@ import {
 } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
 import { disconnectAtom, useMachineAtom } from "../shell/connect";
-import { Ago } from "../widgets/time";
-import { Group, Page, quietField, Row, SavingInput, Section } from "./blocks";
-import { EmptyState, StatusDot } from "./controls";
+import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "./blocks";
+import { Done, EmptyState, SeenStatus, StatusDot } from "./controls";
 import { Badge } from "./servers/local";
 
 const renameAtom = Server.mutation("machine.rename");
@@ -63,8 +61,8 @@ export function MachinesSettings({ workspaceId }: { readonly workspaceId: string
 			title="Machines"
 			description={
 				workspace === undefined
-					? "Machines Connected to your Workspace"
-					: `Machines Connected to ${workspace.name}, and this Machine's name`
+					? "Machines Linked to your Workspace"
+					: `Machines Linked to ${workspace.name}, and this Machine's Label`
 			}
 		>
 			<ThisMachine workspace={workspace} ready={!AsyncResult.isInitial(me)} />
@@ -118,9 +116,9 @@ function ThisMachine({
 		<Section title="This Machine">
 			<Loaded>
 				<Group>
-					<Row title="Name" description={error ?? "Shown to your Workspaces."}>
+					<Row title="Label" description={error ?? "Shown to your Linked Workspaces."}>
 						<SavingInput
-							label="Machine name"
+							label="Machine label"
 							value={status.givenName ?? ""}
 							placeholder={status.localHostName}
 							className={`w-full @min-[560px]:w-64 ${quietField}`}
@@ -132,7 +130,7 @@ function ThisMachine({
 							}}
 						/>
 					</Row>
-					<Row title="Hostname" description="Used when Name is empty.">
+					<Row title="Hostname" description="Used when Label is empty.">
 						<div className="w-full min-w-0 shrink-0 @min-[560px]:w-auto @min-[560px]:max-w-64">
 							<CopyCommand command={status.localHostName} label="Copy Hostname" />
 						</div>
@@ -151,11 +149,11 @@ function ThisMachine({
 					</Row>
 					{workspace !== undefined && (
 						<Row
-							title={linked ? "Setup" : "Not Connected"}
+							title={linked ? "Setup" : "Not Linked"}
 							description={
 								linked
 									? "The CodeWork CLI, the Server, and this Machine's connection."
-									: `This Machine isn't in ${workspace.name} yet.`
+									: `This Machine isn't Linked to ${workspace.name} yet.`
 							}
 						>
 							<Button size="sm" variant={linked ? "secondary" : "default"} asChild>
@@ -345,15 +343,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 							}}
 						/>
 						{error !== null && <p className="text-xs text-destructive">{error}</p>}
-						{added !== null && error === null && (
-							<p
-								key={added}
-								className="flex animate-in items-center gap-1.5 text-xs text-ink-secondary duration-200 fade-in-0 motion-reduce:animate-none"
-							>
-								<CheckCircleIcon size={14} weight="fill" className="text-success" aria-hidden />
-								Approved {added}
-							</p>
-						)}
+						{added !== null && error === null && <Done key={added}>Approved {added}</Done>}
 					</div>
 					<Button type="submit" size="sm" className="min-w-20" disabled={busy}>
 						{busy ? "Adding…" : "Add"}
@@ -395,7 +385,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 
 	if (AsyncResult.isInitial(machines)) {
 		return (
-			<Section title={`In ${workspace.name}`}>
+			<Section title={`Linked to ${workspace.name}`}>
 				<Placeholder rows={2} />
 			</Section>
 		);
@@ -404,7 +394,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 	const last = AsyncResult.isFailure(machines) ? Option.getOrUndefined(machines.previousSuccess) : undefined;
 	if (AsyncResult.isFailure(machines) && last === undefined) {
 		return (
-			<Section title={`In ${workspace.name}`}>
+			<Section title={`Linked to ${workspace.name}`}>
 				<EmptyState title="Unavailable" description={relayFailure(machines.cause)} />
 			</Section>
 		);
@@ -419,7 +409,7 @@ function WorkspaceMachines({ workspace }: { readonly workspace: Relay.Workspace 
 	];
 	return (
 		<Section
-			title={`In ${workspace.name}${list.length > 0 ? ` · ${list.length}` : ""}`}
+			title={`Linked to ${workspace.name}${list.length > 0 ? ` · ${list.length}` : ""}`}
 			description={stale ? "As CodeWork last said; it can't be reached now." : undefined}
 		>
 			<Loaded>
@@ -464,7 +454,7 @@ function MachineRow({
 	readonly machine: Relay.Machine;
 	readonly workspace: Relay.Workspace;
 	readonly isLocal: boolean;
-	/** This machine's id under a key it doesn't hold: a link it lost, which only Remove clears. */
+	/** This machine's id under a key it doesn't hold: a link it lost, which only Unlink clears. */
 	readonly strayLocal: boolean;
 	/** The last list the relay gave, while it can't be reached: online state is unknown and nothing acts. */
 	readonly stale: boolean;
@@ -493,21 +483,18 @@ function MachineRow({
 							<span className="flex min-w-0 items-center gap-2">
 								<span className="truncate">{name}</span>
 								{isLocal && <Badge tone="info">This Machine</Badge>}
-								{strayLocal && <Badge tone="muted">This Machine · Not Connected Here</Badge>}
+								{strayLocal && <Badge tone="muted">This Machine · Not Linked Here</Badge>}
 							</span>
 						}
 						description={`${machine.os} ${machine.arch} · v${machine.version} · ${machine.id}`}
 					>
 						{stale ? (
 							<StatusDot tone="muted">Unknown</StatusDot>
-						) : machine.online ? (
-							<StatusDot tone="success">Online</StatusDot>
-						) : machine.lastSeenAt === null ? (
-							<StatusDot tone="muted">Never Seen</StatusDot>
 						) : (
-							<StatusDot tone="muted">
-								Last Seen <Ago time={Date.parse(machine.lastSeenAt)} />
-							</StatusDot>
+							<SeenStatus
+								online={machine.online}
+								seenAt={machine.lastSeenAt === null ? null : Date.parse(machine.lastSeenAt)}
+							/>
 						)}
 						{!stale && (isLocal || canRemove || strayLocal) && (
 							<MachineMenu
@@ -563,7 +550,7 @@ function MachineMenu({
 							? undefined
 							: removeAsPerson().catch(() => {
 									throw new Error(
-										"Disconnected here, but CodeWork's servers didn't confirm. Remove it from the list when you're back online.",
+										"Unlinked here, but CodeWork's servers didn't confirm. Unlink it from the list when you're back online.",
 									);
 								}),
 					)
@@ -587,18 +574,18 @@ function MachineMenu({
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-52">
 					<DropdownMenuItem variant="destructive" onSelect={() => setAsking(true)}>
-						{isLocal ? "Disconnect…" : `Remove from ${workspace.name}…`}
+						{isLocal ? "Unlink…" : `Unlink from ${workspace.name}…`}
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
 			<AlertDialog open={asking} onOpenChange={(next) => !busy && setAsking(next)}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>{isLocal ? `Disconnect ${name}?` : `Remove ${name}?`}</AlertDialogTitle>
+						<AlertDialogTitle>Unlink {name}?</AlertDialogTitle>
 						<AlertDialogDescription>
 							{isLocal
-								? `It leaves ${workspace.name} and stops showing up here. Connect it again from Setup.`
-								: `It's disconnected from ${workspace.name}. It can join again with codework connect.`}
+								? `It leaves ${workspace.name} and stops showing up here. Link it again from Setup.`
+								: `It's unlinked from ${workspace.name}. It can join again with codework connect.`}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					{error !== null && <p className="text-xs text-destructive">{error}</p>}
@@ -613,7 +600,7 @@ function MachineMenu({
 								confirm();
 							}}
 						>
-							{busy ? (isLocal ? "Disconnecting…" : "Removing…") : isLocal ? "Disconnect" : "Remove"}
+							{busy ? "Unlinking…" : "Unlink"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -628,22 +615,5 @@ function Loaded({ children }: { readonly children: ReactNode }) {
 		<div className="flex animate-in flex-col duration-200 ease-out fade-in-0 motion-reduce:animate-none">
 			{children}
 		</div>
-	);
-}
-
-/** Rows the size of real ones while the first answer is on its way, so nothing jumps when it lands. */
-function Placeholder({ rows }: { readonly rows: number }) {
-	return (
-		<Group>
-			{Array.from({ length: rows }, (_, index) => (
-				<div key={index} aria-hidden className="flex min-h-15 items-center gap-4 px-4 py-3">
-					<div className="flex min-w-0 flex-1 flex-col gap-2">
-						<Skeleton className="h-3.5 w-40" />
-						<Skeleton className="h-3 w-64 max-w-full" />
-					</div>
-					<Skeleton className="h-3 w-16" />
-				</div>
-			))}
-		</Group>
 	);
 }

@@ -30,6 +30,8 @@ import { Route as ShellSettingsSkillsRouteImport } from './routes/_shell.setting
 import { Route as ShellSettingsTabsRouteImport } from './routes/_shell.settings.tabs'
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellTabsTabIdRouteImport } from './routes/_shell.tabs.$tabId'
+import { Route as ShellSettingsPairedIndexRouteImport } from './routes/_shell.settings.paired.index'
+import { Route as ShellSettingsPairedIdRouteImport } from './routes/_shell.settings.paired.$id'
 import { Route as ShellWorkspacesWorkspaceIdSettingsRouteImport } from './routes/_shell.workspaces.$workspaceId.settings'
 import { Route as ShellWorkspacesWorkspaceIdSettingsMachinesRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.machines'
 import { Route as WorkspacesWorkspaceIdSettingsMachinesSetupRouteImport } from './routes/workspaces.$workspaceId.settings.machines.setup'
@@ -140,6 +142,17 @@ const ShellTabsTabIdRoute = ShellTabsTabIdRouteImport.update({
   path: '/tabs/$tabId',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellSettingsPairedIndexRoute =
+  ShellSettingsPairedIndexRouteImport.update({
+    id: '/paired/',
+    path: '/paired/',
+    getParentRoute: () => ShellSettingsRoute,
+  } as any)
+const ShellSettingsPairedIdRoute = ShellSettingsPairedIdRouteImport.update({
+  id: '/paired/$id',
+  path: '/paired/$id',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
 const ShellWorkspacesWorkspaceIdSettingsRoute =
   ShellWorkspacesWorkspaceIdSettingsRouteImport.update({
     id: '/workspaces/$workspaceId/settings',
@@ -186,7 +199,9 @@ export interface FileRoutesByFullPath {
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/': typeof ShellSettingsIndexRoute
+  '/settings/paired/$id': typeof ShellSettingsPairedIdRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/settings/paired/': typeof ShellSettingsPairedIndexRoute
   '/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -211,7 +226,9 @@ export interface FileRoutesByTo {
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings': typeof ShellSettingsIndexRoute
+  '/settings/paired/$id': typeof ShellSettingsPairedIdRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/settings/paired': typeof ShellSettingsPairedIndexRoute
   '/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -239,7 +256,9 @@ export interface FileRoutesById {
   '/_shell/settings/themes': typeof ShellSettingsThemesRoute
   '/_shell/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
+  '/_shell/settings/paired/$id': typeof ShellSettingsPairedIdRoute
   '/_shell/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
+  '/_shell/settings/paired/': typeof ShellSettingsPairedIndexRoute
   '/_shell/workspaces/$workspaceId/settings/machines': typeof ShellWorkspacesWorkspaceIdSettingsMachinesRoute
   '/workspaces/$workspaceId/settings/machines/setup': typeof WorkspacesWorkspaceIdSettingsMachinesSetupRoute
   '/_shell/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -267,7 +286,9 @@ export interface FileRouteTypes {
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings/'
+    | '/settings/paired/$id'
     | '/workspaces/$workspaceId/settings'
+    | '/settings/paired/'
     | '/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
@@ -292,7 +313,9 @@ export interface FileRouteTypes {
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings'
+    | '/settings/paired/$id'
     | '/workspaces/$workspaceId/settings'
+    | '/settings/paired'
     | '/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/workspaces/$workspaceId/settings/account/profile'
@@ -319,7 +342,9 @@ export interface FileRouteTypes {
     | '/_shell/settings/themes'
     | '/_shell/tabs/$tabId'
     | '/_shell/settings/'
+    | '/_shell/settings/paired/$id'
     | '/_shell/workspaces/$workspaceId/settings'
+    | '/_shell/settings/paired/'
     | '/_shell/workspaces/$workspaceId/settings/machines'
     | '/workspaces/$workspaceId/settings/machines/setup'
     | '/_shell/workspaces/$workspaceId/settings/account/profile'
@@ -481,6 +506,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellTabsTabIdRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/settings/paired/': {
+      id: '/_shell/settings/paired/'
+      path: '/paired'
+      fullPath: '/settings/paired/'
+      preLoaderRoute: typeof ShellSettingsPairedIndexRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/paired/$id': {
+      id: '/_shell/settings/paired/$id'
+      path: '/paired/$id'
+      fullPath: '/settings/paired/$id'
+      preLoaderRoute: typeof ShellSettingsPairedIdRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
     '/_shell/workspaces/$workspaceId/settings': {
       id: '/_shell/workspaces/$workspaceId/settings'
       path: '/workspaces/$workspaceId/settings'
@@ -526,6 +565,8 @@ interface ShellSettingsRouteChildren {
   ShellSettingsTabsRoute: typeof ShellSettingsTabsRoute
   ShellSettingsThemesRoute: typeof ShellSettingsThemesRoute
   ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
+  ShellSettingsPairedIdRoute: typeof ShellSettingsPairedIdRoute
+  ShellSettingsPairedIndexRoute: typeof ShellSettingsPairedIndexRoute
 }
 
 const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
@@ -542,6 +583,8 @@ const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
   ShellSettingsTabsRoute: ShellSettingsTabsRoute,
   ShellSettingsThemesRoute: ShellSettingsThemesRoute,
   ShellSettingsIndexRoute: ShellSettingsIndexRoute,
+  ShellSettingsPairedIdRoute: ShellSettingsPairedIdRoute,
+  ShellSettingsPairedIndexRoute: ShellSettingsPairedIndexRoute,
 }
 
 const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowLeftIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useScrollFade } from "@/hooks/use-scroll-fade";
 import { AsyncResult } from "effect/reactivity";
@@ -27,7 +27,7 @@ import { search } from "./sections";
 
 /** Settings replaces the sessions list within the same app shell and sidebar controls. */
 export function SettingsSidebar() {
-	const matchRoute = useMatchRoute();
+	const pathname = useLocation({ select: (location) => location.pathname });
 	const navigate = useNavigate();
 	const back = useTabReturn();
 	const [query, setQuery] = useState("");
@@ -84,7 +84,9 @@ export function SettingsSidebar() {
 								{matches
 									.filter((section) => section.group === group)
 									.map(({ to, label, icon: Icon }) => {
-										const active = matchRoute({ to, params }) !== false;
+										// By path, so a page under a section (one paired machine) keeps it highlighted.
+										const path = to.replace("$workspaceId", params.workspaceId);
+										const active = pathname === path || pathname.startsWith(`${path}/`);
 										return (
 											<SidebarMenuItem key={to}>
 												<SidebarMenuButton

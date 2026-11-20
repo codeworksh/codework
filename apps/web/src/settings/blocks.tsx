@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /** Building blocks every settings section is made of: a page of titled sections of row groups. */
 
@@ -20,7 +21,7 @@ export function Page({
 		<div className="@container mx-auto flex w-full max-w-settings flex-col gap-8 px-5 pt-16 pb-16 text-ui sm:px-8">
 			<header className="flex flex-col gap-1.5">
 				<div className="flex items-center gap-4">
-					<h1 className="min-w-0 flex-1 text-2xl/8 font-medium text-balance">{title}</h1>
+					<h1 className="min-w-0 flex-1 text-2xl/8 font-medium text-balance wrap-break-word">{title}</h1>
 					{actions}
 				</div>
 				{description !== undefined && <p className="font-book text-ink-muted">{description}</p>}
@@ -77,6 +78,53 @@ export function Row({
 				{description !== undefined && <span className="text-xs font-book text-ink-muted">{description}</span>}
 			</div>
 			{children}
+		</div>
+	);
+}
+
+/** Rows the size of real ones while the first answer is on its way, so nothing jumps when it lands. */
+export function Placeholder({ rows }: { readonly rows: number }) {
+	return (
+		<Group>
+			{Array.from({ length: rows }, (_, index) => (
+				<div key={index} aria-hidden className="flex min-h-15 items-center gap-4 px-4 py-3">
+					<div className="flex min-w-0 flex-1 flex-col gap-2">
+						<Skeleton className="h-3.5 w-40" />
+						<Skeleton className="h-3 w-64 max-w-full" />
+					</div>
+					<Skeleton className="h-3 w-16" />
+				</div>
+			))}
+		</Group>
+	);
+}
+
+/** A setting in a dialog's bordered card: its title and description beside its field. */
+export function DialogRow({
+	title,
+	description,
+	htmlFor,
+	children,
+}: {
+	title: ReactNode;
+	description: ReactNode;
+	/** The field the title labels. */
+	htmlFor?: string | undefined;
+	children: ReactNode;
+}) {
+	return (
+		<div className="grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[1fr_16rem]">
+			<span className="flex flex-col gap-1">
+				{htmlFor === undefined ? (
+					<span className="font-medium">{title}</span>
+				) : (
+					<label htmlFor={htmlFor} className="font-medium">
+						{title}
+					</label>
+				)}
+				<span className="text-sm text-ink-muted">{description}</span>
+			</span>
+			<span className="flex min-w-0 flex-col gap-1.5">{children}</span>
 		</div>
 	);
 }

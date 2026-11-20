@@ -182,7 +182,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							index={2}
 							current={current}
 							title={`Connect to ${workspaceName}`}
-							summary={`Connected to ${workspaceName}`}
+							summary={`Linked to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
 							problem={null}
 							command={`codework connect --workspace ${workspaceId}${home}`}
