@@ -25,6 +25,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
 import { Part } from "./part.ts";
+import * as Principal from "./principal.ts";
 
 /** The HTTP path the RPC endpoint is served on; the version moves with breaking wire changes. */
 export const path = "/rpc/v1";
@@ -527,6 +528,8 @@ export const Api = RpcGroup.make(
 			rev: Schema.Int,
 			/** The machine it runs on, by the name its user knows it; absent when the OS names it nothing. */
 			host: optional(Schema.Struct({ name: Schema.String })),
+			/** The id in the home's `machine.json`; absent until the home has one. */
+			machineId: optional(Schema.String),
 		}),
 	}),
 	/**
@@ -1070,4 +1073,4 @@ export const Api = RpcGroup.make(
 		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,
 	}),
-);
+).middleware(Principal.Door);

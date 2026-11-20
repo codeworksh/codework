@@ -2,6 +2,7 @@ import { EventList, type EventSchema, Harness, Sandbox, Session } from "@codewor
 import { Effect, Exit, Fiber, Logger, Option, Queue, Ref, Schema, Stream } from "effect";
 import * as Runtime from "../../../framework/runtime.ts";
 import * as Client from "../../../server/client.ts";
+import * as Service from "../../service.ts";
 import { InvalidInputError, renderError } from "../../error.ts";
 import { harnessOptions } from "../../harness.ts";
 import {
@@ -127,9 +128,10 @@ export default Runtime.handler(
 				message: "--sandbox-provider-id requires a remote --sandbox-driver",
 			});
 		}
-		if (Option.isSome(server) && [shared.home, shared.database, shared.userConfigDir].some(Option.isSome)) {
+		// --home stays: it names the home whose token reaches the server.
+		if (Option.isSome(server) && [shared.database, shared.userConfigDir].some(Option.isSome)) {
 			return yield* new InvalidInputError({
-				message: "--home, --database, and --user-config-dir belong on codework serve when using --server",
+				message: "--database and --user-config-dir belong on codework serve when using --server",
 			});
 		}
 
@@ -244,8 +246,7 @@ export default Runtime.handler(
 		// Scope inside the provided layer, so the run's finalizers (stopping a created sandbox) close
 		// while the harness and its database are still open.
 		const execute = Effect.gen(function* () {
-			if (Option.isSome(server))
-				return yield* remote.pipe(Effect.scoped, Effect.provide(Client.layer(server.value)));
+			if (Option.isSome(server)) return yield* remote.pipe(Service.connect(server.value));
 			// Stdout carries only the response; harness logs go with the rest of the diagnostics.
 			return yield* program.pipe(
 				Effect.scoped,

@@ -4,6 +4,7 @@ import * as Runtime from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { Cmd } from "../../cmd.ts";
 
 /**
@@ -49,6 +50,6 @@ export default Runtime.handler(
 			);
 		});
 
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
 	}),
 );

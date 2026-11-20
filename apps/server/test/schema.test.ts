@@ -1,22 +1,24 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite spawns the real server in a temp dir and reads its database. */
-import { Effect, Layer, Option, Stream } from "effect";
-import { RpcClient, RpcSerialization } from "effect/rpc";
-import { Socket } from "effect/socket";
+import { Effect, Option, Stream } from "effect";
+import { RpcClient } from "effect/rpc";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { Contract } from "@codeworksh/contract";
+import { appProtocol, ready, type Ready } from "./fixtures/apps.ts";
 
+// Test values a remote row stores; the artifact names them, never shows them.
+const CLOUD_TOKEN = "cloud-token";
+const TUNNEL_TOKEN = "tunnel-token";
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "codework-schema-"));
 const database = join(home, "app.db");
 let server: ChildProcess;
-let port: number;
+let started: Ready;
 
 // The home names no CodeWork service, and none is needed: only the app's own tables are read.
 beforeAll(async () => {
@@ -29,14 +31,7 @@ beforeAll(async () => {
 		},
 		stdio: ["ignore", "pipe", "inherit"],
 	});
-	port = await new Promise<number>((resolve, reject) => {
-		server.once("exit", (code) => reject(new Error(`server exited before ready (code ${code})`)));
-		createInterface({ input: server.stdout! }).on("line", (line) => {
-			if (!line.startsWith('{"type":"ready"')) return;
-			const message = JSON.parse(line) as { type?: string; port?: number };
-			if (message.type === "ready" && message.port !== undefined) resolve(message.port);
-		});
-	});
+	started = await ready(server);
 }, 20_000);
 
 afterAll(async () => {
@@ -46,12 +41,7 @@ afterAll(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-const protocol = () =>
-	RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerNdjson),
-	);
+const protocol = () => appProtocol(started);
 
 type Row = Record<string, unknown>;
 
@@ -137,13 +127,29 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		const refused = <A, E extends { readonly message: string }, R>(effect: Effect.Effect<A, E, R>) =>
 			effect.pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "accepted" }));
 
-		const badUrl = yield* refused(rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "https://x.test" }));
-		const id = yield* rpc["servers.add"]({ kind: "remote", name: "Cloud", url: " wss://cloud.example.test/rpc " });
+		const badUrl = yield* refused(
+			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "https://x.test", token: CLOUD_TOKEN }),
+		);
+		const badToken = yield* refused(
+			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "wss://cloud.example.test/rpc", token: "a, b" }),
+		);
+		const id = yield* rpc["servers.add"]({
+			kind: "remote",
+			name: "Cloud",
+			url: " wss://cloud.example.test/rpc ",
+			token: ` ${CLOUD_TOKEN} `,
+		});
 		const added = yield* listed;
-		yield* rpc["servers.update"]({ id, name: "Cloud tunnel", url: "wss://tunnel.example.test/rpc" });
+		yield* rpc["servers.update"]({
+			id,
+			name: "Cloud tunnel",
+			url: "wss://tunnel.example.test/rpc",
+			token: TUNNEL_TOKEN,
+		});
 		const updated = yield* listed;
 		const localPatch = yield* refused(rpc["servers.update"]({ id, home: "/tmp" }));
 		const urlOnLocal = yield* refused(rpc["servers.update"]({ id: "local", url: "wss://x.test/rpc" }));
+		const tokenOnLocal = yield* refused(rpc["servers.update"]({ id: "local", token: CLOUD_TOKEN }));
 		const defaultRemote = yield* refused(rpc["servers.setDefault"]({ id }));
 		const serviceRemote = yield* refused(rpc["servers.service"]({ id, action: "start" }));
 		const row = timeless(all("SELECT * FROM machine WHERE id = ?", id)[0]!);
@@ -167,9 +173,10 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 
 		return {
 			badUrl,
+			badToken,
 			added,
 			updated,
-			refused: { localPatch, urlOnLocal, defaultRemote, serviceRemote },
+			refused: { localPatch, urlOnLocal, tokenOnLocal, defaultRemote, serviceRemote },
 			row,
 			cascade: { before, after, remoteLeft },
 			removed,
@@ -183,6 +190,10 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		Object.fromEntries(TREE.map((table) => [table, table === "usage" || table === "tally" ? 2 : 1])),
 	);
 	expect(servers.ungrouped).toEqual([{ id: "thr_local", grouping_id: null }]);
-	const text = JSON.stringify(steps, null, "\t").replaceAll(servers.row.id as string, "<remote>");
+	// Only the stored row holds a token; the statuses the page is sent must show none.
+	const text = JSON.stringify(steps, null, "\t")
+		.replaceAll(servers.row.id as string, "<remote>")
+		.replaceAll(CLOUD_TOKEN, "<cloud token>")
+		.replaceAll(TUNNEL_TOKEN, "<tunnel token>");
 	await expect(`${text}\n`).toMatchFileSnapshot("./__artifacts__/schema.json");
 }, 60_000);

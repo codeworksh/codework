@@ -329,6 +329,12 @@ const migrations = {
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
+
+	// A remote machine's token, offered as its socket opens; a row from before has none and is refused.
+	"202611200001_token": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN token TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

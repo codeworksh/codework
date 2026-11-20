@@ -3,7 +3,7 @@ import { Effect, Layer, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect } from "vite-plus/test";
 import { Contract } from "@codeworksh/contract";
+import { Door } from "@codeworksh/schema";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 const appEntry = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
@@ -45,14 +46,28 @@ export const freePort = () =>
 		});
 	});
 
+/** What the app server's ready line says: its port and the token its door takes. */
+export interface Ready {
+	readonly port: number;
+	readonly token: string;
+}
+
 /** Resolves with the first stdout line that is a JSON `ready` message. */
-const ready = (proc: ChildProcess) =>
-	new Promise<{ port?: number }>((resolve, reject) => {
+export const ready = <A = Ready>(proc: ChildProcess) =>
+	new Promise<A>((resolve, reject) => {
 		proc.once("exit", (code) => reject(new Error(`exited before ready (code ${code})`)));
 		createInterface({ input: proc.stdout! }).on("line", (line) => {
-			if (line.startsWith('{"type":"ready"')) resolve(JSON.parse(line) as { port?: number });
+			if (line.startsWith('{"type":"ready"')) resolve(JSON.parse(line) as A);
 		});
 	});
+
+/** A connection to the app server, opened as the desktop app's page opens it but with no `Origin`. */
+export const appProtocol = ({ port, token }: Ready) =>
+	RpcClient.layerProtocolSocket().pipe(
+		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`, { protocols: Door.protocols(token) })),
+		Layer.provide(Socket.layerWebSocketConstructorGlobal),
+		Layer.provide(RpcSerialization.layerNdjson),
+	);
 
 export async function stop(proc: ChildProcess, signal: NodeJS.Signals = "SIGKILL") {
 	processes.delete(proc);
@@ -91,10 +106,13 @@ export const codework = async (
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	processes.add(proc);
-	await ready(proc);
+	await ready<object>(proc);
 	const url = `ws://127.0.0.1:${port}/rpc/v1`;
+	// Registered before it reports ready; every call takes the token.
+	const { token } = JSON.parse(readFileSync(join(home, "service.json"), "utf8")) as { token: string };
 	return {
 		url,
+		token,
 		proc,
 		database: join(home, "data", "codework.db"),
 		/** The oldest held reply takes its next step. */
@@ -102,7 +120,7 @@ export const codework = async (
 		run: <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
 			Effect.gen(function* () {
 				return yield* use(yield* Client.make);
-			}).pipe(Effect.scoped, Effect.provide(Client.layer(url)), Effect.runPromise),
+			}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise),
 	};
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
@@ -120,13 +138,10 @@ export const app = async (home: string) => {
 	// Its stdout, the log included, line by line.
 	const lines: Array<string> = [];
 	createInterface({ input: proc.stdout! }).on("line", (line) => lines.push(line));
-	const { port } = await ready(proc);
-	const protocol = RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerNdjson),
-	);
+	const started = await ready(proc);
+	const protocol = appProtocol(started);
 	return {
+		...started,
 		proc,
 		lines,
 		run: <A, E>(use: (rpc: AppRpc) => Effect.Effect<A, E>) =>
@@ -173,7 +188,9 @@ export const machineRow = (home: string, id: string) =>
 
 /** Adds the CodeWork server as a remote machine, then waits until the app holds its head. */
 export const addMachine = async (home: string, server: Codework, run: Awaited<ReturnType<typeof app>>["run"]) => {
-	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url }));
+	const id = await run((rpc) =>
+		rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url, token: server.token }),
+	);
 	await synced(home, id, server);
 	return id;
 };
@@ -204,12 +221,12 @@ export const rolled = async (home: string, machineId: string, server: Codework) 
 	return { storeId, rev };
 };
 
-/** Events on `topics` from the moment it resolves, collected until `stop`. */
-export const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>) => {
+/** Events on `topics` from the moment it resolves (past `after` when given), collected until `stop`. */
+export const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>, after?: number) => {
 	const events: Array<{ topic: string; payload: Row }> = [];
 	let subscribed = false;
 	const background = desk.background((rpc) =>
-		rpc["event.subscribe"]({ topics }).pipe(
+		rpc["event.subscribe"]({ topics, ...(after === undefined ? {} : { after }) }).pipe(
 			Stream.runForEach((item) =>
 				Effect.sync(() => {
 					if ("_tag" in item) subscribed = true;

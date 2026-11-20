@@ -272,6 +272,9 @@ importers:
       '@codeworksh/contract':
         specifier: workspace:*
         version: link:../contract
+      '@codeworksh/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@codeworksh/web':
         specifier: workspace:*
         version: link:../web

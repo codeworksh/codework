@@ -433,7 +433,8 @@ export type CliAction = typeof CliAction.Type;
 
 /**
  * A new server. A local one needs a home of its own, since a home names one server; a remote one
- * needs its WebSocket URL. A blank or absent `name` is no override.
+ * needs its WebSocket URL and the token in `<home>/token` of its CodeWork home. A blank or absent
+ * `name` is no override.
  */
 export const ServerAdd = Schema.Union([
 	Schema.Struct({
@@ -443,13 +444,18 @@ export const ServerAdd = Schema.Union([
 		home: Schema.String,
 		args: Schema.String,
 	}),
-	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.optionalKey(Schema.String), url: Schema.String }),
+	Schema.Struct({
+		kind: Schema.Literal("remote"),
+		name: Schema.optionalKey(Schema.String),
+		url: Schema.String,
+		token: Schema.String,
+	}),
 ]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * a blank `name` removes the override; `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
+ * a blank `name` removes the override; `env` replaces every variable. `url` and `token` are for a remote server only, the rest but `name` for a local one.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -459,6 +465,7 @@ export const ServerUpdate = Schema.Struct({
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
 	url: Schema.optionalKey(Schema.String),
+	token: Schema.optionalKey(Schema.String),
 });
 export type ServerUpdate = typeof ServerUpdate.Type;
 

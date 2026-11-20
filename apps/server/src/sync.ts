@@ -78,7 +78,7 @@ const unavailable = (machineId: string) =>
 
 /** The route a connection is made from: a change reconnects the machine. */
 const routeOf = (row: Servers.Row) =>
-	row.kind === "remote" ? `remote ${row.url}` : `local ${row.home ?? ""} ${row.executable ?? ""}`;
+	row.kind === "remote" ? `remote ${row.url} ${row.token}` : `local ${row.home ?? ""} ${row.executable ?? ""}`;
 
 /**
  * Runs `apply` on each batch up to its `Synced`, in order; `onItem` sees every other item as it

@@ -1,4 +1,5 @@
 import { EventList, type EventSchema, optional, Session } from "@codeworksh/harness/effect";
+import { Door } from "@codeworksh/schema";
 import { NodeSocket } from "@effect/platform-node";
 import { Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
@@ -8,9 +9,15 @@ import * as Envelope from "./envelope.ts";
 export const make = RpcClient.make(Contract.Api);
 export type Client = Effect.Success<typeof make>;
 
-export const layer = (url: string) =>
+/** A server to call: its URL, and its home's token, offered as the socket opens. */
+export interface Target {
+	readonly url: string;
+	readonly token: string;
+}
+
+export const layer = (server: Target) =>
 	RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(NodeSocket.layerWebSocket(url)),
+		Layer.provide(NodeSocket.layerWebSocket(server.url, { protocols: Door.protocols(server.token) })),
 		Layer.provide(RpcSerialization.layerNdjson),
 	);
 

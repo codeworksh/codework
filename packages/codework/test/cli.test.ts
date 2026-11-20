@@ -490,7 +490,8 @@ describe("codework CLI", () => {
 			response.finish("length");
 		});
 		writeSettings(home, fake.url);
-		const env = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models };
+		// The CLI finds the server's token in the home it resolves, here through CODEWORK_HOME_DIR.
+		const env = { ...process.env, HOME: home, CODEWORK_HOME_DIR: home, CODEWORK_MODELS_FILE: models };
 		const server = await serveCli(["--home", home, "--user-config-dir", home], { cwd: home, env });
 
 		const result = await runCli(["run", "--server", server.url, "Run a long command."], { cwd: home, env });

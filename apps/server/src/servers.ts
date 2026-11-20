@@ -4,6 +4,7 @@ import { SqlClient } from "effect/sql";
 import os from "node:os";
 import path from "node:path";
 import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "@codeworksh/contract";
+import { Door } from "@codeworksh/schema";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
 export const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(
@@ -58,11 +59,13 @@ export interface LocalRow extends Naming {
 	readonly isDefault: boolean;
 }
 
-/** A remote server as stored: where the app reaches it. */
+/** A remote server as stored: where the app reaches it, and the token its door takes. */
 export interface RemoteRow extends Naming {
 	readonly id: string;
 	readonly kind: "remote";
 	readonly url: string;
+	/** None on a row added before remote servers took one: it cannot connect until given one. */
+	readonly token: string | null;
 	readonly isDefault: boolean;
 }
 
@@ -83,6 +86,14 @@ const chosenPath = (input: string | null) =>
 			return yield* fail("Use a full path, such as ~/.codework or /usr/local/bin/codework.");
 		return path.normalize(expanded);
 	});
+
+/** A remote server's token as pasted in Settings. */
+const chosenToken = (input: string) => {
+	const trimmed = input.trim();
+	return Door.isToken(trimmed)
+		? Effect.succeed(trimmed)
+		: Effect.fail(fail("Use the token in `token` in that machine's CodeWork home."));
+};
 
 /** A remote server's URL typed in Settings: CodeWork answers over a WebSocket. */
 const chosenUrl = (input: string) => {
@@ -181,16 +192,17 @@ export const layer = Layer.effect(
 				kind: string;
 				env: string;
 				url: string | null;
+				token: string | null;
 				isDefault: number;
 			}
 		>`
-			SELECT id, kind, name AS override, host, executable, home, args, env, url, is_default FROM machine ORDER BY pos
+			SELECT id, kind, name AS override, host, executable, home, args, env, url, token, is_default FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
-				Effect.forEach(rows, ({ kind, url, env, isDefault, ...row }) => {
+				Effect.forEach(rows, ({ kind, url, token, env, isDefault, ...row }) => {
 					const naming = { name: nameOf({ kind, url, ...row }), host: row.host, override: row.override };
 					return kind === "remote" && url !== null
-						? Effect.succeed<Row>({ id: row.id, kind, ...naming, url, isDefault: isDefault === 1 })
+						? Effect.succeed<Row>({ id: row.id, kind, ...naming, url, token, isDefault: isDefault === 1 })
 						: decodeEnv(env).pipe(
 								Effect.map((env): Row => ({
 									...row,
@@ -282,7 +294,7 @@ export const layer = Layer.effect(
 				const route =
 					input.kind === "local"
 						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
-						: { url: yield* chosenUrl(input.url) };
+						: { url: yield* chosenUrl(input.url), token: yield* chosenToken(input.token) };
 				yield* transaction(
 					Effect.gen(function* () {
 						if (home !== null) yield* ensureOwnHome(null, home);
@@ -312,8 +324,10 @@ export const layer = Layer.effect(
 							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
 								return yield* fail("A remote server has no executable, home, arguments or variables.");
 							if (patch.url !== undefined) fields.url = yield* chosenUrl(patch.url);
+							if (patch.token !== undefined) fields.token = yield* chosenToken(patch.token);
 						} else {
 							if (patch.url !== undefined) return yield* fail("Only a remote server has a URL.");
+							if (patch.token !== undefined) return yield* fail("Only a remote server has a token.");
 							if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
 							if (patch.args !== undefined) fields.args = patch.args.trim();
 							if (patch.env !== undefined) fields.env = JSON.stringify(yield* nextEnv(patch.env, row.env));

@@ -1,16 +1,15 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- starts the real server in a temporary home. */
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
-import { Effect, Layer, Queue, Stream } from "effect";
-import { HttpServer } from "effect/http";
+import { Effect, Queue, Stream } from "effect";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import type * as LLM from "../../harness/src/runner/llm.ts";
 import { assistant } from "../../harness/test/fixtures/llm.ts";
-import * as Client from "../src/server/client.ts";
 import { edges, type UsageItem } from "../src/server/contract.ts";
 import * as Server from "../src/server/server.ts";
+import { connect } from "./utils/client.ts";
 import { testModel } from "./utils/model.ts";
 
 type Synced = Extract<UsageItem, { _tag: "Synced" }>;
@@ -73,10 +72,7 @@ it("usage.sync sends the rollup in revision order, resends rows with running tot
 	writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ model: testModel }));
 	try {
 		const artifact = await Effect.gen(function* () {
-			const listener = yield* HttpServer.HttpServer;
-			if (listener.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${listener.address.port}/rpc/v1`));
-			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
+			const rpc = yield* connect(home);
 
 			// Up to and including the first `Synced`: one catch-up.
 			const catchUp = (after: number) =>

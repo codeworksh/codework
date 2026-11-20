@@ -2,6 +2,7 @@ import { Session } from "@codeworksh/harness/effect";
 import { Effect, Schema } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { type ThreadInfo, ThreadInfo as ThreadInfoSchema } from "../../../../server/contract.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeJson, writeOut } from "../../../output.ts";
@@ -44,6 +45,6 @@ export default Runtime.handler(
 			}
 		});
 
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
 	}),
 );

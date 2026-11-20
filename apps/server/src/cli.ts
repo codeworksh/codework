@@ -117,9 +117,7 @@ const executableOf = (row: Servers.LocalRow, foundOnce: typeof found) => {
 export const liveAt = (home: string) =>
 	Effect.gen(function* () {
 		const registered = yield* Codework.registrationAt(home);
-		return Option.isSome(registered) && (yield* Codework.reachable(registered.value.url))
-			? registered
-			: Option.none();
+		return Option.isSome(registered) && (yield* Codework.reachable(registered.value)) ? registered : Option.none();
 	});
 
 /**
@@ -160,7 +158,11 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
-				if (row.kind === "remote") return row satisfies ServerStatus;
+				// Its token stays here: the renderer is never sent one.
+				if (row.kind === "remote") {
+					const { token: _, ...status } = row;
+					return status satisfies ServerStatus;
+				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(
 					[executableOf(row, foundOnce), serverAt(home.path, row.isDefault)],

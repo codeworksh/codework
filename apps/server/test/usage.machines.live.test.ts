@@ -245,8 +245,10 @@ describeMachines("usage across OrbStack machines", () => {
 		appHome = tempDir("usage-machines-app");
 		desk = await app(appHome);
 		// No name of its own: each is named by the host its server reports.
-		for (const m of pool)
-			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url })));
+		for (const m of pool) {
+			const token = await m.token();
+			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url, token })));
+		}
 
 		// Different work on each: a turn with a tool call (two requests); two turns; a turn and a fork's turn.
 		const a = await session(cwA, "bash echo alpha");
