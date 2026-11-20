@@ -9,19 +9,30 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { Contract } from "@codeworksh/contract";
-import { appProtocol, ready, type Ready } from "./fixtures/apps.ts";
+import {
+	appProtocol,
+	cleanup,
+	type Codework,
+	codework,
+	freePort,
+	ready,
+	type Ready,
+	rolled,
+	synced,
+	tempDir,
+} from "./fixtures/apps.ts";
 
-// Test values a remote row stores; the artifact names them, never shows them.
-const CLOUD_TOKEN = "cloud-token";
-const TUNNEL_TOKEN = "tunnel-token";
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "codework-schema-"));
 const database = join(home, "app.db");
 let server: ChildProcess;
 let started: Ready;
+// The remote server a row pairs with.
+let remote: Codework;
 
 // The home names no CodeWork service, and none is needed: only the app's own tables are read.
 beforeAll(async () => {
+	remote = await codework(tempDir("schema-remote"), await freePort());
 	server = spawn(process.execPath, [entry], {
 		env: {
 			...process.env,
@@ -38,6 +49,7 @@ afterAll(async () => {
 	const exited = new Promise((resolve) => server.once("exit", resolve));
 	server.kill("SIGKILL");
 	await exited;
+	await cleanup();
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -127,29 +139,26 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		const refused = <A, E extends { readonly message: string }, R>(effect: Effect.Effect<A, E, R>) =>
 			effect.pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "accepted" }));
 
-		const badUrl = yield* refused(
-			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "https://x.test", token: CLOUD_TOKEN }),
-		);
-		const badToken = yield* refused(
-			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "wss://cloud.example.test/rpc", token: "a, b" }),
+		const code = yield* Effect.promise(() => remote.pair());
+		const badUrl = yield* refused(rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "https://x.test", code }));
+		const badCode = yield* refused(
+			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: remote.url, code: "00000-00000" }),
 		);
 		const id = yield* rpc["servers.add"]({
 			kind: "remote",
 			name: "Cloud",
-			url: " wss://cloud.example.test/rpc ",
-			token: ` ${CLOUD_TOKEN} `,
+			url: ` ${remote.url} `,
+			code: ` ${code} `,
 		});
+		// Synced before it is listed or moved, so its reported host and sync columns are settled.
+		yield* Effect.promise(() => synced(home, id, remote).then(() => rolled(home, id, remote)));
 		const added = yield* listed;
-		yield* rpc["servers.update"]({
-			id,
-			name: "Cloud tunnel",
-			url: "wss://tunnel.example.test/rpc",
-			token: TUNNEL_TOKEN,
-		});
+		// A new URL keeps the session: the same machine reached another way.
+		yield* rpc["servers.update"]({ id, name: "Cloud tunnel", url: "wss://tunnel.example.test/rpc" });
 		const updated = yield* listed;
 		const localPatch = yield* refused(rpc["servers.update"]({ id, home: "/tmp" }));
 		const urlOnLocal = yield* refused(rpc["servers.update"]({ id: "local", url: "wss://x.test/rpc" }));
-		const tokenOnLocal = yield* refused(rpc["servers.update"]({ id: "local", token: CLOUD_TOKEN }));
+		const codeOnLocal = yield* refused(rpc["servers.update"]({ id: "local", code }));
 		const defaultRemote = yield* refused(rpc["servers.setDefault"]({ id }));
 		const serviceRemote = yield* refused(rpc["servers.service"]({ id, action: "start" }));
 		const row = timeless(all("SELECT * FROM machine WHERE id = ?", id)[0]!);
@@ -173,10 +182,10 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 
 		return {
 			badUrl,
-			badToken,
+			badCode,
 			added,
 			updated,
-			refused: { localPatch, urlOnLocal, tokenOnLocal, defaultRemote, serviceRemote },
+			refused: { localPatch, urlOnLocal, codeOnLocal, defaultRemote, serviceRemote },
 			row,
 			cascade: { before, after, remoteLeft },
 			removed,
@@ -190,10 +199,14 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		Object.fromEntries(TREE.map((table) => [table, table === "usage" || table === "tally" ? 2 : 1])),
 	);
 	expect(servers.ungrouped).toEqual([{ id: "thr_local", grouping_id: null }]);
-	// Only the stored row holds a token; the statuses the page is sent must show none.
+	// Only the stored row holds the session token; the statuses the page is sent must show none.
+	const session = servers.row.token as string;
+	expect(JSON.stringify([servers.added, servers.updated])).not.toContain(session);
 	const text = JSON.stringify(steps, null, "\t")
 		.replaceAll(servers.row.id as string, "<remote>")
-		.replaceAll(CLOUD_TOKEN, "<cloud token>")
-		.replaceAll(TUNNEL_TOKEN, "<tunnel token>");
+		.replaceAll(session, "<session token>")
+		.replaceAll(remote.url, "<remote url>")
+		.replaceAll(servers.row.store_id as string, "<store>")
+		.replaceAll(servers.row.boot as string, "<boot>");
 	await expect(`${text}\n`).toMatchFileSnapshot("./__artifacts__/schema.json");
 }, 60_000);

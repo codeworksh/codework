@@ -42,9 +42,10 @@ class ConnectError extends Schema.TaggedError<ConnectError>()("CLI.ConnectError"
 
 const isClientError = Schema.is(RpcClientError.RpcClientError);
 
-const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
+/** Names for this computer; a server bound to every address answers to all of them. */
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "0.0.0.0", "[::]"]);
 
-/** Two URLs of one server: equal, or the same port and path under two loopback names. */
+/** Two URLs of one server: equal, or the same port and path under two of this computer's names. */
 const same = (a: string, b: string) => {
 	if (a === b) return true;
 	const [x, y] = [URL.parse(a), URL.parse(b)];
@@ -59,11 +60,11 @@ const same = (a: string, b: string) => {
 };
 
 /**
- * The server at `url`, which must be the one the home's `service.json` names: the token goes nowhere
- * else, as any other server, however local it looks, may belong to someone else. A loopback alias
- * of that URL is the server as filed.
+ * The server the home's `service.json` names, and that only: the token goes nowhere else, as any
+ * other server, however local it looks, may belong to someone else. A `url` must name it; a loopback
+ * alias of that URL is the server as filed.
  */
-const target = Effect.fn("CLI.target")(function* (url: string) {
+const target = Effect.fn("CLI.target")(function* (url: string | undefined) {
 	const paths = yield* home(yield* Cmd.spec);
 	const registered = yield* Registration.read(Registration.file(paths.home));
 	if (registered === undefined)
@@ -72,7 +73,7 @@ const target = Effect.fn("CLI.target")(function* (url: string) {
 				"\n",
 			),
 		});
-	if (!same(registered.url, url))
+	if (url !== undefined && !same(registered.url, url))
 		return yield* new ConnectError({
 			message: [
 				`${url} is not this home's server`,
@@ -117,9 +118,12 @@ const refused = Effect.fn("CLI.refused")(function* (url: string, server: Client.
 	}
 });
 
-/** Runs `program` against the server at `url`, naming why when its socket does not open. */
+/**
+ * Runs `program` against the server at `url`, or the home's when none is named, naming why when its
+ * socket does not open.
+ */
 export const connect =
-	(url: string) =>
+	(url?: string) =>
 	<A, E, R>(program: Effect.Effect<A, E, R>) =>
 		Effect.gen(function* () {
 			const server = yield* target(url);
@@ -129,7 +133,7 @@ export const connect =
 				Effect.provide(Client.layer(server)),
 				Effect.catchIf(
 					(error) => isClientError(error) && error.reason._tag === "SocketOpenError",
-					() => refused(url, server),
+					() => refused(url ?? server.url, server),
 				),
 			);
 		});

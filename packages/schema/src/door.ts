@@ -35,55 +35,48 @@ export const matches = (given: string, expected: string) => {
 	return difference === 0;
 };
 
-interface Listener {
-	/** The `Host` values it answers: its loopback names with its port; none when bound beyond loopback. */
-	readonly hosts: ReadonlyArray<string> | undefined;
-	/** The browser origins it serves; a request from any other is refused. */
-	readonly origins: ReadonlyArray<string>;
-	readonly token: string;
-}
+/**
+ * How a listener judges the credential a request offers, if any: it lets the request in as it came
+ * or changed for the routes behind (a header they read), or turns it away with 401 by answering none.
+ */
+export type Admit = (
+	offered: string | undefined,
+	request: HttpServerRequest.HttpServerRequest,
+) => Effect.Effect<HttpServerRequest.HttpServerRequest | undefined>;
 
-/** What a listener reads off a request before letting it in. */
-interface Knock {
-	readonly host: string | undefined;
-	readonly origin: string | undefined;
-	readonly protocol: string | undefined;
-}
+/** Admits a request that offers `expected`, and nothing else. */
+export const token =
+	(expected: string): Admit =>
+	(given, request) =>
+		Effect.succeed(given !== undefined && matches(given, expected) ? request : undefined);
 
 /** The names a loopback listener on `port` answers to. */
 const loopback = (port: number) => ["127.0.0.1", "localhost", "[::1]"].map((name) => `${name}:${port}`);
 
-/** The status a request is turned away with: 403 for where it comes from, 401 for its token; none lets it in. */
-const verdict = (listener: Listener, knock: Knock): 401 | 403 | undefined => {
-	if (listener.hosts !== undefined && !listener.hosts.includes(knock.host?.toLowerCase() ?? "")) return 403;
-	if (knock.origin !== undefined && !listener.origins.includes(knock.origin)) return 403;
-	const token = offered(knock.protocol);
-	return token !== undefined && matches(token, listener.token) ? undefined : 401;
-};
-
 /**
  * The door on every request the listener serves, before a WebSocket upgrade: a refused one gets a
- * plain HTTP status instead of 101. Only a listener bound to loopback checks `Host`.
+ * plain HTTP status instead of 101, 403 for where it comes from and 401 for its credential. Only a
+ * listener bound to loopback checks `Host`.
  */
-export const layer = (options: { readonly token: string; readonly origins: ReadonlyArray<string> }) =>
+export const layer = (options: { readonly admit: Admit; readonly origins: ReadonlyArray<string> }) =>
 	HttpRouter.middleware(
 		Effect.gen(function* () {
 			const address = (yield* HttpServer.HttpServer).address;
-			const listener: Listener = {
-				...options,
-				hosts:
-					NetAddress.isInetAddress(address) && NetAddress.isLoopback(address.address)
-						? loopback(address.port)
-						: undefined,
-			};
+			const hosts =
+				NetAddress.isInetAddress(address) && NetAddress.isLoopback(address.address)
+					? loopback(address.port)
+					: undefined;
 			return (app) =>
-				Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
-					const status = verdict(listener, {
-						host: request.headers.host,
-						origin: request.headers.origin,
-						protocol: request.headers["sec-websocket-protocol"],
-					});
-					return status === undefined ? app : Effect.succeed(HttpServerResponse.empty({ status }));
+				Effect.gen(function* () {
+					const request = yield* HttpServerRequest.HttpServerRequest;
+					const { host, origin } = request.headers;
+					if (hosts !== undefined && !hosts.includes(host?.toLowerCase() ?? ""))
+						return HttpServerResponse.empty({ status: 403 });
+					if (origin !== undefined && !options.origins.includes(origin))
+						return HttpServerResponse.empty({ status: 403 });
+					const admitted = yield* options.admit(offered(request.headers["sec-websocket-protocol"]), request);
+					if (admitted === undefined) return HttpServerResponse.empty({ status: 401 });
+					return yield* Effect.provideService(app, HttpServerRequest.HttpServerRequest, admitted);
 				});
 		}),
 		{ global: true },

@@ -1,6 +1,7 @@
 import { Jws, Relay } from "@codeworksh/schema";
 import { Effect, FileSystem, Option, Schedule, Schema } from "effect";
 import { uuidv7 } from "uuidv7";
+import * as Private from "../framework/private.ts";
 
 /**
  * `<home>/machine.json`: who this home is as a machine, and its link to each connected workspace.
@@ -68,13 +69,8 @@ const locked = <A, E, R>(home: string, effect: Effect.Effect<A, E, R>) =>
 		return yield* effect.pipe(Effect.ensuring(fs.remove(lock, { recursive: true }).pipe(Effect.ignore)));
 	});
 
-const write = Effect.fn("Machine.write")(function* (home: string, machine: Machine) {
-	const fs = yield* FileSystem.FileSystem;
-	const path = file(home);
-	const temp = `${path}.${uuidv7()}.tmp`;
-	yield* fs.writeFileString(temp, yield* Schema.encodeEffect(json)(machine), { mode: 0o600 });
-	yield* fs.rename(temp, path);
-});
+const write = (home: string, machine: Machine) =>
+	Schema.encodeEffect(json)(machine).pipe(Effect.flatMap((encoded) => Private.write(file(home), encoded)));
 
 const newIdentity = Effect.gen(function* () {
 	const key = yield* Jws.generate();

@@ -489,6 +489,8 @@ export const layer = Layer.effect(
 		/** A machine for as long as it is configured: connected, and reconnected after any drop. */
 		const follow = (row: Servers.Row) =>
 			Effect.gen(function* () {
+				// Nothing to connect with until it is paired again.
+				if (row.kind === "remote" && row.token === null) return yield* Effect.never;
 				const context = yield* Layer.build(Codework.machine(row)).pipe(
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Servers.Service, servers),

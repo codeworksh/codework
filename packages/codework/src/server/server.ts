@@ -9,11 +9,13 @@ import { createServer } from "node:http";
 import * as Heartbeat from "../machine/heartbeat.ts";
 import * as Clones from "./clones.ts";
 import * as Contract from "./contract.ts";
+import * as Door from "./door.ts";
 import * as EventFeed from "./feed.ts";
 import * as Handlers from "./handlers.ts";
 import * as Host from "./host.ts";
 import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
+import * as Pairing from "./pairing.ts";
 import * as Principal from "./principal.ts";
 import * as Registration from "./registration.ts";
 
@@ -97,12 +99,16 @@ const announce = Layer.unwrap(
 	}),
 );
 
-/** The RPC endpoint for `group` behind the home token's door, which turns a refused upgrade away. */
+/** The RPC endpoint for `group` and the pairing routes, behind the door, which turns a refused request away. */
 export const endpoint = <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>) =>
-	RpcServer.layerHttp({ group, path: Contract.path, protocol: "websocket" }).pipe(
+	RpcServer.layer(group).pipe(
+		Layer.provide(Door.protocol),
 		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
-		Layer.provide(Principal.local),
-		Layer.merge(Principal.listener),
+		Layer.provide(Door.rpc),
+		Layer.merge(Pairing.routes),
+		Layer.merge(Door.listener),
+		Layer.provide(Door.layerConnections),
+		Layer.provide(Pairing.layer),
 	);
 
 export const layer = (options: {

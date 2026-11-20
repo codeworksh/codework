@@ -1,0 +1,75 @@
+{
+	"exchange": {
+		"pair prints": {
+			"status": 0,
+			"stdout": "<code>\n",
+			"stderr": ""
+		},
+		"a wrong code": 401,
+		"no label": 400,
+		"a foreign Origin": 403,
+		"its code, typed lower case without the dash": "paired",
+		"the same code again": 401,
+		"a code past 10 minutes": 401
+	},
+	"tickets": {
+		"no Authorization": 401,
+		"an unknown session": 401,
+		"the home's token as a session": 401,
+		"a device's call": {
+			"storeId": true
+		},
+		"the same ticket again": 401,
+		"a ticket past 60 seconds": 401
+	},
+	"device": {
+		"session.create": true,
+		"device.list": "Server.Forbidden",
+		"device.pair": "Server.Forbidden"
+	},
+	"idle": {
+		"a session unseen for 30 days": 401,
+		"devices": {
+			"status": 0,
+			"stdout": "ID              LABEL    CREATED               LAST SEEN\n<Laptop>  Laptop   <time>  <time>\n<Idle>  Idle     <time>  <time>\n<Desktop>  Desktop  <time>  <time>\n<Tablet>  Tablet   <time>  <time>\n",
+			"stderr": ""
+		}
+	},
+	"revocation": {
+		"revoke": {
+			"status": 0,
+			"stdout": "",
+			"stderr": ""
+		},
+		"the revoked device's stream": "failed: SocketCloseError",
+		"the other device's stream sees a session made after": "live",
+		"a ticket it took before": 401,
+		"a new ticket": 401,
+		"revoke again": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: no paired device <Desktop>\n"
+		},
+		"devices": {
+			"status": 0,
+			"stdout": "ID              LABEL   CREATED               LAST SEEN\n<Laptop>  Laptop  <time>  <time>\n<Idle>  Idle    <time>  <time>\n<Tablet>  Tablet  <time>  <time>\n",
+			"stderr": ""
+		}
+	},
+	"devices.json": {
+		"mode": "600",
+		"raw tokens": 0,
+		"hashes": 3
+	},
+	"token file": false,
+	"restart": {
+		"the same session takes a ticket and calls": true,
+		"a code from before": 401,
+		"a ticket from before": 401
+	},
+	"pair with no server": {
+		"status": 1,
+		"stdout": "",
+		"stderr": "error: no CodeWork server is running for this home\nhint: start one with `codework service start`\n"
+	}
+}

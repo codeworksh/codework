@@ -108,8 +108,12 @@ export const codework = async (
 	processes.add(proc);
 	await ready<object>(proc);
 	const url = `ws://127.0.0.1:${port}/rpc/v1`;
-	// Registered before it reports ready; every call takes the token.
+	// Registered before it reports ready; a call from this computer takes the token.
 	const { token } = JSON.parse(readFileSync(join(home, "service.json"), "utf8")) as { token: string };
+	const run = <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
+		Effect.gen(function* () {
+			return yield* use(yield* Client.make);
+		}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise);
 	return {
 		url,
 		token,
@@ -117,10 +121,9 @@ export const codework = async (
 		database: join(home, "data", "codework.db"),
 		/** The oldest held reply takes its next step. */
 		release: () => proc.stdin!.write("release\n"),
-		run: <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
-			Effect.gen(function* () {
-				return yield* use(yield* Client.make);
-			}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise),
+		run,
+		/** A fresh pairing code, as `codework service pair` prints it. */
+		pair: () => run((rpc) => rpc["device.pair"]({})).then(({ code }) => code),
 	};
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
@@ -186,11 +189,10 @@ export const machineRow = (home: string, id: string) =>
 		cursor: number;
 	};
 
-/** Adds the CodeWork server as a remote machine, then waits until the app holds its head. */
+/** Adds the CodeWork server as a remote machine, paired with a fresh code, then waits until the app holds its head. */
 export const addMachine = async (home: string, server: Codework, run: Awaited<ReturnType<typeof app>>["run"]) => {
-	const id = await run((rpc) =>
-		rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url, token: server.token }),
-	);
+	const code = await server.pair();
+	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url, code }));
 	await synced(home, id, server);
 	return id;
 };

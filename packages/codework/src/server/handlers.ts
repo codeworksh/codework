@@ -46,11 +46,14 @@ import {
 import * as Envelope from "./envelope.ts";
 import { type EncodingError, type EventEnvelope } from "./envelope.ts";
 import * as Clones from "./clones.ts";
+import * as Door from "./door.ts";
 import * as EventFeed from "./feed.ts";
 import * as Host from "./host.ts";
 import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
+import * as Pairing from "./pairing.ts";
 import * as MessagePart from "./part.ts";
+import * as Principal from "./principal.ts";
 import * as Rows from "./rows.ts";
 
 const isConnectError = Schema.is(Machine.ConnectError);
@@ -290,6 +293,8 @@ export const layer = Contract.Api.toLayer(
 		const clones = yield* Clones.Service;
 		const store = yield* Store.Service;
 		const global = yield* Global.Service;
+		const pairing = yield* Pairing.Service;
+		const connections = yield* Door.Connections;
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -698,6 +703,16 @@ export const layer = Contract.Api.toLayer(
 						),
 						Effect.forkScoped,
 					),
+				),
+			"device.pair": () => Principal.local(pairing.code),
+			"device.list": () => Principal.local(pairing.list),
+			"device.revoke": ({ id }) =>
+				Principal.local(
+					Effect.gen(function* () {
+						const applied = yield* pairing.revoke(id);
+						yield* Effect.forEach(connections.device(id), connections.end, { discard: true });
+						return { applied };
+					}),
 				),
 			"host.info": () => Effect.succeed(host.info),
 			"host.browse": ({ path }) => host.browse(path),

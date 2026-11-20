@@ -1,9 +1,9 @@
-import { Door } from "@codeworksh/schema";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { Headers } from "effect/http";
 import { RpcMiddleware } from "effect/rpc";
 import * as Client from "../../src/server/client.ts";
+import * as Door from "../../src/server/door.ts";
 import * as Principal from "../../src/server/principal.ts";
 import * as Registration from "../../src/server/registration.ts";
 
@@ -24,19 +24,17 @@ export const connect = (home: string) =>
 	});
 
 /**
- * Both sides of the door for an in-memory server and client, which has no upgrade: a fresh token, and
- * a client that sends it on every call in the header the upgrade would have carried.
+ * Both sides of the door for an in-memory server and client, which has no upgrade: one local
+ * connection, and a client that sends its key on every call in the header the door would have added.
  */
 export const door = Layer.unwrap(
-	Effect.map(Door.make, (token) =>
-		Layer.merge(
-			Principal.local.pipe(Layer.provide(Layer.succeed(Principal.Token, token))),
+	Effect.gen(function* () {
+		const key = yield* (yield* Door.Connections).open({ kind: "local" });
+		return Layer.merge(
+			Door.rpc,
 			RpcMiddleware.layerClient(Principal.Door, ({ request, next }) =>
-				next({
-					...request,
-					headers: Headers.set(request.headers, "sec-websocket-protocol", Door.protocols(token).join(", ")),
-				}),
+				next({ ...request, headers: Headers.set(request.headers, Door.header, key) }),
 			),
-		),
-	),
-);
+		);
+	}),
+).pipe(Layer.provideMerge(Door.layerConnections));

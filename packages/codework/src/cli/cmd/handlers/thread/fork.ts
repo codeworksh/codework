@@ -35,6 +35,6 @@ export default Runtime.handler(
 			if (forked.text !== undefined) yield* writeOut(`\n${forked.text}\n`);
 		});
 
-		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

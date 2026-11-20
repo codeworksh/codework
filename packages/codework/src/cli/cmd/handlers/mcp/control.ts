@@ -1,4 +1,4 @@
-import { Effect, type Option } from "effect";
+import { Effect, Option } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
 import * as Service from "../../../service.ts";
@@ -22,7 +22,7 @@ const control = (operation: "connect" | "disconnect") =>
 		readonly name: string;
 		readonly session: string;
 		readonly thread: Option.Option<string>;
-		readonly server: string;
+		readonly server: Option.Option<string>;
 	}) {
 		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
@@ -40,7 +40,7 @@ const control = (operation: "connect" | "disconnect") =>
 			yield* writeOut(`${lines.join("\n")}\n`);
 			if (status.state !== (operation === "connect" ? "connected" : "disconnected")) process.exitCode = 1;
 		});
-		return yield* program.pipe(Service.connect(server), Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	});
 
 export const reconnect = Runtime.handler(Cmd.commands.mcp.commands.reconnect, control("connect"));

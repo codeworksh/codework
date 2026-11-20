@@ -1,0 +1,21 @@
+import { Schema } from "effect";
+
+// How another computer pairs with a CodeWork server over plain HTTP, beside its socket. A refused
+// credential gets 401, never why.
+
+/** `POST` with {@link Exchange}: answers {@link Device}. */
+export const pairPath = "/pair";
+/** `POST` with `Authorization: Bearer <session token>`: answers {@link Ticket}. */
+export const ticketPath = "/ticket";
+
+/** What `POST /pair` takes: the code a person read, and a name for the computer offering it. */
+export const Exchange = Schema.Struct({
+	code: Schema.String,
+	label: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(100), Schema.isPattern(/^[^\p{Cc}]*$/u)),
+});
+
+/** A new device: its id, and the session token only it holds. */
+export const Device = Schema.Struct({ id: Schema.String, token: Schema.String });
+
+/** A single-use credential for one socket, offered where a local client offers the home's token. */
+export const Ticket = Schema.Struct({ ticket: Schema.String });

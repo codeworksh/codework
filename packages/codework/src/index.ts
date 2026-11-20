@@ -33,6 +33,9 @@ const Handlers = Runtime.handlers(Cmd, {
 		restart: () => import("./cli/cmd/handlers/service/restart.ts"),
 		status: () => import("./cli/cmd/handlers/service/status.ts"),
 		stop: () => import("./cli/cmd/handlers/service/stop.ts"),
+		pair: () => import("./cli/cmd/handlers/service/pair.ts"),
+		devices: () => import("./cli/cmd/handlers/service/devices.ts"),
+		revoke: () => import("./cli/cmd/handlers/service/revoke.ts"),
 	},
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),

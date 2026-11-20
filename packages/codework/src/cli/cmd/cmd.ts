@@ -45,8 +45,8 @@ const ServerAddress = {
 
 /** For commands that only talk to a server that is already running. */
 const RunningServer = Flag.String("server").pipe(
-	Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
-	Flag.withDefault("ws://127.0.0.1:7433/rpc/v1"),
+	Flag.withDescription("RPC server URL (defaults to this home's server)"),
+	Flag.optional,
 );
 
 /** A thread's MCP server in a running server: every thread sharing its instance is affected. */
@@ -411,6 +411,14 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("restart", { description: "Restart the background server", params: ServerAddress }),
 				Spec.make("status", { description: "Show background server status" }),
 				Spec.make("stop", { description: "Stop the background server" }),
+				Spec.make("pair", {
+					description: "Print a one-time code another computer pairs with, valid 10 minutes",
+				}),
+				Spec.make("devices", { description: "List paired devices" }),
+				Spec.make("revoke", {
+					description: "Unpair a device and end its connections",
+					params: { id: Argument.String("device-id").pipe(Argument.withDescription("The device to unpair")) },
+				}),
 			],
 		}),
 		Spec.make("session", {

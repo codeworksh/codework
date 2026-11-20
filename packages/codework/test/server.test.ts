@@ -25,6 +25,7 @@ import * as Handlers from "../src/server/handlers.ts";
 import * as Host from "../src/server/host.ts";
 import * as Identity from "../src/server/identity.ts";
 import * as OAuth from "../src/server/oauth.ts";
+import * as Pairing from "../src/server/pairing.ts";
 import * as Server from "../src/server/server.ts";
 import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 import { connect, door } from "./utils/client.ts";
@@ -59,12 +60,13 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
+		Layer.provide(Pairing.layer),
 		Layer.provide(OAuth.layer({ home })),
 		Layer.provide(Host.layer.pipe(Layer.provide(NodeServices.layer))),
 		Layer.provide(Clones.layer.pipe(Layer.provide(NodeServices.layer))),
 		Layer.provide(Identity.layer),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
-		Layer.merge(door),
+		Layer.provideMerge(door),
 	);
 };
 

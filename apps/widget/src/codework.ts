@@ -566,7 +566,7 @@ const Inherited = Schema.Struct({
 });
 const SettingsFileErrors = Schema.Union([SettingsError, ProjectNotFoundError, ProjectCheckoutError]);
 
-/** The server refused the call: its connection opened without the home's token, or with another's. */
+/** The server refused the call: its connection opened without a credential it takes (the home's token, or a ticket). */
 export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Server.Unauthorized", {
 	message: Schema.String,
 }) {}
