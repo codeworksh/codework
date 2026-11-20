@@ -14,7 +14,6 @@ import {
 	SparkleIcon,
 	StackIcon,
 	UserIcon,
-	WrenchIcon,
 } from "@phosphor-icons/react";
 
 /** Whether a path is a settings page: the app's own, or the account's and workspace's under a workspace. */
@@ -24,7 +23,6 @@ export const isSettingsPath = (pathname: string) =>
 export interface SettingsSection {
 	readonly to:
 		| "/workspaces/$workspaceId/settings/account/profile"
-		| "/workspaces/$workspaceId/settings/machines/setup"
 		| "/settings/general"
 		| "/settings/tabs"
 		| "/settings/themes"
@@ -41,7 +39,7 @@ export interface SettingsSection {
 	readonly label: string;
 	readonly icon: Icon;
 	/** Sidebar heading the section sits under. */
-	readonly group: "Personal" | "Application" | "Administration";
+	readonly group: "Personal" | "Application" | "Workspaces";
 	/** Extra words the search matches, beyond the label. */
 	readonly keywords: readonly string[];
 }
@@ -148,18 +146,27 @@ const sections: readonly SettingsSection[] = [
 		keywords: ["plugins", "extensions", "npm", "tools", "prompt", "bash", "grep", "find", "reload"],
 	},
 	{
-		to: "/workspaces/$workspaceId/settings/machines/setup",
-		label: "Setup",
-		icon: WrenchIcon,
-		group: "Administration",
-		keywords: ["set up", "install", "cli", "start", "server", "connect", "this machine", "onboarding"],
-	},
-	{
 		to: "/workspaces/$workspaceId/settings/machines",
 		label: "Machines",
 		icon: DesktopTowerIcon,
-		group: "Administration",
-		keywords: ["machines", "connect", "online", "offline", "rename", "name", "relay", "harness", "computer"],
+		group: "Workspaces",
+		keywords: [
+			"machines",
+			"connect",
+			"online",
+			"offline",
+			"rename",
+			"name",
+			"relay",
+			"harness",
+			"computer",
+			"setup",
+			"set up",
+			"install",
+			"cli",
+			"server",
+			"paired",
+		],
 	},
 	{
 		to: "/settings/sandboxes",

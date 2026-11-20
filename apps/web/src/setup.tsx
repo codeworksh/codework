@@ -200,7 +200,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							variant="ghost"
 							onClick={() => {
 								setUpLater(workspaceId);
-								void navigate({ to: "/" });
+								void navigate({ to: "/workspaces/$workspaceId/settings/machines", params: { workspaceId } });
 							}}
 						>
 							Set Up Later

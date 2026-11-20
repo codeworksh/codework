@@ -67,7 +67,7 @@ export function MachinesSettings({ workspaceId }: { readonly workspaceId: string
 					: `Machines Connected to ${workspace.name}, and this Machine's name`
 			}
 		>
-			<ThisMachine workspace={workspace} />
+			<ThisMachine workspace={workspace} ready={!AsyncResult.isInitial(me)} />
 			{workspace === undefined ? (
 				<EmptyState
 					icon={<DesktopTowerIcon size={22} aria-hidden />}
@@ -84,16 +84,24 @@ export function MachinesSettings({ workspaceId }: { readonly workspaceId: string
 	);
 }
 
-function ThisMachine({ workspace }: { readonly workspace: Relay.Workspace | undefined }) {
+function ThisMachine({
+	workspace,
+	ready,
+}: {
+	readonly workspace: Relay.Workspace | undefined;
+	/** Whether the workspace is known yet: the last row depends on it, so the section waits for it. */
+	readonly ready: boolean;
+}) {
 	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const refresh = useAtomRefresh(machineAtom);
 	const rename = useAtomSet(renameAtom, { mode: "promise" });
 	const [error, setError] = useState<string | null>(null);
-	if (AsyncResult.isInitial(machine)) {
+	// The rows the answer brings, held from the start so nothing below moves when it lands.
+	if (AsyncResult.isInitial(machine) || !ready) {
 		return (
 			<Section title="This Machine">
-				<Placeholder rows={2} />
+				<Placeholder rows={4} />
 			</Section>
 		);
 	}
@@ -110,12 +118,7 @@ function ThisMachine({ workspace }: { readonly workspace: Relay.Workspace | unde
 		<Section title="This Machine">
 			<Loaded>
 				<Group>
-					<Row
-						title="Name"
-						description={
-							error ?? `Shown to your Workspaces. Empty uses the Computer's name, ${status.localHostName}.`
-						}
-					>
+					<Row title="Name" description={error ?? "Shown to your Workspaces."}>
 						<SavingInput
 							label="Machine name"
 							value={status.givenName ?? ""}
@@ -129,17 +132,38 @@ function ThisMachine({ workspace }: { readonly workspace: Relay.Workspace | unde
 							}}
 						/>
 					</Row>
-					<Row title="ID" description="How the Workspace tells this Machine apart; it never changes.">
-						<code className="font-mono text-xs text-ink-muted">{status.id ?? "Assigned on first connect"}</code>
+					<Row title="Hostname" description="Used when Name is empty.">
+						<div className="w-full min-w-0 shrink-0 @min-[560px]:w-auto @min-[560px]:max-w-64">
+							<CopyCommand command={status.localHostName} label="Copy Hostname" />
+						</div>
 					</Row>
-					{workspace !== undefined && !linked && (
-						<Row title="Not Connected" description={`This Machine isn't in ${workspace.name} yet.`}>
-							<Button size="sm" asChild>
+					<Row
+						title="ID"
+						description={status.id === null ? "Assigned when it first connects." : "It never changes."}
+					>
+						{status.id === null ? (
+							<Badge tone="muted">Not Assigned</Badge>
+						) : (
+							<div className="w-full shrink-0 @min-[560px]:w-auto">
+								<CopyCommand command={status.id} label="Copy ID" />
+							</div>
+						)}
+					</Row>
+					{workspace !== undefined && (
+						<Row
+							title={linked ? "Setup" : "Not Connected"}
+							description={
+								linked
+									? "The CodeWork CLI, the Server, and this Machine's connection."
+									: `This Machine isn't in ${workspace.name} yet.`
+							}
+						>
+							<Button size="sm" variant={linked ? "secondary" : "default"} asChild>
 								<Link
 									to="/workspaces/$workspaceId/settings/machines/setup"
 									params={{ workspaceId: workspace.id }}
 								>
-									Set Up
+									{linked ? "Open Setup" : "Set Up"}
 								</Link>
 							</Button>
 						</Row>
