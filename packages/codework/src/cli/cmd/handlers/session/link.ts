@@ -2,6 +2,7 @@ import { Session } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
+import { sessionId } from "../../../ids.ts";
 import { writeOut } from "../../../output.ts";
 import * as Client from "../../../../server/client.ts";
 import * as Service from "../../../service.ts";
@@ -29,16 +30,16 @@ import { Cmd } from "../../cmd.ts";
 export default Runtime.handler(
 	Cmd.commands.session.commands.link,
 	Effect.fn("CLI.session.link")(function* ({ session, path, unlink, server }) {
+		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
 			const nodePath = yield* Path.Path;
 			const rpc = yield* Client.make;
-			const sessionId = Session.SessionSchema.ID.make(session);
 			const hostDir = unlink
 				? undefined
 				: Session.AbsolutePath.make(nodePath.resolve(Option.getOrElse(path, () => ".")));
 
 			const info = yield* rpc["session.link"]({
-				sessionId,
+				sessionId: id,
 				...(hostDir === undefined ? {} : { hostDir }),
 			});
 			// Settings are re-read every exchange, so this applies at the next one: no reload, no

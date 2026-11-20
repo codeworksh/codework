@@ -63,12 +63,32 @@
 		"a filed server that refuses the token": {
 			"status": 1,
 			"stdout": "",
-			"stderr": "error: could not connect to the CodeWork server at <local server>\nhint: check it is running with `codework service status`\n"
+			"stderr": "error: the CodeWork server at <local server> refused this home's token\nhint: restart it with `codework service restart`, or check --home names its home\n"
 		},
 		"a filed server that is gone": {
 			"status": 1,
 			"stdout": "",
 			"stderr": "error: could not connect to the CodeWork server at <closed port>\nhint: check it is running with `codework service status`\n"
+		},
+		"a filed server that refuses the host": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: the CodeWork server at <local server as localhost.> refused the request's host or origin\n"
+		},
+		"not a session id": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: foo is not a session ID (ses_…)\n"
+		},
+		"run with not a session id": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: foo is not a session ID (ses_…)\n"
+		},
+		"run with --user-config-dir and --server": {
+			"status": 1,
+			"stdout": "",
+			"stderr": "error: --database and --user-config-dir belong on codework serve when using --server\n"
 		},
 		"stop": {
 			"status": 0,

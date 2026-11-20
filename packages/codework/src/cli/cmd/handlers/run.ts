@@ -15,7 +15,7 @@ import {
 	writeError,
 	writeOut,
 } from "../../output.ts";
-import { threadFlag } from "../../thread.ts";
+import { sessionId, threadFlag } from "../../ids.ts";
 import { Cmd } from "../cmd.ts";
 
 interface RenderState {
@@ -120,6 +120,7 @@ export default Runtime.handler(
 			return yield* new InvalidInputError({ message: "--thread continues a thread of --session" });
 		}
 		const threadId = yield* threadFlag(thread);
+		const id = Option.isSome(session) ? yield* sessionId(session.value) : undefined;
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
@@ -161,18 +162,19 @@ export default Runtime.handler(
 		};
 		const remote = Effect.gen(function* () {
 			const rpc = yield* Client.make;
-			const info = Option.isSome(session)
-				? yield* rpc["thread.configure"]({
-						sessionId: Session.SessionSchema.ID.make(session.value),
-						...(threadId === undefined ? {} : { threadId }),
-						runtime,
-					})
-				: yield* rpc["session.create"]({
-						runtime,
-						...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
-						hostDir,
-						sandbox: selection,
-					});
+			const info =
+				id !== undefined
+					? yield* rpc["thread.configure"]({
+							sessionId: id,
+							...(threadId === undefined ? {} : { threadId }),
+							runtime,
+						})
+					: yield* rpc["session.create"]({
+							runtime,
+							...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
+							hostDir,
+							sandbox: selection,
+						});
 			const state = yield* Ref.make(initialRenderState);
 			const columns = terminalColumns();
 			yield* writeError(
@@ -196,9 +198,9 @@ export default Runtime.handler(
 		});
 		const program = Effect.gen(function* () {
 			let handle: Session.ThreadHandle;
-			if (Option.isSome(session)) {
+			if (id !== undefined) {
 				handle = yield* Session.attach({
-					sessionId: Session.SessionSchema.ID.make(session.value),
+					sessionId: id,
 					...(threadId === undefined ? {} : { threadId }),
 					...runtime,
 				});

@@ -100,8 +100,11 @@ it("the loopback server opens its socket only to a caller with its home's token"
 		const session = yield* otherRpc["session.create"]({});
 		const alias = otherServer.url.replace("127.0.0.1", "localhost");
 		const gone = `ws://127.0.0.1:${yield* Effect.promise(closedPort)}/rpc/v1`;
+		// A name of this machine the loopback listener does not answer to.
+		const foreign = url.replace("127.0.0.1", "localhost.");
 		const scrub = (text: string) =>
 			text
+				.replaceAll(foreign, "<local server as localhost.>")
 				.replaceAll(otherServer.url, "<other server>")
 				.replaceAll(alias, "<other server as localhost>")
 				.replaceAll(gone, "<closed port>")
@@ -138,6 +141,14 @@ it("the loopback server opens its socket only to a caller with its home's token"
 		const auth = yield* run("auth", "status", "--openai-codex", "--server", otherServer.url);
 		const wrongToken = yield* stale(url, "thread", "list", session.session.id, "--server", url);
 		const unreachable = yield* stale(gone, "thread", "list", session.session.id, "--server", gone);
+		const hostRefused = yield* stale(foreign, "thread", "list", session.session.id, "--server", foreign);
+
+		// A session id the schema refuses, and a flag check of run: each one `error:` line.
+		const notSession = yield* run("thread", "list", "foo", "--server", otherServer.url);
+		const runNotSession = yield* run("run", "--session", "foo", "hi", "--server", otherServer.url);
+		// cli() passes --user-config-dir, which run refuses next to --server.
+		const runFlags = yield* run("run", "hi", "--server", otherServer.url);
+
 		const stopped = yield* run("service", "stop");
 		const afterStop = yield* run("service", "status");
 		const noServer = yield* run("thread", "list", session.session.id, "--server", otherServer.url);
@@ -160,6 +171,10 @@ it("the loopback server opens its socket only to a caller with its home's token"
 					"auth status with --home and --server": auth,
 					"a filed server that refuses the token": wrongToken,
 					"a filed server that is gone": unreachable,
+					"a filed server that refuses the host": hostRefused,
+					"not a session id": notSession,
+					"run with not a session id": runNotSession,
+					"run with --user-config-dir and --server": runFlags,
 					stop: stopped,
 					"status after stop": afterStop,
 					"no server for the home": noServer,

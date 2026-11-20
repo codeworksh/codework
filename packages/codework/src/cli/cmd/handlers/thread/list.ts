@@ -1,10 +1,10 @@
-import { Session } from "@codeworksh/harness/effect";
 import { Effect, Schema } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
 import * as Service from "../../../service.ts";
 import { type ThreadInfo, ThreadInfo as ThreadInfoSchema } from "../../../../server/contract.ts";
 import { reportFailure } from "../../../error.ts";
+import { sessionId } from "../../../ids.ts";
 import { writeJson, writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
 
@@ -24,9 +24,10 @@ const cost = (info: ThreadInfo) => `$${info.usage.cost.toFixed(4)}`;
 export default Runtime.handler(
 	Cmd.commands.thread.commands.list,
 	Effect.fn("CLI.thread.list")(function* ({ session, json, server }) {
+		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
 			const rpc = yield* Client.make;
-			const threads = yield* rpc["thread.list"]({ sessionId: Session.SessionSchema.ID.make(session) });
+			const threads = yield* rpc["thread.list"]({ sessionId: id });
 			if (json) return yield* writeJson(Schema.Array(ThreadInfoSchema), threads);
 			if (threads.length === 0) return yield* writeOut(`No threads in ${session}.\n`);
 			const rows = threads.map((info) => [
