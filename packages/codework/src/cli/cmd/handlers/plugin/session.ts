@@ -1,5 +1,6 @@
-import { Database, Event, Global, Session, SessionStore } from "@codeworksh/harness/effect";
+import { Database, Event, Global, SessionStore } from "@codeworksh/harness/effect";
 import { Effect, Layer, Option } from "effect";
+import { sessionId as parse } from "../../../ids.ts";
 
 /**
  * The host directory a session is linked to.
@@ -19,7 +20,7 @@ export const linkedDirectory = Effect.fn("CLI.plugin.linkedDirectory")(function*
 	home: Option.Option<string>,
 ) {
 	const paths = yield* Global.resolve(Option.isNone(home) ? {} : { home: home.value });
-	const id = Session.SessionSchema.ID.ascending(sessionId);
+	const id = yield* parse(sessionId);
 
 	return yield* Effect.gen(function* () {
 		const sessions = yield* SessionStore.Service;

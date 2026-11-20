@@ -1,5 +1,7 @@
 import { Global } from "@codeworksh/harness/effect";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Door } from "@codeworksh/schema";
+import { Effect, Option, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import { RpcClientError } from "effect/rpc";
 import * as Client from "../server/client.ts";
 import type * as Discovery from "../server/discovery.ts";
@@ -57,52 +59,77 @@ const same = (a: string, b: string) => {
 };
 
 /**
- * A client of the server at `url`, which must be the one the home's `service.json` names: the token
- * goes nowhere else, as any other server, however local it looks, may belong to someone else. A
- * loopback alias of that URL connects to it as filed.
+ * The server at `url`, which must be the one the home's `service.json` names: the token goes nowhere
+ * else, as any other server, however local it looks, may belong to someone else. A loopback alias
+ * of that URL is the server as filed.
  */
-const client = (url: string) =>
-	Layer.unwrap(
-		Effect.gen(function* () {
-			const paths = yield* home(yield* Cmd.spec);
-			const registered = yield* Registration.read(Registration.file(paths.home));
-			if (registered === undefined)
-				return yield* new ConnectError({
-					message: [
-						"no CodeWork server is running for this home",
-						"hint: start one with `codework service start`",
-					].join("\n"),
-				});
-			if (!same(registered.url, url))
-				return yield* new ConnectError({
-					message: [
-						`${url} is not this home's server`,
-						`hint: this home's server is ${registered.url}; pass --home for another home's server`,
-					].join("\n"),
-				});
-			return Client.layer({ url: registered.url, token: registered.token });
-		}),
-	);
+const target = Effect.fn("CLI.target")(function* (url: string) {
+	const paths = yield* home(yield* Cmd.spec);
+	const registered = yield* Registration.read(Registration.file(paths.home));
+	if (registered === undefined)
+		return yield* new ConnectError({
+			message: ["no CodeWork server is running for this home", "hint: start one with `codework service start`"].join(
+				"\n",
+			),
+		});
+	if (!same(registered.url, url))
+		return yield* new ConnectError({
+			message: [
+				`${url} is not this home's server`,
+				`hint: this home's server is ${registered.url}; pass --home for another home's server`,
+			].join("\n"),
+		});
+	return { url: registered.url, token: registered.token };
+});
 
 /**
- * Runs `program` against the server at `url`. A socket that does not open names no reason: the
- * WebSocket hides the HTTP status, so a refused token, a stopped server and a wrong port look alike.
+ * Why a socket to `server` did not open. The WebSocket hides the HTTP status, so the same request
+ * is made again as a plain GET, with the token offered the same way, and the door's status read.
  */
+const refused = Effect.fn("CLI.refused")(function* (url: string, server: Client.Target) {
+	const status = yield* HttpClient.get(server.url.replace(/^ws/, "http"), {
+		headers: { "sec-websocket-protocol": Door.protocols(server.token).join(", ") },
+	}).pipe(
+		Effect.map((response) => response.status),
+		Effect.timeout("2 seconds"),
+		Effect.provide(FetchHttpClient.layer),
+		Effect.orElseSucceed(() => undefined),
+	);
+	switch (status) {
+		case 401:
+			return yield* new ConnectError({
+				message: [
+					`the CodeWork server at ${url} refused this home's token`,
+					"hint: restart it with `codework service restart`, or check --home names its home",
+				].join("\n"),
+			});
+		case 403:
+			return yield* new ConnectError({
+				message: `the CodeWork server at ${url} refused the request's host or origin`,
+			});
+		default:
+			return yield* new ConnectError({
+				message: [
+					`could not connect to the CodeWork server at ${url}`,
+					"hint: check it is running with `codework service status`",
+				].join("\n"),
+			});
+	}
+});
+
+/** Runs `program` against the server at `url`, naming why when its socket does not open. */
 export const connect =
 	(url: string) =>
 	<A, E, R>(program: Effect.Effect<A, E, R>) =>
-		program.pipe(
-			// Scoped inside the client, so the program's own finalizers still reach the server.
-			Effect.scoped,
-			Effect.provide(client(url)),
-			Effect.mapError((error) =>
-				isClientError(error) && error.reason._tag === "SocketOpenError"
-					? new ConnectError({
-							message: [
-								`could not connect to the CodeWork server at ${url}`,
-								"hint: check it is running with `codework service status`",
-							].join("\n"),
-						})
-					: error,
-			),
-		);
+		Effect.gen(function* () {
+			const server = yield* target(url);
+			return yield* program.pipe(
+				// Scoped inside the client, so the program's own finalizers still reach the server.
+				Effect.scoped,
+				Effect.provide(Client.layer(server)),
+				Effect.catchIf(
+					(error) => isClientError(error) && error.reason._tag === "SocketOpenError",
+					() => refused(url, server),
+				),
+			);
+		});

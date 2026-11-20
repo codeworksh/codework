@@ -946,22 +946,26 @@ describeMachines("sync across OrbStack machines", () => {
 		);
 		await caughtUp(machineId, ubuntu);
 		const appThread = query(appHome, "SELECT thinking_level FROM thread WHERE id = ?", fork.id)[0];
-		// The main thread's row is older than the head: rewriting it with its own rev is a write without the current revision.
-		const [stale] = await ubuntu.sql(`SELECT rev FROM thread WHERE id = '${created.id}'`);
+		// Whichever thread's write committed last may hold the head; none of the writes above touches both, so
+		// the other one is older, and rewriting that row with its own rev is a write without the current revision.
+		const [stale] = await ubuntu.sql(
+			`SELECT id, title, rev FROM thread WHERE id IN ('${created.id}', '${fork.id}') ORDER BY rev LIMIT 1`,
+		);
 		expect(stale!.rev as number).toBeLessThan(store!.rev as number);
+		const staleId = String(stale!.id);
 		const refused = await ubuntu.refused(
-			`UPDATE thread SET title = 'Not at the current revision' WHERE id = '${created.id}';`,
+			`UPDATE thread SET title = 'Not at the current revision' WHERE id = '${staleId}';`,
 		);
 		// A write that stamps the head without taking a new revision is not caught: the trigger compares with
 		// store.rev only, so it cannot tell a forgotten increment from a second write in the same transaction.
 		const atHead = await ubuntu.refused(
-			`UPDATE thread SET title = 'At the head, untaken', rev = (SELECT rev FROM store) WHERE id = '${created.id}';`,
+			`UPDATE thread SET title = 'At the head, untaken', rev = (SELECT rev FROM store) WHERE id = '${staleId}';`,
 		);
 		const [headAfter] = await ubuntu.sql("SELECT rev FROM store");
 		const refusedInsert = await ubuntu.refused(
 			`INSERT INTO project (id, name, status, created_at, updated_at, rev) VALUES ('stray', 'Stray', 'active', 1, 1, 0);`,
 		);
-		const untouched = await ubuntu.sql(`SELECT title FROM thread WHERE id = '${created.id}'`);
+		const untouched = await ubuntu.sql(`SELECT title FROM thread WHERE id = '${staleId}'`);
 		measure("case 10", { head, items: rows.length, revs: new Set(revs).size, store: store!.rev });
 		expect(increasing).toBe(true);
 		expect(revs.every((rev) => rev > head)).toBe(true);
@@ -973,7 +977,7 @@ describeMachines("sync across OrbStack machines", () => {
 		expect(appThread).toEqual({ thinking_level: "high" });
 		expect(refused).toContain("rev is not the current revision");
 		expect(refusedInsert).toContain("rev is not the current revision");
-		expect(untouched[0]!.title).toBe(atHead === undefined ? "At the head, untaken" : "Revisions");
+		expect(untouched[0]!.title).toBe(atHead === undefined ? "At the head, untaken" : stale!.title);
 		expect(headAfter!.rev).toBe(store!.rev);
 
 		await snapshot(
