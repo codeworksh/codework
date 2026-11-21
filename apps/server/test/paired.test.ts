@@ -172,6 +172,12 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 
 	// The connect gave the machine its id; its status carries it once the machine reports it again.
 	const { id: machineId } = await machine.run((rpc) => rpc["machine.info"]({}));
+	// A machine that holds its connection open and says nothing: only the wait for its answer ends this.
+	machine.proc.kill("SIGSTOP");
+	const started = Date.now();
+	const silent = await connect(id);
+	const bounded = Date.now() - started < 40_000;
+	machine.proc.kill("SIGCONT");
 	await stop(machine.proc);
 	await status("the machine offline", (each) => !each.online);
 	const unanswered = await disconnect(id);
@@ -189,10 +195,11 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 		"machine.disconnect of a workspace it is not linked to": disconnected,
 		"machine.connect on the local server by id": local,
 		"machine.disconnect while it is stopped": unanswered,
+		"machine.connect while it is silent": { reply: silent, "within the bound": bounded },
 		"back after its first connect": { machineId: back.machineId, workspaces: back.workspaces },
 		"after device.revoke": unpaired,
 	})
 		.replaceAll(relay, "<relay>")
 		.replaceAll(machineId ?? "<none>", "<machine id>");
 	await snapshot("paired.link", JSON.parse(text));
-}, 90_000);
+}, 150_000);

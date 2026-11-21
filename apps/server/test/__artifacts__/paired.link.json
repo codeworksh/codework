@@ -19,6 +19,13 @@
 		"_tag": "Server.ServersError",
 		"message": "Fixture did not answer."
 	},
+	"machine.connect while it is silent": {
+		"reply": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture did not answer."
+		},
+		"within the bound": true
+	},
 	"back after its first connect": {
 		"machineId": "<machine id>",
 		"workspaces": []
