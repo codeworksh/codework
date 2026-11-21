@@ -40,6 +40,9 @@ const putOff = (workspaceId: string) => {
 // the auth gate, so it starts over for each account that signs in.
 const checkedAtom = Atom.make(false).pipe(Atom.keepAlive);
 
+/** Whether the first page is the one to show: the check ran, and setup, if needed, is open. */
+export const settledAtom = Atom.make(false).pipe(Atom.keepAlive);
+
 /**
  * Opens setup when this machine isn't set up for the workspace the app opens in: the CLI missing, its
  * server not running, or the machine not connected. Not for a workspace set up later, and never while the
@@ -48,6 +51,7 @@ const checkedAtom = Atom.make(false).pipe(Atom.keepAlive);
 export function SetupGate() {
 	const navigate = useNavigate();
 	const [checked, setChecked] = useAtom(checkedAtom);
+	const settle = useAtomSet(settledAtom);
 	const current = useAtomValue(workspaceAtom);
 	const status = useAtomValue(defaultServerAtom);
 	const machineAtom = useMachineAtom();
@@ -66,9 +70,9 @@ export function SetupGate() {
 		if (checked || !isSignedInApp || workspace === undefined || needs === undefined) return;
 		setChecked(true);
 		if (needs && !putOff(workspace.id)) {
-			void navigate({ to: "/settings/machines/setup", replace: true });
-		}
-	}, [checked, setChecked, needs, workspace, navigate]);
+			void navigate({ to: "/settings/machines/setup", replace: true }).finally(() => settle(true));
+		} else settle(true);
+	}, [checked, setChecked, settle, needs, workspace, navigate]);
 	return null;
 }
 
