@@ -25,21 +25,46 @@ const PAIR_COMMAND = "codework service pair";
 
 const PORT = 7433;
 
-/** `host:port` as typed or as stored, without a scheme or path. */
-const hostPort = (text: string) =>
-	text
-		.trim()
-		.replace(/^[a-z]+:\/\//i, "")
-		.replace(/\/.*$/, "");
+/** The WebSocket scheme each scheme a person may type stands for. */
+const SCHEMES: Readonly<Record<string, "ws" | "wss">> = { ws: "ws", http: "ws", wss: "wss", https: "wss" };
 
-/** Where a paired machine is, as `host:port`. */
-export const addressOf = (url: string) => hostPort(url);
+/** An address as typed: the scheme it names, if any, then its host and port, without a path. */
+const parse = (typed: string) => {
+	const text = typed.trim();
+	const scheme = /^([a-z]+):\/\//i.exec(text)?.[1]?.toLowerCase();
+	const rest = text.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
+	// A bare IPv6 address has colons of its own and no port.
+	const [, host = rest, port] = /^(\[[^\]]*\]|[^:]*)(?::(\d+))?$/.exec(rest) ?? [];
+	return { scheme, host: host.includes(":") && !host.startsWith("[") ? `[${host}]` : host, port };
+};
 
-/** The URL for an address as typed, a bare host on the default port; empty for none. */
+/**
+ * TLS unless the host is an IP address, `localhost`, a `.local` name or a name without a dot:
+ * certificates are issued for domain names.
+ */
+const defaultScheme = (host: string) =>
+	/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[") || host.endsWith(".local") || !host.includes(".")
+		? "ws"
+		: "wss";
+
+/**
+ * The URL for an address as typed; empty for none. A typed scheme wins; otherwise {@link defaultScheme}.
+ * Without a port, plain is on the default port and TLS on 443.
+ */
 export const urlOf = (typed: string) => {
-	const address = hostPort(typed);
-	if (address === "") return "";
-	return `ws://${/:\d+$/.test(address) ? address : `${address}:${PORT}`}/rpc/v1`;
+	const { scheme, host, port } = parse(typed);
+	if (host === "") return "";
+	const ws = scheme === undefined ? defaultScheme(host) : SCHEMES[scheme];
+	if (ws === undefined) return "";
+	const at = port ?? (ws === "ws" ? String(PORT) : undefined);
+	return `${ws}://${host}${at === undefined ? "" : `:${at}`}/rpc/v1`;
+};
+
+/** Where a paired machine is, as `host:port`, with its scheme when it is not the one the host defaults to. */
+export const addressOf = (url: string) => {
+	if (!URL.canParse(url)) return url;
+	const { protocol, host } = new URL(url);
+	return urlOf(host).startsWith(protocol) ? host : `${protocol}//${host}`;
 };
 
 /** A pairing code as typed: any case, with or without its dash. */
@@ -210,7 +235,10 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 									form.clear("address");
 								}}
 							/>
-							{form.error("address")}
+							{form.error("address") ||
+								(urlOf(address).startsWith("ws:") && (
+									<p className="text-xs text-ink-muted">This connection is not encrypted</p>
+								))}
 						</DialogRow>
 						<DialogRow
 							title="Pairing Code"

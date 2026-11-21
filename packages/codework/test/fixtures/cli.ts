@@ -185,18 +185,25 @@ export interface Served {
 	readonly stop: () => Promise<void>;
 }
 
-/** Starts `codework serve` from source on an ephemeral port, in the home `--home` names; resolves once it listens. */
+/**
+ * Starts `codework serve` from source on an ephemeral port, in the home `--home` names, with `serve`'s
+ * own flags after it; resolves once it listens.
+ */
 export const serveCli = (
 	args: ReadonlyArray<string>,
-	options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
+	options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly serve?: ReadonlyArray<string> },
 ) =>
 	new Promise<Served>((resolve, reject) => {
 		const home = args[args.indexOf("--home") + 1];
 		if (!args.includes("--home") || home === undefined) return reject(new Error("serveCli needs --home"));
-		const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "serve", "--port", "0"], {
-			cwd: options.cwd,
-			env: options.env,
-		});
+		const child = spawn(
+			process.execPath,
+			["--conditions=development", cli, ...args, "serve", "--port", "0", ...(options.serve ?? [])],
+			{
+				cwd: options.cwd,
+				env: options.env,
+			},
+		);
 		const exited = new Promise<void>((done) => child.on("exit", () => done()));
 		const signal = (name: NodeJS.Signals) => () => {
 			if (child.exitCode === null && child.signalCode === null) child.kill(name);

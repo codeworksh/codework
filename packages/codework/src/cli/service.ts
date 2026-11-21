@@ -106,7 +106,7 @@ const refused = Effect.fn("CLI.refused")(function* (url: string, server: Client.
 			});
 		case 403:
 			return yield* new ConnectError({
-				message: `the CodeWork server at ${url} refused the request's host or origin`,
+				message: `the CodeWork server at ${url} refused the request's origin`,
 			});
 		default:
 			return yield* new ConnectError({

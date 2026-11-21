@@ -1,9 +1,10 @@
 import { Global } from "@codeworksh/harness/effect";
-import { Door, Pairing as Wire } from "@codeworksh/schema";
+import { Door, Forwarded, Pairing as Wire } from "@codeworksh/schema";
 import { NodeServices } from "@effect/platform-node";
 import { Clock, Context, Duration, Effect, FileSystem, Layer, Path, Semaphore, Schema } from "effect";
 import { Base64Url } from "effect/encoding";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import type * as IpNetwork from "effect/net/IpNetwork";
 import * as Private from "../framework/private.ts";
 import type { DeviceInfo } from "./contract.ts";
 
@@ -12,7 +13,8 @@ import type { DeviceInfo } from "./contract.ts";
  * `codework service pair`, which it exchanges at `POST /api/v1/devices` for a session token of its own. It then
  * takes a ticket at `POST /api/v1/tickets` for each socket it opens, offering the ticket where a local client
  * offers the home's token. Codes and tickets live in memory; devices persist in `<home>/devices.json`,
- * which holds a hash of each session token, never the token.
+ * which holds a hash of each session token, never the token, and whether the device's last request
+ * came over TLS.
  */
 
 const codeLife = Duration.toMillis("10 minutes");
@@ -44,6 +46,7 @@ const Device = Schema.Struct({
 	hash: Schema.String,
 	createdAt: Schema.Finite,
 	seenAt: Schema.Finite,
+	encrypted: Schema.optional(Schema.Boolean),
 });
 type Device = typeof Device.Type;
 
@@ -80,9 +83,10 @@ export class Service extends Context.Service<
 		readonly exchange: (
 			code: string,
 			label: string,
+			encrypted: boolean,
 		) => Effect.Effect<{ readonly id: string; readonly token: string } | undefined>;
 		/** A ticket for the device holding `token`; none for an unknown, revoked or idle session. */
-		readonly ticket: (token: string) => Effect.Effect<string | undefined>;
+		readonly ticket: (token: string, encrypted: boolean) => Effect.Effect<string | undefined>;
 		/** The device a live ticket was issued to, spending it; none otherwise. */
 		readonly redeem: (ticket: string) => Effect.Effect<string | undefined>;
 		readonly list: Effect.Effect<ReadonlyArray<DeviceInfo>>;
@@ -120,7 +124,7 @@ export const layer = Layer.effect(
 				codes.issue(code, expiresAt, true);
 				return { code: `${code.slice(0, 5)}-${code.slice(5)}`, expiresAt };
 			}),
-			exchange: (code, label) =>
+			exchange: (code, label, encrypted) =>
 				Effect.gen(function* () {
 					const now = yield* Clock.currentTimeMillis;
 					if (codes.take(normalize(code), now) === undefined) return undefined;
@@ -131,11 +135,12 @@ export const layer = Layer.effect(
 						hash: yield* hash(token),
 						createdAt: now,
 						seenAt: now,
+						encrypted,
 					};
 					yield* lock.withPermit(Effect.suspend(() => save([...devices, device])));
 					return { id: device.id, token };
 				}),
-			ticket: (token) =>
+			ticket: (token, encrypted) =>
 				Effect.gen(function* () {
 					const digest = yield* hash(token);
 					return yield* lock.withPermit(
@@ -143,7 +148,9 @@ export const layer = Layer.effect(
 							const now = yield* Clock.currentTimeMillis;
 							const device = devices.find((device) => Door.matches(digest, device.hash));
 							if (device === undefined || now - device.seenAt > idleLife) return undefined;
-							yield* save(devices.map((each) => (each === device ? { ...device, seenAt: now } : each)));
+							yield* save(
+								devices.map((each) => (each === device ? { ...device, seenAt: now, encrypted } : each)),
+							);
 							const ticket = yield* Door.make;
 							tickets.issue(ticket, now + ticketLife, device.id);
 							return ticket;
@@ -155,7 +162,15 @@ export const layer = Layer.effect(
 					const id = tickets.take(ticket, now);
 					return devices.some((device) => device.id === id) ? id : undefined;
 				}),
-			list: Effect.sync(() => devices.map(({ id, label, createdAt, seenAt }) => ({ id, label, createdAt, seenAt }))),
+			list: Effect.sync(() =>
+				devices.map(({ id, label, createdAt, seenAt, encrypted }) => ({
+					id,
+					label,
+					createdAt,
+					seenAt,
+					...(encrypted === undefined ? {} : { encrypted }),
+				})),
+			),
 			revoke: (id) =>
 				lock.withPermit(
 					Effect.gen(function* () {
@@ -173,6 +188,12 @@ const bearer = (header: string | undefined) => /^Bearer ([A-Za-z0-9_-]+)$/.exec(
 
 const refused = HttpServerResponse.empty({ status: 401 });
 
+/** The peers besides loopback whose `X-Forwarded-Proto` the pairing routes believe. */
+export const TrustedProxy = Context.Reference<ReadonlyArray<IpNetwork.IpNetwork>>(
+	"@codeworksh/cli/server/pairing/TrustedProxy",
+	{ defaultValue: () => [] },
+);
+
 /** The routes {@link routes} serves, which take no socket credential. */
 export const paths: ReadonlyArray<string> = [Wire.devicesPath, Wire.ticketsPath];
 
@@ -180,13 +201,19 @@ export const paths: ReadonlyArray<string> = [Wire.devicesPath, Wire.ticketsPath]
 export const routes = HttpRouter.use((router) =>
 	Effect.gen(function* () {
 		const pairing = yield* Service;
+		const trusted = yield* TrustedProxy;
 		yield* router.add(
 			"POST",
 			Wire.devicesPath,
 			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest;
 				const body = yield* HttpServerRequest.schemaBodyJson(Wire.Exchange).pipe(Effect.option);
 				if (body._tag === "None") return HttpServerResponse.empty({ status: 400 });
-				const device = yield* pairing.exchange(body.value.code, body.value.label);
+				const device = yield* pairing.exchange(
+					body.value.code,
+					body.value.label,
+					Forwarded.encrypted(request, trusted),
+				);
 				return device === undefined ? refused : HttpServerResponse.jsonUnsafe(device, { status: 201 });
 			}),
 		);
@@ -194,8 +221,10 @@ export const routes = HttpRouter.use((router) =>
 			"POST",
 			Wire.ticketsPath,
 			Effect.gen(function* () {
-				const token = bearer((yield* HttpServerRequest.HttpServerRequest).headers.authorization);
-				const ticket = token === undefined ? undefined : yield* pairing.ticket(token);
+				const request = yield* HttpServerRequest.HttpServerRequest;
+				const token = bearer(request.headers.authorization);
+				const ticket =
+					token === undefined ? undefined : yield* pairing.ticket(token, Forwarded.encrypted(request, trusted));
 				return ticket === undefined ? refused : HttpServerResponse.jsonUnsafe({ ticket }, { status: 201 });
 			}),
 		);

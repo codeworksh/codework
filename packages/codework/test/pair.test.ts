@@ -5,7 +5,16 @@ import { Pairing as Wire } from "@codeworksh/schema";
 import { Cause, Clock, Deferred, Duration, Effect, Exit, Fiber, Layer, Result, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
 import { RpcClientError } from "effect/rpc";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vite-plus/test";
@@ -14,9 +23,10 @@ import * as Client from "../src/server/client.ts";
 import type { IndexItem } from "../src/server/contract.ts";
 import * as Pairing from "../src/server/pairing.ts";
 import * as Server from "../src/server/server.ts";
-import { models, runCli } from "./fixtures/cli.ts";
+import { models, runCli, serveCli } from "./fixtures/cli.ts";
 import { connect, registered } from "./utils/client.ts";
 import { knock } from "./utils/knock.ts";
+import { proxy } from "./utils/proxy.ts";
 
 const home = (name: string) => {
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), `codework-pair-${name}-`)));
@@ -64,8 +74,8 @@ const routes = (base: string) => {
 		/** The status `POST /api/v1/devices` answers. */
 		pairStatus: (body: unknown, headers?: Record<string, string>) =>
 			Effect.map(post(Wire.devicesPath, json(body, headers)), (response) => response.status),
-		pair: (code: string, label: string) =>
-			post(Wire.devicesPath, json({ code, label })).pipe(
+		pair: (code: string, label: string, headers?: Record<string, string>) =>
+			post(Wire.devicesPath, json({ code, label }, headers)).pipe(
 				Effect.flatMap((response) => Effect.promise(() => response.json())),
 				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Device)),
 				Effect.orDie,
@@ -75,8 +85,8 @@ const routes = (base: string) => {
 				post(Wire.ticketsPath, authorization === undefined ? {} : { headers: { authorization } }),
 				(response) => response.status,
 			),
-		ticket: (token: string) =>
-			post(Wire.ticketsPath, { headers: { authorization: `Bearer ${token}` } }).pipe(
+		ticket: (token: string, headers: Record<string, string> = {}) =>
+			post(Wire.ticketsPath, { headers: { ...headers, authorization: `Bearer ${token}` } }).pipe(
 				Effect.flatMap((response) => Effect.promise(() => response.json())),
 				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Ticket)),
 				Effect.map(({ ticket }) => ticket),
@@ -86,10 +96,10 @@ const routes = (base: string) => {
 };
 
 /** The status an upgrade offering `credential` gets. */
-const upgrade = (port: number, credential: string, host?: string) =>
-	Effect.promise(() => knock(port, "/rpc/v1", { "Sec-WebSocket-Protocol": `codework, ${credential}` }, host)).pipe(
-		Effect.map((answer) => answer.status),
-	);
+const upgrade = (port: number, credential: string, host?: string, headers: Record<string, string> = {}) =>
+	Effect.promise(() =>
+		knock(port, "/rpc/v1", { ...headers, "Sec-WebSocket-Protocol": `codework, ${credential}` }, host),
+	).pipe(Effect.map((answer) => answer.status));
 
 /** A client of the listener at `url` on a socket opened with `ticket`. */
 const device = (url: string, ticket: string) =>
@@ -413,4 +423,175 @@ it.skipIf(lan === undefined)(
 		await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/pair.remote.json");
 	},
 	60_000,
+);
+
+/** `codework service devices` of `dir`'s server, with each device id named and each time scrubbed. */
+const devicesOf = (dir: string, names: ReadonlyMap<string, string>) =>
+	Effect.promise(() =>
+		runCli(["--home", dir, "service", "devices"], {
+			cwd: dir,
+			env: { ...process.env, HOME: dir, CODEWORK_MODELS_FILE: models },
+		}),
+	).pipe(
+		Effect.map(({ status, stdout, stderr }) => ({
+			status,
+			stdout: [...names]
+				.reduce((out, [id, name]) => out.replaceAll(id, name), stdout)
+				.replace(/\d{4}-\d\d-\d\dT[\d:]+Z/g, "<time>")
+				.split("\n"),
+			stderr,
+		})),
+	);
+
+it.skipIf(lan === undefined)(
+	"behind a TLS proxy a device is recorded encrypted; a forged X-Forwarded-Proto from elsewhere is not believed",
+	async () => {
+		const dir = home("proxy");
+		const result = await Effect.gen(function* () {
+			const real = yield* Clock.Clock;
+			return yield* Effect.gen(function* () {
+				const listening = yield* port;
+				const front = yield* Effect.promise(() => proxy(listening));
+				const proxied = routes(`http://127.0.0.1:${front.port}`);
+				const direct = routes(`http://127.0.0.1:${listening}`);
+				const elsewhere = routes(`http://${lan}:${listening}`);
+				const filed = yield* registered(dir);
+				const rpc = yield* connect(dir);
+				const code = () => Effect.map(rpc["device.pair"]({}), ({ code }) => code);
+				const names = new Map<string, string>();
+				const secrets = [filed.token];
+				const pair = Effect.fn(function* (
+					http: ReturnType<typeof routes>,
+					name: string,
+					headers?: Record<string, string>,
+				) {
+					const paired = yield* http.pair(yield* code(), name, headers);
+					names.set(paired.id, `<${name}>`);
+					secrets.push(paired.token);
+					return paired;
+				});
+				const forged = { "x-forwarded-proto": "https" };
+
+				// Through the proxy: paired, a ticket, a socket and a call, each through it.
+				const viaProxy = yield* pair(proxied, "Proxied");
+				const ticket = yield* proxied.ticket(viaProxy.token);
+				secrets.push(ticket);
+				const proxiedRpc = yield* device(`ws://127.0.0.1:${front.port}/rpc/v1`, ticket);
+				const info = yield* proxiedRpc["server.info"]({});
+				yield* pair(direct, "Plain");
+				// A tunnel agent on this machine connects from loopback, which is believed.
+				yield* pair(direct, "Tunnel", forged);
+				// Another address is no proxy this server trusts: its header is any client's.
+				const other = yield* pair(elsewhere, "Forged", forged);
+				const throughProxy = yield* devicesOf(dir, names);
+				// The record is the device's latest request: a ticket taken plainly turns it off.
+				yield* direct.ticket(viaProxy.token);
+				const afterPlain = yield* devicesOf(dir, names);
+
+				const otherTicket = yield* elsewhere.ticket(other.token, forged);
+				secrets.push(otherTicket);
+				const refused = {
+					"a ticket from another address with a foreign Host": yield* upgrade(listening, otherTicket, lan, {
+						Host: "codework.example.com",
+					}),
+					"a foreign Origin pairing through the proxy": yield* proxied.pairStatus(
+						{ code: yield* code(), label: "Evil" },
+						{ origin: "https://evil.example" },
+					),
+					"a foreign Origin opening a socket through the proxy": yield* upgrade(
+						front.port,
+						yield* proxied.ticket(viaProxy.token),
+						undefined,
+						{ Origin: "https://evil.example" },
+					),
+				};
+				return {
+					secrets,
+					artifact: {
+						"a call on a socket through the proxy": info.storeId.length > 0,
+						devices: throughProxy,
+						"after a plain ticket": afterPlain,
+						...refused,
+					},
+				};
+			}).pipe(Effect.provide(serve(dir, real, "0.0.0.0")));
+		}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
+		const text = `${JSON.stringify(result.artifact, null, "\t")}\n`;
+		for (const secret of result.secrets) expect(text).not.toContain(secret);
+		await expect(text).toMatchFileSnapshot("./__artifacts__/pair.proxy.json");
+	},
+	60_000,
+);
+
+it.skipIf(lan === undefined)(
+	"the trusted proxy is --trusted-proxy, else CODEWORK_TRUSTED_PROXY, else the user settings; a bad entry stops the start",
+	async () => {
+		// A documentation address: no peer of this test comes from it.
+		const nobody = "192.0.2.1";
+		const setup = (name: string, options: { settings?: unknown; env?: string; project?: unknown }) => {
+			const dir = home(`trust-${name}`);
+			if (options.settings !== undefined)
+				writeFileSync(join(dir, "settings.jsonc"), JSON.stringify(options.settings));
+			const cwd = join(dir, "project");
+			mkdirSync(join(cwd, ".codework"), { recursive: true });
+			if (options.project !== undefined)
+				writeFileSync(join(cwd, ".codework", "settings.jsonc"), JSON.stringify(options.project));
+			const env: NodeJS.ProcessEnv = { ...process.env, HOME: dir, CODEWORK_MODELS_FILE: models };
+			delete env["CODEWORK_TRUSTED_PROXY"];
+			if (options.env !== undefined) env["CODEWORK_TRUSTED_PROXY"] = options.env;
+			return { dir, cwd, env };
+		};
+		/** Whether a device paired from this computer's other address, with a forged header, is recorded encrypted. */
+		const believed = async (
+			name: string,
+			options: { settings?: unknown; env?: string; project?: unknown; flags?: ReadonlyArray<string> },
+		) => {
+			const { dir, cwd, env } = setup(name, options);
+			const served = await serveCli(["--home", dir], {
+				cwd,
+				env,
+				serve: ["--host", "0.0.0.0", ...(options.flags ?? [])],
+			});
+			const code = (await runCli(["--home", dir, "service", "pair"], { cwd, env })).stdout.trim();
+			const response = await fetch(`http://${lan}:${new URL(served.url).port}${Wire.devicesPath}`, {
+				method: "POST",
+				headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
+				body: JSON.stringify({ code, label: "Laptop" }),
+			});
+			expect(response.status).toBe(201);
+			const listed = (await runCli(["--home", dir, "service", "devices"], { cwd, env })).stdout;
+			await served.stop();
+			return listed.trim().split("\n").at(-1)?.split(/\s+/).at(-1);
+		};
+		/** How `codework serve` stops on a bad entry. */
+		const refused = async (
+			name: string,
+			options: { settings?: unknown; env?: string; flags?: ReadonlyArray<string> },
+		) => {
+			const { dir, cwd, env } = setup(name, options);
+			const done = await runCli(["--home", dir, "serve", "--port", "0", ...(options.flags ?? [])], { cwd, env });
+			return { status: done.status, stderr: done.stderr.replaceAll(dir, "<home>") };
+		};
+		const user = (trustedProxy: ReadonlyArray<string>) => ({ server: { trustedProxy } });
+		const artifact = {
+			"no setting": await believed("none", {}),
+			"the user settings name it": await believed("settings", { settings: user([`${lan}/32`]) }),
+			"only a project's settings name it": await believed("project", { project: user([lan!]) }),
+			"the environment names another over the settings": await believed("env", {
+				settings: user([lan!]),
+				env: nobody,
+			}),
+			"the environment names it, comma-separated": await believed("env-list", { env: `${nobody}, ${lan}` }),
+			"the flag names it over the environment and settings": await believed("flag", {
+				settings: user([nobody]),
+				env: nobody,
+				flags: ["--trusted-proxy", `${nobody},${lan}`, "--trusted-proxy", "198.51.100.0/24"],
+			}),
+			"a bad flag entry": await refused("bad-flag", { flags: ["--trusted-proxy", "10.0.0.0/8,proxy.internal"] }),
+			"a bad environment entry": await refused("bad-env", { env: "10.0.0.300" }),
+			"a bad settings entry": await refused("bad-settings", { settings: user(["10.0.0.0/33"]) }),
+		};
+		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/pair.trust.json");
+	},
+	180_000,
 );

@@ -1,0 +1,51 @@
+---
+title: Behind a Proxy
+description: Reach codework serve over TLS through a reverse proxy or tunnel.
+---
+
+## Plain HTTP
+
+`codework serve` speaks plain HTTP. TLS is the proxy's job: it ends TLS and forwards to the server.
+
+## What the proxy sends
+
+| Header or route                | Why                                            |
+| ------------------------------ | ---------------------------------------------- |
+| `Host`                         | Passed through as the client sent it           |
+| `X-Forwarded-Proto: https`     | Tells the server the client connected over TLS |
+| WebSocket upgrade on `/rpc/v1` | The app's connection to the server             |
+
+## Trusted proxies
+
+The server believes `X-Forwarded-Proto` only from loopback or a trusted proxy. When the proxy reaches the server from another address, name it, as an address or a CIDR range:
+
+| Where                 | Example                                               |
+| --------------------- | ----------------------------------------------------- |
+| Flag                  | `codework serve --trusted-proxy 172.18.0.0/16`        |
+| Environment           | `CODEWORK_TRUSTED_PROXY=172.18.0.0/16,10.0.0.5`       |
+| User `settings.jsonc` | `{ "server": { "trustedProxy": ["172.18.0.0/16"] } }` |
+
+The flag wins over the environment, and the environment over settings. Only the user settings file is read; a project's is not.
+
+## NGINX
+
+```nginx
+location / {
+	proxy_pass http://127.0.0.1:7433;
+	proxy_http_version 1.1;
+	proxy_set_header Host $host;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection "upgrade";
+}
+```
+
+## Other setups
+
+| Setup                            | What to do                          |
+| -------------------------------- | ----------------------------------- |
+| Tunnel agent on the same machine | Nothing: it connects from loopback  |
+| Proxy in another container       | Trust the container's address       |
+| Platform edge proxy              | Trust the platform's internal range |
+
+`codework service devices` shows, per paired device, whether its last connection was encrypted.

@@ -38,6 +38,8 @@ export const DeviceInfo = Schema.Struct({
 	createdAt: Schema.Finite,
 	/** When it last took a ticket, epoch milliseconds; a session unseen for 30 days is refused. */
 	seenAt: Schema.Finite,
+	/** Whether it last paired or took a ticket over TLS, which ends at a proxy in front of this server. */
+	encrypted: Schema.optional(Schema.Boolean),
 });
 export type DeviceInfo = typeof DeviceInfo.Type;
 

@@ -398,10 +398,20 @@ export const Cmd = Spec.make("codework", {
 					),
 					Flag.withDefault(false),
 				),
+				trustedProxy: Flag.String("trusted-proxy").pipe(
+					Flag.withDescription(
+						"Address or CIDR range of a TLS proxy in front of the server, repeatable or comma-separated (default: CODEWORK_TRUSTED_PROXY, then server.trustedProxy in user settings)",
+					),
+					Flag.atLeast(0),
+				),
 			},
 			examples: [
 				{ command: "codework serve", description: "Start the RPC server on 127.0.0.1:7433" },
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
+				{
+					command: "codework serve --host 0.0.0.0 --trusted-proxy 10.0.0.0/8",
+					description: "Believe X-Forwarded-Proto from a proxy in 10.0.0.0/8",
+				},
 			],
 		}),
 		Spec.make("service", {
