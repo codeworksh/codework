@@ -105,7 +105,7 @@ it("the sidebar reads app.db alone: a run started before the app shows running a
 	const launched = await desk.run((rpc) => sidebar(rpc));
 	const [project] = launched;
 	expect(launched).toHaveLength(1);
-	expect(project!.machine).toEqual({ id: machineId, name: "Scripted" });
+	expect(project!.machine).toEqual({ id: machineId, name: "Fixture" });
 	expect(project!.sessions.map((row) => [row.id, row.threadId, row.runState, row.title])).toEqual([
 		[busy.session.id, busy.id, "running", "hold"],
 		[idle.session.id, idle.id, "idle", "Idle prompt"],

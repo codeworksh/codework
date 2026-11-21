@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { Base64Url } from "effect/encoding";
-import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
-import * as NetAddress from "effect/net/NetAddress";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 // Who may open a CodeWork listener's WebSocket. A browser WebSocket cannot set headers, so the token
 // travels as the second offered subprotocol, after the fixed name the listener selects: `ws` answers
@@ -50,34 +49,21 @@ export const token =
 	(given, request) =>
 		Effect.succeed(given !== undefined && matches(given, expected) ? request : undefined);
 
-/** The names a loopback listener on `port` answers to. */
-const loopback = (port: number) => ["127.0.0.1", "localhost", "[::1]"].map((name) => `${name}:${port}`);
-
 /**
  * The door on every request the listener serves, before a WebSocket upgrade: a refused one gets a
- * plain HTTP status instead of 101, 403 for where it comes from and 401 for its credential. Only a
- * listener bound to loopback checks `Host`.
+ * plain HTTP status instead of 101, 403 for where it comes from and 401 for its credential.
  */
 export const layer = (options: { readonly admit: Admit; readonly origins: ReadonlyArray<string> }) =>
 	HttpRouter.middleware(
-		Effect.gen(function* () {
-			const address = (yield* HttpServer.HttpServer).address;
-			const hosts =
-				NetAddress.isInetAddress(address) && NetAddress.isLoopback(address.address)
-					? loopback(address.port)
-					: undefined;
-			return (app) =>
-				Effect.gen(function* () {
-					const request = yield* HttpServerRequest.HttpServerRequest;
-					const { host, origin } = request.headers;
-					if (hosts !== undefined && !hosts.includes(host?.toLowerCase() ?? ""))
-						return HttpServerResponse.empty({ status: 403 });
-					if (origin !== undefined && !options.origins.includes(origin))
-						return HttpServerResponse.empty({ status: 403 });
-					const admitted = yield* options.admit(offered(request.headers["sec-websocket-protocol"]), request);
-					if (admitted === undefined) return HttpServerResponse.empty({ status: 401 });
-					return yield* Effect.provideService(app, HttpServerRequest.HttpServerRequest, admitted);
-				});
-		}),
+		(app) =>
+			Effect.gen(function* () {
+				const request = yield* HttpServerRequest.HttpServerRequest;
+				const origin = request.headers.origin;
+				if (origin !== undefined && !options.origins.includes(origin))
+					return HttpServerResponse.empty({ status: 403 });
+				const admitted = yield* options.admit(offered(request.headers["sec-websocket-protocol"]), request);
+				if (admitted === undefined) return HttpServerResponse.empty({ status: 401 });
+				return yield* Effect.provideService(app, HttpServerRequest.HttpServerRequest, admitted);
+			}),
 		{ global: true },
 	);

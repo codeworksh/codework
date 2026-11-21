@@ -17,7 +17,7 @@ export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Server.Una
 	message: Schema.String,
 }) {}
 
-/** A call a device may not make: only this computer manages who is paired. */
+/** A call this caller may not make: only this computer manages who is paired, and only a device leaves. */
 export class Forbidden extends Schema.TaggedError<Forbidden>()("Server.Forbidden", {
 	message: Schema.String,
 }) {}

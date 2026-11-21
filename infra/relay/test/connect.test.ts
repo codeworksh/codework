@@ -90,15 +90,15 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const connect = codework(["connect", "--workspace", workspace.id, "--machine-id", "e2e-box"]);
 		const connectDone = finished(connect);
 		const code = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
-		const approve = await asPerson("/v1/pairings/approve", {
+		const approve = await asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
 			method: "POST",
-			body: JSON.stringify({ userCode: code, workspaceId: workspace.id }),
+			body: JSON.stringify({ userCode: code }),
 		});
 		const approved = decodeApproved(await approve.json()).machine;
 		const connected = await connectDone;
-		const reused = await asPerson("/v1/pairings/approve", {
+		const reused = await asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
 			method: "POST",
-			body: JSON.stringify({ userCode: code, workspaceId: workspace.id }),
+			body: JSON.stringify({ userCode: code }),
 		});
 
 		const file = machineFile();
@@ -176,9 +176,9 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const askedDone = finished(asked);
 		const askedCode = await waitForLine(asked, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
 		const listed = await pending();
-		const decline = await asPerson("/v1/pairings/decline", {
+		const decline = await asPerson(`/v1/workspaces/${workspace.id}/pairings/decline`, {
 			method: "POST",
-			body: JSON.stringify({ userCode: askedCode, workspaceId: workspace.id }),
+			body: JSON.stringify({ userCode: askedCode }),
 		});
 		const declined = await askedDone;
 		const afterDecline = await pending();
@@ -187,9 +187,9 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const connect = codework(["connect", "--workspace", workspace.id]);
 		const connectDone = finished(connect);
 		const code = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
-		const approve = await asPerson("/v1/pairings/approve", {
+		const approve = await asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
 			method: "POST",
-			body: JSON.stringify({ userCode: code.replace("-", "").toLowerCase(), workspaceId: workspace.id }),
+			body: JSON.stringify({ userCode: code.replace("-", "").toLowerCase() }),
 		});
 		const connected = await connectDone;
 
@@ -263,9 +263,9 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		const me = decodeMe(await (await asPerson("/v1/me")).json());
 		const workspace = me.workspaces[0]!;
 		const approve = (userCode: string) =>
-			asPerson("/v1/pairings/approve", {
+			asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
 				method: "POST",
-				body: JSON.stringify({ userCode, workspaceId: workspace.id }),
+				body: JSON.stringify({ userCode }),
 			});
 		const started = async () => {
 			const child = codework(["connect", "--workspace", workspace.id], { stderr: true });
@@ -376,9 +376,9 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			const userCode = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
 			expect(
 				(
-					await asPerson("/v1/pairings/approve", {
+					await asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
 						method: "POST",
-						body: JSON.stringify({ userCode, workspaceId: workspace.id }),
+						body: JSON.stringify({ userCode }),
 					})
 				).status,
 			).toBe(200);
@@ -408,9 +408,9 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			const connect = codework(["connect", "--workspace", workspaceId]);
 			const done = finished(connect);
 			const userCode = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
-			const approve = await asPerson("/v1/pairings/approve", {
+			const approve = await asPerson(`/v1/workspaces/${workspaceId}/pairings/approve`, {
 				method: "POST",
-				body: JSON.stringify({ userCode, workspaceId }),
+				body: JSON.stringify({ userCode }),
 			});
 			expect(approve.status).toBe(200);
 			expect((await done).code).toBe(0);

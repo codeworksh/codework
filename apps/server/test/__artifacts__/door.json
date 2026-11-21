@@ -5,7 +5,7 @@
 		"token first": 401,
 		"wrong token": 401,
 		"right token, foreign Origin": 403,
-		"right token, Host evil.example": 403,
+		"right token, Host evil.example": 101,
 		"right token, Host localhost": 101,
 		"right token, Origin codework://app": 101,
 		"right token, Origin codeworkdev://app": 101,
@@ -22,12 +22,17 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": true
+			"paired": true,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"a wrong code": {
@@ -44,10 +49,15 @@
 			"kind": "remote",
 			"name": "<good host>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": false
+			"paired": false,
+			"online": false,
+			"seenAt": null,
+			"version": null,
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"after the machine restarts": {
@@ -58,12 +68,17 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": false
+			"paired": false,
+			"online": false,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		}
 	},
 	"devices": [
@@ -76,12 +91,17 @@
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
-			"name": "Scripted",
+			"name": "Fixture",
 			"host": "Fixture",
-			"override": "Scripted",
+			"label": null,
 			"isDefault": false,
 			"url": "<good url>",
-			"paired": true
+			"paired": true,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": null,
+			"workspaces": []
 		},
 		"a new session": true
 	}

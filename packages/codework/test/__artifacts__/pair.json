@@ -3,7 +3,7 @@
 		"pair prints": {
 			"status": 0,
 			"stdout": "<code>\n",
-			"stderr": ""
+			"stderr": "note: this code gives the computer that uses it full access to this machine\n"
 		},
 		"a wrong code": 401,
 		"no label": 400,
@@ -31,7 +31,7 @@
 		"a session unseen for 30 days": 401,
 		"devices": {
 			"status": 0,
-			"stdout": "ID              LABEL    CREATED               LAST SEEN\n<Laptop>  Laptop   <time>  <time>\n<Idle>  Idle     <time>  <time>\n<Desktop>  Desktop  <time>  <time>\n<Tablet>  Tablet   <time>  <time>\n",
+			"stdout": "ID              LABEL    CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop   <time>  <time>  no\n<Idle>  Idle     <time>  <time>  no\n<Desktop>  Desktop  <time>  <time>  no\n<Tablet>  Tablet   <time>  <time>  no\n",
 			"stderr": ""
 		}
 	},
@@ -52,7 +52,7 @@
 		},
 		"devices": {
 			"status": 0,
-			"stdout": "ID              LABEL   CREATED               LAST SEEN\n<Laptop>  Laptop  <time>  <time>\n<Idle>  Idle    <time>  <time>\n<Tablet>  Tablet  <time>  <time>\n",
+			"stdout": "ID              LABEL   CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop  <time>  <time>  no\n<Idle>  Idle    <time>  <time>  no\n<Tablet>  Tablet  <time>  <time>  no\n",
 			"stderr": ""
 		}
 	},

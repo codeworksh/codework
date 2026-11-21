@@ -13,27 +13,32 @@ export function useMachineAtom() {
 	return Server.query("machine.info", undefined, { reactivityKeys: ["codework", home] });
 }
 
-/** Disconnects this machine from a workspace. */
+/** Disconnects this machine, or a paired one by its `serverId`, from a workspace. */
 export const disconnectAtom = Server.mutation("machine.disconnect");
 
 /**
- * A connect of this machine to one workspace, running while something reads it: the latest of its
- * events, the code to approve and then the link. Closing the dialog that reads it cancels the connect.
+ * A connect of a machine to one workspace, running while something reads it: the latest of its events,
+ * the code to approve and then the link. Closing the dialog that reads it cancels the connect. Keyed by
+ * `<serverId>/<workspaceId>`, with no server id for this machine.
  */
-const connectAtom = Atom.family((workspaceId: string) =>
-	Server.runtime.atom(
-		Stream.unwrap(Server.use((client) => Effect.succeed(client("machine.connect", { workspaceId })))),
-	),
-);
+const connectAtom = Atom.family((key: string) => {
+	const [serverId = "", workspaceId = ""] = key.split("/");
+	const payload = serverId === "" ? { workspaceId } : { workspaceId, serverId };
+	return Server.runtime.atom(
+		Stream.unwrap(Server.use((client) => Effect.succeed(client("machine.connect", payload)))),
+	);
+});
 
 /**
- * Connects this machine to a workspace while mounted, and approves its code as the signed-in member.
- * After Approve it holds as `approved` until the link arrives, which the relay reports on its next poll
- * a few seconds later, so the code is never approved twice. Unmounting cancels the connect.
+ * Connects this machine, or the paired machine `serverId`, to a workspace while mounted, and approves
+ * its code as the signed-in member. After Approve it holds as `approved` until the link arrives, which
+ * the relay reports on its next poll a few seconds later, so the code is never approved twice.
+ * Unmounting cancels the connect.
  */
-export function useConnect(workspaceId: string) {
-	const progress = useAtomValue(connectAtom(workspaceId));
-	const restart = useAtomRefresh(connectAtom(workspaceId));
+export function useConnect(workspaceId: string, serverId?: string) {
+	const key = `${serverId ?? ""}/${workspaceId}`;
+	const progress = useAtomValue(connectAtom(key));
+	const restart = useAtomRefresh(connectAtom(key));
 	const refreshMachine = useAtomRefresh(useMachineAtom());
 	const approve = useAtomSet(approveAtom, { mode: "promise" });
 	const [sent, setSent] = useState<"approving" | "approved" | null>(null);

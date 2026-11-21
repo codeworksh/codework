@@ -17,7 +17,7 @@
 		"token first": 401,
 		"wrong token": 401,
 		"right token, foreign Origin": 403,
-		"right token, Host evil.example": 403,
+		"right token, Host evil.example": 101,
 		"right token, Host localhost": 101,
 		"right token, the desktop app's Origin": 403,
 		"right token": 101,
@@ -66,11 +66,6 @@
 			"status": 1,
 			"stdout": "",
 			"stderr": "error: could not connect to the CodeWork server at <closed port>\nhint: check it is running with `codework service status`\n"
-		},
-		"a filed server that refuses the host": {
-			"status": 1,
-			"stdout": "",
-			"stderr": "error: the CodeWork server at <local server as localhost.> refused the request's host or origin\n"
 		},
 		"not a session id": {
 			"status": 1,

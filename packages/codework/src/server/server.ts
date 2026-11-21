@@ -1,7 +1,8 @@
-import { Control, Global, Harness, Sandbox } from "@codeworksh/harness/effect";
+import { Control, Global, Harness, Sandbox, Settings } from "@codeworksh/harness/effect";
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
+import type * as IpNetwork from "effect/net/IpNetwork";
 import * as NetAddress from "effect/net/NetAddress";
 import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
@@ -99,6 +100,17 @@ const announce = Layer.unwrap(
 	}),
 );
 
+const trusted = (given: ReadonlyArray<IpNetwork.IpNetwork> | undefined) =>
+	Layer.effect(
+		Pairing.TrustedProxy,
+		given === undefined
+			? Effect.flatMap(Settings.Service, (settings) => settings.load(undefined)).pipe(
+					// Settings decode each entry, so every one parses.
+					Effect.map(({ server }) => server.trustedProxy.flatMap((entry) => Settings.proxyNetwork(entry) ?? [])),
+				)
+			: Effect.succeed(given),
+	);
+
 /** The RPC endpoint for `group` and the pairing routes, behind the door, which turns a refused request away. */
 export const endpoint = <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>) =>
 	RpcServer.layer(group).pipe(
@@ -115,6 +127,8 @@ export const layer = (options: {
 	host: string;
 	port: number;
 	harness: Harness.Options;
+	/** Proxies besides loopback whose `X-Forwarded-Proto` is believed; the user settings' `server.trustedProxy` without. */
+	trustedProxy?: ReadonlyArray<IpNetwork.IpNetwork>;
 	/** Who the server says it is; tests name its host. */
 	identity?: Layer.Layer<Identity.Service>;
 }) => {
@@ -125,6 +139,7 @@ export const layer = (options: {
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 		Layer.provide(Host.layer),
 		Layer.provide(Clones.layer),
+		Layer.provide(trusted(options.trustedProxy)),
 	);
 	return app.pipe(
 		Layer.provideMerge(announce),

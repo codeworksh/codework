@@ -1,5 +1,5 @@
-import { Door as Knock } from "@codeworksh/schema";
-import { Context, Deferred, Effect, Layer, Option, Result } from "effect";
+import { Forwarded, Door as Knock } from "@codeworksh/schema";
+import { Context, Deferred, Effect, Layer, Option } from "effect";
 import { Headers, HttpRouter, type HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
 import { RpcServer } from "effect/rpc";
@@ -72,15 +72,10 @@ export const layerConnections = Layer.sync(Connections, () => {
 });
 
 /** Whether `request` comes from this computer, by its peer address: no header can say so. */
-const fromLoopback = (request: HttpServerRequest.HttpServerRequest) =>
-	Option.match(request.remoteAddress, {
-		onNone: () => false,
-		onSome: (address) =>
-			Result.match(NetAddress.ipFromString(address), {
-				onFailure: () => false,
-				onSuccess: (ip) => NetAddress.isLoopback(NetAddress.toCanonical(ip)),
-			}),
-	});
+const fromLoopback = (request: HttpServerRequest.HttpServerRequest) => {
+	const peer = Forwarded.peer(request);
+	return peer !== undefined && NetAddress.isLoopback(peer);
+};
 
 const pathname = (request: HttpServerRequest.HttpServerRequest) => new URL(request.url, "http://localhost").pathname;
 

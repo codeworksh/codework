@@ -55,7 +55,7 @@
 		{
 			"machine": {
 				"id": "<id 2>",
-				"name": "Scripted"
+				"name": "Fixture"
 			},
 			"id": "<id 3>",
 			"name": "Remote",

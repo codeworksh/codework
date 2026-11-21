@@ -44,9 +44,9 @@ const WorkspaceHandlers = HttpApiBuilder.group(
 					return yield* accounts.createWorkspace((yield* Relay.Person).authId, payload.name);
 				}),
 			)
-			.handle("approve", ({ payload }) =>
+			.handle("approve", ({ params, payload }) =>
 				Effect.gen(function* () {
-					return yield* machines.approve((yield* Relay.Person).authId, payload.userCode, payload.workspaceId);
+					return yield* machines.approve((yield* Relay.Person).authId, payload.userCode, params.workspaceId);
 				}),
 			)
 			.handle("machines", ({ params }) =>
@@ -59,9 +59,9 @@ const WorkspaceHandlers = HttpApiBuilder.group(
 					return yield* machines.pairings((yield* Relay.Person).authId, params.workspaceId);
 				}),
 			)
-			.handle("decline", ({ payload }) =>
+			.handle("decline", ({ params, payload }) =>
 				Effect.gen(function* () {
-					return yield* machines.decline((yield* Relay.Person).authId, payload.userCode, payload.workspaceId);
+					return yield* machines.decline((yield* Relay.Person).authId, payload.userCode, params.workspaceId);
 				}),
 			)
 			.handle("remove", ({ params, payload }) =>

@@ -1,6 +1,5 @@
 import type { SettingsFile } from "@codeworksh/contract";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Link } from "@tanstack/react-router";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { Cause, Option, Predicate } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -11,7 +10,7 @@ import { Command, CommandEmpty, CommandInput, CommandList } from "@/components/u
 import { menuSurface } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { codeworkKey } from "../../kernel/servers";
 import { tilde } from "../../shell/paths";
@@ -317,19 +316,7 @@ export function Mcp({ projectId }: { readonly projectId: string }) {
 		</Row>
 	);
 	return (
-		<Section
-			title="MCP Connectors"
-			action={
-				<Link
-					to="/settings/mcp"
-					title="Your MCP Servers in Settings"
-					className="relative flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-ink-muted outline-none transition-[background-color,color] duration-150 ease-out before:absolute before:-inset-y-2 before:inset-x-0 hover:bg-ink/6 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
-				>
-					Manage
-					<ArrowUpRightIcon className="size-3" aria-hidden />
-				</Link>
-			}
-		>
+		<Section title="MCP Connectors">
 			{/* Only that it is broken: the Advanced section below shows what is wrong. */}
 			{project.error !== undefined && <Row title={<span className="text-destructive">mcp.json has errors</span>} />}
 			{yours.length > 0 && (
@@ -393,21 +380,6 @@ function AddConnector() {
 							<CommandList>
 								<CommandEmpty className="flex flex-col">
 									<span className="px-2.5 py-2 text-[13px] text-ink-muted">No Connectors Found</span>
-									{/* Where connectors come from: your user settings, where they are added and signed in to. */}
-									<div className="border-t p-1">
-										<Link
-											to="/settings/mcp"
-											onClick={() => setOpen(false)}
-											// The list takes Enter for its own rows; on the link it follows the link.
-											onKeyDown={(event) => {
-												if (event.key === "Enter") event.stopPropagation();
-											}}
-											className="flex h-7 items-center gap-1.5 rounded-[8px] px-1.5 text-[13px] outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:bg-accent"
-										>
-											Manage
-											<ArrowUpRightIcon className="size-3 text-ink-muted" aria-hidden />
-										</Link>
-									</div>
 								</CommandEmpty>
 							</CommandList>
 						</Command>

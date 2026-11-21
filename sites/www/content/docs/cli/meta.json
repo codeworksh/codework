@@ -1,4 +1,4 @@
 {
 	"title": "CLI",
-	"pages": ["index", "installation", "reference"]
+	"pages": ["index", "installation", "reference", "proxy"]
 }

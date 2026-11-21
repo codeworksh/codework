@@ -127,12 +127,12 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		const rpc = yield* RpcClient.make(Contract.Api);
 		const listed = rpc["servers.check"](undefined).pipe(
 			Effect.andThen(rpc["servers.watch"](undefined).pipe(Stream.runHead, Effect.map(Option.getOrThrow))),
-			// A local server's executable and process depend on this computer.
+			// A local server's executable and process depend on this computer; a remote one's build and times on the run.
 			Effect.map((statuses) =>
 				statuses.map((status) =>
 					status.kind === "local"
 						? { id: status.id, kind: status.kind, name: status.name, isDefault: status.isDefault }
-						: status,
+						: { ...status, version: "<version>", seenAt: status.seenAt === null ? null : "<time>" },
 				),
 			),
 		);
@@ -140,13 +140,10 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 			effect.pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "accepted" }));
 
 		const code = yield* Effect.promise(() => remote.pair());
-		const badUrl = yield* refused(rpc["servers.add"]({ kind: "remote", name: "Cloud", url: "https://x.test", code }));
-		const badCode = yield* refused(
-			rpc["servers.add"]({ kind: "remote", name: "Cloud", url: remote.url, code: "00000-00000" }),
-		);
+		const badUrl = yield* refused(rpc["servers.add"]({ kind: "remote", url: "https://x.test", code }));
+		const badCode = yield* refused(rpc["servers.add"]({ kind: "remote", url: remote.url, code: "00000-00000" }));
 		const id = yield* rpc["servers.add"]({
 			kind: "remote",
-			name: "Cloud",
 			url: ` ${remote.url} `,
 			code: ` ${code} `,
 		});
@@ -154,14 +151,20 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		yield* Effect.promise(() => synced(home, id, remote).then(() => rolled(home, id, remote)));
 		const added = yield* listed;
 		// A new URL keeps the session: the same machine reached another way.
-		yield* rpc["servers.update"]({ id, name: "Cloud tunnel", url: "wss://tunnel.example.test/rpc" });
-		const updated = yield* listed;
+		yield* rpc["servers.update"]({ id, url: "wss://tunnel.example.test/rpc" });
+		// The old connection closes on its own time; nothing answers at the new URL.
+		let updated = yield* listed;
+		while (updated.some((status) => status.kind === "remote" && status.online)) {
+			yield* Effect.sleep("100 millis");
+			updated = yield* listed;
+		}
+		const nameOnRemote = yield* refused(rpc["servers.update"]({ id, name: "Cloud" }));
 		const localPatch = yield* refused(rpc["servers.update"]({ id, home: "/tmp" }));
 		const urlOnLocal = yield* refused(rpc["servers.update"]({ id: "local", url: "wss://x.test/rpc" }));
 		const codeOnLocal = yield* refused(rpc["servers.update"]({ id: "local", code }));
 		const defaultRemote = yield* refused(rpc["servers.setDefault"]({ id }));
 		const serviceRemote = yield* refused(rpc["servers.service"]({ id, action: "start" }));
-		const row = timeless(all("SELECT * FROM machine WHERE id = ?", id)[0]!);
+		const row: Row = { ...timeless(all("SELECT * FROM machine WHERE id = ?", id)[0]!), version: "<version>" };
 
 		// Rows the sync would have copied, under the remote machine and under the local one.
 		db.prepare(
@@ -185,7 +188,7 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 			badCode,
 			added,
 			updated,
-			refused: { localPatch, urlOnLocal, codeOnLocal, defaultRemote, serviceRemote },
+			refused: { nameOnRemote, localPatch, urlOnLocal, codeOnLocal, defaultRemote, serviceRemote },
 			row,
 			cascade: { before, after, remoteLeft },
 			removed,

@@ -198,8 +198,9 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 			success: Workspace,
 		}),
 		/** Approves a code; the machine's next poll links it, so it answers with what the machine said. */
-		HttpApiEndpoint.post("approve", "/v1/pairings/approve", {
-			payload: Schema.Struct({ userCode: Schema.String, workspaceId: WorkspaceId }),
+		HttpApiEndpoint.post("approve", "/v1/workspaces/:workspaceId/pairings/approve", {
+			params: { workspaceId: WorkspaceId },
+			payload: Schema.Struct({ userCode: Schema.String }),
 			success: Schema.Struct({ machine: MachineInfo }),
 			error: [NotFound, Forbidden],
 		}),
@@ -215,8 +216,9 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
 			error: Forbidden,
 		}),
 		/** Turns a pending connect away; the waiting machine hears it was declined. */
-		HttpApiEndpoint.post("decline", "/v1/pairings/decline", {
-			payload: Schema.Struct({ userCode: Schema.String, workspaceId: WorkspaceId }),
+		HttpApiEndpoint.post("decline", "/v1/workspaces/:workspaceId/pairings/decline", {
+			params: { workspaceId: WorkspaceId },
+			payload: Schema.Struct({ userCode: Schema.String }),
 			error: [NotFound, Forbidden],
 		}),
 		/** Disconnects a machine from the workspace: its owner, or a workspace owner or admin, may. */

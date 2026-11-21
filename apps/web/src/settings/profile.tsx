@@ -13,7 +13,7 @@ export function ProfileSettings() {
 			{isSignedInApp ? (
 				<Account />
 			) : (
-				<EmptyState title="Not Signed In" description="This build runs without an account." />
+				<EmptyState title="Not Signed In" description="This build runs without an account" />
 			)}
 		</Page>
 	);
@@ -27,7 +27,7 @@ function Account() {
 	} | null>(null);
 	if (!isLoaded) return null;
 	if (user === null || user === undefined)
-		return <EmptyState title="Not Signed In" description="Sign in to edit your profile." />;
+		return <EmptyState title="Not Signed In" description="Sign in to edit your profile" />;
 	const failed = (field: "picture" | "first" | "last") => (cause: unknown) =>
 		setError({ field, message: messageOf(cause) });
 	const errorOf = (field: "picture" | "first" | "last") => (error?.field === field ? error.message : undefined);

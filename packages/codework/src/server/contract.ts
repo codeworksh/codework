@@ -38,6 +38,8 @@ export const DeviceInfo = Schema.Struct({
 	createdAt: Schema.Finite,
 	/** When it last took a ticket, epoch milliseconds; a session unseen for 30 days is refused. */
 	seenAt: Schema.Finite,
+	/** Whether it last paired or took a ticket over TLS, which ends at a proxy in front of this server. */
+	encrypted: Schema.optional(Schema.Boolean),
 });
 export type DeviceInfo = typeof DeviceInfo.Type;
 
@@ -958,7 +960,7 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 	/**
-	 * A one-time code another computer exchanges at `POST /pair` for a device session of its own.
+	 * A one-time code another computer exchanges at `POST /api/v1/devices` for a device session of its own.
 	 * Valid 10 minutes, once; held in memory, so a restart forgets it. Local callers only.
 	 */
 	Rpc.make("device.pair", {
@@ -976,6 +978,15 @@ export const Api = RpcGroup.make(
 	Rpc.make("device.revoke", {
 		payload: { id: Schema.String },
 		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: Principal.Forbidden,
+	}),
+	/**
+	 * Ends the calling device's own pairing, as `device.revoke` would. Its sockets end with it, this one
+	 * too, so the reply may never arrive: the connection dropping after the call is sent means it left.
+	 * Devices only; a local caller has no pairing to leave.
+	 */
+	Rpc.make("device.leave", {
+		payload: {},
 		error: Principal.Forbidden,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */

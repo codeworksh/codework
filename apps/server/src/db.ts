@@ -335,6 +335,23 @@ const migrations = {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`ALTER TABLE machine ADD COLUMN token TEXT`;
 	}),
+
+	// What a machine last reported over its connection, and when it last answered. A remote machine is
+	// named by the label stored on it, so `name` is a local machine's override only.
+	"202611200002_label": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN label TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN version TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN seen_at INTEGER`;
+		yield* sql`UPDATE machine SET name = NULL WHERE kind = 'remote'`;
+	}),
+
+	// A remote machine's own id and the workspaces it is linked to (JSON), as it last reported them.
+	"202611210001_identity": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN identity TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN workspaces TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

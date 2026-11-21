@@ -15,8 +15,14 @@ export default Runtime.handler(
 		if (devices.length === 0) return yield* writeOut("No paired devices.\n");
 		yield* writeOut(
 			table([
-				["ID", "LABEL", "CREATED", "LAST SEEN"],
-				...devices.map((device) => [device.id, device.label, time(device.createdAt), time(device.seenAt)]),
+				["ID", "LABEL", "CREATED", "LAST SEEN", "ENCRYPTED"],
+				...devices.map((device) => [
+					device.id,
+					device.label,
+					time(device.createdAt),
+					time(device.seenAt),
+					device.encrypted === undefined ? "-" : device.encrypted ? "yes" : "no",
+				]),
 			]),
 		);
 	}, Effect.catch(reportFailure)),

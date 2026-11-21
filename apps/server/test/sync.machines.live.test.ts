@@ -71,7 +71,7 @@ const caughtUp = async (machineId: string, server: Server, timeout = 120_000) =>
 
 const add = async (m: Machine) => {
 	const code = await m.pair();
-	const id = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", name: m.name, url: m.url, code }));
+	const id = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url, code }));
 	members.set(m.name, id);
 	return id;
 };

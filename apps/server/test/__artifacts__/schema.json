@@ -70,7 +70,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT)"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT, label TEXT, version TEXT, seen_at INTEGER, identity TEXT, workspaces TEXT)"
 		},
 		{
 			"type": "table",
@@ -239,7 +239,12 @@
 				"rollup_store": null,
 				"rollup_boot": null,
 				"created_at": "<time>",
-				"token": null
+				"token": null,
+				"label": null,
+				"version": null,
+				"seen_at": null,
+				"identity": null,
+				"workspaces": null
 			}
 		],
 		"organization": [
@@ -264,12 +269,17 @@
 			{
 				"id": "<remote>",
 				"kind": "remote",
-				"name": "Cloud",
+				"name": "Fixture",
 				"host": "Fixture",
-				"override": "Cloud",
+				"label": null,
 				"isDefault": false,
 				"url": "<remote url>",
-				"paired": true
+				"paired": true,
+				"online": true,
+				"seenAt": "<time>",
+				"version": "<version>",
+				"machineId": null,
+				"workspaces": []
 			}
 		],
 		"updated": [
@@ -282,25 +292,31 @@
 			{
 				"id": "<remote>",
 				"kind": "remote",
-				"name": "Cloud tunnel",
+				"name": "Fixture",
 				"host": "Fixture",
-				"override": "Cloud tunnel",
+				"label": null,
 				"isDefault": false,
 				"url": "wss://tunnel.example.test/rpc",
-				"paired": true
+				"paired": true,
+				"online": false,
+				"seenAt": "<time>",
+				"version": "<version>",
+				"machineId": null,
+				"workspaces": []
 			}
 		],
 		"refused": {
+			"nameOnRemote": "A paired Machine is renamed with its Label.",
 			"localPatch": "A remote server has no executable, home, arguments or variables.",
 			"urlOnLocal": "Only a remote server has a URL.",
 			"codeOnLocal": "Only a remote server has a pairing code.",
-			"defaultRemote": "Cloud tunnel is a remote server.",
-			"serviceRemote": "Cloud tunnel is a remote server."
+			"defaultRemote": "Fixture is a remote server.",
+			"serviceRemote": "Fixture is a remote server."
 		},
 		"row": {
 			"id": "<remote>",
 			"kind": "remote",
-			"name": "Cloud tunnel",
+			"name": null,
 			"host": "Fixture",
 			"executable": null,
 			"home": null,
@@ -317,7 +333,12 @@
 			"rollup_store": "<store>",
 			"rollup_boot": "<boot>",
 			"created_at": "<time>",
-			"token": "<session token>"
+			"token": "<session token>",
+			"label": null,
+			"version": "<version>",
+			"seen_at": "<time>",
+			"identity": null,
+			"workspaces": "[]"
 		},
 		"cascade": {
 			"before": {
