@@ -3,19 +3,28 @@
 		"pair prints": {
 			"status": 0,
 			"stdout": "<code>\n",
-			"stderr": "note: this code gives the computer that uses it full access to this machine\n"
+			"stderr": "machine key: <machine key>\nnote: this code gives the computer that uses it full access to this machine\n"
 		},
 		"a wrong code": 401,
 		"no label": 400,
+		"no key": 400,
 		"a foreign Origin": 403,
 		"its code, typed lower case without the dash": "paired",
+		"the machine key it got is the one printed": true,
 		"the same code again": 401,
 		"a code past 10 minutes": 401
 	},
 	"tickets": {
-		"no Authorization": 401,
-		"an unknown session": 401,
-		"the home's token as a session": 401,
+		"no proof": 401,
+		"not a JWS": "empty",
+		"a key never paired, naming the laptop": "signed with the machine key, echoing its nonce",
+		"the laptop's key, naming no device": "signed with the machine key, echoing its nonce",
+		"a proof dated past 5 minutes ago": "signed with the machine key, echoing its nonce",
+		"a proof for another machine key": "signed with the machine key, echoing its nonce",
+		"a proof dated past 5 minutes ahead": "signed with the machine key, echoing its nonce",
+		"another paired device's key, naming the laptop": "signed with the machine key, echoing its nonce",
+		"a proof, once": "granted",
+		"the same proof again": "signed with the machine key, echoing its nonce",
 		"a device's call": {
 			"storeId": true
 		},
@@ -28,10 +37,10 @@
 		"device.pair": "Server.Forbidden"
 	},
 	"idle": {
-		"a session unseen for 30 days": 401,
+		"a device unseen for 30 days": "signed with the machine key, echoing its nonce",
 		"devices": {
 			"status": 0,
-			"stdout": "ID              LABEL    CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop   <time>  <time>  no\n<Idle>  Idle     <time>  <time>  no\n<Desktop>  Desktop  <time>  <time>  no\n<Tablet>  Tablet   <time>  <time>  no\n",
+			"stdout": "ID              LABEL    KEY                                                 CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop   <Laptop key>  <time>  <time>  no\n<Idle>  Idle     <Idle key>  <time>  <time>  no\n<Desktop>  Desktop  <Desktop key>  <time>  <time>  no\n<Tablet>  Tablet   <Tablet key>  <time>  <time>  no\n",
 			"stderr": ""
 		}
 	},
@@ -44,7 +53,7 @@
 		"the revoked device's stream": "failed: SocketCloseError",
 		"the other device's stream sees a session made after": "live",
 		"a ticket it took before": 401,
-		"a new ticket": 401,
+		"a new ticket": "signed with the machine key, echoing its nonce",
 		"revoke again": {
 			"status": 1,
 			"stdout": "",
@@ -52,20 +61,22 @@
 		},
 		"devices": {
 			"status": 0,
-			"stdout": "ID              LABEL   CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop  <time>  <time>  no\n<Idle>  Idle    <time>  <time>  no\n<Tablet>  Tablet  <time>  <time>  no\n",
+			"stdout": "ID              LABEL   KEY                                                 CREATED               LAST SEEN             ENCRYPTED\n<Laptop>  Laptop  <Laptop key>  <time>  <time>  no\n<Idle>  Idle    <Idle key>  <time>  <time>  no\n<Tablet>  Tablet  <Tablet key>  <time>  <time>  no\n",
 			"stderr": ""
 		}
 	},
 	"devices.json": {
 		"mode": "600",
-		"raw tokens": 0,
-		"hashes": 3
+		"private keys": 0,
+		"keys": 3
 	},
 	"token file": false,
 	"restart": {
-		"the same session takes a ticket and calls": true,
+		"the same device takes a ticket and calls": true,
 		"a code from before": 401,
-		"a ticket from before": 401
+		"a ticket from before": 401,
+		"an unspent proof from before": 201,
+		"a device paired before keys": "dropped"
 	},
 	"pair with no server": {
 		"status": 1,

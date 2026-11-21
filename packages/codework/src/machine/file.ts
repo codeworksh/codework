@@ -105,6 +105,13 @@ export const update = <E, R>(
 		}),
 	);
 
+/** The home's identity, created with the machine on first use. */
+export const identity = Effect.fn("Machine.identity")(function* (home: string) {
+	const stored = yield* read(home);
+	if (Option.isSome(stored) && stored.value.identity !== undefined) return stored.value.identity;
+	return (yield* update(home, {}, Effect.succeed)).identity;
+});
+
 const created = (machineId: string | undefined): Machine =>
 	machineId === undefined
 		? { id: uuidv7(), source: "generated", workspaces: {} }

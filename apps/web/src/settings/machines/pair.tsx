@@ -60,6 +60,11 @@ export const urlOf = (typed: string) => {
 	return `${ws}://${host}${at === undefined ? "" : `:${at}`}/rpc/v1`;
 };
 
+/** Whether a URL reaches its machine without TLS. */
+export const isPlain = (url: string) => url.startsWith("ws:");
+
+export const NOT_ENCRYPTED = "This connection is not encrypted";
+
 /** Where a paired machine is, as `host:port`, with its scheme when it is not the one the host defaults to. */
 export const addressOf = (url: string) => {
 	if (!URL.canParse(url)) return url;
@@ -236,9 +241,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 								}}
 							/>
 							{form.error("address") ||
-								(urlOf(address).startsWith("ws:") && (
-									<p className="text-xs text-ink-muted">This connection is not encrypted</p>
-								))}
+								(isPlain(urlOf(address)) && <p className="text-xs text-ink-muted">{NOT_ENCRYPTED}</p>)}
 						</DialogRow>
 						<DialogRow
 							title="Pairing Code"

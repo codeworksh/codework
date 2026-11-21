@@ -6,6 +6,8 @@ import {
 	app,
 	cleanup,
 	codework,
+	deviceOf,
+	deviceSecret,
 	freePort,
 	query,
 	snapshot,
@@ -25,8 +27,6 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	const desk = await app(appHome);
 	const id = await addMachine(appHome, machine, desk.run);
 	const { version } = await machine.run((rpc) => rpc["server.info"]({}));
-	const token = () => query(appHome, "SELECT token FROM machine WHERE id = ?", id)[0]!.token as string | null;
-	const session = token()!;
 
 	// Every status `servers.watch` sends; nothing here calls `servers.check`.
 	const sent: Array<RemoteServerStatus> = [];
@@ -86,7 +86,7 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	const unpaired = await label(id, "Gone");
 	watching.stop();
 
-	expect(token()).toBeNull();
+	expect(deviceOf(appHome, id)).toBeNull();
 	const text = JSON.stringify({
 		"once paired": stable(paired),
 		"servers.label": { ...labelled, status: stable(withLabel), "machine.info givenName": onMachine },
@@ -99,7 +99,7 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	})
 		.replaceAll(machine.url, "<machine url>")
 		.replaceAll(id, "<machine>");
-	for (const secret of [desk.token, machine.token, session]) expect(text).not.toContain(secret);
+	for (const secret of [desk.token, machine.token, deviceSecret(appHome)]) expect(text).not.toContain(secret);
 	await snapshot("paired", JSON.parse(text));
 }, 90_000);
 
@@ -170,7 +170,7 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 	const disconnected = await disconnect(id);
 	const local = await connect(LOCAL_SERVER);
 
-	// The connect gave the machine its id; its status carries it once the machine reports it again.
+	// Pairing gave the machine its id; its status carries it as the machine reports it.
 	const { id: machineId } = await machine.run((rpc) => rpc["machine.info"]({}));
 	// A machine that holds its connection open and says nothing: only the wait for its answer ends this.
 	machine.proc.kill("SIGSTOP");
@@ -182,7 +182,7 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 	await status("the machine offline", (each) => !each.online);
 	const unanswered = await disconnect(id);
 	machine = await codework(machineHome, port, { relay });
-	const back = await status("the machine back with its id", (each) => each.online && each.machineId !== null);
+	const back = await status("the machine back", (each) => each.online && each.machineId !== null);
 
 	const devices = await machine.run((rpc) => rpc["device.list"]({}));
 	await machine.run((rpc) => rpc["device.revoke"]({ id: devices[0]!.id }));
@@ -196,10 +196,101 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 		"machine.connect on the local server by id": local,
 		"machine.disconnect while it is stopped": unanswered,
 		"machine.connect while it is silent": { reply: silent, "within the bound": bounded },
-		"back after its first connect": { machineId: back.machineId, workspaces: back.workspaces },
+		"back after a restart": { machineId: back.machineId, workspaces: back.workspaces },
 		"after device.revoke": unpaired,
 	})
 		.replaceAll(relay, "<relay>")
 		.replaceAll(machineId ?? "<none>", "<machine id>");
 	await snapshot("paired.link", JSON.parse(text));
 }, 150_000);
+
+/** Statuses of `id` from `servers.watch`, waited for until one passes `test`. */
+const watchOf =
+	(desk: Awaited<ReturnType<typeof app>>, id: string) =>
+	(what: string, test: (status: RemoteServerStatus) => boolean) =>
+		waitFor(async () => {
+			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
+			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
+			return found?.kind === "remote" && test(found) ? found : undefined;
+		}, what);
+
+// Another CodeWork server at the paired address, as on a recycled IP, refuses a device it does not know,
+// signed with its own key: no refusal of the paired machine's, so the pairing stays.
+it("an address that answers with another machine's key is not connected to, until it is paired again", async () => {
+	const appHome = tempDir("stranger-app");
+	const port = await freePort();
+	const paired = await codework(tempDir("stranger-paired"), port);
+	const desk = await app(appHome);
+	const id = await addMachine(appHome, paired, desk.run);
+	const status = watchOf(desk, id);
+	const fingerprints = new Map<string, string>();
+	const named = (found: RemoteServerStatus) => ({
+		paired: found.paired,
+		online: found.online,
+		mismatch: found.mismatch,
+		fingerprint: found.fingerprint === null ? null : (fingerprints.get(found.fingerprint) ?? "<another key>"),
+	});
+	fingerprints.set(await paired.fingerprint(), "<paired machine key>");
+	const before = named(await status("the machine online", (each) => each.online));
+
+	await stop(paired.proc);
+	const other = await codework(tempDir("stranger-other"), port);
+	fingerprints.set(await other.fingerprint(), "<other machine key>");
+	const stranger = named(await status("another machine marked", (each) => each.mismatch === "machine"));
+	// It keeps trying; nothing it answers opens a connection or unpairs the row.
+	await new Promise((resolve) => setTimeout(resolve, 2_000));
+	const still = named(await status("another machine still marked", (each) => each.mismatch === "machine"));
+
+	const code = await other.pair();
+	await desk.run((rpc) => rpc["servers.update"]({ id, code }));
+	const again = named(await status("the other machine online", (each) => each.online && each.mismatch === null));
+
+	await snapshot("paired.stranger", {
+		"once paired": before,
+		"another machine at the address": stranger,
+		"two seconds on": still,
+		"paired again": again,
+	});
+}, 90_000);
+
+// The machine refuses a proof dated past the window, signed with its own key; its clock in that refusal
+// tells the app the clocks are apart, which no pairing again would mend.
+it("a machine whose clock is past the proof window from this computer's keeps its pairing until the clocks agree", async () => {
+	const appHome = tempDir("clock-app");
+	const machineHome = tempDir("clock-machine");
+	const port = await freePort();
+	let machine = await codework(machineHome, port);
+	const desk = await app(appHome);
+	const id = await addMachine(appHome, machine, desk.run);
+	const status = watchOf(desk, id);
+	const shown = (found: RemoteServerStatus) => ({
+		paired: found.paired,
+		online: found.online,
+		mismatch: found.mismatch,
+	});
+	const before = shown(await status("the machine online", (each) => each.online));
+
+	await stop(machine.proc);
+	machine = await codework(machineHome, port, { skew: 10 * 60 * 1000 });
+	const apart = shown(await status("the clocks marked apart", (each) => each.mismatch === "clock"));
+	await new Promise((resolve) => setTimeout(resolve, 2_000));
+	const still = shown(await status("the clocks still apart", (each) => each.mismatch === "clock"));
+	const reply = await desk.run((rpc) =>
+		rpc["servers.label"]({ id, label: "Late" }).pipe(
+			Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: () => "labelled" }),
+		),
+	);
+
+	await stop(machine.proc);
+	machine = await codework(machineHome, port);
+	const agreed = shown(await status("the machine back", (each) => each.online && each.mismatch === null));
+
+	await snapshot("paired.clock", {
+		"once paired": before,
+		"its clock 10 minutes ahead": apart,
+		"two seconds on": still,
+		"servers.label meanwhile": reply,
+		"its clock set right": agreed,
+		"the row's device": deviceOf(appHome, id) === null ? "none" : "kept",
+	});
+}, 90_000);

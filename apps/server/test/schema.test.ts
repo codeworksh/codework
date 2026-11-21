@@ -132,7 +132,12 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 				statuses.map((status) =>
 					status.kind === "local"
 						? { id: status.id, kind: status.kind, name: status.name, isDefault: status.isDefault }
-						: { ...status, version: "<version>", seenAt: status.seenAt === null ? null : "<time>" },
+						: {
+								...status,
+								version: "<version>",
+								seenAt: status.seenAt === null ? null : "<time>",
+								fingerprint: status.fingerprint === null ? null : "<fingerprint>",
+							},
 				),
 			),
 		);
@@ -150,7 +155,7 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		// Synced before it is listed or moved, so its reported host and sync columns are settled.
 		yield* Effect.promise(() => synced(home, id, remote).then(() => rolled(home, id, remote)));
 		const added = yield* listed;
-		// A new URL keeps the session: the same machine reached another way.
+		// A new URL keeps the pairing: the same machine reached another way.
 		yield* rpc["servers.update"]({ id, url: "wss://tunnel.example.test/rpc" });
 		// The old connection closes on its own time; nothing answers at the new URL.
 		let updated = yield* listed;
@@ -164,7 +169,12 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		const codeOnLocal = yield* refused(rpc["servers.update"]({ id: "local", code }));
 		const defaultRemote = yield* refused(rpc["servers.setDefault"]({ id }));
 		const serviceRemote = yield* refused(rpc["servers.service"]({ id, action: "start" }));
-		const row: Row = { ...timeless(all("SELECT * FROM machine WHERE id = ?", id)[0]!), version: "<version>" };
+		const stored = all("SELECT * FROM machine WHERE id = ?", id)[0]!;
+		const row: Row = {
+			...timeless(stored),
+			version: "<version>",
+			machine_key: stored.machine_key === null ? null : "<machine key>",
+		};
 
 		// Rows the sync would have copied, under the remote machine and under the local one.
 		db.prepare(
@@ -195,6 +205,7 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 			ungrouped,
 		};
 	}).pipe(Effect.scoped, Effect.provide(protocol()), Effect.runPromise);
+	const secret = (JSON.parse(String(db.prepare("SELECT key FROM device").get()!.key)) as { d: string }).d;
 	db.close();
 
 	const steps = { schema, seeded, servers };
@@ -202,12 +213,12 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		Object.fromEntries(TREE.map((table) => [table, table === "usage" || table === "tally" ? 2 : 1])),
 	);
 	expect(servers.ungrouped).toEqual([{ id: "thr_local", grouping_id: null }]);
-	// Only the stored row holds the session token; the statuses the page is sent must show none.
-	const session = servers.row.token as string;
-	expect(JSON.stringify([servers.added, servers.updated])).not.toContain(session);
+	// Only app.db holds the device key; the statuses the page is sent must show none of it.
+	expect(JSON.stringify(steps)).not.toContain(secret);
 	const text = JSON.stringify(steps, null, "\t")
 		.replaceAll(servers.row.id as string, "<remote>")
-		.replaceAll(session, "<session token>")
+		.replaceAll(servers.row.device as string, "<device>")
+		.replaceAll(servers.row.identity as string, "<machine id>")
 		.replaceAll(remote.url, "<remote url>")
 		.replaceAll(servers.row.store_id as string, "<store>")
 		.replaceAll(servers.row.boot as string, "<boot>");

@@ -79,7 +79,9 @@ const unavailable = (machineId: string) =>
 
 /** The route a connection is made from: a change reconnects the machine. */
 const routeOf = (row: Servers.Row) =>
-	row.kind === "remote" ? `remote ${row.url} ${row.token}` : `local ${row.home ?? ""} ${row.executable ?? ""}`;
+	row.kind === "remote"
+		? `remote ${row.url} ${row.device} ${row.machineKey?.x}`
+		: `local ${row.home ?? ""} ${row.executable ?? ""}`;
 
 /**
  * Runs `apply` on each batch up to its `Synced`, in order; `onItem` sees every other item as it
@@ -495,7 +497,7 @@ export const layer = Layer.effect(
 		const follow = (row: Servers.Row) =>
 			Effect.gen(function* () {
 				// Nothing to connect with until it is paired again.
-				if (row.kind === "remote" && row.token === null) return yield* Effect.never;
+				if (row.kind === "remote" && row.device === null) return yield* Effect.never;
 				const context = yield* Layer.build(Codework.machine(row)).pipe(
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Servers.Service, servers),

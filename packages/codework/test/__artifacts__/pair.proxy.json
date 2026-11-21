@@ -3,11 +3,11 @@
 	"devices": {
 		"status": 0,
 		"stdout": [
-			"ID              LABEL    CREATED               LAST SEEN             ENCRYPTED",
-			"<Proxied>  Proxied  <time>  <time>  yes",
-			"<Plain>  Plain    <time>  <time>  no",
-			"<Tunnel>  Tunnel   <time>  <time>  yes",
-			"<Forged>  Forged   <time>  <time>  no",
+			"ID              LABEL    KEY                                                 CREATED               LAST SEEN             ENCRYPTED",
+			"<Proxied>  Proxied  <Proxied key>  <time>  <time>  yes",
+			"<Plain>  Plain    <Plain key>  <time>  <time>  no",
+			"<Tunnel>  Tunnel   <Tunnel key>  <time>  <time>  yes",
+			"<Forged>  Forged   <Forged key>  <time>  <time>  no",
 			""
 		],
 		"stderr": ""
@@ -15,11 +15,11 @@
 	"after a plain ticket": {
 		"status": 0,
 		"stdout": [
-			"ID              LABEL    CREATED               LAST SEEN             ENCRYPTED",
-			"<Proxied>  Proxied  <time>  <time>  no",
-			"<Plain>  Plain    <time>  <time>  no",
-			"<Tunnel>  Tunnel   <time>  <time>  yes",
-			"<Forged>  Forged   <time>  <time>  no",
+			"ID              LABEL    KEY                                                 CREATED               LAST SEEN             ENCRYPTED",
+			"<Proxied>  Proxied  <Proxied key>  <time>  <time>  no",
+			"<Plain>  Plain    <Plain key>  <time>  <time>  no",
+			"<Tunnel>  Tunnel   <Tunnel key>  <time>  <time>  yes",
+			"<Forged>  Forged   <Forged key>  <time>  <time>  no",
 			""
 		],
 		"stderr": ""

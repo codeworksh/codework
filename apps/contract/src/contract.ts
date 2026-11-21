@@ -406,6 +406,9 @@ export const LocalServerStatus = Schema.Struct({
 });
 export type LocalServerStatus = typeof LocalServerStatus.Type;
 
+export const Mismatch = Schema.Literals(["machine", "clock"]);
+export type Mismatch = typeof Mismatch.Type;
+
 /**
  * A paired machine: a server on another computer, reached with a pairing code. It has no executable or
  * home here. Its hostname and label are the machine's own, as it last reported them.
@@ -421,8 +424,15 @@ export const RemoteServerStatus = Schema.Struct({
 	label: Schema.NullOr(Schema.String),
 	isDefault: Schema.Boolean,
 	url: Schema.String,
-	/** Whether this app holds a session on it; false once the server refuses it (revoked or lapsed): pair again. */
+	/** Whether this app's key is paired on it; false once the server refuses it (revoked or lapsed): pair again. */
 	paired: Schema.Boolean,
+	/** The fingerprint of the key it paired with, `SHA256:<thumbprint>`; none on a row from before keys. */
+	fingerprint: Schema.NullOr(Schema.String),
+	/**
+	 * What last kept it from connecting while paired: `machine`, its address answers with another key
+	 * (pairing again takes that key); `clock`, this computer's clock is past the proof window from its.
+	 */
+	mismatch: Schema.NullOr(Mismatch),
 	/** Whether it is answering now. */
 	online: Schema.Boolean,
 	/** When it last answered, in epoch milliseconds; none before it ever did. */

@@ -23,7 +23,7 @@ import { useMachineAtom } from "../../shell/connect";
 import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
 import { Done, EmptyState, SeenStatus, StatusDot } from "../controls";
 import { Badge } from "../servers/local";
-import { addressOf, PairDialog } from "./pair";
+import { addressOf, isPlain, PairDialog } from "./pair";
 import { isLinked, linkText, Loaded, MachineRow, Status, usePaired, useWorkspace } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 import { Waiting } from "./waiting";
@@ -308,7 +308,7 @@ function PairedRow({
 	readonly workspace: Relay.Workspace | undefined;
 	readonly fresh: boolean;
 }) {
-	const address = addressOf(server.url);
+	const address = `${addressOf(server.url)}${isPlain(server.url) ? " · Not Encrypted" : ""}`;
 	return (
 		<MachineRow
 			name={server.name}

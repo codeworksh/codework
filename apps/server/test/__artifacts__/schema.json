@@ -2,6 +2,12 @@
 	"schema": [
 		{
 			"type": "table",
+			"name": "device",
+			"tbl_name": "device",
+			"sql": "CREATE TABLE device (key TEXT NOT NULL)"
+		},
+		{
+			"type": "table",
 			"name": "entry",
 			"tbl_name": "entry",
 			"sql": "CREATE TABLE entry ( id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE, seq INTEGER NOT NULL, type TEXT NOT NULL, state TEXT NOT NULL, error TEXT, size INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
@@ -70,7 +76,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , token TEXT, label TEXT, version TEXT, seen_at INTEGER, identity TEXT, workspaces TEXT)"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , label TEXT, version TEXT, seen_at INTEGER, identity TEXT, workspaces TEXT, device TEXT, machine_key TEXT)"
 		},
 		{
 			"type": "table",
@@ -239,12 +245,13 @@
 				"rollup_store": null,
 				"rollup_boot": null,
 				"created_at": "<time>",
-				"token": null,
 				"label": null,
 				"version": null,
 				"seen_at": null,
 				"identity": null,
-				"workspaces": null
+				"workspaces": null,
+				"device": null,
+				"machine_key": null
 			}
 		],
 		"organization": [
@@ -275,10 +282,12 @@
 				"isDefault": false,
 				"url": "<remote url>",
 				"paired": true,
+				"fingerprint": "<fingerprint>",
+				"mismatch": null,
 				"online": true,
 				"seenAt": "<time>",
 				"version": "<version>",
-				"machineId": null,
+				"machineId": "<machine id>",
 				"workspaces": []
 			}
 		],
@@ -298,10 +307,12 @@
 				"isDefault": false,
 				"url": "wss://tunnel.example.test/rpc",
 				"paired": true,
+				"fingerprint": "<fingerprint>",
+				"mismatch": null,
 				"online": false,
 				"seenAt": "<time>",
 				"version": "<version>",
-				"machineId": null,
+				"machineId": "<machine id>",
 				"workspaces": []
 			}
 		],
@@ -333,12 +344,13 @@
 			"rollup_store": "<store>",
 			"rollup_boot": "<boot>",
 			"created_at": "<time>",
-			"token": "<session token>",
 			"label": null,
 			"version": "<version>",
 			"seen_at": "<time>",
-			"identity": null,
-			"workspaces": "[]"
+			"identity": "<machine id>",
+			"workspaces": "[]",
+			"device": "<device>",
+			"machine_key": "<machine key>"
 		},
 		"cascade": {
 			"before": {

@@ -1,7 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- a CodeWork server run as its own process by the sync suite. */
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
 import { NodeHttpServer, NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Clock, Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
 import { RpcSerialization } from "effect/rpc";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -38,6 +38,7 @@ import * as DaytonaDriver from "../../../../packages/harness/src/sandboxes/dayto
  * With `older`, it serves every call but `usage.sync`, and names no host, as a server built before it did.
  * It reports its host as `CODEWORK_FIXTURE_HOST` (none when blank), else `Fixture`: never this computer's name,
  * unless `CODEWORK_FIXTURE_HOST_OS=1`, which a live machine sets to report its own name as a real server does.
+ * `CODEWORK_FIXTURE_SKEW` runs its clock that many milliseconds off this computer's; sleeps stay real.
  */
 
 const [home, port, host = "127.0.0.1", mode] = process.argv.slice(2);
@@ -207,6 +208,23 @@ const older = HttpRouter.serve(Server.endpoint(Contract.Api.omit("usage.sync")),
 	Layer.provide(Harness.layer(harness)),
 );
 
+const skew = Number(process.env.CODEWORK_FIXTURE_SKEW ?? "0");
+const skewed = Layer.effect(
+	Clock.Clock,
+	Effect.gen(function* () {
+		const real = yield* Clock.Clock;
+		return {
+			currentTimeMillisUnsafe: () => real.currentTimeMillisUnsafe() + skew,
+			currentTimeMillis: Effect.sync(() => real.currentTimeMillisUnsafe() + skew),
+			currentTimeNanosUnsafe: () => real.currentTimeNanosUnsafe() + BigInt(skew) * 1_000_000n,
+			currentTimeNanos: Effect.sync(() => real.currentTimeNanosUnsafe() + BigInt(skew) * 1_000_000n),
+			monotonicTimeNanosUnsafe: () => real.monotonicTimeNanosUnsafe(),
+			monotonicTimeNanos: real.monotonicTimeNanos,
+			sleep: (duration) => real.sleep(duration),
+		} satisfies Clock.Clock;
+	}),
+);
+
 NodeRuntime.runMain(
 	mode === "sweep"
 		? Effect.gen(function* () {
@@ -217,7 +235,11 @@ NodeRuntime.runMain(
 			})
 		: Effect.gen(function* () {
 				yield* Layer.build(
-					mode === "older" ? older : Server.layer({ host, port: Number(port), harness, identity }),
+					mode === "older"
+						? older
+						: Server.layer({ host, port: Number(port), harness, identity }).pipe(
+								Layer.provide(skew === 0 ? Layer.empty : skewed),
+							),
 				);
 				yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`));
 				return yield* Effect.never;

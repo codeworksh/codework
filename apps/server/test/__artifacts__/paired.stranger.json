@@ -1,0 +1,26 @@
+{
+	"once paired": {
+		"paired": true,
+		"online": true,
+		"mismatch": null,
+		"fingerprint": "<paired machine key>"
+	},
+	"another machine at the address": {
+		"paired": true,
+		"online": false,
+		"mismatch": "machine",
+		"fingerprint": "<paired machine key>"
+	},
+	"two seconds on": {
+		"paired": true,
+		"online": false,
+		"mismatch": "machine",
+		"fingerprint": "<paired machine key>"
+	},
+	"paired again": {
+		"paired": true,
+		"online": true,
+		"mismatch": null,
+		"fingerprint": "<other machine key>"
+	}
+}

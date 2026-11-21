@@ -1,8 +1,8 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite reads the home's files and runs the CLI in temporary homes. */
 /* @effect-diagnostics globalFetch:off -- the pairing routes are plain HTTP, as another computer calls them. */
 /* @effect-diagnostics globalFetchInEffect:off -- the pairing routes are plain HTTP, as another computer calls them. */
-import { Pairing as Wire } from "@codeworksh/schema";
-import { Cause, Clock, Deferred, Duration, Effect, Exit, Fiber, Layer, Result, Schema, Stream } from "effect";
+import { Door, Jws, Pairing as Wire } from "@codeworksh/schema";
+import { Cause, Clock, Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Result, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
 import { RpcClientError } from "effect/rpc";
 import {
@@ -59,39 +59,108 @@ const port = Effect.gen(function* () {
 	return address.port;
 });
 
-/** `devices.json` as far as the suite reads it: a hash per device. */
-const Stored = Schema.fromJsonString(Schema.Array(Schema.Struct({ hash: Schema.String })));
+/** `devices.json` as far as the suite reads it: a public key per device. */
+const Stored = Schema.fromJsonString(Schema.Array(Schema.Struct({ key: Jws.PublicKey })));
 
-/** The pairing routes of the listener at `base`, as another computer calls them. */
-const routes = (base: string) => {
+/** A device as the computer that paired it holds it: its id, the machine's key, and its own private key. */
+type Paired = typeof Wire.Device.Type & { readonly key: Jws.PrivateKey };
+
+/** A proof as `paired` signs one, now on `clock`; `change` changes what it says or signs it with another key. */
+const prove = (
+	paired: Paired,
+	clock: Effect.Effect<number>,
+	change: {
+		readonly iat?: number;
+		readonly device?: string;
+		readonly key?: Jws.PrivateKey;
+		readonly aud?: string;
+	} = {},
+) =>
+	Effect.gen(function* () {
+		const key = change.key ?? paired.key;
+		const proof: Wire.Proof = {
+			op: "ticket.create",
+			aud: change.aud ?? (yield* Jws.thumbprint(paired.machine)),
+			device: change.device ?? paired.id,
+			iat: change.iat ?? (yield* clock),
+			nonce: yield* Door.make,
+		};
+		return yield* Jws.sign(proof, key, { kid: yield* Jws.thumbprint(Jws.publicOf(key)) });
+	}).pipe(Effect.orDie);
+
+/**
+ * The pairing routes of the listener at `base`, as another computer calls them, with its proofs dated
+ * by `clock`: the server's own time, which a suite may run ahead.
+ */
+const routes = (base: string, clock: Effect.Effect<number> = Clock.currentTimeMillis) => {
 	const post = (path: string, init: RequestInit) =>
 		Effect.promise(() => fetch(`${base}${path}`, { method: "POST", ...init }));
 	const json = (body: unknown, headers: Record<string, string> = {}) => ({
 		headers: { "content-type": "application/json", ...headers },
 		body: JSON.stringify(body),
 	});
+	/** The ticket a grant carries, once it is checked against the machine's key and the proof's nonce. */
+	const granted = (paired: Paired, proof: string, response: Response) =>
+		Effect.gen(function* () {
+			const { jws } = yield* Schema.decodeUnknownEffect(Wire.Signed)(yield* Effect.promise(() => response.json()));
+			const grant = yield* Jws.verify(jws, paired.machine).pipe(
+				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Grant)),
+			);
+			const { nonce } = yield* Jws.verify(proof, Jws.publicOf(paired.key)).pipe(
+				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Proof)),
+			);
+			if (grant.nonce !== nonce) return yield* Effect.die("The grant echoes another nonce");
+			return grant.ticket;
+		}).pipe(Effect.orDie);
 	return {
-		/** The status `POST /api/v1/devices` answers. */
-		pairStatus: (body: unknown, headers?: Record<string, string>) =>
-			Effect.map(post(Wire.devicesPath, json(body, headers)), (response) => response.status),
+		/** The status `POST /api/v1/devices` answers, offering a fresh key unless `body` names one (`undefined` for none). */
+		pairStatus: (body: Record<string, unknown>, headers?: Record<string, string>) =>
+			Effect.gen(function* () {
+				const key = Jws.publicOf(yield* Jws.generate().pipe(Effect.orDie));
+				const response = yield* post(Wire.devicesPath, json({ key, ...body }, headers));
+				return response.status;
+			}),
+		/** A fresh key paired with `code`. */
 		pair: (code: string, label: string, headers?: Record<string, string>) =>
-			post(Wire.devicesPath, json({ code, label }, headers)).pipe(
-				Effect.flatMap((response) => Effect.promise(() => response.json())),
-				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Device)),
-				Effect.orDie,
-			),
-		ticketStatus: (authorization?: string) =>
-			Effect.map(
-				post(Wire.ticketsPath, authorization === undefined ? {} : { headers: { authorization } }),
-				(response) => response.status,
-			),
-		ticket: (token: string, headers: Record<string, string> = {}) =>
-			post(Wire.ticketsPath, { headers: { ...headers, authorization: `Bearer ${token}` } }).pipe(
-				Effect.flatMap((response) => Effect.promise(() => response.json())),
-				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Ticket)),
-				Effect.map(({ ticket }) => ticket),
-				Effect.orDie,
-			),
+			Effect.gen(function* () {
+				const key = yield* Jws.generate();
+				const response = yield* post(Wire.devicesPath, json({ code, label, key: Jws.publicOf(key) }, headers));
+				const device = yield* Schema.decodeUnknownEffect(Wire.Device)(yield* Effect.promise(() => response.json()));
+				return { ...device, key } satisfies Paired;
+			}).pipe(Effect.orDie),
+		prove: (paired: Paired, change?: Parameters<typeof prove>[2]) => prove(paired, clock, change),
+		/** The status `POST /api/v1/tickets` answers for a body carrying `jws`, or for none. */
+		ticketStatus: (jws?: string) =>
+			Effect.map(post(Wire.ticketsPath, jws === undefined ? {} : json({ jws })), (response) => response.status),
+		/** How `POST /api/v1/tickets` refuses `proof`, as checked against the machine key `paired` holds. */
+		refusal: (paired: Paired, proof: string) =>
+			Effect.gen(function* () {
+				const response = yield* post(Wire.ticketsPath, json({ jws: proof }));
+				const text = yield* Effect.promise(() => response.text());
+				if (response.status !== 401) return `status ${response.status}`;
+				if (text === "") return "empty";
+				const nonce = yield* Jws.peekClaims(proof).pipe(
+					Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ nonce: Schema.String }))),
+					Effect.map((claims) => claims.nonce),
+				);
+				const refusal = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Wire.Signed))(text).pipe(
+					Effect.flatMap(({ jws }) => Jws.verify(jws, paired.machine)),
+					Effect.flatMap(Schema.decodeUnknownEffect(Wire.Refusal)),
+					Effect.option,
+				);
+				return Option.isSome(refusal) && refusal.value.nonce === nonce
+					? "signed with the machine key, echoing its nonce"
+					: "signed otherwise";
+			}).pipe(Effect.orDie),
+		/** A ticket for `paired`, its grant checked. */
+		ticket: (paired: Paired, headers?: Record<string, string>) =>
+			Effect.gen(function* () {
+				const proof = yield* prove(paired, clock);
+				return yield* granted(paired, proof, yield* post(Wire.ticketsPath, json({ jws: proof }, headers)));
+			}),
+		/** A ticket for a proof made beforehand, its grant checked. */
+		redeem: (paired: Paired, proof: string) =>
+			Effect.flatMap(post(Wire.ticketsPath, json({ jws: proof })), (response) => granted(paired, proof, response)),
 	};
 };
 
@@ -161,12 +230,13 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 		stdout: scrub(done.stdout),
 		stderr: scrub(done.stderr),
 	});
-	/** A device paired through the CLI's code, named `name` in the artifact. */
+	/** A device paired through the CLI's code, named `name` in the artifact, and its key's fingerprint. */
 	const pairDevice = Effect.fn(function* (base: string, name: string) {
 		const code = (yield* cli("service", "pair")).stdout.trim();
 		const paired = yield* routes(base).pair(code, name);
-		secrets.push(paired.token);
+		secrets.push(paired.key.d);
 		names.set(paired.id, `<${name}>`);
+		names.set(yield* Jws.fingerprint(Jws.publicOf(paired.key)).pipe(Effect.orDie), `<${name} key>`);
 		return paired;
 	});
 
@@ -176,10 +246,13 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 			const listening = yield* port;
 			const base = `http://127.0.0.1:${listening}`;
 			const url = `ws://127.0.0.1:${listening}/rpc/v1`;
-			const http = routes(base);
+			const now = Effect.sync(() => real.currentTimeMillisUnsafe() + offset);
+			const http = routes(base, now);
 			const filed = yield* registered(local);
 			secrets.push(filed.token);
 			const rpc = yield* connect(local);
+			const { fingerprint } = yield* rpc["device.pair"]({});
+			names.set(fingerprint, "<machine key>");
 
 			// Codes: a person types one back in any case, with or without its dash; each works once.
 			const printed = yield* cli("service", "pair");
@@ -188,27 +261,54 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 				"pair prints": scrubbed(printed),
 				"a wrong code": yield* http.pairStatus({ code: "00000-00000", label: "Laptop" }),
 				"no label": yield* http.pairStatus({ code }),
+				"no key": yield* http.pairStatus({ code, label: "Laptop", key: undefined }),
 				"a foreign Origin": yield* http.pairStatus({ code, label: "Laptop" }, { origin: "https://evil.example" }),
 			};
 			const laptop = yield* http.pair(code.toLowerCase().replace("-", ""), "Laptop");
-			secrets.push(laptop.token);
+			secrets.push(laptop.key.d);
 			names.set(laptop.id, "<Laptop>");
+			names.set(yield* Jws.fingerprint(Jws.publicOf(laptop.key)).pipe(Effect.orDie), "<Laptop key>");
+			const printedKey = (yield* Jws.fingerprint(laptop.machine).pipe(Effect.orDie)) === fingerprint;
 			const used = yield* http.pairStatus({ code, label: "Again" });
 			const stale = (yield* cli("service", "pair")).stdout.trim();
 			yield* forward("10 minutes");
 			const expired = yield* http.pairStatus({ code: stale, label: "Late" });
 
-			// Tickets: one per socket, used once, for 60 seconds.
+			// Tickets: one per socket, used once, for 60 seconds; each for a proof signed with the device's
+			// key, dated within 5 minutes of the machine's clock, taken once.
+			const window = Duration.toMillis("5 minutes");
+			const stranger = yield* Jws.generate().pipe(Effect.orDie);
 			const tickets = {
-				"no Authorization": yield* http.ticketStatus(),
-				"an unknown session": yield* http.ticketStatus(`Bearer ${"x".repeat(43)}`),
-				"the home's token as a session": yield* http.ticketStatus(`Bearer ${filed.token}`),
+				"no proof": yield* http.ticketStatus(),
+				"not a JWS": yield* http.refusal(laptop, "x".repeat(43)),
+				"a key never paired, naming the laptop": yield* http.refusal(
+					laptop,
+					yield* http.prove(laptop, { key: stranger }),
+				),
+				"the laptop's key, naming no device": yield* http.refusal(
+					laptop,
+					yield* http.prove(laptop, { device: "dev_0000000000" }),
+				),
+				"a proof dated past 5 minutes ago": yield* http.refusal(
+					laptop,
+					yield* http.prove(laptop, { iat: (yield* now) - window - 1_000 }),
+				),
+				"a proof for another machine key": yield* http.refusal(
+					laptop,
+					yield* http.prove(laptop, { aud: "x".repeat(43) }),
+				),
+				"a proof dated past 5 minutes ahead": yield* http.refusal(
+					laptop,
+					yield* http.prove(laptop, { iat: (yield* now) + window + 1_000 }),
+				),
 			};
-			const ticket = yield* http.ticket(laptop.token);
+			const recorded = yield* http.prove(laptop);
+			const ticket = yield* http.redeem(laptop, recorded);
+			const replayed = yield* http.refusal(laptop, recorded);
 			const laptopRpc = yield* device(url, ticket);
 			const info = yield* laptopRpc["server.info"]({});
 			const reused = yield* upgrade(listening, ticket);
-			const late = yield* http.ticket(laptop.token);
+			const late = yield* http.ticket(laptop);
 			yield* forward("61 seconds");
 			const lateUpgrade = yield* upgrade(listening, late);
 
@@ -226,18 +326,20 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 			yield* forward("29 days");
 			const desktop = yield* pairDevice(base, "Desktop");
 			const tablet = yield* pairDevice(base, "Tablet");
-			yield* http.ticket(laptop.token);
+			yield* http.ticket(laptop);
 			yield* forward("1 day");
 			yield* forward("1 second");
-			const idleTicket = yield* http.ticketStatus(`Bearer ${idle.token}`);
+			const idleTicket = yield* http.refusal(idle, yield* http.prove(idle));
 			const devices = yield* cli("service", "devices");
+			// Another paired device's key is no proof for this one.
+			const borrowed = yield* http.refusal(laptop, yield* http.prove(laptop, { key: tablet.key }));
 
 			// Revoking a device ends its socket at once; another device's stays up.
-			const desktopRpc = yield* device(url, yield* http.ticket(desktop.token));
-			const tabletRpc = yield* device(url, yield* http.ticket(tablet.token));
+			const desktopRpc = yield* device(url, yield* http.ticket(desktop));
+			const tabletRpc = yield* device(url, yield* http.ticket(tablet));
 			const desktopFeed = yield* follow(desktopRpc);
 			const tabletFeed = yield* follow(tabletRpc);
-			const queued = yield* http.ticket(desktop.token);
+			const queued = yield* http.ticket(desktop);
 			const revoked = yield* cli("service", "revoke", desktop.id);
 			const ended = yield* Fiber.await(desktopFeed.fiber).pipe(Effect.timeout("5 seconds"));
 			const after = yield* rpc["session.create"]({});
@@ -251,31 +353,36 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 				"the other device's stream sees a session made after":
 					tabletFeed.fiber.pollUnsafe() === undefined ? "live" : "ended",
 				"a ticket it took before": yield* upgrade(listening, queued),
-				"a new ticket": yield* http.ticketStatus(`Bearer ${desktop.token}`),
+				"a new ticket": yield* http.refusal(desktop, yield* http.prove(desktop)),
 				"revoke again": scrubbed(yield* cli("service", "revoke", desktop.id)),
 				devices: scrubbed(yield* cli("service", "devices")),
 			};
 
 			// What a restart must forget.
 			const pending = (yield* cli("service", "pair")).stdout.trim();
-			const unspent = yield* http.ticket(tablet.token);
+			const unspent = yield* http.ticket(tablet);
+			const proof = yield* http.prove(tablet);
 
-			const file = Pairing.file(local);
-			const stored = readFileSync(file, "utf8");
+			const stored = readFileSync(Pairing.file(local), "utf8");
 			return {
 				pending,
 				unspent,
+				proof,
 				tablet,
 				created: created.session.id,
 				artifact: {
 					exchange: {
 						...exchange,
 						"its code, typed lower case without the dash": "paired",
+						"the machine key it got is the one printed": printedKey,
 						"the same code again": used,
 						"a code past 10 minutes": expired,
 					},
 					tickets: {
 						...tickets,
+						"another paired device's key, naming the laptop": borrowed,
+						"a proof, once": "granted",
+						"the same proof again": replayed,
 						"a device's call": { storeId: info.storeId === (yield* rpc["server.info"]({})).storeId },
 						"the same ticket again": reused,
 						"a ticket past 60 seconds": lateUpgrade,
@@ -285,12 +392,12 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 						"device.list": forbidden,
 						"device.pair": pairForbidden,
 					},
-					idle: { "a session unseen for 30 days": idleTicket, devices: scrubbed(devices) },
+					idle: { "a device unseen for 30 days": idleTicket, devices: scrubbed(devices) },
 					revocation,
 					"devices.json": {
-						mode: (statSync(file).mode & 0o777).toString(8),
-						"raw tokens": secrets.filter((secret) => stored.includes(secret)).length,
-						hashes: (yield* Schema.decodeEffect(Stored)(stored)).length,
+						mode: (statSync(Pairing.file(local)).mode & 0o777).toString(8),
+						"private keys": secrets.filter((secret) => stored.includes(secret)).length,
+						keys: (yield* Schema.decodeEffect(Stored)(stored)).length,
 					},
 					"token file": existsSync(join(local, "token")),
 				},
@@ -305,23 +412,41 @@ it("a paired device takes a ticket per socket, calls as a device, and is cut off
 		);
 	}).pipe(Effect.scoped, Effect.timeout("90 seconds"), Effect.runPromise);
 
+	// A device paired before devices held keys, which the restart drops.
+	const file = Pairing.file(local);
+	writeFileSync(
+		file,
+		JSON.stringify([
+			...(JSON.parse(readFileSync(file, "utf8")) as Array<unknown>),
+			{ id: "dev_old", label: "Old", hash: "x", createdAt: 0, seenAt: 0 },
+		]),
+	);
+
 	// Devices persist across a restart; codes and tickets do not.
 	const restarted = await Effect.gen(function* () {
 		const real = yield* Clock.Clock;
 		return yield* Effect.gen(function* () {
 			const listening = yield* port;
-			const http = routes(`http://127.0.0.1:${listening}`);
+			const http = routes(
+				`http://127.0.0.1:${listening}`,
+				Effect.sync(() => real.currentTimeMillisUnsafe() + offset),
+			);
 			const url = `ws://127.0.0.1:${listening}/rpc/v1`;
-			const tabletRpc = yield* device(url, yield* http.ticket(first.tablet.token));
+			const tabletRpc = yield* device(url, yield* http.ticket(first.tablet));
 			const sessions = yield* tabletRpc["index.sync"]({ after: 0 }).pipe(
 				Stream.takeUntil((item) => item._tag === "Synced"),
 				Stream.filter((item) => item._tag === "Session"),
 				Stream.runCount,
 			);
 			return {
-				"the same session takes a ticket and calls": sessions > 0,
+				"the same device takes a ticket and calls": sessions > 0,
 				"a code from before": yield* http.pairStatus({ code: first.pending, label: "Late" }),
 				"a ticket from before": yield* upgrade(listening, first.unspent),
+				// Spent nonces live in memory: a proof from before the restart, still in its window, is good once.
+				"an unspent proof from before": yield* http.ticketStatus(first.proof),
+				"a device paired before keys": (yield* cli("service", "devices")).stdout.includes("dev_old")
+					? "listed"
+					: "dropped",
 			};
 		}).pipe(
 			Effect.provide(
@@ -357,11 +482,11 @@ it("a device leaves its own pairing; another device stays, and a local caller ha
 			});
 			const desktop = yield* pairDevice("Desktop");
 			const tablet = yield* pairDevice("Tablet");
-			const desktopRpc = yield* device(url, yield* http.ticket(desktop.token));
-			const desktopFeed = yield* follow(yield* device(url, yield* http.ticket(desktop.token)));
-			const tabletRpc = yield* device(url, yield* http.ticket(tablet.token));
+			const desktopRpc = yield* device(url, yield* http.ticket(desktop));
+			const desktopFeed = yield* follow(yield* device(url, yield* http.ticket(desktop)));
+			const tabletRpc = yield* device(url, yield* http.ticket(tablet));
 			const tabletFeed = yield* follow(tabletRpc);
-			const queued = yield* http.ticket(desktop.token);
+			const queued = yield* http.ticket(desktop);
 
 			// The reply races its own socket's end, so either outcome means it left.
 			const left = ending(yield* Effect.exit(desktopRpc["device.leave"]({})));
@@ -379,7 +504,7 @@ it("a device leaves its own pairing; another device stays, and a local caller ha
 				"its other socket's stream": ending(ended),
 				"a call on the socket it left on": own === "completed" ? "answered" : "ended",
 				"a ticket it took before": yield* upgrade(listening, queued),
-				"a new ticket": yield* http.ticketStatus(`Bearer ${desktop.token}`),
+				"a new ticket": yield* http.refusal(desktop, yield* http.prove(desktop)),
 				"device.list": devices.map((each) => names.get(each.id) ?? "<unknown>"),
 				"the other device's stream sees a session made after":
 					tabletFeed.fiber.pollUnsafe() === undefined ? "live" : "ended",
@@ -388,12 +513,45 @@ it("a device leaves its own pairing; another device stays, and a local caller ha
 					Effect.match({ onFailure: (error) => error._tag, onSuccess: () => "left" }),
 				),
 			};
-			return { artifact, secrets: [filed.token, desktop.token, tablet.token, queued] };
+			return { artifact, secrets: [filed.token, desktop.key.d, tablet.key.d, queued] };
 		}).pipe(Effect.provide(serve(dir, real)));
 	}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
 	const text = `${JSON.stringify(result.artifact, null, "\t")}\n`;
 	for (const secret of result.secrets) expect(text).not.toContain(secret);
 	await expect(text).toMatchFileSnapshot("./__artifacts__/pair.leave.json");
+}, 60_000);
+
+it("a proof names the machine it is for: another machine holding the same device refuses it", async () => {
+	const first = home("aud-first");
+	const second = home("aud-second");
+	const paired = await Effect.gen(function* () {
+		const real = yield* Clock.Clock;
+		return yield* Effect.gen(function* () {
+			const http = routes(`http://127.0.0.1:${yield* port}`);
+			yield* registered(first);
+			const rpc = yield* connect(first);
+			const device = yield* http.pair((yield* rpc["device.pair"]({})).code, "Laptop");
+			return { device, proof: yield* http.prove(device) };
+		}).pipe(Effect.provide(serve(first, real)));
+	}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
+	// The second machine knows the device as the first does: the same id and key.
+	writeFileSync(Pairing.file(second), readFileSync(Pairing.file(first)));
+	const result = await Effect.gen(function* () {
+		const real = yield* Clock.Clock;
+		return yield* Effect.gen(function* () {
+			const http = routes(`http://127.0.0.1:${yield* port}`);
+			yield* registered(second);
+			const rpc = yield* connect(second);
+			const { fingerprint } = yield* rpc["device.pair"]({});
+			return {
+				"a proof for the first machine": yield* http.refusal(paired.device, paired.proof),
+				"a proof for the second machine": yield* http.ticketStatus(
+					yield* http.prove(paired.device, { aud: fingerprint.slice("SHA256:".length) }),
+				),
+			};
+		}).pipe(Effect.provide(serve(second, real)));
+	}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
+	await expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/pair.aud.json");
 }, 60_000);
 
 /** An IPv4 address of this computer other than loopback, as another computer on its network reaches it. */
@@ -416,7 +574,7 @@ it.skipIf(lan === undefined)(
 				return {
 					"the home's token from loopback": yield* upgrade(listening, token),
 					"the home's token from another address": yield* upgrade(listening, token, lan),
-					"a ticket from another address": yield* upgrade(listening, yield* http.ticket(paired.token), lan),
+					"a ticket from another address": yield* upgrade(listening, yield* http.ticket(paired), lan),
 				};
 			}).pipe(Effect.provide(serve(dir, real, "0.0.0.0")));
 		}).pipe(Effect.scoped, Effect.timeout("60 seconds"), Effect.runPromise);
@@ -467,14 +625,15 @@ it.skipIf(lan === undefined)(
 				) {
 					const paired = yield* http.pair(yield* code(), name, headers);
 					names.set(paired.id, `<${name}>`);
-					secrets.push(paired.token);
+					names.set(yield* Jws.fingerprint(Jws.publicOf(paired.key)).pipe(Effect.orDie), `<${name} key>`);
+					secrets.push(paired.key.d);
 					return paired;
 				});
 				const forged = { "x-forwarded-proto": "https" };
 
 				// Through the proxy: paired, a ticket, a socket and a call, each through it.
 				const viaProxy = yield* pair(proxied, "Proxied");
-				const ticket = yield* proxied.ticket(viaProxy.token);
+				const ticket = yield* proxied.ticket(viaProxy);
 				secrets.push(ticket);
 				const proxiedRpc = yield* device(`ws://127.0.0.1:${front.port}/rpc/v1`, ticket);
 				const info = yield* proxiedRpc["server.info"]({});
@@ -485,10 +644,10 @@ it.skipIf(lan === undefined)(
 				const other = yield* pair(elsewhere, "Forged", forged);
 				const throughProxy = yield* devicesOf(dir, names);
 				// The record is the device's latest request: a ticket taken plainly turns it off.
-				yield* direct.ticket(viaProxy.token);
+				yield* direct.ticket(viaProxy);
 				const afterPlain = yield* devicesOf(dir, names);
 
-				const otherTicket = yield* elsewhere.ticket(other.token, forged);
+				const otherTicket = yield* elsewhere.ticket(other, forged);
 				secrets.push(otherTicket);
 				const refused = {
 					"a ticket from another address with a foreign Host": yield* upgrade(listening, otherTicket, lan, {
@@ -500,7 +659,7 @@ it.skipIf(lan === undefined)(
 					),
 					"a foreign Origin opening a socket through the proxy": yield* upgrade(
 						front.port,
-						yield* proxied.ticket(viaProxy.token),
+						yield* proxied.ticket(viaProxy),
 						undefined,
 						{ Origin: "https://evil.example" },
 					),
@@ -556,7 +715,7 @@ it.skipIf(lan === undefined)(
 			const response = await fetch(`http://${lan}:${new URL(served.url).port}${Wire.devicesPath}`, {
 				method: "POST",
 				headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
-				body: JSON.stringify({ code, label: "Laptop" }),
+				body: JSON.stringify({ code, label: "Laptop", key: Jws.publicOf(await Effect.runPromise(Jws.generate())) }),
 			});
 			expect(response.status).toBe(201);
 			const listed = (await runCli(["--home", dir, "service", "devices"], { cwd, env })).stdout;

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Codework } from "./codework.ts";
 import { type CliAction, type CliInstall, type CliServer, ServersError, type ServerStatus } from "@codeworksh/contract";
+import { Jws } from "@codeworksh/schema";
 import { Servers } from "./servers.ts";
 
 // Where the install script puts the binary unless told otherwise.
@@ -158,10 +159,10 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
-				// Its session token stays here: the renderer is never sent one.
 				if (row.kind === "remote") {
-					const { token, ...status } = row;
-					return { ...status, paired: token !== null } satisfies ServerStatus;
+					const { device, machineKey, ...status } = row;
+					const fingerprint = machineKey === null ? null : yield* Jws.fingerprint(machineKey).pipe(Effect.orDie);
+					return { ...status, paired: device !== null && machineKey !== null, fingerprint } satisfies ServerStatus;
 				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(

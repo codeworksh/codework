@@ -352,6 +352,17 @@ const migrations = {
 		yield* sql`ALTER TABLE machine ADD COLUMN identity TEXT`;
 		yield* sql`ALTER TABLE machine ADD COLUMN workspaces TEXT`;
 	}),
+
+	// Pairing holds keys, not a session token. `device` is this app's one key (a private JWK), which every
+	// remote machine keeps the public half of; a remote row keeps the id that machine gave this app and the
+	// machine's identity key (a public JWK). A row paired with a token pairs again.
+	"202611210002_keys": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`CREATE TABLE device (key TEXT NOT NULL)`;
+		yield* sql`ALTER TABLE machine DROP COLUMN token`;
+		yield* sql`ALTER TABLE machine ADD COLUMN device TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN machine_key TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

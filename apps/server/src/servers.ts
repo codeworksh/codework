@@ -6,13 +6,14 @@ import path from "node:path";
 import {
 	type CliEnvVar,
 	LOCAL_SERVER,
+	type Mismatch,
 	PairingRefused,
 	RemoteServerStatus,
 	type ServerAdd,
 	ServersError,
 	type ServerUpdate,
 } from "@codeworksh/contract";
-import type { Machine } from "@codeworksh/schema";
+import { Jws, type Machine } from "@codeworksh/schema";
 import { Pairing } from "./pairing.ts";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
@@ -66,7 +67,7 @@ export interface LocalRow {
 	readonly isDefault: boolean;
 }
 
-/** A remote server as stored: where the app reaches it, the session it paired for, and what it last reported. */
+/** A remote server as stored: where the app reaches it, how it paired, and what it last reported. */
 export interface RemoteRow {
 	readonly id: string;
 	readonly kind: "remote";
@@ -84,8 +85,12 @@ export interface RemoteRow {
 	/** The workspaces it is linked to, as it last reported them. */
 	readonly workspaces: RemoteServerStatus["workspaces"];
 	readonly url: string;
-	/** The session token its pairing gave; none once the server refused it, or on a row from before pairing. */
-	readonly token: string | null;
+	/** The id the machine gave this app's key; none once the machine refused it, or on a row from before keys. */
+	readonly device: string | null;
+	/** The machine's identity key, as it paired: every ticket it grants is signed with it. */
+	readonly machineKey: Jws.PublicKey | null;
+	/** What last kept it from connecting while paired, until it connects. */
+	readonly mismatch: Mismatch | null;
 	readonly isDefault: boolean;
 }
 
@@ -112,6 +117,11 @@ const decodeWorkspaces = Schema.decodeUnknownOption(Workspaces);
 const encodeWorkspaces = Schema.encodeSync(Workspaces);
 
 const decodeEnv = Schema.decodeUnknownEffect(Schema.fromJsonString(StoredEnv));
+
+const MachineKey = Schema.fromJsonString(Jws.PublicKey);
+const decodeMachineKey = Schema.decodeUnknownOption(MachineKey);
+const encodeMachineKey = Schema.encodeSync(MachineKey);
+const DeviceKey = Schema.fromJsonString(Jws.PrivateKey);
 
 const fail = (message: string) => new ServersError({ message });
 
@@ -207,10 +217,14 @@ export class Service extends Context.Service<
 		readonly reached: (id: string, facts: Facts) => Effect.Effect<void>;
 		/** Counts a server offline once its connection is gone; it was answering until then. */
 		readonly lost: (id: string) => Effect.Effect<void>;
+		/** Records what kept a remote server from connecting while paired, or none once it connects. */
+		readonly answered: (id: string, mismatch: Mismatch | null) => Effect.Effect<void>;
 		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError | PairingRefused>;
 		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError | PairingRefused>;
-		/** Drops a remote server's session once the server refused it, unless the row paired again since. */
-		readonly unpair: (id: string, token: string) => Effect.Effect<void>;
+		/** Drops a remote server's pairing once the server refused it, unless the row paired again since. */
+		readonly unpair: (id: string, device: string) => Effect.Effect<void>;
+		/** This app's own key, the one every remote server pairs. */
+		readonly deviceKey: Jws.PrivateKey;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
 		readonly setDefault: (id: string) => Effect.Effect<void, ServersError>;
 	}
@@ -223,15 +237,29 @@ export const layer = Layer.effect(
 		const fs = yield* FileSystem.FileSystem;
 		const fallback = yield* cliHome.pipe(Effect.orDie);
 
-		// Ids whose sync connection is up: known only while this process runs.
+		// Ids whose sync connection is up, and what kept the others from connecting: known only while this
+		// process runs.
 		const online = new Set<string>();
+		const mismatches = new Map<string, Mismatch>();
+
+		// Made on the first start; one per install.
+		const [storedKey] = yield* sql<{ key: string }>`SELECT key FROM device`.pipe(Effect.orDie);
+		const deviceKey =
+			storedKey === undefined
+				? yield* Effect.gen(function* () {
+						const key = yield* Jws.generate();
+						yield* sql`INSERT INTO device ${sql.insert({ key: yield* Schema.encodeEffect(DeviceKey)(key) })}`;
+						return key;
+					}).pipe(Effect.orDie)
+				: yield* Schema.decodeEffect(DeviceKey)(storedKey.key).pipe(Effect.orDie);
 
 		const list = sql<
 			Omit<LocalRow, "kind" | "env" | "isDefault" | "name"> & {
 				kind: string;
 				env: string;
 				url: string | null;
-				token: string | null;
+				device: string | null;
+				machineKey: string | null;
 				label: string | null;
 				version: string | null;
 				seenAt: number | null;
@@ -241,13 +269,26 @@ export const layer = Layer.effect(
 			}
 		>`
 			SELECT id, kind, name AS override, host, label, version, seen_at, identity, workspaces, executable, home, args,
-				env, url, token, is_default
+				env, url, device, machine_key, is_default
 			FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
 				Effect.forEach(
 					rows,
-					({ kind, url, token, env, isDefault, label, version, seenAt, identity, workspaces, ...row }) => {
+					({
+						kind,
+						url,
+						device,
+						machineKey,
+						env,
+						isDefault,
+						label,
+						version,
+						seenAt,
+						identity,
+						workspaces,
+						...row
+					}) => {
 						const name = nameOf({ kind, url, label, ...row });
 						return kind === "remote" && url !== null
 							? Effect.succeed<Row>({
@@ -262,7 +303,9 @@ export const layer = Layer.effect(
 									machineId: identity,
 									workspaces: Option.getOrElse(decodeWorkspaces(workspaces), () => []),
 									url,
-									token,
+									device,
+									machineKey: Option.getOrNull(decodeMachineKey(machineKey)),
+									mismatch: mismatches.get(row.id) ?? null,
 									isDefault: isDefault === 1,
 								})
 							: decodeEnv(env).pipe(
@@ -332,11 +375,11 @@ export const layer = Layer.effect(
 			return trimmed === "" ? null : trimmed;
 		};
 
-		/** A session on the remote server at `url` for the code typed in Settings, named after this computer. */
+		/** This app's key paired on the remote server at `url` for the code typed in Settings, named after this computer. */
 		const pair = (url: string, code: string) =>
 			Effect.gen(function* () {
 				const label = ((yield* list).find((row) => row.id === LOCAL_SERVER)?.host ?? os.hostname()).slice(0, 100);
-				const device = yield* Pairing.exchange(url, code.trim(), label).pipe(
+				const device = yield* Pairing.exchange(url, code.trim(), label, deviceKey).pipe(
 					Effect.timeout("10 seconds"),
 					Effect.mapError(() => fail("No Machine answered at that address. Check it, then try again.")),
 				);
@@ -345,7 +388,7 @@ export const layer = Layer.effect(
 						message:
 							"That pairing code was not accepted. Run `codework service pair` on that machine for a new one.",
 					});
-				return device.token;
+				return { device: device.id, machineKey: encodeMachineKey(device.machine) };
 			});
 
 		const transaction = <A, E>(effect: Effect.Effect<A, E>) =>
@@ -388,7 +431,7 @@ export const layer = Layer.effect(
 						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
 						: yield* Effect.gen(function* () {
 								const url = yield* chosenUrl(input.url);
-								return { url, token: yield* pair(url, input.code) };
+								return { url, ...(yield* pair(url, input.code)) };
 							});
 				yield* transaction(
 					Effect.gen(function* () {
@@ -412,7 +455,7 @@ export const layer = Layer.effect(
 			update: Effect.fn("Servers.update")(function* ({ id, ...patch }) {
 				// Paired before the transaction, which would otherwise hold the database through a network call.
 				const { code } = patch;
-				const session =
+				const pairing =
 					code === undefined
 						? undefined
 						: yield* get(id).pipe(
@@ -434,7 +477,7 @@ export const layer = Layer.effect(
 							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
 								return yield* fail("A remote server has no executable, home, arguments or variables.");
 							if (patch.url !== undefined) fields.url = yield* chosenUrl(patch.url);
-							if (session !== undefined) fields.token = session;
+							if (pairing !== undefined) Object.assign(fields, pairing);
 						} else {
 							if (patch.name !== undefined) fields.name = override(patch.name);
 							if (patch.url !== undefined) return yield* fail("Only a remote server has a URL.");
@@ -453,15 +496,25 @@ export const layer = Layer.effect(
 							yield* sql`UPDATE machine SET ${sql.update(fields)} WHERE id = ${id}`;
 					}),
 				);
+				if (pairing !== undefined) mismatches.delete(id);
 				yield* announce;
 			}),
 
-			unpair: Effect.fn("Servers.unpair")(function* (id, token) {
+			answered: Effect.fn("Servers.answered")(function* (id, mismatch) {
+				if ((mismatches.get(id) ?? null) === mismatch) return;
+				if (mismatch === null) mismatches.delete(id);
+				else mismatches.set(id, mismatch);
+				yield* announce;
+			}),
+
+			unpair: Effect.fn("Servers.unpair")(function* (id, device) {
 				const changed = yield* sql`
-					UPDATE machine SET token = NULL WHERE id = ${id} AND token = ${token} RETURNING id
+					UPDATE machine SET device = NULL WHERE id = ${id} AND device = ${device} RETURNING id
 				`.pipe(Effect.orDie);
 				if (changed.length > 0) yield* announce;
 			}),
+
+			deviceKey,
 
 			// What was synced from the server goes with it, its rows cascading, except its usage: history.
 			remove: Effect.fn("Servers.remove")(function* (id) {
@@ -469,6 +522,7 @@ export const layer = Layer.effect(
 				if (row.id === LOCAL_SERVER) return yield* fail("The built-in local server cannot be removed.");
 				if (row.isDefault) return yield* fail("Make another server the default before removing this one.");
 				yield* sql`DELETE FROM machine WHERE id = ${id}`.pipe(Effect.orDie);
+				mismatches.delete(id);
 				yield* announce;
 			}),
 

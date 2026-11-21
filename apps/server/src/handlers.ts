@@ -88,14 +88,18 @@ export const layer = Contract.Api.toLayer(
 			);
 		/**
 		 * The connection to a paired machine, in the app's own words when there is none: refused once it is
-		 * not paired any more, or not answering.
+		 * not paired any more, its address answers as another machine or its clock is apart, or not answering.
 		 */
 		const paired = Effect.fn("paired")(function* (id: string) {
 			const row = yield* servers.get(id);
 			if (row.kind !== "remote")
 				return yield* new ServersError({ message: "Only a paired Machine is reached here." });
-			if (row.token === null)
+			if (row.device === null)
 				return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
+			if (row.mismatch === "machine")
+				return yield* new ServersError({ message: "This address answers as a different Machine. Pair it again." });
+			if (row.mismatch === "clock")
+				return yield* new ServersError({ message: "This computer’s clock differs from the Machine’s." });
 			const unanswered = new ServersError({ message: `${row.name} did not answer.` });
 			const client = yield* sync.client(id).pipe(Effect.mapError(() => unanswered));
 			return { client, unanswered };
@@ -296,7 +300,7 @@ export const layer = Contract.Api.toLayer(
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {
 				const row = yield* servers.get(id);
 				// Best effort: the row goes whether the machine answers or not.
-				if (row.kind === "remote" && row.token !== null)
+				if (row.kind === "remote" && row.device !== null)
 					yield* sync.client(id).pipe(
 						Effect.flatMap((client) =>
 							Codework.call((rpc) => rpc("device.leave", {}), { timeout: "3 seconds" }).pipe(

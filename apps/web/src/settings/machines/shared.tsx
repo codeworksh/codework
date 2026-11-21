@@ -38,13 +38,12 @@ export const isLinked = (server: RemoteServerStatus, workspace: Relay.Workspace)
 export const linkText = (linked: boolean, workspace: Relay.Workspace) =>
 	linked ? `Linked to ${workspace.name}` : "Not Linked";
 
-/** Whether it is paired, then whether it answers. */
+/** Whether it is paired, then what keeps it from connecting, then whether it answers. */
 export function Status({ server }: { readonly server: RemoteServerStatus }) {
-	return server.paired ? (
-		<SeenStatus online={server.online} seenAt={server.seenAt} />
-	) : (
-		<StatusDot tone="warning">Not Paired</StatusDot>
-	);
+	if (!server.paired) return <StatusDot tone="warning">Not Paired</StatusDot>;
+	if (server.mismatch === "machine") return <StatusDot tone="warning">Different Machine</StatusDot>;
+	if (server.mismatch === "clock") return <StatusDot tone="warning">Clock Is Off</StatusDot>;
+	return <SeenStatus online={server.online} seenAt={server.seenAt} />;
 }
 
 /**

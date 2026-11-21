@@ -34,9 +34,11 @@ export const path = "/rpc/v1";
 export const DeviceInfo = Schema.Struct({
 	id: Schema.String,
 	label: Schema.String,
+	/** Its key's fingerprint, `SHA256:<thumbprint>`. */
+	fingerprint: Schema.String,
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
-	/** When it last took a ticket, epoch milliseconds; a session unseen for 30 days is refused. */
+	/** When it last took a ticket, epoch milliseconds; a device unseen for 30 days is refused. */
 	seenAt: Schema.Finite,
 	/** Whether it last paired or took a ticket over TLS, which ends at a proxy in front of this server. */
 	encrypted: Schema.optional(Schema.Boolean),
@@ -960,12 +962,13 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 	/**
-	 * A one-time code another computer exchanges at `POST /api/v1/devices` for a device session of its own.
-	 * Valid 10 minutes, once; held in memory, so a restart forgets it. Local callers only.
+	 * A one-time code another computer exchanges at `POST /api/v1/devices` to pair its key, and the
+	 * fingerprint of this machine's key, which that computer keeps. Valid 10 minutes, once; held in
+	 * memory, so a restart forgets it. Local callers only.
 	 */
 	Rpc.make("device.pair", {
 		payload: {},
-		success: Schema.Struct({ code: Schema.String, expiresAt: Schema.Finite }),
+		success: Schema.Struct({ code: Schema.String, expiresAt: Schema.Finite, fingerprint: Schema.String }),
 		error: Principal.Forbidden,
 	}),
 	/** Every paired device, oldest first. Local callers only. */

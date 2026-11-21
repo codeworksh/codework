@@ -26,7 +26,7 @@ import { useConnect } from "../../shell/connect";
 import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
 import { EmptyState } from "../controls";
 import { Badge } from "../servers/local";
-import { addressOf, PairAgain, urlOf } from "./pair";
+import { addressOf, isPlain, NOT_ENCRYPTED, PairAgain, urlOf } from "./pair";
 import { isLinked, linkText, Status, usePaired, useWorkspace } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 
@@ -152,11 +152,23 @@ function Detail({
 				</span>
 			}
 		>
-			{!server.paired && (
-				<Section title="Pair Again" description="This computer is no longer paired with it">
+			{(!server.paired || server.mismatch === "machine") && (
+				<Section
+					title="Pair Again"
+					description={
+						server.paired
+							? "This address answers as a different Machine"
+							: "This computer is no longer paired with it"
+					}
+				>
 					<Group>
 						<PairAgain server={server} />
 					</Group>
+				</Section>
+			)}
+			{server.paired && server.mismatch === "clock" && (
+				<Section title="Clock Is Off" description="This computer’s clock differs from the Machine’s">
+					{null}
 				</Section>
 			)}
 			<Section title="Machine">
@@ -184,7 +196,10 @@ function Detail({
 							<Badge tone="muted">Unknown</Badge>
 						)}
 					</Row>
-					<Row title="Address" description={addressError ?? "Where this computer reaches it"}>
+					<Row
+						title="Address"
+						description={addressError ?? (isPlain(server.url) ? NOT_ENCRYPTED : "Where this computer reaches it")}
+					>
 						<SavingInput
 							label="Machine address"
 							value={address}
@@ -193,6 +208,13 @@ function Detail({
 							onCommit={readdress}
 						/>
 					</Row>
+					{server.paired && server.fingerprint !== null && (
+						<Row title="Machine Key" description="Printed by codework service pair">
+							<code className="w-full font-mono text-xs break-all text-ink-muted @min-[560px]:w-64">
+								{server.fingerprint}
+							</code>
+						</Row>
+					)}
 					<Row title="Version">
 						{server.version ? (
 							<span className="font-mono text-xs text-ink-muted tabular-nums">v{server.version}</span>

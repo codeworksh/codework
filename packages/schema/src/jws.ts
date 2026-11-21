@@ -58,6 +58,9 @@ export const thumbprint = Effect.fn("Jws.thumbprint")(function* (key: PublicKey)
 	return Base64Url.encode(new Uint8Array(digest));
 });
 
+/** A public key as people compare it, `SHA256:<thumbprint>`. */
+export const fingerprint = (key: PublicKey) => Effect.map(thumbprint(key), (digest) => `SHA256:${digest}`);
+
 /** Signs `claims` with `key`, naming it by `kid` or embedding its public half. */
 export const sign = Effect.fn("Jws.sign")(function* (
 	claims: unknown,
@@ -80,12 +83,22 @@ const parts = (token: string) => {
 		: Effect.succeed({ header, claims, signature });
 };
 
+const decodeClaims = (part: string) =>
+	Effect.flatMap(bytes(part), (decoded) =>
+		decodeJson(new TextDecoder().decode(decoded)).pipe(Effect.mapError(() => new JwsError({ reason: "malformed" }))),
+	);
+
 /** A token's header, read before its signature is checked, to find the key that checks it. */
 export const peek = Effect.fn("Jws.peek")(function* (token: string) {
 	const { header } = yield* parts(token);
 	return yield* decodeHeader(new TextDecoder().decode(yield* bytes(header))).pipe(
 		Effect.mapError(() => new JwsError({ reason: "malformed" })),
 	);
+});
+
+/** A token's claims, still undecoded, read without checking its signature: for echoing, never for trusting. */
+export const peekClaims = Effect.fn("Jws.peekClaims")(function* (token: string) {
+	return yield* decodeClaims((yield* parts(token)).claims);
 });
 
 /** Checks `token`'s signature against `key` and returns its claims, still undecoded. */
@@ -97,7 +110,5 @@ export const verify = Effect.fn("Jws.verify")(function* (token: string, key: Pub
 		globalThis.crypto.subtle.verify(algorithm, verifier, signed, new TextEncoder().encode(`${header}.${claims}`)),
 	);
 	if (!valid) return yield* new JwsError({ reason: "signature" });
-	return yield* decodeJson(new TextDecoder().decode(yield* bytes(claims))).pipe(
-		Effect.mapError(() => new JwsError({ reason: "malformed" })),
-	);
+	return yield* decodeClaims(claims);
 });

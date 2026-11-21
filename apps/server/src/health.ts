@@ -71,14 +71,14 @@ export const layer = Layer.effect(
 
 		yield* check.pipe(Effect.forkScoped);
 
-		// A name a server reports, a remote one going on or offline, or a session it refused, reaches
+		// A name a server reports, a remote one going on or offline, refusing this app or answering with another key, reaches
 		// Settings without waiting for the next check; the app's own edits are checked by their handlers.
 		yield* servers.watch.pipe(
 			Stream.map((rows) =>
 				rows
 					.map((row) =>
 						row.kind === "remote"
-							? `${row.id}=${row.host} ${row.label} ${row.version} ${row.seenAt} ${row.online} ${row.token === null} ${row.machineId} ${JSON.stringify(row.workspaces)}`
+							? `${row.id}=${row.host} ${row.label} ${row.version} ${row.seenAt} ${row.online} ${row.device === null} ${row.mismatch} ${row.machineId} ${JSON.stringify(row.workspaces)}`
 							: `${row.id}=${row.host}`,
 					)
 					.join("\n"),

@@ -1,6 +1,6 @@
 {
 	"once paired": {
-		"machineId": null,
+		"machineId": "<machine id>",
 		"workspaces": []
 	},
 	"machine.connect": {
@@ -26,7 +26,7 @@
 		},
 		"within the bound": true
 	},
-	"back after its first connect": {
+	"back after a restart": {
 		"machineId": "<machine id>",
 		"workspaces": []
 	},

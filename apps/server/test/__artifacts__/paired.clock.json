@@ -1,0 +1,27 @@
+{
+	"once paired": {
+		"paired": true,
+		"online": true,
+		"mismatch": null
+	},
+	"its clock 10 minutes ahead": {
+		"paired": true,
+		"online": false,
+		"mismatch": "clock"
+	},
+	"two seconds on": {
+		"paired": true,
+		"online": false,
+		"mismatch": "clock"
+	},
+	"servers.label meanwhile": {
+		"_tag": "Server.ServersError",
+		"message": "This computer’s clock differs from the Machine’s."
+	},
+	"its clock set right": {
+		"paired": true,
+		"online": true,
+		"mismatch": null
+	},
+	"the row's device": "kept"
+}

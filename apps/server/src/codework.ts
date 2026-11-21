@@ -137,23 +137,37 @@ export const layer = local(registration, (socket) =>
 );
 
 /**
- * A remote server's URL with a fresh ticket for the row's session, taken on every connect. A server
- * that refuses the session (revoked or lapsed) has it dropped from the row, which ends this connection
- * (the sync follows the row), so it waits rather than asking again; so does a row without one.
- * Interruptible, as {@link waitFor} is.
+ * A remote server's URL with a fresh ticket for this app's key, taken on every connect. A server that
+ * refuses the key (revoked or lapsed) has the pairing dropped from the row, which ends this connection
+ * (the sync follows the row), so it waits rather than asking again; so does a row without one. Only a
+ * refusal signed with the key it paired with counts: any other answer marks the address as another
+ * machine's, and a refusal from a clock past the proof window marks the clocks apart. Neither is
+ * connected to; the attempt fails, so the connection tries again later. Interruptible, as {@link waitFor} is.
  */
 const ticketed = (row: Servers.RemoteRow) =>
 	Effect.gen(function* () {
-		const session = row.token;
-		if (session === null) return yield* Effect.never;
-		const ticket = yield* Pairing.ticket(row.url, session).pipe(
-			Effect.mapError(
-				(cause) => new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) }),
-			),
+		const { device, machineKey } = row;
+		if (device === null || machineKey === null) return yield* Effect.never;
+		const servers = yield* Servers.Service;
+		const failed = (cause: unknown) =>
+			new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind: "Unknown", cause }) });
+		const answer = yield* Pairing.ticket(row.url, device, servers.deviceKey, machineKey).pipe(
+			Effect.mapError(failed),
 		);
-		if (ticket !== undefined) return { url: row.url, token: ticket };
-		yield* Servers.Service.use((servers) => servers.unpair(row.id, session));
-		return yield* Effect.never;
+		switch (answer._tag) {
+			case "Ticket":
+				yield* servers.answered(row.id, null);
+				return { url: row.url, token: answer.ticket };
+			case "Stranger":
+				yield* servers.answered(row.id, "machine");
+				return yield* Effect.fail(failed("The address answers as a different Machine"));
+			case "Clock":
+				yield* servers.answered(row.id, "clock");
+				return yield* Effect.fail(failed("This computer's clock differs from the Machine's"));
+			case "Refused":
+				yield* servers.unpair(row.id, device);
+				return yield* Effect.never;
+		}
 	}).pipe(Effect.interruptible);
 
 /**

@@ -28,10 +28,12 @@
 			"isDefault": false,
 			"url": "<good url>",
 			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
 			"online": true,
 			"seenAt": "<time>",
 			"version": "<version>",
-			"machineId": null,
+			"machineId": "<machine id>",
 			"workspaces": []
 		}
 	},
@@ -53,6 +55,8 @@
 			"isDefault": false,
 			"url": "<good url>",
 			"paired": false,
+			"fingerprint": null,
+			"mismatch": null,
 			"online": false,
 			"seenAt": null,
 			"version": null,
@@ -64,7 +68,7 @@
 		"synced": true
 	},
 	"after device.revoke": {
-		"session": null,
+		"device": null,
 		"status": {
 			"id": "<good>",
 			"kind": "remote",
@@ -74,10 +78,12 @@
 			"isDefault": false,
 			"url": "<good url>",
 			"paired": false,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
 			"online": false,
 			"seenAt": "<time>",
 			"version": "<version>",
-			"machineId": null,
+			"machineId": "<machine id>",
 			"workspaces": []
 		}
 	},
@@ -97,12 +103,14 @@
 			"isDefault": false,
 			"url": "<good url>",
 			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
 			"online": true,
 			"seenAt": "<time>",
 			"version": "<version>",
-			"machineId": null,
+			"machineId": "<machine id>",
 			"workspaces": []
 		},
-		"a new session": true
+		"a new device": true
 	}
 }

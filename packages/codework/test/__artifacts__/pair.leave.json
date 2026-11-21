@@ -3,7 +3,7 @@
 	"its other socket's stream": "failed: SocketCloseError",
 	"a call on the socket it left on": "ended",
 	"a ticket it took before": 401,
-	"a new ticket": 401,
+	"a new ticket": "signed with the machine key, echoing its nonce",
 	"device.list": [
 		"<Tablet>"
 	],

@@ -10,9 +10,10 @@ import {
 	type AppRpc,
 	cleanup,
 	codework,
+	deviceOf,
+	deviceSecret,
 	freePort,
 	machineRow,
-	query,
 	snapshot,
 	stable,
 	stop,
@@ -35,7 +36,7 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 		"right token, Origin codework://app": "codework://app",
 		"right token, Origin codeworkdev://app": "codeworkdev://app",
 	});
-	// A row stored before remote machines paired has no session.
+	// A row stored before remote machines paired keys has no pairing.
 	await stop(first.proc);
 	write(
 		appHome,
@@ -64,12 +65,10 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 			const status = remoteOf(await statuses(), id);
 			return status?.kind === "remote" && status.online ? status : undefined;
 		}, `machine ${id} online`);
-	const session = (id: string) =>
-		query(appHome, "SELECT token FROM machine WHERE id = ?", id)[0]!.token as string | null;
-	const sessions: Array<string> = [];
+	const devices: Array<string> = [];
 
 	const goodId = await addMachine(appHome, good, desk.run);
-	sessions.push(session(goodId)!);
+	devices.push(deviceOf(appHome, goodId)!);
 	const added = await onlineOf(goodId);
 	const badCode = await desk.run((rpc) =>
 		rpc["servers.add"]({ kind: "remote", url: good.url, code: "00000-00000" }).pipe(
@@ -80,25 +79,25 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 	await new Promise((resolve) => setTimeout(resolve, 2_000));
 	const unpaired = { row: machineRow(appHome, "stored"), status: remoteOf(await statuses(), "stored") };
 
-	// A restart gives the machine a new home token; the row's session outlives it.
+	// A restart gives the machine a new home token; the row's pairing outlives it.
 	await stop(good.proc);
 	good = await codework(goodHome, goodPort);
 	await good.run((rpc) => rpc["session.create"]({}));
 	await synced(appHome, goodId, good);
 
-	// Revoked on the machine, the row loses its session, and shows it, without being asked.
-	const devices = await good.run((rpc) => rpc["device.list"]({}));
-	await good.run((rpc) => rpc["device.revoke"]({ id: devices[0]!.id }));
+	// Revoked on the machine, the row loses its pairing, and shows it, without being asked.
+	const listed = await good.run((rpc) => rpc["device.list"]({}));
+	await good.run((rpc) => rpc["device.revoke"]({ id: listed[0]!.id }));
 	const revoked = await waitFor(async () => {
 		const status = remoteOf(await statuses(), goodId);
 		return status?.kind === "remote" && !status.paired ? status : undefined;
 	}, "the revoked row to show it is not paired");
-	const afterRevoke = { session: session(goodId), status: revoked };
+	const afterRevoke = { device: deviceOf(appHome, goodId), status: revoked };
 
 	// Paired again with a new code, it syncs again.
 	const code = await good.pair();
 	await desk.run((rpc) => rpc["servers.update"]({ id: goodId, code }));
-	sessions.push(session(goodId)!);
+	devices.push(deviceOf(appHome, goodId)!);
 	await good.run((rpc) => rpc["session.create"]({}));
 	await synced(appHome, goodId, good);
 	const repaired = await onlineOf(goodId);
@@ -113,14 +112,14 @@ it("the app server opens its socket only to its page, and a remote machine syncs
 		"a row from before pairing": unpaired,
 		"after the machine restarts": { synced: true },
 		"after device.revoke": afterRevoke,
-		devices: devices.map(({ label }) => ({ label })),
-		"paired again": { synced: true, status: repaired, "a new session": sessions[0] !== sessions[1] },
+		devices: listed.map(({ label }) => ({ label })),
+		"paired again": { synced: true, status: repaired, "a new device": devices[0] !== devices[1] },
 	})
 		.replaceAll(good.url, "<good url>")
 		.replaceAll(new URL(good.url).host, "<good host>")
 		.replaceAll(goodId, "<good>");
-	for (const secret of [first.token, desk.token, good.token, local.token, ...sessions])
-		expect(text).not.toContain(secret);
-	expect(JSON.stringify(all)).not.toContain(sessions[1]!);
+	const secret = deviceSecret(appHome);
+	for (const each of [first.token, desk.token, good.token, local.token, secret]) expect(text).not.toContain(each);
+	expect(JSON.stringify(all)).not.toContain(secret);
 	await snapshot("door", JSON.parse(text));
 }, 90_000);

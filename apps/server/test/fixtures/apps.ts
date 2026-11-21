@@ -94,12 +94,17 @@ export const waitFor = async <A>(
 /**
  * A CodeWork server of the fixture in `home` on `port`, with its scripted model; `older` lacks
  * `usage.sync` and a host name. `host` is the host name it reports (`null` for none), else `Fixture`.
- * `relay` is where its connects go (`CODEWORK_RELAY_URL`).
+ * `relay` is where its connects go (`CODEWORK_RELAY_URL`). `skew` runs its clock that many milliseconds off.
  */
 export const codework = async (
 	home: string,
 	port: number,
-	options: { readonly older?: boolean; readonly host?: string | null; readonly relay?: string } = {},
+	options: {
+		readonly older?: boolean;
+		readonly host?: string | null;
+		readonly relay?: string;
+		readonly skew?: number;
+	} = {},
 ) => {
 	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
 	const proc = spawn(process.execPath, ["--conditions=development", ...args], {
@@ -107,6 +112,7 @@ export const codework = async (
 			...process.env,
 			...(options.host === undefined ? {} : { CODEWORK_FIXTURE_HOST: options.host ?? "" }),
 			...(options.relay === undefined ? {} : { CODEWORK_RELAY_URL: options.relay }),
+			...(options.skew === undefined ? {} : { CODEWORK_FIXTURE_SKEW: String(options.skew) }),
 		},
 		stdio: ["pipe", "pipe", "inherit"],
 	});
@@ -129,17 +135,20 @@ export const codework = async (
 		run,
 		/** A fresh pairing code, as `codework service pair` prints it. */
 		pair: () => run((rpc) => rpc["device.pair"]({})).then(({ code }) => code),
+		/** The fingerprint of its machine key, as `codework service pair` prints it. */
+		fingerprint: () => run((rpc) => rpc["device.pair"]({})).then(({ fingerprint }) => fingerprint),
 	};
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
 
-/** A status as an artifact keeps it: a remote one's build, last answer and machine id vary per run. */
+/** A status as an artifact keeps it: a remote one's build, last answer, machine id and key vary per run. */
 export const stable = (status: ServerStatus | undefined) =>
 	status?.kind === "remote"
 		? {
 				...status,
 				version: status.version === null ? null : "<version>",
 				seenAt: status.seenAt === null ? null : "<time>",
+				fingerprint: status.fingerprint === null ? null : "<fingerprint>",
 				machineId: status.machineId === null ? null : "<machine id>",
 			}
 		: status;
@@ -198,6 +207,14 @@ export const write = (home: string, statement: string, ...params: Array<string |
 		db.close();
 	}
 };
+
+/** The private part of the app's device key, which nothing it sends may contain. */
+export const deviceSecret = (home: string) =>
+	(JSON.parse(query(home, "SELECT key FROM device")[0]!.key as string) as { d: string }).d;
+
+/** The id a remote machine gave the app's key; none once it is not paired. */
+export const deviceOf = (home: string, id: string) =>
+	query(home, "SELECT device FROM machine WHERE id = ?", id)[0]!.device as string | null;
 
 export const machineRow = (home: string, id: string) =>
 	query(home, "SELECT store_id, cursor FROM machine WHERE id = ?", id)[0] as {
