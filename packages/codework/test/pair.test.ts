@@ -61,22 +61,22 @@ const routes = (base: string) => {
 		body: JSON.stringify(body),
 	});
 	return {
-		/** The status `POST /pair` answers. */
+		/** The status `POST /api/v1/devices` answers. */
 		pairStatus: (body: unknown, headers?: Record<string, string>) =>
-			Effect.map(post(Wire.pairPath, json(body, headers)), (response) => response.status),
+			Effect.map(post(Wire.devicesPath, json(body, headers)), (response) => response.status),
 		pair: (code: string, label: string) =>
-			post(Wire.pairPath, json({ code, label })).pipe(
+			post(Wire.devicesPath, json({ code, label })).pipe(
 				Effect.flatMap((response) => Effect.promise(() => response.json())),
 				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Device)),
 				Effect.orDie,
 			),
 		ticketStatus: (authorization?: string) =>
 			Effect.map(
-				post(Wire.ticketPath, authorization === undefined ? {} : { headers: { authorization } }),
+				post(Wire.ticketsPath, authorization === undefined ? {} : { headers: { authorization } }),
 				(response) => response.status,
 			),
 		ticket: (token: string) =>
-			post(Wire.ticketPath, { headers: { authorization: `Bearer ${token}` } }).pipe(
+			post(Wire.ticketsPath, { headers: { authorization: `Bearer ${token}` } }).pipe(
 				Effect.flatMap((response) => Effect.promise(() => response.json())),
 				Effect.flatMap(Schema.decodeUnknownEffect(Wire.Ticket)),
 				Effect.map(({ ticket }) => ticket),

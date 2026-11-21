@@ -958,7 +958,7 @@ export const Api = RpcGroup.make(
 		stream: true,
 	}),
 	/**
-	 * A one-time code another computer exchanges at `POST /pair` for a device session of its own.
+	 * A one-time code another computer exchanges at `POST /api/v1/devices` for a device session of its own.
 	 * Valid 10 minutes, once; held in memory, so a restart forgets it. Local callers only.
 	 */
 	Rpc.make("device.pair", {

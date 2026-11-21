@@ -211,7 +211,10 @@ export const createWorkspaceAtom = runtime.fn((name: string, get) =>
 export const approveAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
 	Effect.gen(function* () {
 		const client = yield* Client;
-		return yield* client.workspace.approve({ payload: input });
+		return yield* client.workspace.approve({
+			params: { workspaceId: input.workspaceId },
+			payload: { userCode: input.userCode },
+		});
 	}),
 );
 
@@ -239,7 +242,10 @@ export const pairingsAtom = Atom.family((workspaceId: string) =>
 export const declineAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
 	Effect.gen(function* () {
 		const client = yield* Client;
-		return yield* client.workspace.decline({ payload: input });
+		return yield* client.workspace.decline({
+			params: { workspaceId: input.workspaceId },
+			payload: { userCode: input.userCode },
+		});
 	}),
 );
 

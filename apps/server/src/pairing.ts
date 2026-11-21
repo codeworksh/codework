@@ -19,7 +19,7 @@ const send = (request: HttpClientRequest.HttpClientRequest) =>
 
 /** A session on the server at `url` for a pairing code, under `label`; none when the code is refused. */
 export const exchange = (url: string, code: string, label: string) =>
-	HttpClientRequest.post(at(url, Wire.pairPath)).pipe(
+	HttpClientRequest.post(at(url, Wire.devicesPath)).pipe(
 		HttpClientRequest.bodyJsonUnsafe({ code, label }),
 		send,
 		Effect.flatMap((response) =>
@@ -29,7 +29,7 @@ export const exchange = (url: string, code: string, label: string) =>
 
 /** A ticket for one socket to the server at `url`; none once it refuses the session (revoked or lapsed). */
 export const ticket = (url: string, session: string) =>
-	HttpClientRequest.post(at(url, Wire.ticketPath)).pipe(
+	HttpClientRequest.post(at(url, Wire.ticketsPath)).pipe(
 		HttpClientRequest.bearerToken(session),
 		send,
 		Effect.flatMap((response) =>

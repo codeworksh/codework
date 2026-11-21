@@ -9,8 +9,8 @@ import type { DeviceInfo } from "./contract.ts";
 
 /**
  * How another computer becomes a device of this machine. A person reads it a pairing code from
- * `codework service pair`, which it exchanges at `POST /pair` for a session token of its own. It then
- * takes a ticket at `POST /ticket` for each socket it opens, offering the ticket where a local client
+ * `codework service pair`, which it exchanges at `POST /api/v1/devices` for a session token of its own. It then
+ * takes a ticket at `POST /api/v1/tickets` for each socket it opens, offering the ticket where a local client
  * offers the home's token. Codes and tickets live in memory; devices persist in `<home>/devices.json`,
  * which holds a hash of each session token, never the token.
  */
@@ -174,7 +174,7 @@ const bearer = (header: string | undefined) => /^Bearer ([A-Za-z0-9_-]+)$/.exec(
 const refused = HttpServerResponse.empty({ status: 401 });
 
 /** The routes {@link routes} serves, which take no socket credential. */
-export const paths: ReadonlyArray<string> = [Wire.pairPath, Wire.ticketPath];
+export const paths: ReadonlyArray<string> = [Wire.devicesPath, Wire.ticketsPath];
 
 /** The pairing routes of the shared wire contract. */
 export const routes = HttpRouter.use((router) =>
@@ -182,21 +182,21 @@ export const routes = HttpRouter.use((router) =>
 		const pairing = yield* Service;
 		yield* router.add(
 			"POST",
-			Wire.pairPath,
+			Wire.devicesPath,
 			Effect.gen(function* () {
 				const body = yield* HttpServerRequest.schemaBodyJson(Wire.Exchange).pipe(Effect.option);
 				if (body._tag === "None") return HttpServerResponse.empty({ status: 400 });
 				const device = yield* pairing.exchange(body.value.code, body.value.label);
-				return device === undefined ? refused : HttpServerResponse.jsonUnsafe(device);
+				return device === undefined ? refused : HttpServerResponse.jsonUnsafe(device, { status: 201 });
 			}),
 		);
 		yield* router.add(
 			"POST",
-			Wire.ticketPath,
+			Wire.ticketsPath,
 			Effect.gen(function* () {
 				const token = bearer((yield* HttpServerRequest.HttpServerRequest).headers.authorization);
 				const ticket = token === undefined ? undefined : yield* pairing.ticket(token);
-				return ticket === undefined ? refused : HttpServerResponse.jsonUnsafe({ ticket });
+				return ticket === undefined ? refused : HttpServerResponse.jsonUnsafe({ ticket }, { status: 201 });
 			}),
 		);
 	}),
