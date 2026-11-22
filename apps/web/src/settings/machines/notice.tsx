@@ -36,7 +36,7 @@ function Card({ server }: { readonly server: RemoteServerStatus }) {
 		? {
 				icon: <LinkBreakIcon size={16} weight="bold" className="text-ink-muted" />,
 				title: "Not Paired",
-				fact: "The Machine no longer knows this computer.",
+				fact: "The machine no longer knows this computer.",
 			}
 		: mismatch?.kind === "machine"
 			? {
@@ -44,8 +44,8 @@ function Card({ server }: { readonly server: RemoteServerStatus }) {
 					title: "Different Machine",
 					fact:
 						mismatch.fingerprint === null
-							? "This address does not answer as the paired Machine. Nothing is sent to it."
-							: "This address answers with another Machine Key. Nothing is sent to it.",
+							? "This address does not answer as the paired machine. Nothing is sent to it."
+							: "This address answers with another machine key. Nothing is sent to it.",
 					keys: mismatch.fingerprint !== null && (
 						<dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
 							{server.fingerprint !== null && (

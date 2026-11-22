@@ -24,14 +24,11 @@ import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from 
 import { Done, EmptyState, SeenStatus, StatusDot } from "../controls";
 import { Badge } from "../servers/local";
 import { addressOf, isPlain, PairDialog } from "./pair";
-import { isLinked, linkText, Loaded, MachineRow, Status, usePaired, useWorkspace } from "./shared";
+import { linkText, Loaded, MachineRow, RELAY_REFRESH_MS, Status, useLink, usePaired, useWorkspace } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 import { Waiting } from "./waiting";
 
 const renameAtom = Server.mutation("machine.rename");
-
-/** How often the list asks the relay again, so online and offline stay current while it is open. */
-const REFRESH_MS = 15_000;
 
 /** This machine, the machines this computer is paired with, and those of the workspace the app works in. */
 export function MachinesSettings() {
@@ -49,7 +46,7 @@ export function MachinesSettings() {
 			description={
 				workspace === undefined
 					? "Machines this computer is paired with"
-					: `Machines this computer is paired with, and Machines Linked to ${workspace.name}`
+					: `Machines this computer is paired with, and machines linked to ${workspace.name}`
 			}
 		>
 			<ThisMachine workspace={workspace} ready={ready} />
@@ -107,7 +104,7 @@ function ThisMachine({
 	if (!AsyncResult.isSuccess(machine)) {
 		return (
 			<Section title="This Machine" description="The computer this app runs on">
-				<EmptyState title="Not Running" description="Start the local CodeWork Server to name this Machine" />
+				<EmptyState title="Not Running" description="Start the local CodeWork server to name this machine" />
 			</Section>
 		);
 	}
@@ -122,7 +119,7 @@ function ThisMachine({
 		<Section title="This Machine" description="The computer this app runs on">
 			<Loaded>
 				<Group>
-					<Row title="Label" description={error ?? "Shown to your Linked Workspaces"}>
+					<Row title="Label" description={error ?? "Shown to your linked workspaces"}>
 						<SavingInput
 							label="Machine label"
 							value={status.givenName ?? ""}
@@ -136,7 +133,7 @@ function ThisMachine({
 							}}
 						/>
 					</Row>
-					<Row title="Hostname" description="Used when Label is empty">
+					<Row title="Hostname" description="Used when the label is empty">
 						<div className="w-full min-w-0 shrink-0 @min-[560px]:w-auto @min-[560px]:max-w-64">
 							<CopyCommand command={status.localHostName} label="Copy Hostname" />
 						</div>
@@ -162,8 +159,8 @@ function ThisMachine({
 							}
 							description={
 								link === undefined
-									? `This Machine isn’t Linked to ${workspace.name} yet`
-									: "The Workspace this Machine belongs to"
+									? `This machine isn’t linked to ${workspace.name} yet`
+									: "The workspace this machine belongs to"
 							}
 						>
 							{/* Its control changes with the link; focus comes back to whichever is here. */}
@@ -247,7 +244,7 @@ function Paired({ workspace, ready }: { readonly workspace: Relay.Workspace | un
 					<EmptyState
 						icon={<DevicesIcon size={22} aria-hidden />}
 						title="No Paired Machines"
-						description="A Machine you pair shows up here, and its threads in the sidebar"
+						description="A machine you pair shows up here, and its threads in the sidebar"
 						action={<PairButton primary onClick={open} />}
 					/>
 				) : (
@@ -308,13 +305,12 @@ function PairedRow({
 	readonly workspace: Relay.Workspace | undefined;
 	readonly fresh: boolean;
 }) {
-	const address = `${addressOf(server.url)}${isPlain(server.url) ? " · Not Encrypted" : ""}`;
+	const address = `${addressOf(server.url)}${isPlain(server.url) ? " · Insecure" : ""}`;
+	const linked = useLink(server, workspace) !== undefined;
 	return (
 		<MachineRow
 			name={server.name}
-			description={
-				workspace === undefined ? address : `${linkText(isLinked(server, workspace), workspace)} · ${address}`
-			}
+			description={workspace === undefined ? address : `${linkText(linked, workspace)} · ${address}`}
 			status={fresh ? <Done>Paired</Done> : <Status server={server} />}
 			open={server.id}
 			className={`transition-colors duration-700 ease-out hover:duration-150 motion-reduce:transition-none ${fresh ? "bg-selection-subtle" : ""}`}
@@ -353,7 +349,7 @@ function NotPaired({
 		const timer = setInterval(() => {
 			refresh();
 			refreshLocal();
-		}, REFRESH_MS);
+		}, RELAY_REFRESH_MS);
 		return () => clearInterval(timer);
 	}, [refresh, refreshLocal]);
 	// Back in reach: ask now instead of on the next tick.
@@ -399,7 +395,7 @@ function NotPaired({
 					<EmptyState
 						icon={<UsersThreeIcon size={22} aria-hidden />}
 						title="No Linked Machines"
-						description={`A Machine that joins ${workspace.name} with codework connect shows up here`}
+						description={`A machine that joins ${workspace.name} with codework connect shows up here`}
 						action={
 							<div className="w-72 max-w-full text-left">
 								<CopyCommand command={command} />

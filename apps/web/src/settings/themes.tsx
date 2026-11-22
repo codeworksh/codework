@@ -80,7 +80,7 @@ export function ThemesSettings() {
 									<span className="flex flex-col gap-1">
 										<span className="text-ui font-medium text-ink">{theme.name}</span>
 										<span className="text-xs text-ink-muted">
-											{theme.id === "light" ? "Bright and clear." : "Easy on the eyes."}
+											{theme.id === "light" ? "Bright and clear" : "Easy on the eyes"}
 										</span>
 									</span>
 									<span

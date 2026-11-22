@@ -98,8 +98,8 @@ export function AddServer({
 							<KindTile
 								icon={<GlobeIcon className="size-5 text-ink-muted" />}
 								title="Remote"
-								detail="Another machine's server"
-								badge={<Badge tone="info">Coming soon</Badge>}
+								detail="Another machine’s server"
+								badge={<Badge tone="info">Coming Soon</Badge>}
 							/>
 						</div>
 					</div>
@@ -135,7 +135,7 @@ export function AddServer({
 						<DialogRow
 							title={
 								<>
-									<Code>CODEWORK_HOME_DIR</Code> path
+									<Code>CODEWORK_HOME_DIR</Code> Path
 								</>
 							}
 							description="codework home and config directory, its own: a home names one server"

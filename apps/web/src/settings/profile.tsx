@@ -79,7 +79,7 @@ function Picture({ url, onPick }: { readonly url: string; readonly onPick: (file
 			<button
 				type="button"
 				aria-label="Change profile picture"
-				title="Change profile picture"
+				title="Change Profile Picture"
 				onClick={() => input.current?.click()}
 				className="size-8 shrink-0 overflow-hidden rounded-full outline-none transition-opacity duration-150 ease-out hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.96]"
 			>

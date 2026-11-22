@@ -51,7 +51,7 @@ export function ServersSettings() {
 					<Button
 						size="sm"
 						variant="ghost"
-						title="Check again"
+						title="Check Again"
 						aria-label="Check provider status"
 						disabled={checking}
 						className="text-ink-muted"
@@ -69,7 +69,7 @@ export function ServersSettings() {
 				</div>
 			}
 		>
-			<Section title="Your providers">
+			<Section title="Your Providers">
 				<nav aria-label="Providers" className="grid grid-cols-1 gap-3 @min-[560px]:grid-cols-2">
 					{servers?.map((server) => (
 						<button
@@ -137,13 +137,13 @@ function HealthInterval() {
 		<Row
 			title={
 				<span className="inline-flex items-center gap-1.5">
-					Health check interval
+					Health Check Interval
 					{/* Always there and only shown off the default, so the row never changes height. */}
 					<Button
 						size="icon-xs"
 						variant="ghost"
 						aria-label="Reset health check interval to default"
-						title="Reset to default"
+						title="Reset to Default"
 						disabled={interval === undefined || interval === DEFAULT_SERVER_HEALTH.interval}
 						className="-my-1 disabled:invisible"
 						onClick={() => set(DEFAULT_SERVER_HEALTH.interval)}
@@ -201,6 +201,6 @@ function Checked({ at }: { at: object | undefined }) {
 		return () => clearInterval(timer);
 	}, []);
 	const minutes = Math.floor((now - since) / 60_000);
-	if (minutes < 1) return "Checked just now";
-	return minutes < 60 ? `Checked ${minutes}m ago` : `Checked ${Math.floor(minutes / 60)}h ago`;
+	if (minutes < 1) return "Checked Just Now";
+	return minutes < 60 ? `Checked ${minutes}m Ago` : `Checked ${Math.floor(minutes / 60)}h Ago`;
 }

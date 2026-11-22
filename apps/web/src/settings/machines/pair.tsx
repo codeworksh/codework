@@ -195,7 +195,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 	const [code, setCode] = useState("");
 	const submit = form.submit({
 		check: () =>
-			urlOf(address) === "" ? { field: "address", text: "Enter the Machine’s address." } : checkCode(code),
+			urlOf(address) === "" ? { field: "address", text: "Enter the machine’s address." } : checkCode(code),
 		pair: () => add({ payload: { kind: "remote", url: urlOf(address), code } }),
 		done: onPaired,
 		other: "address",
@@ -216,7 +216,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 				</DialogHeader>
 				<form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-5">
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Run on the Machine" description="It prints a Code, valid 10 minutes">
+						<DialogRow title="Run on the Machine" description="It prints a code, valid 10 minutes">
 							<CopyCommand command={PAIR_COMMAND} />
 						</DialogRow>
 						<DialogRow
@@ -235,11 +235,11 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 								}}
 							/>
 							{form.error("address") ||
-								(isPlain(urlOf(address)) && <p className="text-xs text-ink-muted">{NOT_ENCRYPTED}</p>)}
+								(isPlain(urlOf(address)) && <p className="text-xs text-warning">{NOT_ENCRYPTED}</p>)}
 						</DialogRow>
 						<DialogRow
 							title="Pairing Code"
-							description="The Code that command printed"
+							description="The code that command printed"
 							htmlFor={form.field("code").id}
 						>
 							<CodeInput
@@ -281,7 +281,7 @@ export function PairAgain({ server, autoFocus = false }: { server: RemoteServerS
 	return (
 		<div className="flex flex-col gap-3 py-3.5 pr-4 pl-11">
 			<span className="text-xs font-book text-ink-muted">
-				Run this on {server.name}, then enter the Code it prints. Valid 10 minutes.
+				Run this on {server.name}, then enter the code it prints. Valid 10 minutes.
 			</span>
 			<CopyCommand command={PAIR_COMMAND} />
 			<form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-1.5">

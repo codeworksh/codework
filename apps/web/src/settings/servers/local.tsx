@@ -115,15 +115,15 @@ const DOTS: Record<Tone, string> = {
 
 /** A server's state in a few words, as its row in the list reads it. */
 function stateOf({ cli, server }: LocalServerStatus): { tone: Tone; text: string } {
-	if (cli === null) return { tone: "warning", text: "Not installed" };
-	if ("failure" in cli) return { tone: "danger", text: "Won't start" };
+	if (cli === null) return { tone: "warning", text: "Not Installed" };
+	if ("failure" in cli) return { tone: "danger", text: "Won’t Start" };
 	switch (server._tag) {
 		case "Running":
 			return { tone: "success", text: `Running · ${new URL(server.url).host}` };
 		case "Unreachable":
-			return { tone: "warning", text: "Not answering" };
+			return { tone: "warning", text: "Not Answering" };
 		case "Incompatible":
-			return { tone: "danger", text: "Incompatible version" };
+			return { tone: "danger", text: "Incompatible Version" };
 		case "Stopped":
 			return { tone: "muted", text: "Stopped" };
 	}
@@ -222,7 +222,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						label="Executable"
 						description={
 							cli === null
-								? "No codework found in the install script's folder or on your login shell's PATH. Enter its path, or install it:"
+								? "No codework found in the install script’s folder or on your login shell’s PATH. Enter its path, or install it:"
 								: "Path to the codework binary used by this instance"
 						}
 						value={cli?.custom ? cli.path : ""}
@@ -238,7 +238,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
-						title="Home directory"
+						title="Home Directory"
 						label="CODEWORK_HOME_DIR path"
 						description="Where this provider stores its sessions and configuration"
 						// An added server always has its own home, so only the built-in one shows a default to reset to.
@@ -248,7 +248,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						onSave={(next) => configure({ home: next || null })}
 					/>
 					<SettingField
-						title="Launch arguments"
+						title="Launch Arguments"
 						label="Launch arguments"
 						description={
 							<>
@@ -329,7 +329,7 @@ function ServerActions({ status, onError }: { status: LocalServerStatus; onError
 						<AlertDialogHeader>
 							<AlertDialogTitle>Remove {status.name}?</AlertDialogTitle>
 							<AlertDialogDescription>
-								The app forgets this server's settings. Its home, and a server running from it, are left as they
+								The app forgets this server’s settings. Its home, and a server running from it, are left as they
 								are.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
@@ -409,7 +409,7 @@ function SettingField({
 						size="icon-xs"
 						variant="ghost"
 						aria-label={`Reset ${label} to default`}
-						title="Reset to default"
+						title="Reset to Default"
 						disabled={saving}
 						onClick={() => save("")}
 					>

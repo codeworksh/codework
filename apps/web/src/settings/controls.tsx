@@ -1,7 +1,8 @@
 import { CheckCircleIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
-import { Ago } from "../widgets/time";
+import { useNowMinute } from "@/hooks/now";
+import { ago } from "../widgets/time";
 
 export type StatusTone = "success" | "warning" | "danger" | "info" | "muted";
 
@@ -31,7 +32,7 @@ export function SeenStatus({ online, seenAt }: { readonly online: boolean; reado
 	return (
 		<StatusDot tone="muted">
 			<span className="tabular-nums">
-				Last Seen <Ago time={seenAt} />
+				<LastSeen time={seenAt} />
 			</span>
 		</StatusDot>
 	);
@@ -70,4 +71,10 @@ export function EmptyState({
 			{action !== undefined && <div className="mt-2">{action}</div>}
 		</div>
 	);
+}
+
+/** "Last Seen Now", "Last Seen 5h Ago": a status label, in title case. */
+function LastSeen({ time }: { readonly time: number }) {
+	const since = ago(time, useNowMinute());
+	return since === "now" ? "Last Seen Now" : `Last Seen ${since} Ago`;
 }

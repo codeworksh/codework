@@ -37,7 +37,7 @@ export interface Target {
 const descriptionOf = ({ workspace, via }: Target) => {
 	switch (via.kind) {
 		case "local":
-			return `It leaves ${workspace.name}. Link it again from Setup.`;
+			return `It leaves ${workspace.name}. Link it again from Set Up.`;
 		case "paired":
 			return `It leaves ${workspace.name}. This computer stays paired with it.`;
 		case "relay":
@@ -96,7 +96,7 @@ export function UnlinkDialog({
 								? undefined
 								: removeAsPerson(true).catch(() => {
 										throw new Error(
-											"Unlinked on the Machine, but CodeWork’s servers didn’t confirm. Unlink it again when you’re back online.",
+											"Unlinked on the machine, but CodeWork’s servers didn’t confirm. Unlink it again when you’re back online.",
 										);
 									}),
 						)

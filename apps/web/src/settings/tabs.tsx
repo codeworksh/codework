@@ -119,7 +119,7 @@ export function TabsSettings() {
 				</Button>
 			}
 		>
-			<Section title="Your tabs">
+			<Section title="Your Tabs">
 				<Group>
 					{listed.map((tab, index) => {
 						const panels = desk.instances.filter((instance) => (instance.tags & tabTag(tab)) !== 0).length;
@@ -217,12 +217,12 @@ export function TabsSettings() {
 			</Section>
 			<Section title="Shortcuts">
 				<Group>
-					<Row title="Switch tab" description="Jump to a tab by its position in your list">
+					<Row title="Switch Tab" description="Jump to a tab by its position in your list">
 						<Keys>
 							{shortcutLabel(1)}–{MAX_TABS}
 						</Keys>
 					</Row>
-					<Row title="Open settings">
+					<Row title="Open Settings">
 						<Keys>{isMac ? "⌘," : "Ctrl+,"}</Keys>
 					</Row>
 				</Group>

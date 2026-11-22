@@ -1,4 +1,4 @@
-import { useAtomSet } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet } from "@effect/atom-react";
 import type { RemoteServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
 import { CaretLeftIcon, LinkBreakIcon } from "@phosphor-icons/react";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
+import { machinesAtom } from "../../kernel/relay";
 import { Server } from "../../kernel/rpc";
 import { removeAtom, updateAtom } from "../../kernel/servers";
 import { useConnect } from "../../shell/connect";
@@ -28,7 +29,7 @@ import { EmptyState } from "../controls";
 import { Badge } from "../servers/local";
 import { Notice } from "./notice";
 import { addressOf, isPlain, NOT_ENCRYPTED, urlOf } from "./pair";
-import { Failure, isLinked, linkText, Status, usePaired, useWorkspace } from "./shared";
+import { Failure, isReachable, linkText, RELAY_REFRESH_MS, Status, useLink, usePaired, useWorkspace } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 
 const labelAtom = Server.mutation("servers.label");
@@ -135,11 +136,12 @@ function Detail({
 	const [labelError, setLabelError] = useState<string | null>(null);
 	const [addressError, setAddressError] = useState<string | null>(null);
 	const address = addressOf(server.url);
-	const linked = workspace !== undefined && isLinked(server, workspace);
+	const link = useLink(server, workspace);
+	const linked = link !== undefined;
 	const readdress = (typed: string) => {
 		setAddressError(null);
 		const url = urlOf(typed);
-		if (url === "") return setAddressError("Enter the Machine’s address.");
+		if (url === "") return setAddressError("Enter the machine’s address.");
 		if (url === server.url) return;
 		update({ payload: { id: server.id, url } }).catch((cause: unknown) => setAddressError(messageOf(cause)));
 	};
@@ -156,7 +158,7 @@ function Detail({
 			<Notice server={server} />
 			<Section title="Machine">
 				<Group>
-					<Row title="Label" description={labelError ?? "Stored on the Machine and shown wherever it appears"}>
+					<Row title="Label" description={labelError ?? "Stored on the machine and shown wherever it appears"}>
 						<SavingInput
 							label="Machine label"
 							value={server.label ?? ""}
@@ -181,7 +183,14 @@ function Detail({
 					</Row>
 					<Row
 						title="Address"
-						description={addressError ?? (isPlain(server.url) ? NOT_ENCRYPTED : "Where this computer reaches it")}
+						description={
+							addressError ??
+							(isPlain(server.url) ? (
+								<span className="text-warning">{NOT_ENCRYPTED}</span>
+							) : (
+								"Where this computer reaches it"
+							))
+						}
 					>
 						<SavingInput
 							label="Machine address"
@@ -210,7 +219,7 @@ function Detail({
 			{workspace !== undefined && (
 				<Section title="Workspace">
 					<Group>
-						<Membership server={server} workspace={workspace} linked={linked} />
+						<Membership server={server} workspace={workspace} link={link} />
 					</Group>
 				</Section>
 			)}
@@ -220,8 +229,8 @@ function Detail({
 						title="Remove from This Computer"
 						description={
 							linked && workspace !== undefined
-								? `It stays Linked to ${workspace.name}, and nothing on the Machine is deleted`
-								: "Its threads leave the sidebar, and nothing on the Machine is deleted"
+								? `It stays linked to ${workspace.name}, and nothing on the machine is deleted`
+								: "Its threads leave the sidebar, and nothing on the machine is deleted"
 						}
 					>
 						<Remove server={server} />
@@ -236,19 +245,25 @@ function Detail({
 function Membership({
 	server,
 	workspace,
-	linked,
+	link,
 }: {
 	readonly server: RemoteServerStatus;
 	readonly workspace: Relay.Workspace;
-	readonly linked: boolean;
+	readonly link: { readonly keyId: string; readonly held: boolean } | undefined;
 }) {
 	const [unlinking, setUnlinking] = useState<Target | null>(null);
 	const [linking, setLinking] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const action = useRef<HTMLDivElement>(null);
-	const link = server.workspaces.find((each) => each.id === workspace.id);
+	// The relay decides the link: read it again after each change, and every so often for changes elsewhere.
+	const refreshMachines = useAtomRefresh(machinesAtom(workspace.id));
+	useEffect(() => {
+		const timer = setInterval(refreshMachines, RELAY_REFRESH_MS);
+		return () => clearInterval(timer);
+	}, [refreshMachines]);
+	const linked = link !== undefined;
 	// Only a Machine that answers as itself can link, or end its own link.
-	const reachable = server.paired && server.mismatch === null && server.online;
+	const reachable = isReachable(server);
 	const target: Target | undefined =
 		link === undefined || server.machineId === null
 			? undefined
@@ -257,19 +272,22 @@ function Membership({
 					workspace,
 					machineId: server.machineId,
 					keyId: link.keyId,
-					// One that can't be asked has its link removed at the relay instead.
-					via: reachable ? { kind: "paired", serverId: server.id } : { kind: "relay", serverId: server.id },
+					// Only a machine that answers and holds the key ends the link itself; the relay removes any other.
+					via:
+						reachable && link.held
+							? { kind: "paired", serverId: server.id }
+							: { kind: "relay", serverId: server.id },
 				};
 	const title = linkText(linked, workspace);
 	// Why it can't link now, if it can't.
 	const blocked =
 		!server.paired || server.mismatch?.kind === "machine"
-			? "Pair it again to Link it"
+			? "Pair it again to link it"
 			: server.mismatch?.kind === "clock"
-				? "Fix the clocks to Link it"
+				? "Fix the clocks to link it"
 				: server.online
 					? null
-					: "Link it once it’s Online";
+					: "Link it once it’s online";
 	return (
 		<>
 			<Row
@@ -320,12 +338,14 @@ function Membership({
 					onEnd={(failure) => {
 						setLinking(false);
 						setError(failure);
+						refreshMachines();
 					}}
 				/>
 			)}
 			<UnlinkDialog
 				target={unlinking}
 				onClose={() => setUnlinking(null)}
+				onDone={refreshMachines}
 				returnFocus={() => action.current?.querySelector<HTMLElement>("button")}
 			/>
 		</>
@@ -389,7 +409,7 @@ function Remove({ server }: { readonly server: RemoteServerStatus }) {
 					<AlertDialogHeader>
 						<AlertDialogTitle className="wrap-break-word">Remove {server.name}?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Its threads leave this computer’s sidebar. Nothing on the Machine is deleted, and it can be paired
+							Its threads leave this computer’s sidebar. Nothing on the machine is deleted, and it can be paired
 							again.
 						</AlertDialogDescription>
 						{error !== null && <Failure>{error}</Failure>}

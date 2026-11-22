@@ -3,11 +3,11 @@ import type { RemoteServerStatus, ServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
 import { CaretRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import type { ReactNode } from "react";
 
 import { isSignedInApp } from "../../auth";
-import { workspaceAtom } from "../../kernel/relay";
+import { machinesAtom, workspaceAtom } from "../../kernel/relay";
 import { serversAtom } from "../../kernel/servers";
 import { SeenStatus, StatusDot } from "../controls";
 
@@ -31,9 +31,33 @@ export function useWorkspace(): { readonly ready: boolean; readonly workspace: R
 	};
 }
 
-/** Whether a paired machine is linked to the workspace, as it last said. */
-export const isLinked = (server: RemoteServerStatus, workspace: Relay.Workspace) =>
-	server.workspaces.some((link) => link.id === workspace.id);
+/** Whether a paired machine answers as itself, so what it says about its links holds. */
+export const isReachable = (server: RemoteServerStatus) => server.paired && server.mismatch === null && server.online;
+
+const noMachines = Atom.make<Atom.Type<ReturnType<typeof machinesAtom>>>(AsyncResult.initial());
+
+/** How often a page showing links asks the relay again, so a change made elsewhere shows. */
+export const RELAY_REFRESH_MS = 15_000;
+
+/**
+ * A paired machine's link to the workspace: the key it is under, and whether the machine holds that key
+ * itself. The relay's list decides: a machine hears a link ended elsewhere only on its next heartbeat, and
+ * this app hears from it only when it connects. Its own last word stands in while the relay can't answer.
+ */
+export function useLink(
+	server: RemoteServerStatus,
+	workspace: Relay.Workspace | undefined,
+): { readonly keyId: string; readonly held: boolean } | undefined {
+	const machines = useAtomValue(workspace === undefined ? noMachines : machinesAtom(workspace.id));
+	if (workspace === undefined) return undefined;
+	const own = server.workspaces.find((link) => link.id === workspace.id);
+	if (!AsyncResult.isSuccess(machines)) return own === undefined ? undefined : { keyId: own.keyId, held: true };
+	// A link it lost stays listed under its id until removed; the one under its own key comes first.
+	const listed =
+		machines.value.find((machine) => machine.id === server.machineId && machine.keyId === own?.keyId) ??
+		machines.value.find((machine) => machine.id === server.machineId);
+	return listed === undefined ? undefined : { keyId: listed.keyId, held: listed.keyId === own?.keyId };
+}
 
 export const linkText = (linked: boolean, workspace: Relay.Workspace) =>
 	linked ? `Linked to ${workspace.name}` : "Not Linked";

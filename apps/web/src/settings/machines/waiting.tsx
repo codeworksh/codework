@@ -85,7 +85,7 @@ export function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) 
 									<>
 										{pairing.machine.os} {pairing.machine.arch} · {pairing.machine.id} · Code{" "}
 										<code className="font-mono tracking-wider text-ink">{pairing.userCode}</code>
-										{pairing.replaces && <> · Replaces the connected Machine</>}
+										{pairing.replaces && <> · Replaces the connected machine</>}
 									</>
 								}
 							>
@@ -108,7 +108,7 @@ export function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) 
 				})}
 				<div className="flex flex-col gap-2 px-4 py-3.5">
 					<span className="text-xs font-book text-ink-muted">
-						Run this on a Machine, then approve its Code here
+						Run this on a machine, then approve its code here
 					</span>
 					<CopyCommand command={command} />
 					{error !== null && <p className="text-xs text-destructive">{error}</p>}
@@ -134,7 +134,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 	const submit = () => {
 		if (busy) return;
 		if (code.trim() === "") {
-			setError("Enter the Code the Machine shows.");
+			setError("Enter the code the machine shows.");
 			return;
 		}
 		setBusy(true);
