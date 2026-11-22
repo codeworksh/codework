@@ -54,7 +54,8 @@ export function PairedMachine({ id }: { readonly id: string }) {
 	}
 	const server = paired.value.find((each) => each.id === id);
 	if (server === undefined) return <Missing />;
-	return <Detail server={server} workspace={workspace} />;
+	// Keyed, so a failure or a half-done action on one machine never shows on the next one opened.
+	return <Detail key={server.id} server={server} workspace={workspace} />;
 }
 
 /**
@@ -202,9 +203,7 @@ function Detail({
 					</Row>
 					{server.paired && server.fingerprint !== null && (
 						<Row title="Machine Key" description="Printed by codework service pair">
-							<code className="w-full font-mono text-xs break-all text-ink-muted @min-[560px]:w-64">
-								{server.fingerprint}
-							</code>
+							<CopyCommand command={server.fingerprint} label="Copy Machine Key" />
 						</Row>
 					)}
 					<Row title="Version">
@@ -409,8 +408,8 @@ function Remove({ server }: { readonly server: RemoteServerStatus }) {
 					<AlertDialogHeader>
 						<AlertDialogTitle className="wrap-break-word">Remove {server.name}?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Its threads leave this computer’s sidebar. Nothing on the machine is deleted, and it can be paired
-							again.
+							Its threads leave this computer’s sidebar. Nothing on the machine is deleted. Pairing it again
+							takes a new code.
 						</AlertDialogDescription>
 						{error !== null && <Failure>{error}</Failure>}
 					</AlertDialogHeader>

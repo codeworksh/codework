@@ -39,7 +39,7 @@
 	},
 	"a wrong code": {
 		"_tag": "Server.PairingRefused",
-		"message": "That pairing code was not accepted. Run `codework service pair` on that machine for a new one."
+		"message": "That pairing code was not accepted. Run codework service pair on the machine for a new one."
 	},
 	"a row from before pairing": {
 		"row": {

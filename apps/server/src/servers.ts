@@ -400,7 +400,7 @@ export const layer = Layer.effect(
 				if (device === undefined)
 					return yield* new PairingRefused({
 						message:
-							"That pairing code was not accepted. Run `codework service pair` on that machine for a new one.",
+							"That pairing code was not accepted. Run codework service pair on the machine for a new one.",
 					});
 				return { device: device.id, machineKey: encodeMachineKey(device.machine) };
 			});

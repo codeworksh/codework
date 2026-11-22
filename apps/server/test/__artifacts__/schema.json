@@ -265,7 +265,7 @@
 	},
 	"servers": {
 		"badUrl": "Use a WebSocket URL, such as wss://codework.example.com/rpc.",
-		"badCode": "That pairing code was not accepted. Run `codework service pair` on that machine for a new one.",
+		"badCode": "That pairing code was not accepted. Run codework service pair on the machine for a new one.",
 		"added": [
 			{
 				"id": "local",

@@ -201,7 +201,7 @@ export const call = <A, E>(use: (client: typeof Client.Service) => Effect.Effect
 const unavailable = () =>
 	new CodeworkUnavailable({
 		message:
-			"No usable reply from the CodeWork server. Start one with `codework service start`; it may also be running a build older than this app.",
+			"No usable reply from the CodeWork server. Start one with codework service start; it may also be running a build older than this app.",
 	});
 
 /**
