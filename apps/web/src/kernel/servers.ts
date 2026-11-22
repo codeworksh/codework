@@ -17,6 +17,8 @@ export const updateAtom = Server.mutation("servers.update");
 
 export const removeAtom = Server.mutation("servers.remove");
 
+export const unlinkedAtom = Server.mutation("servers.unlinked");
+
 /** Queries answered by the default CodeWork server; they load again once it is back. */
 export const codeworkKey = ["codework"];
 

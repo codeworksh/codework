@@ -224,11 +224,16 @@ it("an address that answers with another machine's key is not connected to, unti
 	const id = await addMachine(appHome, paired, desk.run);
 	const status = watchOf(desk, id);
 	const fingerprints = new Map<string, string>();
+	const name = (fingerprint: string | null) =>
+		fingerprint === null ? null : (fingerprints.get(fingerprint) ?? "<another key>");
 	const named = (found: RemoteServerStatus) => ({
 		paired: found.paired,
 		online: found.online,
-		mismatch: found.mismatch,
-		fingerprint: found.fingerprint === null ? null : (fingerprints.get(found.fingerprint) ?? "<another key>"),
+		mismatch:
+			found.mismatch?.kind === "machine"
+				? { ...found.mismatch, fingerprint: name(found.mismatch.fingerprint) }
+				: found.mismatch,
+		fingerprint: name(found.fingerprint),
 	});
 	fingerprints.set(await paired.fingerprint(), "<paired machine key>");
 	const before = named(await status("the machine online", (each) => each.online));
@@ -236,10 +241,10 @@ it("an address that answers with another machine's key is not connected to, unti
 	await stop(paired.proc);
 	const other = await codework(tempDir("stranger-other"), port);
 	fingerprints.set(await other.fingerprint(), "<other machine key>");
-	const stranger = named(await status("another machine marked", (each) => each.mismatch === "machine"));
+	const stranger = named(await status("another machine marked", (each) => each.mismatch?.kind === "machine"));
 	// It keeps trying; nothing it answers opens a connection or unpairs the row.
 	await new Promise((resolve) => setTimeout(resolve, 2_000));
-	const still = named(await status("another machine still marked", (each) => each.mismatch === "machine"));
+	const still = named(await status("another machine still marked", (each) => each.mismatch?.kind === "machine"));
 
 	const code = await other.pair();
 	await desk.run((rpc) => rpc["servers.update"]({ id, code }));
@@ -263,18 +268,22 @@ it("a machine whose clock is past the proof window from this computer's keeps it
 	const desk = await app(appHome);
 	const id = await addMachine(appHome, machine, desk.run);
 	const status = watchOf(desk, id);
+	// The skew as its whole minutes: the time a reply takes shifts it run to run.
 	const shown = (found: RemoteServerStatus) => ({
 		paired: found.paired,
 		online: found.online,
-		mismatch: found.mismatch,
+		mismatch:
+			found.mismatch?.kind === "clock"
+				? { ...found.mismatch, skew: `${Math.round(found.mismatch.skew / 60_000)} minutes` }
+				: found.mismatch,
 	});
 	const before = shown(await status("the machine online", (each) => each.online));
 
 	await stop(machine.proc);
 	machine = await codework(machineHome, port, { skew: 10 * 60 * 1000 });
-	const apart = shown(await status("the clocks marked apart", (each) => each.mismatch === "clock"));
+	const apart = shown(await status("the clocks marked apart", (each) => each.mismatch?.kind === "clock"));
 	await new Promise((resolve) => setTimeout(resolve, 2_000));
-	const still = shown(await status("the clocks still apart", (each) => each.mismatch === "clock"));
+	const still = shown(await status("the clocks still apart", (each) => each.mismatch?.kind === "clock"));
 	const reply = await desk.run((rpc) =>
 		rpc["servers.label"]({ id, label: "Late" }).pipe(
 			Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: () => "labelled" }),

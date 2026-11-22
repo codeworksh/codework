@@ -26,8 +26,9 @@ import { useConnect } from "../../shell/connect";
 import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
 import { EmptyState } from "../controls";
 import { Badge } from "../servers/local";
-import { addressOf, isPlain, NOT_ENCRYPTED, PairAgain, urlOf } from "./pair";
-import { isLinked, linkText, Status, usePaired, useWorkspace } from "./shared";
+import { Notice } from "./notice";
+import { addressOf, isPlain, NOT_ENCRYPTED, urlOf } from "./pair";
+import { Failure, isLinked, linkText, Status, usePaired, useWorkspace } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 
 const labelAtom = Server.mutation("servers.label");
@@ -152,25 +153,7 @@ function Detail({
 				</span>
 			}
 		>
-			{(!server.paired || server.mismatch === "machine") && (
-				<Section
-					title="Pair Again"
-					description={
-						server.paired
-							? "This address answers as a different Machine"
-							: "This computer is no longer paired with it"
-					}
-				>
-					<Group>
-						<PairAgain server={server} />
-					</Group>
-				</Section>
-			)}
-			{server.paired && server.mismatch === "clock" && (
-				<Section title="Clock Is Off" description="This computer’s clock differs from the Machine’s">
-					{null}
-				</Section>
-			)}
+			<Notice server={server} />
 			<Section title="Machine">
 				<Group>
 					<Row title="Label" description={labelError ?? "Stored on the Machine and shown wherever it appears"}>
@@ -264,6 +247,8 @@ function Membership({
 	const [error, setError] = useState<string | null>(null);
 	const action = useRef<HTMLDivElement>(null);
 	const link = server.workspaces.find((each) => each.id === workspace.id);
+	// Only a Machine that answers as itself can link, or end its own link.
+	const reachable = server.paired && server.mismatch === null && server.online;
 	const target: Target | undefined =
 		link === undefined || server.machineId === null
 			? undefined
@@ -272,10 +257,19 @@ function Membership({
 					workspace,
 					machineId: server.machineId,
 					keyId: link.keyId,
-					// Without its pairing it can't be asked; its link is removed at the relay instead.
-					via: server.paired ? { kind: "paired", serverId: server.id } : { kind: "relay" },
+					// One that can't be asked has its link removed at the relay instead.
+					via: reachable ? { kind: "paired", serverId: server.id } : { kind: "relay", serverId: server.id },
 				};
 	const title = linkText(linked, workspace);
+	// Why it can't link now, if it can't.
+	const blocked =
+		!server.paired || server.mismatch?.kind === "machine"
+			? "Pair it again to Link it"
+			: server.mismatch?.kind === "clock"
+				? "Fix the clocks to Link it"
+				: server.online
+					? null
+					: "Link it once it’s Online";
 	return (
 		<>
 			<Row
@@ -285,16 +279,16 @@ function Membership({
 					</span>
 				}
 				description={
-					error !== null ? (
+					!linked && blocked !== null ? (
+						blocked
+					) : error !== null ? (
 						<span role="alert" className="text-destructive">
 							{error}
 						</span>
 					) : linked ? (
 						`It shows up for everyone in ${workspace.name}`
-					) : server.paired ? (
-						`Link it to add it to ${workspace.name}`
 					) : (
-						"Pair it again to Link it"
+						`Link it to add it to ${workspace.name}`
 					)
 				}
 			>
@@ -308,13 +302,13 @@ function Membership({
 						<Button
 							size="sm"
 							className="min-w-28"
-							disabled={!server.paired || linking}
+							disabled={blocked !== null || linking}
 							onClick={() => {
 								setError(null);
 								setLinking(true);
 							}}
 						>
-							<BusyLabel busy={linking} idle={`Link to ${workspace.name}`} working="Linking…" />
+							<BusyLabel busy={linking} idle="Link" working="Linking…" />
 						</Button>
 					)}
 				</div>
@@ -398,8 +392,8 @@ function Remove({ server }: { readonly server: RemoteServerStatus }) {
 							Its threads leave this computer’s sidebar. Nothing on the Machine is deleted, and it can be paired
 							again.
 						</AlertDialogDescription>
+						{error !== null && <Failure>{error}</Failure>}
 					</AlertDialogHeader>
-					{error !== null && <p className="text-xs text-destructive">{error}</p>}
 					<AlertDialogFooter>
 						<AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
 						<AlertDialogAction

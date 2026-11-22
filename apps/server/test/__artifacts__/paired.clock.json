@@ -7,12 +7,18 @@
 	"its clock 10 minutes ahead": {
 		"paired": true,
 		"online": false,
-		"mismatch": "clock"
+		"mismatch": {
+			"kind": "clock",
+			"skew": "10 minutes"
+		}
 	},
 	"two seconds on": {
 		"paired": true,
 		"online": false,
-		"mismatch": "clock"
+		"mismatch": {
+			"kind": "clock",
+			"skew": "10 minutes"
+		}
 	},
 	"servers.label meanwhile": {
 		"_tag": "Server.ServersError",

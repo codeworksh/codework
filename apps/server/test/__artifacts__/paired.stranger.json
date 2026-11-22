@@ -8,13 +8,19 @@
 	"another machine at the address": {
 		"paired": true,
 		"online": false,
-		"mismatch": "machine",
+		"mismatch": {
+			"kind": "machine",
+			"fingerprint": "<other machine key>"
+		},
 		"fingerprint": "<paired machine key>"
 	},
 	"two seconds on": {
 		"paired": true,
 		"online": false,
-		"mismatch": "machine",
+		"mismatch": {
+			"kind": "machine",
+			"fingerprint": "<other machine key>"
+		},
 		"fingerprint": "<paired machine key>"
 	},
 	"paired again": {

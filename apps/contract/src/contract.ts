@@ -406,7 +406,22 @@ export const LocalServerStatus = Schema.Struct({
 });
 export type LocalServerStatus = typeof LocalServerStatus.Type;
 
-export const Mismatch = Schema.Literals(["machine", "clock"]);
+/**
+ * What keeps a paired machine from connecting: `machine`, its address answers with another key;
+ * `clock`, its clock is past the proof window from this computer's.
+ */
+export const Mismatch = Schema.Union([
+	Schema.Struct({
+		kind: Schema.Literal("machine"),
+		/** The fingerprint of the key the address answers with, `SHA256:<thumbprint>`; none when it presents none. */
+		fingerprint: Schema.NullOr(Schema.String),
+	}),
+	Schema.Struct({
+		kind: Schema.Literal("clock"),
+		/** The machine's clock minus this computer's, in milliseconds; positive when the machine is ahead. */
+		skew: Schema.Number,
+	}),
+]);
 export type Mismatch = typeof Mismatch.Type;
 
 /**
@@ -428,10 +443,7 @@ export const RemoteServerStatus = Schema.Struct({
 	paired: Schema.Boolean,
 	/** The fingerprint of the key it paired with, `SHA256:<thumbprint>`; none on a row from before keys. */
 	fingerprint: Schema.NullOr(Schema.String),
-	/**
-	 * What last kept it from connecting while paired: `machine`, its address answers with another key
-	 * (pairing again takes that key); `clock`, this computer's clock is past the proof window from its.
-	 */
+	/** What last kept it from connecting while paired; pairing again takes the key a `machine` mismatch answers with. */
 	mismatch: Schema.NullOr(Mismatch),
 	/** Whether it is answering now. */
 	online: Schema.Boolean,
@@ -1055,6 +1067,12 @@ export const Api = RpcGroup.make(
 	 */
 	Rpc.make("servers.label", {
 		payload: { id: Schema.String, label: Schema.String },
+		success: Schema.Void,
+		error: ServersError,
+	}),
+	/** A paired machine's link removed at the relay, which the machine can't report itself. */
+	Rpc.make("servers.unlinked", {
+		payload: { id: Schema.String, workspaceId: Schema.String },
 		success: Schema.Void,
 		error: ServersError,
 	}),

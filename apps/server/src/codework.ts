@@ -159,10 +159,10 @@ const ticketed = (row: Servers.RemoteRow) =>
 				yield* servers.answered(row.id, null);
 				return { url: row.url, token: answer.ticket };
 			case "Stranger":
-				yield* servers.answered(row.id, "machine");
+				yield* servers.answered(row.id, { kind: "machine", fingerprint: answer.fingerprint });
 				return yield* Effect.fail(failed("The address answers as a different Machine"));
 			case "Clock":
-				yield* servers.answered(row.id, "clock");
+				yield* servers.answered(row.id, { kind: "clock", skew: answer.skew });
 				return yield* Effect.fail(failed("This computer's clock differs from the Machine's"));
 			case "Refused":
 				yield* servers.unpair(row.id, device);

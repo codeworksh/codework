@@ -33,14 +33,16 @@ export const exchange = (url: string, code: string, label: string, key: Jws.Priv
 
 /**
  * How a server answered a ticket request: a ticket; refused by the machine it paired with (revoked or
- * lapsed); refused by it with a clock past the proof window from this computer's, which refuses every
- * proof until one is set right; or anything not signed for this request with the key it paired with.
+ * lapsed); refused by it with a clock past the proof window from this computer's, `skew` ms apart
+ * (positive when its is ahead), which refuses every proof until one is set right; or anything not
+ * signed for this request with the key it paired with, with the `fingerprint` of the key its reply
+ * names, unverified, for people to compare.
  */
 export type Answer =
 	| { readonly _tag: "Ticket"; readonly ticket: string }
 	| { readonly _tag: "Refused" }
-	| { readonly _tag: "Clock" }
-	| { readonly _tag: "Stranger" };
+	| { readonly _tag: "Clock"; readonly skew: number }
+	| { readonly _tag: "Stranger"; readonly fingerprint: string | null };
 
 /** A ticket for one socket to the server at `url`, proven with `key` as `device`, signed back with `machine`'s key. */
 export const ticket = Effect.fn("Pairing.ticket")(function* (
@@ -61,14 +63,25 @@ export const ticket = Effect.fn("Pairing.ticket")(function* (
 	const response = yield* HttpClient.execute(
 		HttpClientRequest.post(at(url, Wire.ticketsPath)).pipe(HttpClientRequest.bodyJsonUnsafe({ jws })),
 	).pipe(Effect.provide(FetchHttpClient.layer));
-	const stranger: Answer = { _tag: "Stranger" };
-	if (response.status !== 201 && response.status !== 401) return stranger;
-	// Signed by the machine it paired with, for this proof, or by no one it knows.
-	const signed = yield* response.json.pipe(
-		Effect.flatMap(decodeSigned),
-		Effect.flatMap(({ jws }) => Jws.verify(jws, machine)),
-		Effect.option,
+	if (response.status !== 201 && response.status !== 401)
+		return { _tag: "Stranger", fingerprint: null } satisfies Answer;
+	const reply = Option.getOrUndefined(
+		yield* response.json.pipe(
+			Effect.flatMap(decodeSigned),
+			Effect.map(({ jws }) => jws),
+			Effect.option,
+		),
 	);
+	const kid =
+		reply === undefined
+			? undefined
+			: yield* Jws.peek(reply).pipe(
+					Effect.map(({ kid }) => kid),
+					Effect.orElseSucceed(() => undefined),
+				);
+	const stranger: Answer = { _tag: "Stranger", fingerprint: kid === undefined ? null : Jws.fingerprintOf(kid) };
+	// Signed by the machine it paired with, for this proof, or by no one it knows.
+	const signed = reply === undefined ? Option.none() : yield* Jws.verify(reply, machine).pipe(Effect.option);
 	if (Option.isNone(signed)) return stranger;
 	if (response.status === 201) {
 		const grant = yield* decodeGrant(signed.value).pipe(Effect.option);
@@ -78,8 +91,10 @@ export const ticket = Effect.fn("Pairing.ticket")(function* (
 	}
 	const refusal = yield* decodeRefusal(signed.value).pipe(Effect.option);
 	if (Option.isNone(refusal) || refusal.value.nonce !== nonce) return stranger;
-	return Math.abs(refusal.value.at - (yield* Clock.currentTimeMillis)) > Wire.proofWindow
-		? ({ _tag: "Clock" } satisfies Answer)
+	const skew = refusal.value.at - (yield* Clock.currentTimeMillis);
+	// Whole seconds, so the same skew answered again on each retry reads as unchanged.
+	return Math.abs(skew) > Wire.proofWindow
+		? ({ _tag: "Clock", skew: Math.round(skew / 1000) * 1000 } satisfies Answer)
 		: ({ _tag: "Refused" } satisfies Answer);
 });
 

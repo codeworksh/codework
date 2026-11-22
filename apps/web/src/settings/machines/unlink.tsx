@@ -13,7 +13,9 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { relayFailure, removeMachineAtom } from "../../kernel/relay";
+import { unlinkedAtom } from "../../kernel/servers";
 import { disconnectAtom, useMachineAtom } from "../../shell/connect";
+import { Failure } from "./shared";
 
 /** A machine's link to a workspace, and who ends it. */
 export interface Target {
@@ -23,12 +25,13 @@ export interface Target {
 	readonly keyId: string;
 	/**
 	 * This machine, or one paired with this computer, ends its own link; any other is removed from the
-	 * relay by its owner or a workspace owner or admin.
+	 * relay by its owner or a workspace owner or admin. A paired one that can't be asked names its server,
+	 * which then forgets the link.
 	 */
 	readonly via:
 		| { readonly kind: "local" }
 		| { readonly kind: "paired"; readonly serverId: string }
-		| { readonly kind: "relay" };
+		| { readonly kind: "relay"; readonly serverId?: string };
 }
 
 const descriptionOf = ({ workspace, via }: Target) => {
@@ -38,7 +41,9 @@ const descriptionOf = ({ workspace, via }: Target) => {
 		case "paired":
 			return `It leaves ${workspace.name}. This computer stays paired with it.`;
 		case "relay":
-			return `It leaves ${workspace.name}. It can join again with codework connect.`;
+			return via.serverId === undefined
+				? `It leaves ${workspace.name}. It can join again with codework connect.`
+				: `It leaves ${workspace.name}.`;
 	}
 };
 
@@ -57,6 +62,7 @@ export function UnlinkDialog({
 }) {
 	const disconnect = useAtomSet(disconnectAtom, { mode: "promise" });
 	const remove = useAtomSet(removeMachineAtom, { mode: "promise" });
+	const unlinked = useAtomSet(unlinkedAtom, { mode: "promise" });
 	const refreshLocal = useAtomRefresh(useMachineAtom());
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -70,9 +76,13 @@ export function UnlinkDialog({
 		const { workspace, machineId, keyId, via } = target;
 		const removeAsPerson = (afterDisconnect: boolean) =>
 			remove({ workspaceId: workspace.id, machineId, keyId, afterDisconnect });
+		const forget = via.kind === "relay" ? via.serverId : undefined;
 		const left =
 			via.kind === "relay"
-				? removeAsPerson(false)
+				? forget === undefined
+					? removeAsPerson(false)
+					: // The server holds the machine's last word, so the link may be gone from the relay already.
+						removeAsPerson(true).then(() => unlinked({ payload: { id: forget, workspaceId: workspace.id } }))
 				: disconnect({
 						payload: {
 							workspaceId: workspace.id,
@@ -114,8 +124,8 @@ export function UnlinkDialog({
 				<AlertDialogHeader>
 					<AlertDialogTitle className="wrap-break-word">Unlink {shown?.name}?</AlertDialogTitle>
 					<AlertDialogDescription>{shown === null ? "" : descriptionOf(shown)}</AlertDialogDescription>
+					{error !== null && <Failure>{error}</Failure>}
 				</AlertDialogHeader>
-				{error !== null && <p className="text-xs text-destructive">{error}</p>}
 				<AlertDialogFooter>
 					<AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
 					<AlertDialogAction

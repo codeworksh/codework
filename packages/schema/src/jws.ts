@@ -58,8 +58,11 @@ export const thumbprint = Effect.fn("Jws.thumbprint")(function* (key: PublicKey)
 	return Base64Url.encode(new Uint8Array(digest));
 });
 
-/** A public key as people compare it, `SHA256:<thumbprint>`. */
-export const fingerprint = (key: PublicKey) => Effect.map(thumbprint(key), (digest) => `SHA256:${digest}`);
+/** A key's thumbprint as people compare it, `SHA256:<thumbprint>`. */
+export const fingerprintOf = (thumbprint: string) => `SHA256:${thumbprint}`;
+
+/** A public key as people compare it: {@link fingerprintOf} its thumbprint. */
+export const fingerprint = (key: PublicKey) => Effect.map(thumbprint(key), fingerprintOf);
 
 /** Signs `claims` with `key`, naming it by `kid` or embedding its public half. */
 export const sign = Effect.fn("Jws.sign")(function* (

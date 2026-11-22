@@ -1,4 +1,16 @@
-import { Clock, Config, Context, Effect, FileSystem, Layer, Option, Schema, Stream, SubscriptionRef } from "effect";
+import {
+	Clock,
+	Config,
+	Context,
+	Effect,
+	Equal,
+	FileSystem,
+	Layer,
+	Option,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
@@ -219,6 +231,8 @@ export class Service extends Context.Service<
 		readonly lost: (id: string) => Effect.Effect<void>;
 		/** Records what kept a remote server from connecting while paired, or none once it connects. */
 		readonly answered: (id: string, mismatch: Mismatch | null) => Effect.Effect<void>;
+		/** Forgets a remote server's link to a workspace that was removed at the relay, without it. */
+		readonly unlinked: (id: string, workspaceId: string) => Effect.Effect<void, ServersError>;
 		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError | PairingRefused>;
 		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError | PairingRefused>;
 		/** Drops a remote server's pairing once the server refused it, unless the row paired again since. */
@@ -422,6 +436,16 @@ export const layer = Layer.effect(
 				yield* announce;
 			}),
 
+			unlinked: Effect.fn("Servers.unlinked")(function* (id, workspaceId) {
+				const row = yield* get(id);
+				if (row.kind !== "remote") return yield* fail("Only a paired Machine has links of its own.");
+				const workspaces = row.workspaces.filter((link) => link.id !== workspaceId);
+				yield* sql`UPDATE machine SET workspaces = ${encodeWorkspaces(workspaces)} WHERE id = ${id}`.pipe(
+					Effect.orDie,
+				);
+				yield* announce;
+			}),
+
 			add: Effect.fn("Servers.add")(function* (input) {
 				const id = yield* Effect.sync(() => crypto.randomUUID().slice(0, 8));
 				const home = input.kind === "local" ? yield* chosenPath(input.home) : null;
@@ -501,7 +525,7 @@ export const layer = Layer.effect(
 			}),
 
 			answered: Effect.fn("Servers.answered")(function* (id, mismatch) {
-				if ((mismatches.get(id) ?? null) === mismatch) return;
+				if (Equal.equals(mismatches.get(id) ?? null, mismatch)) return;
 				if (mismatch === null) mismatches.delete(id);
 				else mismatches.set(id, mismatch);
 				yield* announce;

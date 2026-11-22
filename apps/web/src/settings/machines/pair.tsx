@@ -1,6 +1,5 @@
 import { useAtomSet } from "@effect/atom-react";
 import { PairingRefused, type RemoteServerStatus } from "@codeworksh/contract";
-import { WarningCircleIcon } from "@phosphor-icons/react";
 import { type ComponentProps, type FormEvent, useId, useRef, useState } from "react";
 
 import { CopyCommand } from "@/components/copyable";
@@ -18,6 +17,7 @@ import { messageOf } from "@/lib/utils";
 import { Server } from "../../kernel/rpc";
 import { updateAtom } from "../../kernel/servers";
 import { DialogRow, quietField } from "../blocks";
+import { Failure } from "./shared";
 
 const addAtom = Server.mutation("servers.add");
 
@@ -153,13 +153,7 @@ function usePairForm() {
 			readOnly: busy,
 		}),
 		/** The field's failure, shown under it. */
-		error: (field: Field) =>
-			failure?.field === field && (
-				<p id={errorId(field)} className="flex items-start gap-1.5 text-xs text-destructive">
-					<WarningCircleIcon size={14} weight="fill" className="mt-px shrink-0" aria-hidden />
-					<span>{failure.text}</span>
-				</p>
-			),
+		error: (field: Field) => failure?.field === field && <Failure id={errorId(field)}>{failure.text}</Failure>,
 		clear: (field: Field) => {
 			if (failure?.field === field) setFailure(null);
 		},
@@ -273,8 +267,8 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 	);
 }
 
-/** Pairs a machine again, at its address, with a new code. */
-export function PairAgain({ server }: { server: RemoteServerStatus }) {
+/** Pairs a machine again, at its address, with a new code; set in from the left, under a notice's title. */
+export function PairAgain({ server, autoFocus = false }: { server: RemoteServerStatus; autoFocus?: boolean }) {
 	const update = useAtomSet(updateAtom, { mode: "promise" });
 	const form = usePairForm();
 	const [code, setCode] = useState("");
@@ -285,7 +279,7 @@ export function PairAgain({ server }: { server: RemoteServerStatus }) {
 		other: "code",
 	});
 	return (
-		<div className="flex flex-col gap-3 px-4 py-3.5">
+		<div className="flex flex-col gap-3 py-3.5 pr-4 pl-11">
 			<span className="text-xs font-book text-ink-muted">
 				Run this on {server.name}, then enter the Code it prints. Valid 10 minutes.
 			</span>
@@ -297,6 +291,7 @@ export function PairAgain({ server }: { server: RemoteServerStatus }) {
 					</label>
 					<CodeInput
 						{...form.field("code")}
+						autoFocus={autoFocus}
 						value={code}
 						className="flex-1"
 						onChange={(next) => {

@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { RemoteServerStatus, ServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
 import type { ReactNode } from "react";
@@ -41,8 +41,8 @@ export const linkText = (linked: boolean, workspace: Relay.Workspace) =>
 /** Whether it is paired, then what keeps it from connecting, then whether it answers. */
 export function Status({ server }: { readonly server: RemoteServerStatus }) {
 	if (!server.paired) return <StatusDot tone="warning">Not Paired</StatusDot>;
-	if (server.mismatch === "machine") return <StatusDot tone="warning">Different Machine</StatusDot>;
-	if (server.mismatch === "clock") return <StatusDot tone="warning">Clock Is Off</StatusDot>;
+	if (server.mismatch?.kind === "machine") return <StatusDot tone="warning">Different Machine</StatusDot>;
+	if (server.mismatch?.kind === "clock") return <StatusDot tone="warning">Clock Is Off</StatusDot>;
 	return <SeenStatus online={server.online} seenAt={server.seenAt} />;
 }
 
@@ -112,5 +112,15 @@ export function Loaded({ children }: { readonly children: ReactNode }) {
 		<div className="flex animate-in flex-col duration-200 ease-out fade-in-0 motion-reduce:animate-none">
 			{children}
 		</div>
+	);
+}
+
+/** A failure, in a field's or a dialog's own words, under what failed. */
+export function Failure({ id, children }: { readonly id?: string; readonly children: ReactNode }) {
+	return (
+		<p id={id} role="alert" className="flex items-start gap-1.5 text-left text-xs text-destructive">
+			<WarningCircleIcon size={14} weight="fill" className="mt-px shrink-0" aria-hidden />
+			<span>{children}</span>
+		</p>
 	);
 }

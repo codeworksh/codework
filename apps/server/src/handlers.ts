@@ -96,9 +96,9 @@ export const layer = Contract.Api.toLayer(
 				return yield* new ServersError({ message: "Only a paired Machine is reached here." });
 			if (row.device === null)
 				return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
-			if (row.mismatch === "machine")
+			if (row.mismatch?.kind === "machine")
 				return yield* new ServersError({ message: "This address answers as a different Machine. Pair it again." });
-			if (row.mismatch === "clock")
+			if (row.mismatch?.kind === "clock")
 				return yield* new ServersError({ message: "This computer’s clock differs from the Machine’s." });
 			const unanswered = new ServersError({ message: `${row.name} did not answer.` });
 			const client = yield* sync.client(id).pipe(Effect.mapError(() => unanswered));
@@ -295,6 +295,10 @@ export const layer = Contract.Api.toLayer(
 					Effect.mapError(() => unanswered),
 				);
 				yield* servers.reached(id, { label: status.givenName });
+				yield* health.check;
+			}),
+			"servers.unlinked": Effect.fn("servers.unlinked")(function* ({ id, workspaceId }) {
+				yield* servers.unlinked(id, workspaceId);
 				yield* health.check;
 			}),
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {

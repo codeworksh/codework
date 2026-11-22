@@ -78,7 +78,7 @@ export const layer = Layer.effect(
 				rows
 					.map((row) =>
 						row.kind === "remote"
-							? `${row.id}=${row.host} ${row.label} ${row.version} ${row.seenAt} ${row.online} ${row.device === null} ${row.mismatch} ${row.machineId} ${JSON.stringify(row.workspaces)}`
+							? `${row.id}=${row.host} ${row.label} ${row.version} ${row.seenAt} ${row.online} ${row.device === null} ${JSON.stringify(row.mismatch)} ${row.machineId} ${JSON.stringify(row.workspaces)}`
 							: `${row.id}=${row.host}`,
 					)
 					.join("\n"),
