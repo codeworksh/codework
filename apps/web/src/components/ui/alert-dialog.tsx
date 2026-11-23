@@ -70,7 +70,7 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">)
 		<div
 			data-slot="alert-dialog-footer"
 			className={cn(
-				"flex flex-col-reverse gap-2 rounded-b-2xl border-t border-edge bg-ink/4 px-6 py-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+				"flex flex-col-reverse gap-2 px-6 pb-6 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}
@@ -133,7 +133,7 @@ function AlertDialogAction({
 
 function AlertDialogCancel({
 	className,
-	variant = "outline",
+	variant = "ghost",
 	size = "default",
 	...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Cancel> &

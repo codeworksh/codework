@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { approveAtom, declineAtom, machinesAtom, pairingsAtom, relayFailure } from "../../kernel/relay";
 import { Group, Row, Section } from "../blocks";
 import { Done } from "../controls";
+import { shortId } from "./shared";
 
 /** How often pending connects are asked for: a person is usually waiting at the other machine. */
 const PENDING_MS = 5_000;
@@ -83,8 +84,11 @@ export function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) 
 								}
 								description={
 									<>
-										{pairing.machine.os} {pairing.machine.arch} · {pairing.machine.id} · Code{" "}
-										<code className="font-mono tracking-wider text-ink">{pairing.userCode}</code>
+										{pairing.machine.os} {pairing.machine.arch} ·{" "}
+										<span className="tabular-nums" title={pairing.machine.id}>
+											{shortId(pairing.machine.id)}
+										</span>{" "}
+										· Code <code className="font-mono tracking-wider text-ink">{pairing.userCode}</code>
 										{pairing.replaces && <> · Replaces the connected machine</>}
 									</>
 								}
@@ -157,7 +161,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((shown) => !shown)}
-				className="flex w-fit items-center gap-1 rounded-md text-xs text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+				className="relative flex w-fit items-center gap-1 rounded-md text-xs text-ink-muted outline-none before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-[''] hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<CaretRightIcon
 					size={10}

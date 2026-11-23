@@ -1,6 +1,6 @@
 import { useAtomSet } from "@effect/atom-react";
 import { PairingRefused, type RemoteServerStatus } from "@codeworksh/contract";
-import { type ComponentProps, type FormEvent, useId, useRef, useState } from "react";
+import { type ComponentProps, type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 
 import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
@@ -187,6 +187,9 @@ function CodeInput({
 	);
 }
 
+/** The line under a field for its failure or warning, held while empty so nothing below moves. */
+const Message = ({ children }: { readonly children: ReactNode }) => <div className="min-h-4">{children}</div>;
+
 /** Pairs a new machine; nothing is stored until its code is accepted. */
 export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaired: (id: string) => void }) {
 	const add = useAtomSet(addAtom, { mode: "promise" });
@@ -216,10 +219,11 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 				</DialogHeader>
 				<form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-5">
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Run on the Machine" description="It prints a code, valid 10 minutes">
+						<DialogRow top title="Run on the Machine" description="It prints a code, valid 10 minutes">
 							<CopyCommand command={PAIR_COMMAND} />
 						</DialogRow>
 						<DialogRow
+							top
 							title="Address"
 							description="Where this computer reaches it"
 							htmlFor={form.field("address").id}
@@ -234,10 +238,13 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 									form.clear("address");
 								}}
 							/>
-							{form.error("address") ||
-								(isPlain(urlOf(address)) && <p className="text-xs text-warning">{NOT_ENCRYPTED}</p>)}
+							<Message>
+								{form.error("address") ||
+									(isPlain(urlOf(address)) && <p className="text-xs text-warning">{NOT_ENCRYPTED}</p>)}
+							</Message>
 						</DialogRow>
 						<DialogRow
+							top
 							title="Pairing Code"
 							description="The code that command printed"
 							htmlFor={form.field("code").id}
@@ -250,7 +257,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 									form.clear("code");
 								}}
 							/>
-							{form.error("code")}
+							<Message>{form.error("code")}</Message>
 						</DialogRow>
 					</div>
 					<DialogFooter>

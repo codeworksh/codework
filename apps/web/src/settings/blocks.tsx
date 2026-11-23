@@ -120,17 +120,22 @@ export function DialogRow({
 	title,
 	description,
 	htmlFor,
+	top = false,
 	children,
 }: {
 	title: ReactNode;
 	description: ReactNode;
 	/** The field the title labels. */
 	htmlFor?: string | undefined;
+	/** Title and field share their top line, for a field with a message line under it. */
+	top?: boolean;
 	children: ReactNode;
 }) {
 	return (
-		<div className="grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[1fr_16rem]">
-			<span className="flex flex-col gap-1">
+		<div
+			className={`grid gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[1fr_16rem] ${top ? "items-start" : "items-center"}`}
+		>
+			<span className={`flex flex-col gap-1 ${top ? "sm:pt-1" : ""}`}>
 				{htmlFor === undefined ? (
 					<span className="font-medium">{title}</span>
 				) : (
