@@ -66,7 +66,7 @@ export type Membership =
 			readonly stale: boolean;
 	  };
 
-export function membershipOf(
+function membershipOf(
 	machines: Machines,
 	machineId: string | null,
 	links: ReadonlyArray<Own>,
