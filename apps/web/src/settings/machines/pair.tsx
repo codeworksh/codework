@@ -219,10 +219,11 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 				</DialogHeader>
 				<form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-5">
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<DialogRow title="Run on the Machine" description="It prints a code, valid 10 minutes">
+						<DialogRow top title="Run on the Machine" description="It prints a code, valid 10 minutes">
 							<CopyCommand command={PAIR_COMMAND} />
 						</DialogRow>
 						<DialogRow
+							top
 							title="Address"
 							description="Where this computer reaches it"
 							htmlFor={form.field("address").id}
@@ -243,6 +244,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 							</Message>
 						</DialogRow>
 						<DialogRow
+							top
 							title="Pairing Code"
 							description="The code that command printed"
 							htmlFor={form.field("code").id}
