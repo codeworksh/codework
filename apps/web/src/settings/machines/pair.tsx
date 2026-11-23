@@ -1,6 +1,6 @@
 import { useAtomSet } from "@effect/atom-react";
 import { PairingRefused, type RemoteServerStatus } from "@codeworksh/contract";
-import { type ComponentProps, type FormEvent, useId, useRef, useState } from "react";
+import { type ComponentProps, type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 
 import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
@@ -187,6 +187,9 @@ function CodeInput({
 	);
 }
 
+/** The line under a field for its failure or warning, held while empty so nothing below moves. */
+const Message = ({ children }: { readonly children: ReactNode }) => <div className="min-h-4">{children}</div>;
+
 /** Pairs a new machine; nothing is stored until its code is accepted. */
 export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaired: (id: string) => void }) {
 	const add = useAtomSet(addAtom, { mode: "promise" });
@@ -234,8 +237,10 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 									form.clear("address");
 								}}
 							/>
-							{form.error("address") ||
-								(isPlain(urlOf(address)) && <p className="text-xs text-warning">{NOT_ENCRYPTED}</p>)}
+							<Message>
+								{form.error("address") ||
+									(isPlain(urlOf(address)) && <p className="text-xs text-warning">{NOT_ENCRYPTED}</p>)}
+							</Message>
 						</DialogRow>
 						<DialogRow
 							title="Pairing Code"
@@ -250,7 +255,7 @@ export function PairDialog({ onClose, onPaired }: { onClose: () => void; onPaire
 									form.clear("code");
 								}}
 							/>
-							{form.error("code")}
+							<Message>{form.error("code")}</Message>
 						</DialogRow>
 					</div>
 					<DialogFooter>

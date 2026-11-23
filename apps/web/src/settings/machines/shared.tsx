@@ -208,7 +208,7 @@ export function MachineRow({
 					)}
 				</span>
 			</span>
-			<span className="shrink-0">{status}</span>
+			<span className="w-32 shrink-0">{status}</span>
 			{open === undefined ? (
 				<span className="relative flex w-7 shrink-0 justify-end">{menu}</span>
 			) : (

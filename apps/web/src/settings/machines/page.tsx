@@ -340,6 +340,25 @@ function PairedRow({
 	);
 }
 
+const countKey = (workspaceId: string) => `codework.machines.linked.${workspaceId}`;
+
+/** How many machines the workspace last listed, so its placeholder is the size of the list. */
+const lastCount = (workspaceId: string) => {
+	try {
+		return Math.max(1, Number(localStorage.getItem(countKey(workspaceId)) ?? 2) || 1);
+	} catch {
+		return 2;
+	}
+};
+
+const keepCount = (workspaceId: string, count: number) => {
+	try {
+		localStorage.setItem(countKey(workspaceId), String(count));
+	} catch {
+		// Unsaved, the next placeholder is the default size.
+	}
+};
+
 /** Every machine Relay lists in the workspace: this machine first, then the newest. */
 function Linked({
 	workspace,
@@ -374,13 +393,17 @@ function Linked({
 	useEffect(() => {
 		if (reach === "ok") refresh();
 	}, [reach, refresh]);
+	const listed = AsyncResult.isSuccess(machines) ? machines.value.length : undefined;
+	useEffect(() => {
+		if (listed !== undefined) keepCount(workspace.id, listed);
+	}, [workspace.id, listed]);
 
 	const title = `Linked to ${workspace.name}`;
 	const about = `Machines that belong to ${workspace.name}`;
 	if (AsyncResult.isInitial(machines) || AsyncResult.isInitial(local) || paired === undefined) {
 		return (
 			<Section title={title} description={about}>
-				<Placeholder rows={2} />
+				<Placeholder rows={lastCount(workspace.id)} />
 			</Section>
 		);
 	}
