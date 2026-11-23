@@ -16,6 +16,8 @@ const Link = Schema.Struct({
 	relay: Schema.String,
 	key: Jws.PrivateKey,
 	keyId: Schema.String,
+	/** Left locally, but the relay hasn't confirmed: the key is kept to revoke it once the relay answers. */
+	leaving: Schema.optionalKey(Schema.Boolean),
 });
 
 /** One key per home, vouching for each link key, so the relay knows every link of this home is one machine. */
@@ -135,4 +137,15 @@ export const removeLink = (home: string, workspaceId: string, keyId: string) =>
 	update(home, {}, (machine) => {
 		const { [workspaceId]: link, ...workspaces } = machine.workspaces;
 		return Effect.succeed(link === undefined || link.keyId !== keyId ? machine : { ...machine, workspaces });
+	});
+
+/** Marks the link as leaving, only while it still holds `keyId`. */
+export const markLeaving = (home: string, workspaceId: string, keyId: string) =>
+	update(home, {}, (machine) => {
+		const link = machine.workspaces[workspaceId];
+		return Effect.succeed(
+			link === undefined || link.keyId !== keyId
+				? machine
+				: { ...machine, workspaces: { ...machine.workspaces, [workspaceId]: { ...link, leaving: true } } },
+		);
 	});

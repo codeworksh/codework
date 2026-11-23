@@ -28,7 +28,7 @@ export default Runtime.handler(
 		yield* writeOut(
 			result.revoked
 				? `Disconnected from ${result.workspace}\n`
-				: `Disconnected locally from ${result.workspace}. The relay did not confirm. If this machine still appears in Settings → Machines, remove it there.\n`,
+				: `Leaving ${result.workspace}: Relay can’t be reached, so it still lists this machine. The server retries while it runs.\n`,
 		);
 	}, Effect.catch(reportFailure)),
 );
