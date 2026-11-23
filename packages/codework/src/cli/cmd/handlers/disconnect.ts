@@ -28,7 +28,7 @@ export default Runtime.handler(
 		yield* writeOut(
 			result.revoked
 				? `Disconnected from ${result.workspace}\n`
-				: `Leaving ${result.workspace}: Relay can’t be reached, so it still lists this machine. The server retries while it runs.\n`,
+				: `Leaving ${result.workspace}: Relay didn’t confirm, so this machine keeps the link until it does. The server retries while it runs.\n`,
 		);
 	}, Effect.catch(reportFailure)),
 );

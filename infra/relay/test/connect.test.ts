@@ -344,9 +344,11 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 			other.stop();
 		}
 	});
-	it("forgets the local link when a committed revoke loses its reply", async () => {
+	it("keeps the local link leaving when a committed revoke loses its reply, until Relay confirms", async () => {
 		const workspace = decodeMe(await (await asPerson("/v1/me")).json()).workspaces[0]!;
 		let revokeStatus: number | undefined;
+		// Revoke replies are lost until the retry.
+		let dropping = true;
 		const gateway = createServer((incoming, outgoing) => {
 			const upstream = request(
 				new URL(incoming.url ?? "/", relay.base),
@@ -355,7 +357,7 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 					headers: incoming.headers,
 				},
 				(response) => {
-					if (incoming.url === "/v1/machines/revoke") {
+					if (incoming.url === "/v1/machines/revoke" && dropping) {
 						revokeStatus = response.statusCode;
 						response.resume();
 						return;
@@ -383,14 +385,28 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 				).status,
 			).toBe(200);
 			expect((await done).code).toBe(0);
-			const result = await finished(codework(["disconnect", "--workspace", workspace.id]));
+			const lost = await finished(codework(["disconnect", "--workspace", workspace.id]));
+			const kept = machineFile().workspaces[workspace.id];
+			const relayLinkRemoved = (await machines(workspace.id)).length === 0;
+			// The retry reaches Relay, which already revoked the link, and that confirms it.
+			dropping = false;
+			const retried = await finished(codework(["disconnect", "--workspace", workspace.id]));
 			const artifact = {
 				revokeStatus,
-				exitCode: result.code,
-				localLinkRemoved: machineFile().workspaces[workspace.id] === undefined,
-				relayLinkRemoved: (await machines(workspace.id)).length === 0,
+				lostReply: {
+					exitCode: lost.code,
+					output: lost.out.replace(workspace.name, "<workspace>"),
+					localLinkLeaving: kept?.leaving === true,
+					relayLinkRemoved,
+				},
+				retry: {
+					exitCode: retried.code,
+					output: retried.out.replace(workspace.name, "<workspace>"),
+					localLinkRemoved: machineFile().workspaces[workspace.id] === undefined,
+				},
 			};
-			expect(artifact).toEqual({ revokeStatus: 204, exitCode: 0, localLinkRemoved: true, relayLinkRemoved: true });
+			expect(artifact.lostReply.localLinkLeaving).toBe(true);
+			expect(artifact.retry.localLinkRemoved).toBe(true);
 			await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
 				"./__artifacts__/disconnect.json",
 			);
