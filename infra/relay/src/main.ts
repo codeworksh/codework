@@ -6,13 +6,14 @@ import { createServer } from "node:http";
 import * as Db from "./db.ts";
 import { routes } from "./http.ts";
 
-// The relay on Node, for development and the E2E suite: migrates, then serves on PORT (0 picks a free
-// port) and logs the address it bound.
+// The relay on Node, for development and the E2E suite: migrates, then serves on HOST and PORT (0 picks
+// a free port) and logs the address it bound. HOST=0.0.0.0 lets machines on other hosts reach it.
 const server = Layer.unwrap(
 	Effect.gen(function* () {
+		const host = yield* Config.String("HOST").pipe(Config.withDefault("127.0.0.1"));
 		// Int, not Port: Port rejects 0.
 		const port = yield* Config.Int("PORT").pipe(Config.withDefault(8787));
-		return NodeHttpServer.layer(createServer, { host: "127.0.0.1", port });
+		return NodeHttpServer.layer(createServer, { host, port });
 	}),
 );
 
