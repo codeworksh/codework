@@ -11,7 +11,7 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect } from "vite-plus/test";
-import { Contract, type ServerStatus } from "@codeworksh/contract";
+import { Contract, type RemoteServerStatus, type ServerStatus } from "@codeworksh/contract";
 import { Door } from "@codeworksh/schema";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
@@ -188,6 +188,16 @@ export const app = async (home: string) => {
 		},
 	};
 };
+
+/** Statuses of `id` from `servers.watch`, waited for until one passes `test`. */
+export const watchOf =
+	(desk: Awaited<ReturnType<typeof app>>, id: string) =>
+	(what: string, test: (status: RemoteServerStatus) => boolean) =>
+		waitFor(async () => {
+			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
+			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
+			return found?.kind === "remote" && test(found) ? found : undefined;
+		}, what);
 
 /** Reads app.db while the app runs; each read opens the file afresh. */
 export const query = (home: string, statement: string, ...params: Array<string | number | null>): Array<Row> => {

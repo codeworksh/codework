@@ -1,0 +1,72 @@
+{
+	"first link": {
+		"connect events": [
+			"Code",
+			"Connected"
+		],
+		"approve status": 200,
+		"app status": [
+			{
+				"id": "<workspace>",
+				"keyId": "<key 1>",
+				"leaving": false
+			}
+		],
+		"relay": [
+			{
+				"id": "<machine id>",
+				"keyId": "<key 1>",
+				"online": true
+			}
+		]
+	},
+	"unlink with Relay up": {
+		"reply": {
+			"revoked": true,
+			"workspaces": []
+		},
+		"app status": [],
+		"relay": []
+	},
+	"second link": {
+		"connect events": [
+			"Code",
+			"Connected"
+		],
+		"approve status": 200
+	},
+	"unlink with Relay down": {
+		"reply": {
+			"revoked": false,
+			"workspaces": [
+				{
+					"id": "<workspace>",
+					"name": "Ada's Workspace",
+					"keyId": "<key 2>",
+					"leaving": true
+				}
+			]
+		},
+		"app status": [
+			{
+				"id": "<workspace>",
+				"keyId": "<key 2>",
+				"leaving": true
+			}
+		],
+		"machine's own record": [
+			{
+				"id": "<workspace>",
+				"name": "Ada's Workspace",
+				"keyId": "<key 2>",
+				"leaving": true
+			}
+		],
+		"relay row": "not revoked"
+	},
+	"Relay back": {
+		"machine's own record": [],
+		"relay": [],
+		"relay row": "revoked"
+	}
+}

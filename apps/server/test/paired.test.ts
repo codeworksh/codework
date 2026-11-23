@@ -15,6 +15,7 @@ import {
 	stop,
 	tempDir,
 	waitFor,
+	watchOf,
 } from "./fixtures/apps.ts";
 
 afterEach(cleanup);
@@ -145,12 +146,7 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 	let machine = await codework(machineHome, port, { relay });
 	const desk = await app(appHome);
 	const id = await addMachine(appHome, machine, desk.run);
-	const status = (what: string, test: (status: RemoteServerStatus) => boolean) =>
-		waitFor(async () => {
-			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
-			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
-			return found?.kind === "remote" && test(found) ? found : undefined;
-		}, what);
+	const status = watchOf(desk, id);
 	const reply = <A, E extends { readonly _tag: string; readonly message: string }>(effect: Effect.Effect<A, E>) =>
 		effect.pipe(Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }));
 	const connect = (serverId: string) =>
@@ -203,16 +199,6 @@ it("a paired machine is linked and unlinked over its own connection, its failure
 		.replaceAll(machineId ?? "<none>", "<machine id>");
 	await snapshot("paired.link", JSON.parse(text));
 }, 150_000);
-
-/** Statuses of `id` from `servers.watch`, waited for until one passes `test`. */
-const watchOf =
-	(desk: Awaited<ReturnType<typeof app>>, id: string) =>
-	(what: string, test: (status: RemoteServerStatus) => boolean) =>
-		waitFor(async () => {
-			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
-			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
-			return found?.kind === "remote" && test(found) ? found : undefined;
-		}, what);
 
 // Another CodeWork server at the paired address, as on a recycled IP, refuses a device it does not know,
 // signed with its own key: no refusal of the paired machine's, so the pairing stays.
