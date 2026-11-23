@@ -1,5 +1,7 @@
 import { Model as AikitModel, type Protocol } from "@codeworksh/aikit";
-import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
+import { Effect, Result, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
+import * as IpInterface from "effect/net/IpInterface";
+import * as IpNetwork from "effect/net/IpNetwork";
 import type { ServerConfig } from "./plugin/mcp.ts";
 import { isAikitModelInfo, NonNegativeInt, validateAikitModelInfo } from "./schema.ts";
 
@@ -157,12 +159,32 @@ export interface RetryPolicy {
 	readonly maxDelayMs: number;
 }
 
+/** A trusted proxy as written: an IP address, or a CIDR range; none for anything else. */
+export const proxyNetwork = (entry: string): IpNetwork.IpNetwork | undefined =>
+	Result.getOrUndefined(Result.map(IpInterface.fromString(entry.trim()), IpNetwork.fromInterface));
+
+export const TrustedProxy = Schema.String.check(
+	Schema.makeFilter(
+		(entry) => proxyNetwork(entry) !== undefined || `${JSON.stringify(entry)} is not an IP address or CIDR range`,
+	),
+);
+
+/**
+ * How `codework serve` listens. Read from the user settings file alone: a project must not say
+ * which proxy its machine believes.
+ */
+export const Server = Schema.Struct({
+	/** Peers whose `X-Forwarded-Proto` is believed, besides loopback. */
+	trustedProxy: Schema.optional(Schema.Array(TrustedProxy)),
+});
+
 export const Patch = Schema.Struct({
 	$schema: Schema.optional(Schema.String),
 	plugins: Schema.optional(Schema.Array(PluginEntry)),
 	model: Schema.optional(Model),
 	models: Schema.optional(Schema.Array(ModelEntry)),
 	retry: Schema.optional(Retry),
+	server: Schema.optional(Server),
 });
 export type Patch = typeof Patch.Type;
 
@@ -243,6 +265,8 @@ export interface Info {
 	};
 	readonly retry: RetryPolicy;
 	readonly mcp: McpSettings;
+	/** From the user settings file alone. */
+	readonly server: { readonly trustedProxy: ReadonlyArray<string> };
 }
 
 /** Let aikit supply model-aware generation defaults. */
@@ -257,4 +281,5 @@ export const defaults: Info = {
 	},
 	retry: { maxRetries: 3, baseDelayMs: 2_000, maxDelayMs: 60_000 },
 	mcp: { servers: [], errors: [] },
+	server: { trustedProxy: [] },
 };

@@ -136,7 +136,7 @@ describe("codework CLI", () => {
 		const result = run("run", "--sandbox-provider-id", "existing-id", "test");
 
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox-driver");
+		expect(result.stderr).toBe("error: --sandbox-provider-id requires a remote --sandbox-driver\n");
 	});
 
 	it("reports an invalid model catalog without an Effect stack", () => {
@@ -192,7 +192,9 @@ describe("codework CLI", () => {
 		expect(run("run", "--help").stdout).toContain("--server");
 		const result = run("run", "--server", "ws://127.0.0.1:1/rpc/v1", "--database", ":memory:", "hello");
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain("belong on codework serve");
+		expect(result.stderr).toBe(
+			"error: --database and --user-config-dir belong on codework serve when using --server\n",
+		);
 	});
 
 	it("rejects out-of-range listening ports", () => {
@@ -490,7 +492,8 @@ describe("codework CLI", () => {
 			response.finish("length");
 		});
 		writeSettings(home, fake.url);
-		const env = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models };
+		// The CLI finds the server's token in the home it resolves, here through CODEWORK_HOME_DIR.
+		const env = { ...process.env, HOME: home, CODEWORK_HOME_DIR: home, CODEWORK_MODELS_FILE: models };
 		const server = await serveCli(["--home", home, "--user-config-dir", home], { cwd: home, env });
 
 		const result = await runCli(["run", "--server", server.url, "Run a long command."], { cwd: home, env });

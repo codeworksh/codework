@@ -204,7 +204,7 @@ const read = (request: Parameters<AppRpc["metrics.usage"]>[0]) => desk.run((rpc)
 
 /** What each read that names a machine shows, per machine as Settings lists them. */
 const names = async () => {
-	const rows = query(appHome, "SELECT id, kind, name, host FROM machine ORDER BY pos");
+	const rows = query(appHome, "SELECT id, kind, name, label, host FROM machine ORDER BY pos");
 	const reads = await desk.run((rpc) =>
 		Effect.gen(function* () {
 			const sidebar = yield* rpc["sidebar.list"]({
@@ -214,13 +214,13 @@ const names = async () => {
 			const threads = yield* rpc["threads.list"]({ organizationId: Contract.PERSONAL_ORGANIZATION, by: "status" });
 			const statuses = yield* rpc["servers.watch"](undefined).pipe(Stream.runHead, Effect.map(Option.getOrThrow));
 			const listed = threads.lists.flatMap((list) => list.threads);
-			return statuses.map(({ id, name, host, override }) => ({
-				id,
-				name,
-				host,
-				override,
-				sidebar: sidebar.find((project) => project.machine.id === id)?.machine.name,
-				allThreads: listed.find((thread) => thread.machine.id === id)?.machine.name,
+			return statuses.map((status) => ({
+				id: status.id,
+				name: status.name,
+				host: status.host,
+				...(status.kind === "local" ? { override: status.override } : { label: status.label }),
+				sidebar: sidebar.find((project) => project.machine.id === status.id)?.machine.name,
+				allThreads: listed.find((thread) => thread.machine.id === status.id)?.machine.name,
 			}));
 		}),
 	);
@@ -245,8 +245,10 @@ describeMachines("usage across OrbStack machines", () => {
 		appHome = tempDir("usage-machines-app");
 		desk = await app(appHome);
 		// No name of its own: each is named by the host its server reports.
-		for (const m of pool)
-			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url })));
+		for (const m of pool) {
+			const code = await m.pair();
+			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url, code })));
+		}
 
 		// Different work on each: a turn with a tool call (two requests); two turns; a turn and a fork's turn.
 		const a = await session(cwA, "bash echo alpha");
@@ -272,7 +274,7 @@ describeMachines("usage across OrbStack machines", () => {
 		await cleanup();
 	}, 120_000);
 
-	it("1. each machine is named by its own host name; an override wins and clears back to it", async () => {
+	it("1. each machine is named by its own host name; its label wins and clears back to it", async () => {
 		const reported = await waitFor(async () => {
 			const state = await names();
 			return pool.every((m) => state.find((read) => read.id === idOf(m))?.stored?.host === m.name)
@@ -281,22 +283,26 @@ describeMachines("usage across OrbStack machines", () => {
 		}, "every machine's host name");
 		for (const m of pool) {
 			const found = reported.find((read) => read.id === idOf(m))!;
-			expect(found.stored).toMatchObject({ kind: "remote", name: null, host: m.name });
-			expect(found).toMatchObject({ host: m.name, override: null });
+			expect(found.stored).toMatchObject({ kind: "remote", name: null, label: null, host: m.name });
+			expect(found).toMatchObject({ host: m.name, label: null });
 			expect(shown(reported, m)).toEqual(Array(3).fill(m.name));
 		}
 
-		await desk.run((rpc) => rpc["servers.update"]({ id: idOf(cwB), name: " Build Box " }));
+		await desk.run((rpc) => rpc["servers.label"]({ id: idOf(cwB), label: " Build Box " }));
 		const overridden = await names();
 		expect(shown(overridden, cwB)).toEqual(Array(3).fill("Build Box"));
 		expect(shown(overridden, cwA)).toEqual(Array(3).fill("cw-a"));
 		const overriddenMetrics = (await read(everything)).machines.find((entry) => entry.id === idOf(cwB));
 		expect(overriddenMetrics?.name).toBe("Build Box");
 
-		await desk.run((rpc) => rpc["servers.update"]({ id: idOf(cwB), name: "" }));
+		await desk.run((rpc) => rpc["servers.label"]({ id: idOf(cwB), label: "" }));
 		const cleared = await names();
 		expect(shown(cleared, cwB)).toEqual(Array(3).fill("cw-b"));
-		expect(cleared.find((read) => read.id === idOf(cwB))?.stored).toMatchObject({ name: null, host: "cw-b" });
+		expect(cleared.find((read) => read.id === idOf(cwB))?.stored).toMatchObject({
+			name: null,
+			label: null,
+			host: "cw-b",
+		});
 
 		const steps = { reported, overridden, overriddenMetrics, cleared };
 		expect(JSON.stringify(steps)).not.toContain("CodeWork");

@@ -114,9 +114,7 @@ export const relayFailure = (cause: unknown) => {
 	if (isUnauthorized(Cause.isCause(cause) ? Cause.squash(cause) : cause))
 		return "Your sign-in expired. Sign in again.";
 	const message = messageOf(cause);
-	return unreachable.test(message)
-		? "Can't reach CodeWork's servers. Check your connection, then try again."
-		: message;
+	return unreachable.test(message) ? "Can’t reach Relay servers. Check your connection, then try again." : message;
 };
 
 /** A failure that passes on its own: the relay or its sign-in vendor out of reach, or no session yet. */
@@ -211,7 +209,10 @@ export const createWorkspaceAtom = runtime.fn((name: string, get) =>
 export const approveAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
 	Effect.gen(function* () {
 		const client = yield* Client;
-		return yield* client.workspace.approve({ payload: input });
+		return yield* client.workspace.approve({
+			params: { workspaceId: input.workspaceId },
+			payload: { userCode: input.userCode },
+		});
 	}),
 );
 
@@ -239,7 +240,10 @@ export const pairingsAtom = Atom.family((workspaceId: string) =>
 export const declineAtom = runtime.fn((input: { readonly userCode: string; readonly workspaceId: string }) =>
 	Effect.gen(function* () {
 		const client = yield* Client;
-		return yield* client.workspace.decline({ payload: input });
+		return yield* client.workspace.decline({
+			params: { workspaceId: input.workspaceId },
+			payload: { userCode: input.userCode },
+		});
 	}),
 );
 

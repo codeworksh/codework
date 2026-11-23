@@ -44,10 +44,10 @@ const unopened = (error: unknown) =>
 	Predicate.isTagged(error.reason, "SocketOpenError");
 
 /** One RPC exchange over its own connection. */
-const call = <A, E>(url: string, use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
+const call = <A, E>(server: Client.Target, use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
 	Effect.runPromise(
 		Effect.gen(function* () {
-			const context = yield* Layer.build(Client.layer(url));
+			const context = yield* Layer.build(Client.layer(server));
 			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
 			return yield* use(rpc);
 		}).pipe(Effect.scoped, Effect.retry({ times: 2, while: unopened })),
@@ -56,8 +56,8 @@ const call = <A, E>(url: string, use: (rpc: Client.Client) => Effect.Effect<A, E
 type Ids = { readonly sessionId: Parameters<Client.Client["thread.wait"]>[0]["sessionId"] };
 
 /** The session's durable log, oldest first. */
-const log = (url: string, ids: Ids) =>
-	call(url, (rpc) =>
+const log = (server: Client.Target, ids: Ids) =>
+	call(server, (rpc) =>
 		rpc["session.log"]({ sessionId: ids.sessionId }).pipe(
 			Stream.runCollect,
 			Effect.map((items) => Array.from(items).filter((item): item is EventEnvelope => item.type !== "log.synced")),
@@ -79,20 +79,20 @@ const until = async <A>(what: string, check: () => Promise<A | undefined> | A | 
 };
 
 /** Waits for the log to hold `n` events of `type`, and returns it. */
-const logged = (url: string, ids: Ids, type: string, n = 1) =>
+const logged = (server: Client.Target, ids: Ids, type: string, n = 1) =>
 	until(`${n} × ${type}`, async () => {
-		const events = await log(url, ids);
+		const events = await log(server, ids);
 		return count(events, type) >= n ? events : undefined;
 	});
 
 /** Live events of one thread, collected from the moment `ready` resolves. */
-const subscribe = (url: string, threadId: Parameters<Client.Client["event.subscribe"]>[0]["threadId"]) => {
+const subscribe = (server: Client.Target, threadId: Parameters<Client.Client["event.subscribe"]>[0]["threadId"]) => {
 	const events: EventEnvelope[] = [];
 	let connected: () => void = () => {};
 	const ready = new Promise<void>((resolve) => (connected = resolve));
 	const fiber = Effect.runFork(
 		Effect.gen(function* () {
-			const context = yield* Layer.build(Client.layer(url));
+			const context = yield* Layer.build(Client.layer(server));
 			const rpc = yield* Client.make.pipe(Effect.provideContext(context));
 			yield* rpc["event.subscribe"]({ threadId }).pipe(
 				Stream.runForEach((event) =>
@@ -192,8 +192,8 @@ const sent = (request: ChatRequest) =>
 			};
 		});
 
-const history = async (url: string, ids: Ids) =>
-	(await call(url, (rpc) => rpc["thread.history"](ids))).entries.map((entry) => ({
+const history = async (server: Client.Target, ids: Ids) =>
+	(await call(server, (rpc) => rpc["thread.history"](ids))).entries.map((entry) => ({
 		role: entry.role,
 		state: entry.state,
 		parts: entry.parts.map(part),
@@ -248,8 +248,13 @@ const runRow = (home: string, threadId: string, events: ReadonlyArray<EventEnvel
 };
 
 /** The stored run of a thread a run ended on its own: idle, failed, with the reason it ended for. */
-const endedRow = async (url: string, home: string, ids: Ids & { readonly threadId: string }, reason: string) => {
-	const row = runRow(home, ids.threadId, await log(url, ids));
+const endedRow = async (
+	server: Client.Target,
+	home: string,
+	ids: Ids & { readonly threadId: string },
+	reason: string,
+) => {
+	const row = runRow(home, ids.threadId, await log(server, ids));
 	expect(row).toMatchObject({ state: "idle", outcome: "failed", error: { _tag: "runFailed", reason } });
 	return row;
 };
@@ -310,17 +315,17 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const rows: Array<{ step: string } & ReturnType<typeof runRow>> = [];
 		const record = (step: string, events: ReadonlyArray<EventEnvelope>) =>
 			rows.push({ step, ...runRow(home, ids.threadId, events) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
-		await logged(first.url, ids, "session.execution.succeeded");
-		record("succeeded", await log(first.url, ids));
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Second." }));
-		const inFlight = await logged(first.url, ids, "session.llm.started", 2);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
+		await logged(first, ids, "session.execution.succeeded");
+		record("succeeded", await log(first, ids));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Second." }));
+		const inFlight = await logged(first, ids, "session.llm.started", 2);
 		// `llm.started` goes out before the request: killed sooner, the resend would take the hanging slot.
 		await until("the second request", () => fake.requests.length === 2);
 		record("in flight", inFlight);
@@ -330,16 +335,16 @@ describe("recovery after the host is killed", () => {
 
 		const second = await start();
 		// The sweep committed before the listener opened, so the first read already holds it.
-		const reopened = await log(second.url, ids);
+		const reopened = await log(second, ids);
 		const swept = reopened.findIndex(
 			(event) => event.type === "session.execution.interrupted" && (event.data as Json)["reason"] === "crash",
 		);
 		expect(swept).toBeGreaterThan(0);
-		record("resumed", await logged(second.url, ids, "session.llm.started", 3));
+		record("resumed", await logged(second, ids, "session.llm.started", 3));
 		resend.open();
-		await logged(second.url, ids, "session.turn.ended", 2);
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
-		const events = await log(second.url, ids);
+		await logged(second, ids, "session.turn.ended", 2);
+		await call(second, (rpc) => rpc["thread.wait"](ids));
+		const events = await log(second, ids);
 		record("finished", events);
 
 		const resumed = events.findIndex(
@@ -384,21 +389,21 @@ describe("recovery after the host is killed", () => {
 		const { start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Answer at length." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Answer at length." }));
 		// The checkpoint lands a second into the stream: what a crash after it must not lose.
-		await logged(first.url, ids, "session.llm.progress");
+		await logged(first, ids, "session.llm.progress");
 		await first.kill();
 
 		const second = await start();
-		const live = subscribe(second.url, ids.threadId);
+		const live = subscribe(second, ids.threadId);
 		await live.ready;
 		await until("the resend", () => fake.requests.length === 2);
 		resend.open();
-		const events = await logged(second.url, ids, "session.turn.ended");
+		const events = await logged(second, ids, "session.turn.ended");
 		await until("retry.finished", () => live.events.find((event) => event.type === "session.retry.finished"));
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 
 		const failed = events.find((event) => event.type === "session.llm.failed");
 		expect(summary(failed!)).toMatchObject({
@@ -415,7 +420,7 @@ describe("recovery after the host is killed", () => {
 				// `session.retry.scheduled` is live only and may go out before a client can attach to the
 				// new server; `retry.finished` follows the resend this test holds until it has.
 				live: live.events.filter((event) => event.type === "session.retry.finished").map(summary),
-				history: await history(second.url, ids),
+				history: await history(second, ids),
 				requests: fake.requests.map(sent),
 			}),
 		).toMatchFileSnapshot("./__artifacts__/recovery.mid-stream.json");
@@ -435,15 +440,15 @@ describe("recovery after the host is killed", () => {
 		const { start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the slow command." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the slow command." }));
 		await until("the tool to run", () => existsSync(marker));
 		await first.kill();
 
 		const second = await start();
-		const events = await logged(second.url, ids, "session.turn.ended", 2);
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await logged(second, ids, "session.turn.ended", 2);
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 
 		expect(readFileSync(marker, "utf8")).toBe("ran\n");
 		expect(fake.requests).toHaveLength(2);
@@ -453,7 +458,7 @@ describe("recovery after the host is killed", () => {
 		await expect(
 			artifact({
 				log: events.map(summary),
-				history: await history(second.url, ids),
+				history: await history(second, ids),
 				requests: fake.requests.map(sent),
 				ran: readFileSync(marker, "utf8"),
 			}),
@@ -465,27 +470,27 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, { retry: { maxRetries: 1, baseDelayMs: 10, maxDelayMs: 1_000 } });
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
-		await logged(first.url, ids, "session.llm.started");
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
-		await logged(first.url, ids, "session.prompt.admitted", 2);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
+		await logged(first, ids, "session.llm.started");
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
+		await logged(first, ids, "session.prompt.admitted", 2);
 		await until("the request", () => fake.requests.length === 1);
 		await first.kill();
 
 		// The one retry: the request is resent, and the host dies with it in flight again.
 		const second = await start();
-		await logged(second.url, ids, "session.llm.started", 2);
+		await logged(second, ids, "session.llm.started", 2);
 		// `llm.started` goes out before the request: wait for it, or the kill can beat the resend.
 		await until("the resend", () => fake.requests.length === 2);
 		await second.kill();
 
 		const third = await start();
-		const events = await logged(third.url, ids, "session.run.failed");
-		await call(third.url, (rpc) => rpc["thread.wait"](ids));
-		const queue = await call(third.url, (rpc) => rpc["thread.queue"](ids));
-		const run = await endedRow(third.url, home, ids, "interrupted");
+		const events = await logged(third, ids, "session.run.failed");
+		await call(third, (rpc) => rpc["thread.wait"](ids));
+		const queue = await call(third, (rpc) => rpc["thread.queue"](ids));
+		const run = await endedRow(third, home, ids, "interrupted");
 
 		expect(fake.requests).toHaveLength(2);
 		expect(summary(events.find((event) => event.type === "session.run.failed")!)).toEqual({
@@ -498,7 +503,7 @@ describe("recovery after the host is killed", () => {
 		await expect(
 			artifact({
 				log: events.map(summary),
-				history: await history(third.url, ids),
+				history: await history(third, ids),
 				queue: queue.entries.map(({ delivery, text }) => ({ delivery, text })),
 				run,
 				requests: fake.requests.map(sent),
@@ -514,35 +519,35 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, { retry: { maxRetries: 10, baseDelayMs: 10, maxDelayMs: 1_000 } });
 
 		let server = await start();
-		const created = await call(server.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(server, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(server.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Keep crashing." }));
+		await call(server, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Keep crashing." }));
 		// The first run, then a resume each until the limit: each dies with its request in flight.
 		for (let started = 1; started <= Control.RESTART_LIMIT; started++) {
-			await logged(server.url, ids, "session.llm.started", started);
+			await logged(server, ids, "session.llm.started", started);
 			await until(`request ${started}`, () => fake.requests.length === started);
 			await server.kill();
 			server = await start();
 		}
 		// The resume past the limit is one too many: the run ends instead.
-		const ended = await logged(server.url, ids, "session.run.failed");
-		await call(server.url, (rpc) => rpc["thread.wait"](ids));
+		const ended = await logged(server, ids, "session.run.failed");
+		await call(server, (rpc) => rpc["thread.wait"](ids));
 		expect(fake.requests).toHaveLength(Control.RESTART_LIMIT);
 		expect(summary(ended.find((event) => event.type === "session.run.failed")!)).toMatchObject({
 			reason: "crashloop",
 		});
-		const run = await endedRow(server.url, home, ids, "crashloop");
+		const run = await endedRow(server, home, ids, "crashloop");
 
 		answering = true;
-		await call(server.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Try again." }));
-		const events = await logged(server.url, ids, "session.turn.ended");
-		await call(server.url, (rpc) => rpc["thread.wait"](ids));
+		await call(server, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Try again." }));
+		const events = await logged(server, ids, "session.turn.ended");
+		await call(server, (rpc) => rpc["thread.wait"](ids));
 		expect(fake.requests).toHaveLength(Control.RESTART_LIMIT + 1);
 
 		await expect(
 			artifact({
 				log: events.map(summary),
-				history: await history(server.url, ids),
+				history: await history(server, ids),
 				// Before the next prompt.
 				run,
 				requests: fake.requests.map(sent),
@@ -561,17 +566,17 @@ describe("recovery after the host is killed", () => {
 		const { start } = setup(fake.url, retry);
 
 		let server = await start();
-		const created = await call(server.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(server, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(server.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the slow command." }));
+		await call(server, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the slow command." }));
 		// The first run, then a resume each until the limit: each dies with the re-issued tool running.
 		for (let ran = 1; ran <= Control.RESTART_LIMIT; ran++) {
 			await until(`run ${ran} of the tool`, () => runs() >= ran);
 			await server.kill();
 			server = await start();
 		}
-		const events = await logged(server.url, ids, "session.run.failed");
-		await call(server.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await logged(server, ids, "session.run.failed");
+		await call(server, (rpc) => rpc["thread.wait"](ids));
 
 		expect(runs()).toBe(Control.RESTART_LIMIT);
 		expect(fake.requests).toHaveLength(Control.RESTART_LIMIT);
@@ -582,7 +587,7 @@ describe("recovery after the host is killed", () => {
 		await expect(
 			artifact({
 				log: events.map(summary),
-				history: await history(server.url, ids),
+				history: await history(server, ids),
 				requests: fake.requests.map(sent),
 				ran: readFileSync(marker, "utf8"),
 			}),
@@ -597,13 +602,13 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const server = await start();
-		const created = await call(server.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(server, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(server.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
-		const events = await logged(server.url, ids, "session.run.failed");
-		await call(server.url, (rpc) => rpc["thread.wait"](ids));
+		await call(server, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		const events = await logged(server, ids, "session.run.failed");
+		await call(server, (rpc) => rpc["thread.wait"](ids));
 
-		const run = await endedRow(server.url, home, ids, "truncated");
+		const run = await endedRow(server, home, ids, "truncated");
 		expect(fake.requests).toHaveLength(2);
 		const settled = events.filter((event) => event.type === "session.tool.settled").map(summary);
 		expect(settled).toHaveLength(2);
@@ -617,7 +622,7 @@ describe("recovery after the host is killed", () => {
 		await expect(
 			artifact({
 				log: events.map(summary),
-				history: await history(server.url, ids),
+				history: await history(server, ids),
 				run,
 				requests: fake.requests.map(sent),
 			}),
@@ -635,43 +640,43 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
 		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
-		await logged(first.url, ids, "session.llm.started", 2);
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then answer this." }));
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "And this.", delivery: "followUp" }));
-		const queued = await call(first.url, (rpc) => rpc["thread.queue"](ids));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first, ids, "session.llm.started", 2);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then answer this." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "And this.", delivery: "followUp" }));
+		const queued = await call(first, (rpc) => rpc["thread.queue"](ids));
 		const moved = queued.entries.find((entry) => entry.text === "And this.")!;
 		// Moved to steer while the run is still failing: that wake is before the end too.
-		await call(first.url, (rpc) =>
+		await call(first, (rpc) =>
 			rpc["thread.update"]({ ...ids, messageId: Session.SessionMessageSchema.ID.make(moved.id), delivery: "steer" }),
 		);
 		cut.open();
-		await logged(first.url, ids, "session.run.failed");
-		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		await logged(first, ids, "session.run.failed");
+		await call(first, (rpc) => rpc["thread.wait"](ids));
 		record("parked");
 		expect(fake.requests).toHaveLength(2);
 		await first.kill();
 
 		const second = await start();
-		const reopened = await call(second.url, (rpc) => rpc["thread.queue"](ids));
+		const reopened = await call(second, (rpc) => rpc["thread.queue"](ids));
 		record("reopened");
 		expect(reopened.entries.map((entry) => [entry.delivery, entry.text])).toEqual([
 			["steer", "Then answer this."],
 			["steer", "And this."],
 		]);
-		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await call(second, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("next prompt");
 
 		// Nothing ran between the failure and the next prompt, which took the parked queue with it.
 		expect(fake.requests).toHaveLength(3);
-		const events = await log(second.url, ids);
+		const events = await log(second, ids);
 		await expect(
 			artifact({
 				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
@@ -693,32 +698,32 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
 		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
-		await logged(first.url, ids, "session.run.failed");
-		await call(first.url, (rpc) => rpc["thread.wait"](ids));
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Now this." }));
-		await logged(first.url, ids, "session.llm.started", 3);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first, ids, "session.run.failed");
+		await call(first, (rpc) => rpc["thread.wait"](ids));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Now this." }));
+		await logged(first, ids, "session.llm.started", 3);
 		// `llm.started` goes out before the request: killed sooner, the resend would take the hanging slot.
 		await until("the prompt's request", () => fake.requests.length === 3);
 		record("in flight");
 		await first.kill();
 
 		const second = await start();
-		await logged(second.url, ids, "session.llm.started", 4);
+		await logged(second, ids, "session.llm.started", 4);
 		record("resumed");
 		resend.open();
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("finished");
 
 		expect(fake.requests).toHaveLength(4);
 		expect(sent(fake.requests[3]!)).toEqual(sent(fake.requests[2]!));
-		const events = await log(second.url, ids);
+		const events = await log(second, ids);
 		await expect(
 			artifact({
 				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
@@ -742,26 +747,26 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
 		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
 		await until("the tool to run", () => existsSync(marker));
-		await call(first.url, (rpc) =>
+		await call(first, (rpc) =>
 			rpc["thread.prompt"]({ ...ids, text: "Queued before the stop.", delivery: "followUp" }),
 		);
 		// Sent together on one connection: the prompt waits for no reply, so it lands inside the kill grace.
-		await call(first.url, (rpc) =>
+		await call(first, (rpc) =>
 			Effect.all([rpc["thread.interrupt"](ids), rpc["thread.prompt"]({ ...ids, text: "Sent while stopping." })], {
 				concurrency: "unbounded",
 			}),
 		);
-		await logged(first.url, ids, "session.execution.interrupted");
-		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		await logged(first, ids, "session.execution.interrupted");
+		await call(first, (rpc) => rpc["thread.wait"](ids));
 		record("stopped");
-		const stopped = await log(first.url, ids);
+		const stopped = await log(first, ids);
 		const seqOf = (type: string, text?: string) =>
 			stopped.find(
 				(event) =>
@@ -775,12 +780,12 @@ describe("recovery after the host is killed", () => {
 		await first.kill();
 
 		const second = await start();
-		const reopened = await call(second.url, (rpc) => rpc["thread.queue"](ids));
+		const reopened = await call(second, (rpc) => rpc["thread.queue"](ids));
 		record("reopened");
 		expect(reopened.entries.map((entry) => entry.text)).toEqual(["Queued before the stop.", "Sent while stopping."]);
-		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await call(second, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("next prompt");
 
 		// One request: the steers and the oldest follow-up go in with the next prompt, in the order they were
@@ -794,7 +799,7 @@ describe("recovery after the host is killed", () => {
 				.filter((message) => message.role === "user")
 				.map((message) => message.text),
 		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Sent while stopping.", "Next."]);
-		const events = await log(second.url, ids);
+		const events = await log(second, ids);
 		await expect(
 			artifact({
 				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
@@ -818,44 +823,44 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
 		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run the stubborn command." }));
 		await until("the tool to run", () => existsSync(marker));
-		await call(first.url, (rpc) =>
+		await call(first, (rpc) =>
 			rpc["thread.prompt"]({ ...ids, text: "Queued before the stop.", delivery: "followUp" }),
 		);
-		expect(await call(first.url, (rpc) => rpc["thread.interrupt"](ids))).toEqual({ interrupted: true });
+		expect(await call(first, (rpc) => rpc["thread.interrupt"](ids))).toEqual({ interrupted: true });
 		// The stop was accepted, and its run has not ended yet.
-		expect(count(await log(first.url, ids), "session.execution.interrupted")).toBe(0);
+		expect(count(await log(first, ids), "session.execution.interrupted")).toBe(0);
 		await first.kill();
 
 		const second = await start();
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("reopened");
-		const reopened = await log(second.url, ids);
+		const reopened = await log(second, ids);
 		expect(
 			reopened.filter((event) => event.type === "session.execution.interrupted").map((event) => summary(event)),
 		).toEqual([{ type: "session.execution.interrupted", reason: "user" }]);
 		expect(count(reopened, "session.execution.started")).toBe(1);
 		expect(fake.requests).toHaveLength(1);
 		// What a remote client reads to tell a queue that waits from one about to run.
-		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(true);
+		expect((await call(second, (rpc) => rpc["thread.info"](ids))).parked).toBe(true);
 
-		await call(second.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await call(second, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Next." }));
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("next prompt");
 		expect(
 			sent(fake.requests[1]!)
 				.filter((message) => message.role === "user")
 				.map((message) => message.text),
 		).toEqual(["Run the stubborn command.", "Queued before the stop.", "Next."]);
-		expect((await call(second.url, (rpc) => rpc["thread.info"](ids))).parked).toBe(false);
-		const events = await log(second.url, ids);
+		expect((await call(second, (rpc) => rpc["thread.info"](ids))).parked).toBe(false);
+		const events = await log(second, ids);
 		await expect(
 			artifact({
 				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
@@ -878,44 +883,44 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		const steps: Array<{ step: string } & ReturnType<typeof positions>> = [];
 		const record = (step: string) => steps.push({ step, ...positions(home, ids.threadId) });
 
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
-		await logged(first.url, ids, "session.llm.started", 2);
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Run a long command." }));
+		await logged(first, ids, "session.llm.started", 2);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Then this.", delivery: "followUp" }));
 		cut.open();
-		await logged(first.url, ids, "session.run.failed");
-		await call(first.url, (rpc) => rpc["thread.wait"](ids));
-		const [parked] = (await call(first.url, (rpc) => rpc["thread.queue"](ids))).entries;
+		await logged(first, ids, "session.run.failed");
+		await call(first, (rpc) => rpc["thread.wait"](ids));
+		const [parked] = (await call(first, (rpc) => rpc["thread.queue"](ids))).entries;
 		const messageId = Session.SessionMessageSchema.ID.make(parked!.id);
 
 		// A retry of the same request is the same prompt: it stays parked.
-		await call(first.url, (rpc) =>
+		await call(first, (rpc) =>
 			rpc["thread.prompt"]({ ...ids, id: messageId, text: "Then this.", delivery: "followUp" }),
 		);
-		await call(first.url, (rpc) => rpc["thread.wait"](ids));
+		await call(first, (rpc) => rpc["thread.wait"](ids));
 		record("resent");
 		expect(fake.requests).toHaveLength(2);
 
-		await call(first.url, (rpc) => rpc["thread.update"]({ ...ids, messageId, delivery: "steer" }));
-		await logged(first.url, ids, "session.llm.started", 3);
+		await call(first, (rpc) => rpc["thread.update"]({ ...ids, messageId, delivery: "steer" }));
+		await logged(first, ids, "session.llm.started", 3);
 		await until("the moved prompt's request", () => fake.requests.length === 3);
 		record("moved");
 		await first.kill();
 
 		const second = await start();
-		await logged(second.url, ids, "session.llm.started", 4);
+		await logged(second, ids, "session.llm.started", 4);
 		resend.open();
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 		record("finished");
 
 		expect(fake.requests).toHaveLength(4);
 		expect(sent(fake.requests[3]!)).toEqual(sent(fake.requests[2]!));
-		const events = await log(second.url, ids);
+		const events = await log(second, ids);
 		await expect(
 			artifact({
 				log: events.map((event) => ({ seq: event.durable?.seq, ...summary(event) })),
@@ -934,10 +939,10 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
-		await logged(first.url, ids, "session.llm.started");
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "First." }));
+		await logged(first, ids, "session.llm.started");
 		await until("the request", () => fake.requests.length === 1);
 		await first.stop();
 		const stopped = { ...positions(home, ids.threadId), attempt: attemptOf(home, ids.threadId) };
@@ -945,14 +950,14 @@ describe("recovery after the host is killed", () => {
 		expect(stopped.attempt).toBe(1);
 
 		const second = await start();
-		await logged(second.url, ids, "session.llm.started", 2);
+		await logged(second, ids, "session.llm.started", 2);
 		await until("the resend", () => fake.requests.length === 2);
 		// Read while the resumed run is in flight: a run that completes resets the count either way.
 		const resumed = positions(home, ids.threadId);
 		resend.open();
-		await logged(second.url, ids, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
-		const events = await log(second.url, ids);
+		await logged(second, ids, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](ids));
+		const events = await log(second, ids);
 
 		expect(stopped.restarts).toBe(0);
 		expect(resumed.restarts).toBe(0);
@@ -993,16 +998,16 @@ describe("recovery after the host is killed", () => {
 		);
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Find the echo tool." }));
-		await logged(first.url, ids, "session.llm.started", 2);
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Find the echo tool." }));
+		await logged(first, ids, "session.llm.started", 2);
 		await until("the second request", () => fake.requests.length === 2);
 		await first.kill();
 
 		const second = await start();
-		const events = await logged(second.url, ids, "session.turn.ended", 2);
-		await call(second.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await logged(second, ids, "session.turn.ended", 2);
+		await call(second, (rpc) => rpc["thread.wait"](ids));
 
 		expect(fake.requests).toHaveLength(3);
 		expect(tools(fake.requests[0]!)).not.toContain("mcp__fixture__echo");
@@ -1024,14 +1029,14 @@ describe("recovery after the host is killed", () => {
 		const { home, start } = setup(fake.url, retry);
 
 		const first = await start();
-		const broken = await call(first.url, (rpc) => rpc["session.create"]({}));
-		const healthy = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const broken = await call(first, (rpc) => rpc["session.create"]({}));
+		const healthy = await call(first, (rpc) => rpc["session.create"]({}));
 		const brokenIds = { sessionId: broken.session.id, threadId: broken.id };
 		const healthyIds = { sessionId: healthy.session.id, threadId: healthy.id };
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...brokenIds, text: "Broken." }));
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...healthyIds, text: "Healthy." }));
-		await logged(first.url, brokenIds, "session.llm.started");
-		await logged(first.url, healthyIds, "session.llm.started");
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...brokenIds, text: "Broken." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...healthyIds, text: "Healthy." }));
+		await logged(first, brokenIds, "session.llm.started");
+		await logged(first, healthyIds, "session.llm.started");
 		await until("both requests", () => fake.requests.length === 2);
 		await first.kill();
 		// A draft no resume can read: healing it dies.
@@ -1043,10 +1048,10 @@ describe("recovery after the host is killed", () => {
 
 		answering = true;
 		const second = await start();
-		await logged(second.url, brokenIds, "session.execution.failed");
-		const events = await logged(second.url, healthyIds, "session.execution.succeeded");
-		await call(second.url, (rpc) => rpc["thread.wait"](healthyIds));
-		await call(second.url, (rpc) => rpc["thread.wait"](brokenIds));
+		await logged(second, brokenIds, "session.execution.failed");
+		const events = await logged(second, healthyIds, "session.execution.succeeded");
+		await call(second, (rpc) => rpc["thread.wait"](healthyIds));
+		await call(second, (rpc) => rpc["thread.wait"](brokenIds));
 
 		expect(fake.requests).toHaveLength(3);
 		const lifecycle = (log: ReadonlyArray<EventEnvelope>) =>
@@ -1055,7 +1060,7 @@ describe("recovery after the host is killed", () => {
 				.map(summary);
 		await expect(
 			artifact({
-				broken: lifecycle(await log(second.url, brokenIds)),
+				broken: lifecycle(await log(second, brokenIds)),
 				healthy: lifecycle(events),
 				resent: sent(fake.requests[2]!),
 			}),
@@ -1075,12 +1080,12 @@ describe("recovery after the host is killed", () => {
 			steps.push({ step, restarts: positions(home, threadId).restarts, attempt: attemptOf(home, threadId) });
 
 		const first = await start();
-		const created = await call(first.url, (rpc) => rpc["session.create"]({}));
+		const created = await call(first, (rpc) => rpc["session.create"]({}));
 		const ids = { sessionId: created.session.id, threadId: created.id };
 		threadId = ids.threadId;
-		const live = subscribe(first.url, ids.threadId);
+		const live = subscribe(first, ids.threadId);
 		await live.ready;
-		await call(first.url, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Wait it out." }));
+		await call(first, (rpc) => rpc["thread.prompt"]({ ...ids, text: "Wait it out." }));
 		await until("the retry", () => live.events.find((event) => event.type === "session.retry.scheduled"));
 		record("backoff");
 		await first.kill();
@@ -1089,7 +1094,7 @@ describe("recovery after the host is killed", () => {
 		// counted no restart, the retry budget bounds it instead.
 		const second = await start();
 		await until("the resumed run", async () =>
-			(await log(second.url, ids)).find(
+			(await log(second, ids)).find(
 				(event) => event.type === "session.execution.started" && (event.data as Json)["resumed"] === true,
 			),
 		);
@@ -1099,13 +1104,13 @@ describe("recovery after the host is killed", () => {
 
 		writeSettings(home, fake.url, retry);
 		const third = await start();
-		const resumed = subscribe(third.url, ids.threadId);
+		const resumed = subscribe(third, ids.threadId);
 		await resumed.ready;
 		await until("the resend", () => fake.requests.length === 1);
 		resend.open();
 		await until("retry.finished", () => resumed.events.find((event) => event.type === "session.retry.finished"));
-		const events = await logged(third.url, ids, "session.execution.succeeded");
-		await call(third.url, (rpc) => rpc["thread.wait"](ids));
+		const events = await logged(third, ids, "session.execution.succeeded");
+		await call(third, (rpc) => rpc["thread.wait"](ids));
 		record("finished");
 
 		expect(steps.map((step) => step.restarts)).toEqual([0, 0, 0, 0]);

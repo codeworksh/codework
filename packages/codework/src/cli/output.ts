@@ -85,5 +85,17 @@ export const writeJson = <A, I>(schema: Schema.Codec<A, I>, value: A) =>
 		Effect.orDie,
 		Effect.flatMap((encoded) => writeOut(`${JSON.stringify(encoded, null, "\t")}\n`)),
 	);
+
+/** Rows as plain columns, two spaces apart; the last column is not padded. */
+export const table = (rows: ReadonlyArray<ReadonlyArray<string>>) => {
+	const widths = rows[0]?.map((_, column) => Math.max(...rows.map((row) => row[column]?.length ?? 0))) ?? [];
+	return rows
+		.map((row) => {
+			const last = row.length - 1;
+			return `${row.map((cell, column) => (column === last ? cell : cell.padEnd(widths[column] ?? 0))).join("  ")}\n`;
+		})
+		.join("");
+};
+
 export const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
 export const terminalColumns = () => (process.stderr.isTTY ? (process.stderr.columns ?? 72) : 72);

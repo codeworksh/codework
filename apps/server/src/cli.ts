@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Codework } from "./codework.ts";
 import { type CliAction, type CliInstall, type CliServer, ServersError, type ServerStatus } from "@codeworksh/contract";
+import { Jws } from "@codeworksh/schema";
 import { Servers } from "./servers.ts";
 
 // Where the install script puts the binary unless told otherwise.
@@ -117,9 +118,7 @@ const executableOf = (row: Servers.LocalRow, foundOnce: typeof found) => {
 export const liveAt = (home: string) =>
 	Effect.gen(function* () {
 		const registered = yield* Codework.registrationAt(home);
-		return Option.isSome(registered) && (yield* Codework.reachable(registered.value.url))
-			? registered
-			: Option.none();
+		return Option.isSome(registered) && (yield* Codework.reachable(registered.value)) ? registered : Option.none();
 	});
 
 /**
@@ -160,7 +159,11 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
-				if (row.kind === "remote") return row satisfies ServerStatus;
+				if (row.kind === "remote") {
+					const { device, machineKey, ...status } = row;
+					const fingerprint = machineKey === null ? null : yield* Jws.fingerprint(machineKey).pipe(Effect.orDie);
+					return { ...status, paired: device !== null && machineKey !== null, fingerprint } satisfies ServerStatus;
+				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(
 					[executableOf(row, foundOnce), serverAt(home.path, row.isDefault)],

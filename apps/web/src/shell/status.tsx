@@ -10,14 +10,14 @@ import { isSignedOut, isTransient, meAtom, reachAtom } from "../kernel/relay";
 type Connection = "ok" | "offline" | "unreachable" | "unavailable" | "signedOut";
 
 const LABELS: Record<Exclude<Connection, "ok">, { readonly label: string; readonly detail: string }> = {
-	offline: { label: "Offline", detail: "This device is offline. Workspaces show what CodeWork last said." },
+	offline: { label: "Offline", detail: "This device is offline. Workspaces show Relay’s last status." },
 	unreachable: {
-		label: "Can't Reach CodeWork",
-		detail: "CodeWork's servers aren't answering. Workspaces show what they last said.",
+		label: "Can’t Reach Relay",
+		detail: "Relay servers aren’t answering. Workspaces show their last status.",
 	},
 	unavailable: {
 		label: "Sign-In Unavailable",
-		detail: "CodeWork's sign-in service isn't responding. Workspaces show what CodeWork last said.",
+		detail: "CodeWork’s sign-in service isn’t responding. Workspaces show Relay’s last status.",
 	},
 	signedOut: { label: "Signed Out", detail: "Your sign-in expired." },
 };

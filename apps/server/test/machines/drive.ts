@@ -2,6 +2,8 @@
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect } from "effect";
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 /*
@@ -14,6 +16,8 @@ type Call = readonly [method: string, payload: unknown];
 type Method = (payload: unknown) => Effect.Effect<unknown, unknown>;
 
 const calls = JSON.parse(readFileSync(0, "utf8")) as ReadonlyArray<Call>;
+// The fixture server's home (start.sh); it listens on every interface, so it registers another URL.
+const registered = JSON.parse(readFileSync(join(homedir(), "cw-home", "service.json"), "utf8")) as { token: string };
 
 NodeRuntime.runMain(
 	Effect.gen(function* () {
@@ -22,5 +26,5 @@ NodeRuntime.runMain(
 		const results: Array<unknown> = [];
 		for (const [method, payload] of calls) results.push(yield* rpc[method]!(payload));
 		yield* Effect.sync(() => process.stdout.write(`${JSON.stringify(results)}\n`));
-	}).pipe(Effect.scoped, Effect.provide(Client.layer("ws://127.0.0.1:7433/rpc/v1"))),
+	}).pipe(Effect.scoped, Effect.provide(Client.layer({ url: "ws://127.0.0.1:7433/rpc/v1", token: registered.token }))),
 );

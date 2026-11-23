@@ -6,6 +6,7 @@ import {
 	Context,
 	Deferred,
 	Effect,
+	Exit,
 	FiberHandle,
 	FiberMap,
 	FileSystem,
@@ -78,7 +79,9 @@ const unavailable = (machineId: string) =>
 
 /** The route a connection is made from: a change reconnects the machine. */
 const routeOf = (row: Servers.Row) =>
-	row.kind === "remote" ? `remote ${row.url}` : `local ${row.home ?? ""} ${row.executable ?? ""}`;
+	row.kind === "remote"
+		? `remote ${row.url} ${row.device} ${row.machineKey?.x}`
+		: `local ${row.home ?? ""} ${row.executable ?? ""}`;
 
 /**
  * Runs `apply` on each batch up to its `Synced`, in order; `onItem` sees every other item as it
@@ -340,10 +343,14 @@ export const layer = Layer.effect(
 		 * the store's line (by `boot`) comes back from zero with `reset`; a server older than boots is
 		 * read from zero only while its head is behind the cursor.
 		 */
-		const connected = (machineId: string, client: Connection) =>
+		const connected = (row: Servers.Row, client: Connection) =>
 			Effect.gen(function* () {
+				const machineId = row.id;
 				const info = yield* client("server.info", {});
-				yield* servers.setHost(machineId, info.host?.name ?? null);
+				// Only a remote machine is named by its label; one that fails to read its record still syncs, keeping the stored one.
+				const asked = row.kind === "remote" ? yield* Effect.exit(client("machine.info", {})) : undefined;
+				const own = asked !== undefined && Exit.isSuccess(asked) ? Servers.factsOf(asked.value) : {};
+				yield* servers.reached(machineId, { host: info.host?.name ?? null, version: info.version, ...own });
 				const [machine] = yield* sql<{
 					storeId: string | null;
 					cursor: number;
@@ -489,6 +496,8 @@ export const layer = Layer.effect(
 		/** A machine for as long as it is configured: connected, and reconnected after any drop. */
 		const follow = (row: Servers.Row) =>
 			Effect.gen(function* () {
+				// Nothing to connect with until it is paired again.
+				if (row.kind === "remote" && row.device === null) return yield* Effect.never;
 				const context = yield* Layer.build(Codework.machine(row)).pipe(
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Servers.Service, servers),
@@ -500,12 +509,16 @@ export const layer = Layer.effect(
 						if (clients.get(row.id) === client) clients.delete(row.id);
 					}),
 				);
+				yield* Effect.addFinalizer(() => servers.lost(row.id));
 				yield* Effect.forkScoped(followUsage(row.id, client));
-				yield* connected(row.id, client).pipe(
+				yield* connected(row, client).pipe(
 					Effect.catchCause((cause) =>
-						Effect.logWarning("Machine sync stopped; reconnecting", cause).pipe(
-							Effect.annotateLogs({ machineId: row.id }),
-						),
+						servers
+							.lost(row.id)
+							.pipe(
+								Effect.andThen(Effect.logWarning("Machine sync stopped; reconnecting", cause)),
+								Effect.annotateLogs({ machineId: row.id }),
+							),
 					),
 					Effect.andThen(Effect.sleep("1 second")),
 					Effect.forever,

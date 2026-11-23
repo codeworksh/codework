@@ -26,6 +26,7 @@ import {
 import { Machine } from "@codeworksh/schema";
 import { DateTime, Effect, Option, Predicate, Queue, Schema, Stream } from "effect";
 import { NodeServices } from "@effect/platform-node";
+import * as MachineFile from "../machine/file.ts";
 import * as MachineRelay from "../machine/relay.ts";
 import * as Contract from "./contract.ts";
 import {
@@ -45,11 +46,14 @@ import {
 import * as Envelope from "./envelope.ts";
 import { type EncodingError, type EventEnvelope } from "./envelope.ts";
 import * as Clones from "./clones.ts";
+import * as Door from "./door.ts";
 import * as EventFeed from "./feed.ts";
 import * as Host from "./host.ts";
 import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
+import * as Pairing from "./pairing.ts";
 import * as MessagePart from "./part.ts";
+import * as Principal from "./principal.ts";
 import * as Rows from "./rows.ts";
 
 const isConnectError = Schema.is(Machine.ConnectError);
@@ -289,6 +293,13 @@ export const layer = Contract.Api.toLayer(
 		const clones = yield* Clones.Service;
 		const store = yield* Store.Service;
 		const global = yield* Global.Service;
+		const pairing = yield* Pairing.Service;
+		const connections = yield* Door.Connections;
+		/** Forgets a device and ends its open connections; false when none has `id`. */
+		const forget = (id: string) =>
+			pairing
+				.revoke(id)
+				.pipe(Effect.tap(() => Effect.forEach(connections.device(id), connections.end, { discard: true })));
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -306,7 +317,18 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			"server.info": Effect.fnUntraced(function* () {
 				const head = yield* store.head;
-				return { ...identity, storeId: head.id, rev: head.rev };
+				// Read per call, so a `codework connect` made while the server runs shows without a restart. An
+				// unreadable file reads as none: this is the health probe, and must still answer.
+				const machine = yield* MachineFile.read(global.home).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.orElseSucceed(() => Option.none<MachineFile.Machine>()),
+				);
+				return {
+					...identity,
+					storeId: head.id,
+					rev: head.rev,
+					...(Option.isSome(machine) ? { machineId: machine.value.id } : {}),
+				};
 			}),
 			"index.sync": ({ after, boot }) =>
 				Rows.resume(
@@ -687,6 +709,16 @@ export const layer = Contract.Api.toLayer(
 						Effect.forkScoped,
 					),
 				),
+			"device.pair": () => Principal.local(pairing.code),
+			"device.list": () => Principal.local(pairing.list),
+			"device.revoke": ({ id }) => Principal.local(Effect.map(forget(id), (applied) => ({ applied }))),
+			"device.leave": () =>
+				Effect.gen(function* () {
+					const caller = yield* Principal.Current;
+					if (caller.kind !== "device")
+						return yield* new Principal.Forbidden({ message: "This computer has no pairing to leave" });
+					yield* forget(caller.id);
+				}),
 			"host.info": () => Effect.succeed(host.info),
 			"host.browse": ({ path }) => host.browse(path),
 			"host.create": ({ name }) => host.create(name),

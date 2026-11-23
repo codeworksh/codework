@@ -13,6 +13,10 @@ export const INSTALL = "curl -fsSL https://codework.sh/install | sh";
 /** Runs the install script for a server whose CLI is missing. */
 export const installAtom = Server.mutation("servers.install");
 
+export const updateAtom = Server.mutation("servers.update");
+
+export const removeAtom = Server.mutation("servers.remove");
+
 /** Queries answered by the default CodeWork server; they load again once it is back. */
 export const codeworkKey = ["codework"];
 

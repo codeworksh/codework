@@ -1,11 +1,12 @@
 import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL, SERVER_CHANNEL } from "./ipc.ts";
+import type { Endpoint } from "./server.ts";
 
 contextBridge.exposeInMainWorld("desktopBridge", {
 	platform: process.platform,
 	// Main creates the window only after the server is ready, so this is set.
-	server: ipcRenderer.sendSync(SERVER_CHANNEL) as string,
+	server: ipcRenderer.sendSync(SERVER_CHANNEL) as Endpoint,
 	home: ipcRenderer.sendSync(HOME_CHANNEL) as string,
 	// On Windows the CodeWork server runs in WSL, which has no use for the Windows paths these deal in.
 	...(process.platform !== "win32" && {

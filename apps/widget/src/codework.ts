@@ -1,6 +1,6 @@
 import { Machine } from "@codeworksh/schema";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/rpc";
+import { Rpc, RpcGroup, RpcMiddleware } from "effect/rpc";
 
 /*
  * The CodeWork RPC server's contract, mirrored for what the desktop app and widget backends call.
@@ -566,6 +566,21 @@ const Inherited = Schema.Struct({
 });
 const SettingsFileErrors = Schema.Union([SettingsError, ProjectNotFoundError, ProjectCheckoutError]);
 
+/** The server refused the call: its connection opened without a credential it takes (the home's token, or a ticket). */
+export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Server.Unauthorized", {
+	message: Schema.String,
+}) {}
+
+/** A call this caller may not make; here only so its failure decodes. */
+class Forbidden extends Schema.TaggedError<Forbidden>()("Server.Forbidden", {
+	message: Schema.String,
+}) {}
+
+/** The server's door on every call; here only so its failure decodes. */
+export class Door extends RpcMiddleware.Service<Door>()("@codeworksh/widget/codework/Door", {
+	error: Unauthorized,
+}) {}
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
@@ -578,6 +593,8 @@ export const Api = RpcGroup.make(
 			rev: Schema.Int,
 			/** The machine it runs on, by the name its user knows it; absent when the OS names it nothing. */
 			host: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
+			/** The id in the home's `machine.json`; absent until the home has one. */
+			machineId: Schema.optionalKey(Schema.String),
 		}),
 	}),
 	/**
@@ -815,6 +832,11 @@ export const Api = RpcGroup.make(
 		success: Machine.Disconnected,
 		error: Machine.ConnectError,
 	}),
+	/** Ends this app's own pairing with the machine; the connection dropping after the call means it left. */
+	Rpc.make("device.leave", {
+		payload: {},
+		error: Forbidden,
+	}),
 	/** Connects this machine to a workspace: the code a member approves, then the link once they have. */
 	Rpc.make("machine.connect", {
 		payload: { workspaceId: Schema.optional(Schema.String) },
@@ -932,6 +954,6 @@ export const Api = RpcGroup.make(
 		error: Schema.Union([SubscriptionOverflowError, EventEncodingError]),
 		stream: true,
 	}),
-);
+).middleware(Door);
 
 export * as Codework from "./codework.ts";

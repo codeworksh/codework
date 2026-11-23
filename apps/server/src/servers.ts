@@ -1,9 +1,32 @@
-import { Clock, Config, Context, Effect, FileSystem, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import {
+	Clock,
+	Config,
+	Context,
+	Effect,
+	Equal,
+	FileSystem,
+	Layer,
+	Option,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
 import path from "node:path";
-import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "@codeworksh/contract";
+import {
+	type CliEnvVar,
+	LOCAL_SERVER,
+	type Mismatch,
+	PairingRefused,
+	RemoteServerStatus,
+	type ServerAdd,
+	ServersError,
+	type ServerUpdate,
+} from "@codeworksh/contract";
+import { Jws, type Machine } from "@codeworksh/schema";
+import { Pairing } from "./pairing.ts";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
 export const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(
@@ -21,35 +44,33 @@ export const splitArgs = (input: string) =>
 	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 
 /**
- * What a machine is called: the user's override, else the name its server reports, else where it is.
- * The one rule every machine name shown goes through.
+ * What a machine is called: the user's override of a local one, else the label stored on a remote one,
+ * else the name its server reports, else where it is. The one rule every machine name shown goes through.
  */
 export const nameOf = (machine: {
 	readonly kind: string;
 	readonly override: string | null;
+	readonly label: string | null;
 	readonly host: string | null;
 	readonly url: string | null;
 }) =>
 	machine.override ??
+	machine.label ??
 	machine.host ??
 	(machine.kind === "remote" && machine.url !== null && URL.canParse(machine.url)
 		? new URL(machine.url).host
 		: "This Machine");
 
-/** How a machine is named, as stored and as shown. */
-interface Naming {
+/** A local server as stored. A `null` executable or home is the one found. An executable is a path, or a
+ * command whose first word is one (`node --conditions=development …/index.ts`, running from source). */
+export interface LocalRow {
+	readonly id: string;
 	/** As shown: {@link nameOf}. */
 	readonly name: string;
 	/** As its server last reported it. */
 	readonly host: string | null;
 	/** As the user named it in Settings. */
 	readonly override: string | null;
-}
-
-/** A local server as stored. A `null` executable or home is the one found. An executable is a path, or a
- * command whose first word is one (`node --conditions=development …/index.ts`, running from source). */
-export interface LocalRow extends Naming {
-	readonly id: string;
 	readonly kind: "local";
 	readonly executable: string | null;
 	readonly home: string | null;
@@ -58,17 +79,65 @@ export interface LocalRow extends Naming {
 	readonly isDefault: boolean;
 }
 
-/** A remote server as stored: where the app reaches it. */
-export interface RemoteRow extends Naming {
+/** A remote server as stored: where the app reaches it, how it paired, and what it last reported. */
+export interface RemoteRow {
 	readonly id: string;
 	readonly kind: "remote";
+	/** As shown: {@link nameOf}. */
+	readonly name: string;
+	readonly host: string | null;
+	/** The label stored on the machine. */
+	readonly label: string | null;
+	readonly version: string | null;
+	readonly seenAt: number | null;
+	/** Whether its sync connection is up now. */
+	readonly online: boolean;
+	/** The machine's own id, as it last reported it. */
+	readonly machineId: string | null;
+	/** The workspaces it is linked to, as it last reported them. */
+	readonly workspaces: RemoteServerStatus["workspaces"];
 	readonly url: string;
+	/** The id the machine gave this app's key; none once the machine refused it, or on a row from before keys. */
+	readonly device: string | null;
+	/** The machine's identity key, as it paired: every ticket it grants is signed with it. */
+	readonly machineKey: Jws.PublicKey | null;
+	/** What last kept it from connecting while paired, until it connects. */
+	readonly mismatch: Mismatch | null;
 	readonly isDefault: boolean;
 }
 
 export type Row = LocalRow | RemoteRow;
 
+/** What a server reports about itself; an absent one is left as stored. */
+export interface Facts {
+	readonly host?: string | null;
+	readonly label?: string | null;
+	readonly version?: string;
+	readonly machineId?: string | null;
+	readonly workspaces?: RemoteServerStatus["workspaces"];
+}
+
+/** What a remote machine's own record says about it: its label, its id and its links. */
+export const factsOf = (status: Machine.Status): Facts => ({
+	label: status.givenName,
+	machineId: status.id,
+	workspaces: status.workspaces.map(({ id, keyId, leaving }) => ({
+		id,
+		keyId,
+		...(leaving === undefined ? {} : { leaving }),
+	})),
+});
+
+const Workspaces = Schema.fromJsonString(RemoteServerStatus.fields.workspaces);
+const decodeWorkspaces = Schema.decodeUnknownOption(Workspaces);
+const encodeWorkspaces = Schema.encodeSync(Workspaces);
+
 const decodeEnv = Schema.decodeUnknownEffect(Schema.fromJsonString(StoredEnv));
+
+const MachineKey = Schema.fromJsonString(Jws.PublicKey);
+const decodeMachineKey = Schema.decodeUnknownOption(MachineKey);
+const encodeMachineKey = Schema.encodeSync(MachineKey);
+const DeviceKey = Schema.fromJsonString(Jws.PrivateKey);
 
 const fail = (message: string) => new ServersError({ message });
 
@@ -160,10 +229,18 @@ export class Service extends Context.Service<
 		readonly homeChanges: Stream.Stream<string>;
 		/** Every server now, then again after each change to any of them. */
 		readonly watch: Stream.Stream<ReadonlyArray<Row>>;
-		/** Stores the name a server reports, when it is not the one stored. */
-		readonly setHost: (id: string, host: string | null) => Effect.Effect<void>;
-		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError>;
-		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError>;
+		/** Stores what a server answered and when, and counts it online until {@link lost}. */
+		readonly reached: (id: string, facts: Facts) => Effect.Effect<void>;
+		/** Counts a server offline once its connection is gone; it was answering until then. */
+		readonly lost: (id: string) => Effect.Effect<void>;
+		/** Records what kept a remote server from connecting while paired, or none once it connects. */
+		readonly answered: (id: string, mismatch: Mismatch | null) => Effect.Effect<void>;
+		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError | PairingRefused>;
+		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError | PairingRefused>;
+		/** Drops a remote server's pairing once the server refused it, unless the row paired again since. */
+		readonly unpair: (id: string, device: string) => Effect.Effect<void>;
+		/** This app's own key, the one every remote server pairs. */
+		readonly deviceKey: Jws.PrivateKey;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
 		readonly setDefault: (id: string) => Effect.Effect<void, ServersError>;
 	}
@@ -176,31 +253,88 @@ export const layer = Layer.effect(
 		const fs = yield* FileSystem.FileSystem;
 		const fallback = yield* cliHome.pipe(Effect.orDie);
 
+		// Ids whose sync connection is up, and what kept the others from connecting: known only while this
+		// process runs.
+		const online = new Set<string>();
+		const mismatches = new Map<string, Mismatch>();
+
+		// Made on the first start; one per install.
+		const [storedKey] = yield* sql<{ key: string }>`SELECT key FROM device`.pipe(Effect.orDie);
+		const deviceKey =
+			storedKey === undefined
+				? yield* Effect.gen(function* () {
+						const key = yield* Jws.generate();
+						yield* sql`INSERT INTO device ${sql.insert({ key: yield* Schema.encodeEffect(DeviceKey)(key) })}`;
+						return key;
+					}).pipe(Effect.orDie)
+				: yield* Schema.decodeEffect(DeviceKey)(storedKey.key).pipe(Effect.orDie);
+
 		const list = sql<
 			Omit<LocalRow, "kind" | "env" | "isDefault" | "name"> & {
 				kind: string;
 				env: string;
 				url: string | null;
+				device: string | null;
+				machineKey: string | null;
+				label: string | null;
+				version: string | null;
+				seenAt: number | null;
+				identity: string | null;
+				workspaces: string | null;
 				isDefault: number;
 			}
 		>`
-			SELECT id, kind, name AS override, host, executable, home, args, env, url, is_default FROM machine ORDER BY pos
+			SELECT id, kind, name AS override, host, label, version, seen_at, identity, workspaces, executable, home, args,
+				env, url, device, machine_key, is_default
+			FROM machine ORDER BY pos
 		`.pipe(
 			Effect.flatMap((rows) =>
-				Effect.forEach(rows, ({ kind, url, env, isDefault, ...row }) => {
-					const naming = { name: nameOf({ kind, url, ...row }), host: row.host, override: row.override };
-					return kind === "remote" && url !== null
-						? Effect.succeed<Row>({ id: row.id, kind, ...naming, url, isDefault: isDefault === 1 })
-						: decodeEnv(env).pipe(
-								Effect.map((env): Row => ({
-									...row,
-									...naming,
-									kind: "local",
-									env,
+				Effect.forEach(
+					rows,
+					({
+						kind,
+						url,
+						device,
+						machineKey,
+						env,
+						isDefault,
+						label,
+						version,
+						seenAt,
+						identity,
+						workspaces,
+						...row
+					}) => {
+						const name = nameOf({ kind, url, label, ...row });
+						return kind === "remote" && url !== null
+							? Effect.succeed<Row>({
+									id: row.id,
+									kind,
+									name,
+									host: row.host,
+									label,
+									version,
+									seenAt,
+									online: online.has(row.id),
+									machineId: identity,
+									workspaces: Option.getOrElse(decodeWorkspaces(workspaces), () => []),
+									url,
+									device,
+									machineKey: Option.getOrNull(decodeMachineKey(machineKey)),
+									mismatch: mismatches.get(row.id) ?? null,
 									isDefault: isDefault === 1,
-								})),
-							);
-				}),
+								})
+							: decodeEnv(env).pipe(
+									Effect.map((env): Row => ({
+										...row,
+										name,
+										kind: "local",
+										env,
+										isDefault: isDefault === 1,
+									})),
+								);
+					},
+				),
 			),
 			Effect.orDie,
 		);
@@ -257,6 +391,22 @@ export const layer = Layer.effect(
 			return trimmed === "" ? null : trimmed;
 		};
 
+		/** This app's key paired on the remote server at `url` for the code typed in Settings, named after this computer. */
+		const pair = (url: string, code: string) =>
+			Effect.gen(function* () {
+				const label = ((yield* list).find((row) => row.id === LOCAL_SERVER)?.host ?? os.hostname()).slice(0, 100);
+				const device = yield* Pairing.exchange(url, code.trim(), label, deviceKey).pipe(
+					Effect.timeout("10 seconds"),
+					Effect.mapError(() => fail("No Machine answered at that address. Check it, then try again.")),
+				);
+				if (device === undefined)
+					return yield* new PairingRefused({
+						message:
+							"That pairing code was not accepted. Run codework service pair on the machine for a new one.",
+					});
+				return { device: device.id, machineKey: encodeMachineKey(device.machine) };
+			});
+
 		const transaction = <A, E>(effect: Effect.Effect<A, E>) =>
 			sql.withTransaction(effect).pipe(Effect.catchTag("SqlError", Effect.die));
 
@@ -268,11 +418,24 @@ export const layer = Layer.effect(
 			defaultHome,
 			homeChanges: SubscriptionRef.changes(current).pipe(Stream.drop(1)),
 			watch: SubscriptionRef.changes(machines),
-			setHost: Effect.fn("Servers.setHost")(function* (id, host) {
-				const changed = yield* sql`
-					UPDATE machine SET host = ${host} WHERE id = ${id} AND host IS NOT ${host} RETURNING id
-				`.pipe(Effect.orDie);
-				if (changed.length > 0) yield* announce;
+			reached: Effect.fn("Servers.reached")(function* (id, { machineId, workspaces, ...facts }) {
+				const seenAt = yield* Clock.currentTimeMillis;
+				const fields = {
+					...facts,
+					...(machineId === undefined ? {} : { identity: machineId }),
+					...(workspaces === undefined ? {} : { workspaces: encodeWorkspaces(workspaces) }),
+					seenAt,
+				};
+				yield* sql`UPDATE machine SET ${sql.update(fields)} WHERE id = ${id}`.pipe(Effect.orDie);
+				online.add(id);
+				yield* announce;
+			}),
+
+			lost: Effect.fn("Servers.lost")(function* (id) {
+				if (!online.delete(id)) return;
+				const seenAt = yield* Clock.currentTimeMillis;
+				yield* sql`UPDATE machine SET seen_at = ${seenAt} WHERE id = ${id}`.pipe(Effect.orDie);
+				yield* announce;
 			}),
 
 			add: Effect.fn("Servers.add")(function* (input) {
@@ -282,7 +445,10 @@ export const layer = Layer.effect(
 				const route =
 					input.kind === "local"
 						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
-						: { url: yield* chosenUrl(input.url) };
+						: yield* Effect.gen(function* () {
+								const url = yield* chosenUrl(input.url);
+								return { url, ...(yield* pair(url, input.code)) };
+							});
 				yield* transaction(
 					Effect.gen(function* () {
 						if (home !== null) yield* ensureOwnHome(null, home);
@@ -290,7 +456,7 @@ export const layer = Layer.effect(
 						yield* sql`INSERT INTO machine ${sql.insert({
 							id,
 							kind: input.kind,
-							name: override(input.name),
+							name: input.kind === "local" ? override(input.name) : null,
 							...route,
 							namespace: "codework",
 							pos: (last?.pos ?? 0) + 1,
@@ -303,16 +469,33 @@ export const layer = Layer.effect(
 			}),
 
 			update: Effect.fn("Servers.update")(function* ({ id, ...patch }) {
+				// Paired before the transaction, which would otherwise hold the database through a network call.
+				const { code } = patch;
+				const pairing =
+					code === undefined
+						? undefined
+						: yield* get(id).pipe(
+								Effect.flatMap((row) =>
+									row.kind === "remote"
+										? Effect.flatMap(
+												patch.url === undefined ? Effect.succeed(row.url) : chosenUrl(patch.url),
+												(url) => pair(url, code),
+											)
+										: Effect.fail(fail("Only a remote server has a pairing code.")),
+								),
+							);
 				yield* transaction(
 					Effect.gen(function* () {
 						const row = yield* get(id);
 						const fields: Record<string, string | null> = {};
-						if (patch.name !== undefined) fields.name = override(patch.name);
 						if (row.kind === "remote") {
+							if (patch.name !== undefined) return yield* fail("A paired Machine is renamed with its Label.");
 							if ([patch.executable, patch.home, patch.args, patch.env].some((value) => value !== undefined))
 								return yield* fail("A remote server has no executable, home, arguments or variables.");
 							if (patch.url !== undefined) fields.url = yield* chosenUrl(patch.url);
+							if (pairing !== undefined) Object.assign(fields, pairing);
 						} else {
+							if (patch.name !== undefined) fields.name = override(patch.name);
 							if (patch.url !== undefined) return yield* fail("Only a remote server has a URL.");
 							if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
 							if (patch.args !== undefined) fields.args = patch.args.trim();
@@ -329,8 +512,25 @@ export const layer = Layer.effect(
 							yield* sql`UPDATE machine SET ${sql.update(fields)} WHERE id = ${id}`;
 					}),
 				);
+				if (pairing !== undefined) mismatches.delete(id);
 				yield* announce;
 			}),
+
+			answered: Effect.fn("Servers.answered")(function* (id, mismatch) {
+				if (Equal.equals(mismatches.get(id) ?? null, mismatch)) return;
+				if (mismatch === null) mismatches.delete(id);
+				else mismatches.set(id, mismatch);
+				yield* announce;
+			}),
+
+			unpair: Effect.fn("Servers.unpair")(function* (id, device) {
+				const changed = yield* sql`
+					UPDATE machine SET device = NULL WHERE id = ${id} AND device = ${device} RETURNING id
+				`.pipe(Effect.orDie);
+				if (changed.length > 0) yield* announce;
+			}),
+
+			deviceKey,
 
 			// What was synced from the server goes with it, its rows cascading, except its usage: history.
 			remove: Effect.fn("Servers.remove")(function* (id) {
@@ -338,6 +538,7 @@ export const layer = Layer.effect(
 				if (row.id === LOCAL_SERVER) return yield* fail("The built-in local server cannot be removed.");
 				if (row.isDefault) return yield* fail("Make another server the default before removing this one.");
 				yield* sql`DELETE FROM machine WHERE id = ${id}`.pipe(Effect.orDie);
+				mismatches.delete(id);
 				yield* announce;
 			}),
 

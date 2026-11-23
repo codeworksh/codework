@@ -1,10 +1,11 @@
-import { Session } from "@codeworksh/harness/effect";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { type ThreadInfo, ThreadInfo as ThreadInfoSchema } from "../../../../server/contract.ts";
 import { reportFailure } from "../../../error.ts";
-import { writeJson, writeOut } from "../../../output.ts";
+import { sessionId } from "../../../ids.ts";
+import { table, writeJson, writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
 
 const origin = (info: ThreadInfo): string => {
@@ -23,9 +24,10 @@ const cost = (info: ThreadInfo) => `$${info.usage.cost.toFixed(4)}`;
 export default Runtime.handler(
 	Cmd.commands.thread.commands.list,
 	Effect.fn("CLI.thread.list")(function* ({ session, json, server }) {
+		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
 			const rpc = yield* Client.make;
-			const threads = yield* rpc["thread.list"]({ sessionId: Session.SessionSchema.ID.make(session) });
+			const threads = yield* rpc["thread.list"]({ sessionId: id });
 			if (json) return yield* writeJson(Schema.Array(ThreadInfoSchema), threads);
 			if (threads.length === 0) return yield* writeOut(`No threads in ${session}.\n`);
 			const rows = threads.map((info) => [
@@ -35,15 +37,9 @@ export default Runtime.handler(
 				`${info.usage.input + info.usage.output} tok ${cost(info)}`,
 				info.title ?? "(untitled)",
 			]);
-			const widths = rows[0]?.map((_, column) => Math.max(...rows.map((row) => row[column]?.length ?? 0))) ?? [];
-			for (const row of rows) {
-				const last = row.length - 1;
-				yield* writeOut(
-					`${row.map((cell, column) => (column === last ? cell : cell.padEnd(widths[column] ?? 0))).join("  ")}\n`,
-				);
-			}
+			yield* writeOut(table(rows));
 		});
 
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

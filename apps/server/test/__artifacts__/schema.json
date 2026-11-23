@@ -2,6 +2,12 @@
 	"schema": [
 		{
 			"type": "table",
+			"name": "device",
+			"tbl_name": "device",
+			"sql": "CREATE TABLE device (key TEXT NOT NULL)"
+		},
+		{
+			"type": "table",
 			"name": "entry",
 			"tbl_name": "entry",
 			"sql": "CREATE TABLE entry ( id TEXT PRIMARY KEY, thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE, seq INTEGER NOT NULL, type TEXT NOT NULL, state TEXT NOT NULL, error TEXT, size INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL )"
@@ -70,7 +76,7 @@
 			"type": "table",
 			"name": "machine",
 			"tbl_name": "machine",
-			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL )"
+			"sql": "CREATE TABLE machine ( id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, host TEXT, executable TEXT, home TEXT, args TEXT NOT NULL DEFAULT '', env TEXT NOT NULL DEFAULT '[]', url TEXT, namespace TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL, store_id TEXT UNIQUE, cursor INTEGER NOT NULL DEFAULT 0, boot TEXT, rollup INTEGER NOT NULL DEFAULT 0, rollup_store TEXT, rollup_boot TEXT, created_at INTEGER NOT NULL , label TEXT, version TEXT, seen_at INTEGER, identity TEXT, workspaces TEXT, device TEXT, machine_key TEXT)"
 		},
 		{
 			"type": "table",
@@ -238,7 +244,14 @@
 				"rollup": 0,
 				"rollup_store": null,
 				"rollup_boot": null,
-				"created_at": "<time>"
+				"created_at": "<time>",
+				"label": null,
+				"version": null,
+				"seen_at": null,
+				"identity": null,
+				"workspaces": null,
+				"device": null,
+				"machine_key": null
 			}
 		],
 		"organization": [
@@ -252,6 +265,7 @@
 	},
 	"servers": {
 		"badUrl": "Use a WebSocket URL, such as wss://codework.example.com/rpc.",
+		"badCode": "That pairing code was not accepted. Run codework service pair on the machine for a new one.",
 		"added": [
 			{
 				"id": "local",
@@ -262,11 +276,19 @@
 			{
 				"id": "<remote>",
 				"kind": "remote",
-				"name": "Cloud",
-				"host": null,
-				"override": "Cloud",
+				"name": "Fixture",
+				"host": "Fixture",
+				"label": null,
 				"isDefault": false,
-				"url": "wss://cloud.example.test/rpc"
+				"url": "<remote url>",
+				"paired": true,
+				"fingerprint": "<fingerprint>",
+				"mismatch": null,
+				"online": true,
+				"seenAt": "<time>",
+				"version": "<version>",
+				"machineId": "<machine id>",
+				"workspaces": []
 			}
 		],
 		"updated": [
@@ -279,24 +301,34 @@
 			{
 				"id": "<remote>",
 				"kind": "remote",
-				"name": "Cloud tunnel",
-				"host": null,
-				"override": "Cloud tunnel",
+				"name": "Fixture",
+				"host": "Fixture",
+				"label": null,
 				"isDefault": false,
-				"url": "wss://tunnel.example.test/rpc"
+				"url": "wss://tunnel.example.test/rpc",
+				"paired": true,
+				"fingerprint": "<fingerprint>",
+				"mismatch": null,
+				"online": false,
+				"seenAt": "<time>",
+				"version": "<version>",
+				"machineId": "<machine id>",
+				"workspaces": []
 			}
 		],
 		"refused": {
+			"nameOnRemote": "A paired Machine is renamed with its Label.",
 			"localPatch": "A remote server has no executable, home, arguments or variables.",
 			"urlOnLocal": "Only a remote server has a URL.",
-			"defaultRemote": "Cloud tunnel is a remote server.",
-			"serviceRemote": "Cloud tunnel is a remote server."
+			"codeOnLocal": "Only a remote server has a pairing code.",
+			"defaultRemote": "Fixture is a remote server.",
+			"serviceRemote": "Fixture is a remote server."
 		},
 		"row": {
 			"id": "<remote>",
 			"kind": "remote",
-			"name": "Cloud tunnel",
-			"host": null,
+			"name": null,
+			"host": "Fixture",
 			"executable": null,
 			"home": null,
 			"args": "",
@@ -305,13 +337,20 @@
 			"namespace": "codework",
 			"is_default": 0,
 			"pos": 1,
-			"store_id": null,
+			"store_id": "<store>",
 			"cursor": 0,
-			"boot": null,
+			"boot": "<boot>",
 			"rollup": 0,
-			"rollup_store": null,
-			"rollup_boot": null,
-			"created_at": "<time>"
+			"rollup_store": "<store>",
+			"rollup_boot": "<boot>",
+			"created_at": "<time>",
+			"label": null,
+			"version": "<version>",
+			"seen_at": "<time>",
+			"identity": "<machine id>",
+			"workspaces": "[]",
+			"device": "<device>",
+			"machine_key": "<machine key>"
 		},
 		"cascade": {
 			"before": {

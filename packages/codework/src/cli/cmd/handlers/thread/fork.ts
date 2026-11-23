@@ -1,11 +1,11 @@
-import { Session } from "@codeworksh/harness/effect";
 import { Effect, Option, Schema } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { ThreadInfo } from "../../../../server/contract.ts";
 import { InvalidInputError, reportFailure } from "../../../error.ts";
 import { writeJson, writeOut } from "../../../output.ts";
-import { threadFlag } from "../../../thread.ts";
+import { sessionId, threadFlag } from "../../../ids.ts";
 import { Cmd } from "../../cmd.ts";
 
 const Forked = Schema.Struct({ thread: ThreadInfo, text: Schema.optional(Schema.String) });
@@ -13,6 +13,7 @@ const Forked = Schema.Struct({ thread: ThreadInfo, text: Schema.optional(Schema.
 export default Runtime.handler(
 	Cmd.commands.thread.commands.fork,
 	Effect.fn("CLI.thread.fork")(function* ({ session, thread, at, before, json, server }) {
+		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
 			const point = Option.isSome(at)
 				? Option.isNone(before)
@@ -25,7 +26,7 @@ export default Runtime.handler(
 			const threadId = yield* threadFlag(thread);
 			const rpc = yield* Client.make;
 			const forked = yield* rpc["thread.fork"]({
-				sessionId: Session.SessionSchema.ID.make(session),
+				sessionId: id,
 				...(threadId === undefined ? {} : { threadId }),
 				...point,
 			});
@@ -34,6 +35,6 @@ export default Runtime.handler(
 			if (forked.text !== undefined) yield* writeOut(`\n${forked.text}\n`);
 		});
 
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

@@ -1,21 +1,24 @@
 import { shellQuoted } from "@codeworksh/schema";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { CaretRightIcon, CheckIcon, CircleNotchIcon } from "@phosphor-icons/react";
+import type { Relay } from "@codeworksh/schema";
+import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useEffect, useState } from "react";
 
+import { BusyLabel } from "@/components/busy";
 import { Collapse } from "@/components/collapse";
 import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import { Frame } from "./frame";
 import { isSignedInApp } from "./auth";
-import { meAtom, workspaceAtom } from "./kernel/relay";
+import { workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
+import { type Membership, useMembership } from "./settings/machines/shared";
 import { approveLabel, canAct, CodeSlot, useMachineAtom, useConnect } from "./shell/connect";
 
-/** Set Up Later, per workspace: the app stops opening this page for it. */
+/** Set Up Later or Skip, per workspace: the app stops opening this page for it. */
 const laterKey = (workspaceId: string) => `codework.setup.later.${workspaceId}`;
 
 const setUpLater = (workspaceId: string) => {
@@ -34,66 +37,82 @@ const putOff = (workspaceId: string) => {
 	}
 };
 
+/** Set up for the workspace: the relay lists this machine under a key it holds, and it isn't leaving. */
+const isLinked = (membership: Membership) => membership.state === "linked" && membership.held && !membership.leaving;
+
 // Once per sign-in: after that, the app stays where the person goes. The atom registry is mounted inside
 // the auth gate, so it starts over for each account that signs in.
 const checkedAtom = Atom.make(false).pipe(Atom.keepAlive);
 
+/** Whether the first page is the one to show: the check ran, and setup, if needed, is open. */
+export const settledAtom = Atom.make(false).pipe(Atom.keepAlive);
+
 /**
  * Opens setup when this machine isn't set up for the workspace the app opens in: the CLI missing, its
- * server not running, or the machine not connected. Not for a workspace set up later, and never while the
- * relay or the local server is still unknown; local work never waits on it.
+ * server not running, or the relay not listing it. Not for a workspace set up later, never while the
+ * local server is still unknown, and not for the link while the relay can't be reached; local work
+ * never waits on it.
  */
 export function SetupGate() {
 	const navigate = useNavigate();
 	const [checked, setChecked] = useAtom(checkedAtom);
+	const settle = useAtomSet(settledAtom);
 	const current = useAtomValue(workspaceAtom);
 	const status = useAtomValue(defaultServerAtom);
 	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const workspace = AsyncResult.isSuccess(current) ? current.value : undefined;
+	const membership = useMembership(
+		AsyncResult.isSuccess(machine) ? machine.value.id : null,
+		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
+		workspace,
+	);
 	const running = status?.server._tag === "Running";
 	const needs =
 		workspace === undefined || status === undefined
 			? undefined
 			: status.cli === null || !("version" in status.cli) || !running
 				? true
-				: AsyncResult.isSuccess(machine)
-					? !machine.value.workspaces.some((option) => option.id === workspace.id)
-					: undefined;
+				: !AsyncResult.isSuccess(machine) || membership === undefined || membership.state === "loading"
+					? undefined
+					: membership.state === "unknown" || membership.stale
+						? false
+						: !isLinked(membership);
 	useEffect(() => {
 		if (checked || !isSignedInApp || workspace === undefined || needs === undefined) return;
 		setChecked(true);
 		if (needs && !putOff(workspace.id)) {
-			void navigate({
-				to: "/workspaces/$workspaceId/settings/machines/setup",
-				params: { workspaceId: workspace.id },
-				replace: true,
-			});
-		}
-	}, [checked, setChecked, needs, workspace, navigate]);
+			void navigate({ to: "/settings/machines/setup", replace: true }).finally(() => settle(true));
+		} else settle(true);
+	}, [checked, setChecked, settle, needs, workspace, navigate]);
 	return null;
 }
 
+/** Setup for the workspace the app works in, started over when another is picked. */
+export function SetupPage() {
+	const current = useAtomValue(workspaceAtom);
+	const workspace = AsyncResult.isSuccess(current) ? current.value : undefined;
+	return <Setup key={workspace?.id} workspace={workspace} />;
+}
+
 /**
- * Sets up this machine for a workspace in three steps: install the CLI, start its server, connect to
- * the workspace. Only the current step is open; each also offers its terminal command.
+ * Sets up this machine for a workspace in three steps: install the CLI, start its server, link it to
+ * the workspace. Only the current step is open; each also offers its terminal command. The link can be
+ * skipped: the machine works without it. Until the workspace is known, there is nothing to link to.
  */
-export function Setup({ workspaceId }: { readonly workspaceId: string }) {
+function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined }) {
 	const navigate = useNavigate();
 	const status = useAtomValue(defaultServerAtom);
 	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const refreshMachine = useAtomRefresh(machineAtom);
-	const me = useAtomValue(meAtom);
 	const install = useAtomSet(installAtom, { mode: "promise" });
 	const service = useAtomSet(serviceAtom, { mode: "promise" });
 	const [busy, setBusy] = useState<"install" | "start" | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [connecting, setConnecting] = useState(false);
 
-	const workspace = AsyncResult.isSuccess(me)
-		? me.value.workspaces.find((option) => option.id === workspaceId)
-		: undefined;
+	const workspaceId = workspace?.id;
 	const workspaceName = workspace?.name ?? "Your Workspace";
 	const cli = status?.cli ?? null;
 	const version = cli !== null && "version" in cli ? cli.version : undefined;
@@ -101,8 +120,12 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 	// The terminal commands reach this server's home: a home chosen in Settings isn't the CLI's default.
 	const home =
 		status !== undefined && "home" in status && status.home.custom ? ` --home ${shellQuoted(status.home.path)}` : "";
-	const connected =
-		AsyncResult.isSuccess(machine) && machine.value.workspaces.some((option) => option.id === workspaceId);
+	const membership = useMembership(
+		AsyncResult.isSuccess(machine) ? machine.value.id : null,
+		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
+		workspace,
+	);
+	const connected = membership !== undefined && isLinked(membership);
 	const name = AsyncResult.isSuccess(machine)
 		? (machine.value.givenName ?? machine.value.localHostName)
 		: (status?.name ?? "This Machine");
@@ -168,7 +191,7 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 							line="It keeps running in the background, also after the app quits."
 							problem={
 								status?.server._tag === "Incompatible"
-									? `The running server is v${status.server.version}, which this app can't read. Restart it with the installed CLI.`
+									? `The running server is v${status.server.version}, which this app can’t read. Restart it with the installed CLI.`
 									: null
 							}
 							command={`codework service start${home}`}
@@ -181,17 +204,19 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 						<Step
 							index={2}
 							current={current}
-							title={`Connect to ${workspaceName}`}
-							summary={`Connected to ${workspaceName}`}
+							title={`Link to ${workspaceName}`}
+							summary={`Linked to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
 							problem={null}
-							command={`codework connect --workspace ${workspaceId}${home}`}
+							command={`codework connect${workspaceId === undefined ? "" : ` --workspace ${workspaceId}`}${home}`}
 							error={null}
 						>
-							{connecting ? (
+							{connecting && workspaceId !== undefined ? (
 								<Connecting workspaceId={workspaceId} onCancel={() => setConnecting(false)} />
 							) : (
-								<Button onClick={() => setConnecting(true)}>Connect</Button>
+								<Button disabled={workspaceId === undefined} onClick={() => setConnecting(true)}>
+									Link
+								</Button>
 							)}
 						</Step>
 					</ol>
@@ -199,11 +224,12 @@ export function Setup({ workspaceId }: { readonly workspaceId: string }) {
 						<Button
 							variant="ghost"
 							onClick={() => {
-								setUpLater(workspaceId);
-								void navigate({ to: "/" });
+								if (workspaceId !== undefined) setUpLater(workspaceId);
+								// Skipping the link leaves a machine ready to use.
+								void navigate({ to: current === 2 ? "/" : "/settings/machines" });
 							}}
 						>
-							Set Up Later
+							{current === 2 ? "Skip" : "Set Up Later"}
 						</Button>
 						<Button disabled={current !== 3} onClick={() => void navigate({ to: "/" })}>
 							Done
@@ -231,29 +257,6 @@ function Connecting({ workspaceId, onCancel }: { readonly workspaceId: string; r
 			</div>
 			{connect.error !== null && <p className="text-xs text-destructive">{connect.error}</p>}
 		</div>
-	);
-}
-
-/** A button label that swaps to its working form, a spinner and words, without changing width. */
-function BusyLabel({
-	busy,
-	idle,
-	working,
-}: {
-	readonly busy: boolean;
-	readonly idle: string;
-	readonly working: string;
-}) {
-	return (
-		<span className="grid">
-			<span className={`col-start-1 row-start-1 ${busy ? "invisible" : ""}`}>{idle}</span>
-			<span
-				className={`col-start-1 row-start-1 flex items-center justify-center gap-1.5 ${busy ? "" : "invisible"}`}
-			>
-				<CircleNotchIcon className="animate-spin motion-reduce:animate-none" aria-hidden />
-				{working}
-			</span>
-		</span>
 	);
 }
 

@@ -43,7 +43,7 @@ interface LazyHandler {
 
 type LazyHandlers = LazyHandler["load"] | { readonly [key: string]: LazyHandlers | undefined };
 
-type ProvidedCommand = Command.Command<string, unknown, unknown, CommandError, Command.Environment>;
+type ProvidedCommand = Command.Command<string, unknown, unknown, never, Command.Environment>;
 
 /** Type-checks a handler against the spec node it implements. */
 export function handler<const Node extends Spec.Any>(_node: Node, run: Run<Input<Node>>) {
@@ -88,6 +88,13 @@ function provide(
 				Command.withHandler((input) =>
 					Effect.promise(found.load).pipe(
 						Effect.flatMap((module) => module.default(input)),
+						// Rendered here, so a handler's own failure prints as `error:` instead of reaching the
+						// runtime's logger with a stack. Imported on failure: the renderer pulls in the harness.
+						Effect.catch((error) =>
+							Effect.promise(() => import("../cli/error.ts")).pipe(
+								Effect.flatMap((module) => module.reportFailure(error)),
+							),
+						),
 						Effect.provide(Otel.layer({ version: context.version, command })),
 					),
 				),

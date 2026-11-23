@@ -1,0 +1,20 @@
+{
+	"no setting": "no",
+	"the user settings name it": "yes",
+	"only a project's settings name it": "no",
+	"the environment names another over the settings": "no",
+	"the environment names it, comma-separated": "yes",
+	"the flag names it over the environment and settings": "yes",
+	"a bad flag entry": {
+		"status": 1,
+		"stderr": "error: --trusted-proxy: \"proxy.internal\" is not an IP address or CIDR range\n"
+	},
+	"a bad environment entry": {
+		"status": 1,
+		"stderr": "error: CODEWORK_TRUSTED_PROXY: \"10.0.0.300\" is not an IP address or CIDR range\n"
+	},
+	"a bad settings entry": {
+		"status": 1,
+		"stderr": "error[settings-decode-failed]: <home>/settings.jsonc\ndetail: server.trustedProxy.0: \"10.0.0.0/33\" is not an IP address or CIDR range\nhint: the key above holds a value this setting does not accept\n"
+	}
+}

@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { isSettingsPath } from "../settings/sections";
 import { Desktop } from "../wm/desktop";
 import { deskQueryAtom } from "../wm/instances";
-import { lastTabAtom, useTabs, useTabReturn, tabRoute, tabsAtom } from "../wm/tabs";
+import { lastTabAtom, useTabs, tabRoute, tabsAtom } from "../wm/tabs";
 import { settingsShortcut, tabShortcut } from "./switcher";
 
 /**
@@ -20,7 +20,6 @@ export function Shell() {
 	const navigate = useNavigate();
 	// From the location, which changes before route params do: a match-based check lags a
 	// render behind, in which the first tab would pass for the one settings returns to.
-	const inSettings = useLocation({ select: (location) => isSettingsPath(location.pathname) });
 	const overDesktop = useLocation({
 		select: (location) =>
 			isSettingsPath(location.pathname) ||
@@ -32,7 +31,6 @@ export function Shell() {
 	const onTab = useLocation({ select: (location) => location.pathname.startsWith("/tabs/") });
 	// An id that no longer exists (a deleted tab) shows the first one.
 	const shown = tabs.find((tab) => tab.id === tabId) ?? tabs[0];
-	const back = useTabReturn();
 
 	// With every tab deleted there is nothing to show here; the start page needs none. Only once
 	// the list has settled: a first load, or the refetch after creating one, must not bounce the user out.
@@ -60,14 +58,11 @@ export function Shell() {
 			} else if (settingsShortcut(event)) {
 				event.preventDefault();
 				void navigate({ to: "/settings/tabs" });
-			} else if (inSettings && event.key === "Escape" && !event.defaultPrevented && !isEditing(event.target)) {
-				// Dialogs and popovers claim Escape first by preventing its default.
-				void navigate(back);
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [navigate, tabs, inSettings, back]);
+	}, [navigate, tabs]);
 
 	return (
 		<div className="flex h-full min-w-0 flex-col">
@@ -88,7 +83,3 @@ export function Shell() {
 		</div>
 	);
 }
-
-const isEditing = (target: EventTarget | null) =>
-	target instanceof HTMLElement &&
-	(target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));

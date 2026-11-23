@@ -1,17 +1,22 @@
 import { Contract } from "@codeworksh/contract";
+import { Door } from "@codeworksh/schema";
 import { Effect, Layer } from "effect";
 import { type AsyncResult, type Atom, AtomRegistry, AtomRpc } from "effect/reactivity";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 
+const server = window.desktopBridge?.server;
+
 /**
- * The app server's RPC client as atoms. Electron main hands over the URL; a
+ * The app server's RPC client as atoms. Electron main hands over the URL and token; a
  * plain browser has no server, so calls fail and widgets show that instead.
  */
 export class Server extends AtomRpc.Service<Server>()("codework/web/Server", {
 	group: Contract.Api,
 	protocol: RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(window.desktopBridge?.server ?? "ws://127.0.0.1:0/rpc")),
+		Layer.provide(
+			Socket.layerWebSocket(server?.url ?? "ws://127.0.0.1:0/rpc", { protocols: Door.protocols(server?.token) }),
+		),
 		Layer.provide(Socket.layerWebSocketConstructorGlobal),
 		Layer.provide(RpcSerialization.layerNdjson),
 	),

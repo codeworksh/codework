@@ -1,7 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- these helpers spawn the CLI and serve a fake provider. */
 /* @effect-diagnostics globalTimers:off -- the subprocess deadline runs outside any Effect. */
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Writable } from "node:stream";
@@ -177,22 +177,33 @@ export const runCli = (
 export interface Served {
 	/** The RPC endpoint the server announced. */
 	readonly url: string;
+	/** The token its home's service.json holds; every call needs it. */
+	readonly token: string;
 	/** SIGKILLs the server, as a host dying would, and resolves once it is gone. */
 	readonly kill: () => Promise<void>;
 	/** SIGTERMs the server, a clean shutdown, and resolves once it is gone. */
 	readonly stop: () => Promise<void>;
 }
 
-/** Starts `codework serve` from source on an ephemeral port; resolves once it listens. */
+/**
+ * Starts `codework serve` from source on an ephemeral port, in the home `--home` names, with `serve`'s
+ * own flags after it; resolves once it listens.
+ */
 export const serveCli = (
 	args: ReadonlyArray<string>,
-	options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
+	options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly serve?: ReadonlyArray<string> },
 ) =>
 	new Promise<Served>((resolve, reject) => {
-		const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "serve", "--port", "0"], {
-			cwd: options.cwd,
-			env: options.env,
-		});
+		const home = args[args.indexOf("--home") + 1];
+		if (!args.includes("--home") || home === undefined) return reject(new Error("serveCli needs --home"));
+		const child = spawn(
+			process.execPath,
+			["--conditions=development", cli, ...args, "serve", "--port", "0", ...(options.serve ?? [])],
+			{
+				cwd: options.cwd,
+				env: options.env,
+			},
+		);
 		const exited = new Promise<void>((done) => child.on("exit", () => done()));
 		const signal = (name: NodeJS.Signals) => () => {
 			if (child.exitCode === null && child.signalCode === null) child.kill(name);
@@ -201,6 +212,7 @@ export const serveCli = (
 		const kill = signal("SIGKILL");
 		onTestFinished(kill);
 		let output = "";
+		let listening = false;
 		const deadline = setTimeout(() => {
 			void kill();
 			reject(new Error(`codework serve did not start:\n${output}`));
@@ -208,9 +220,12 @@ export const serveCli = (
 		const listen = (data: Buffer) => {
 			output += data.toString("utf8");
 			const url = /listening on (ws:\/\/\S+)/.exec(output)?.[1];
-			if (url === undefined) return;
+			if (url === undefined || listening) return;
+			listening = true;
 			clearTimeout(deadline);
-			resolve({ url, kill, stop: signal("SIGTERM") });
+			// The server registers before it announces, so the file names this server by now.
+			const { token } = JSON.parse(readFileSync(join(home, "service.json"), "utf8")) as { token: string };
+			resolve({ url, token, kill, stop: signal("SIGTERM") });
 		};
 		child.stdout.on("data", listen);
 		child.stderr.on("data", (data: Buffer) => (output += data.toString("utf8")));

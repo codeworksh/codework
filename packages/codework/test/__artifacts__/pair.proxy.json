@@ -1,0 +1,30 @@
+{
+	"a call on a socket through the proxy": true,
+	"devices": {
+		"status": 0,
+		"stdout": [
+			"ID              LABEL    KEY                                                 CREATED               LAST SEEN             ENCRYPTED",
+			"<Proxied>  Proxied  <Proxied key>  <time>  <time>  yes",
+			"<Plain>  Plain    <Plain key>  <time>  <time>  no",
+			"<Tunnel>  Tunnel   <Tunnel key>  <time>  <time>  yes",
+			"<Forged>  Forged   <Forged key>  <time>  <time>  no",
+			""
+		],
+		"stderr": ""
+	},
+	"after a plain ticket": {
+		"status": 0,
+		"stdout": [
+			"ID              LABEL    KEY                                                 CREATED               LAST SEEN             ENCRYPTED",
+			"<Proxied>  Proxied  <Proxied key>  <time>  <time>  no",
+			"<Plain>  Plain    <Plain key>  <time>  <time>  no",
+			"<Tunnel>  Tunnel   <Tunnel key>  <time>  <time>  yes",
+			"<Forged>  Forged   <Forged key>  <time>  <time>  no",
+			""
+		],
+		"stderr": ""
+	},
+	"a ticket from another address with a foreign Host": 101,
+	"a foreign Origin pairing through the proxy": 403,
+	"a foreign Origin opening a socket through the proxy": 403
+}

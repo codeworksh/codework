@@ -1,8 +1,9 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { Cmd } from "../../cmd.ts";
 
 /**
@@ -32,6 +33,6 @@ export default Runtime.handler(
 			if (result.failure !== undefined) process.exitCode = 1;
 		});
 
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	}),
 );

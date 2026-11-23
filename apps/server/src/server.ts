@@ -8,6 +8,7 @@ import type { Socket } from "node:net";
 import path from "node:path";
 import { Codework } from "./codework.ts";
 import { Contract } from "@codeworksh/contract";
+import { Door } from "@codeworksh/schema";
 import { Db } from "./db.ts";
 import { Event } from "./event.ts";
 import { Handlers } from "./handlers.ts";
@@ -36,15 +37,20 @@ const listener = () => {
 	return server;
 };
 
-// The port is chosen by the OS, so the supervisor learns it from this line.
-const announceReady = Layer.effectDiscard(
-	Effect.gen(function* () {
-		const server = yield* HttpServer.HttpServer;
-		if (server.address._tag === "UnixPathAddress") return;
-		const port = server.address.port;
-		yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready", port })}\n`));
-	}),
-);
+// The port is chosen by the OS and the token made at start, so the supervisor learns both from this
+// line; it never logs it.
+const announceReady = (token: string) =>
+	Layer.effectDiscard(
+		Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return;
+			const port = server.address.port;
+			yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready", port, token })}\n`));
+		}),
+	);
+
+/** The page's origins: the desktop app's scheme, packaged and from the repo. */
+const ORIGINS = ["codework://app", "codeworkdev://app"];
 
 const alive = (pid: number) =>
 	Effect.sync(() => {
@@ -95,25 +101,32 @@ const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "
 	Layer.provide(Handlers.layer),
 );
 
-// One event log, kv and CodeWork connection for the RPC handlers and the widget backends alike.
-export const layer = Layer.mergeAll(
-	HttpRouter.serve(rpc, { disableListenLog: true }),
-	Widgets.layer,
-	exitWithParent,
-).pipe(
-	// The servers' status is checked from launch, so the first page already has it.
-	Layer.provide(
-		Layer.mergeAll(Health.layer, Sync.layer).pipe(
-			Layer.provideMerge(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)),
+// One event log, kv and CodeWork connection for the RPC handlers and the widget backends alike. A
+// fresh token per start: only the process that started this one learns it.
+export const layer = Layer.unwrap(
+	Effect.map(Door.make, (token) =>
+		Layer.mergeAll(
+			HttpRouter.serve(Layer.merge(rpc, Door.layer({ admit: Door.token(token), origins: ORIGINS })), {
+				disableListenLog: true,
+			}),
+			Widgets.layer,
+			exitWithParent,
+		).pipe(
+			// The servers' status is checked from launch, so the first page already has it.
+			Layer.provide(
+				Layer.mergeAll(Health.layer, Sync.layer).pipe(
+					Layer.provideMerge(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)),
+				),
+			),
+			// The app's servers decide which one its connection goes to, and the handlers manage them too.
+			Layer.provideMerge(Servers.layer),
+			Layer.provideMerge(announceReady(token)),
+			Layer.provideMerge(NodeHttpServer.layer(listener, { host: "127.0.0.1", port: 0 })),
+			Layer.provide(RpcSerialization.layerNdjson),
+			Layer.provide(database),
+			Layer.provide(NodeServices.layer),
 		),
 	),
-	// The app's servers decide which one its connection goes to, and the handlers manage them too.
-	Layer.provideMerge(Servers.layer),
-	Layer.provideMerge(announceReady),
-	Layer.provideMerge(NodeHttpServer.layer(listener, { host: "127.0.0.1", port: 0 })),
-	Layer.provide(RpcSerialization.layerNdjson),
-	Layer.provide(database),
-	Layer.provide(NodeServices.layer),
 );
 
 export * as Server from "./server.ts";

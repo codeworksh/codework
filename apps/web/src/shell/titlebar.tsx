@@ -80,7 +80,7 @@ function CloseSettings() {
 		<button
 			type="button"
 			aria-label="Close settings"
-			title="Close settings (Esc)"
+			title="Close settings"
 			className={`${chromeButton} ml-auto`}
 			onClick={() => void navigate(back)}
 		>

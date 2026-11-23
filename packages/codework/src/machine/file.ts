@@ -1,6 +1,7 @@
 import { Jws, Relay } from "@codeworksh/schema";
 import { Effect, FileSystem, Option, Schedule, Schema } from "effect";
 import { uuidv7 } from "uuidv7";
+import * as Private from "../framework/private.ts";
 
 /**
  * `<home>/machine.json`: who this home is as a machine, and its link to each connected workspace.
@@ -15,6 +16,8 @@ const Link = Schema.Struct({
 	relay: Schema.String,
 	key: Jws.PrivateKey,
 	keyId: Schema.String,
+	/** Left locally, but the relay hasn't confirmed: the key is kept to revoke it once the relay answers. */
+	leaving: Schema.optionalKey(Schema.Boolean),
 });
 
 /** One key per home, vouching for each link key, so the relay knows every link of this home is one machine. */
@@ -68,13 +71,8 @@ const locked = <A, E, R>(home: string, effect: Effect.Effect<A, E, R>) =>
 		return yield* effect.pipe(Effect.ensuring(fs.remove(lock, { recursive: true }).pipe(Effect.ignore)));
 	});
 
-const write = Effect.fn("Machine.write")(function* (home: string, machine: Machine) {
-	const fs = yield* FileSystem.FileSystem;
-	const path = file(home);
-	const temp = `${path}.${uuidv7()}.tmp`;
-	yield* fs.writeFileString(temp, yield* Schema.encodeEffect(json)(machine), { mode: 0o600 });
-	yield* fs.rename(temp, path);
-});
+const write = (home: string, machine: Machine) =>
+	Schema.encodeEffect(json)(machine).pipe(Effect.flatMap((encoded) => Private.write(file(home), encoded)));
 
 const newIdentity = Effect.gen(function* () {
 	const key = yield* Jws.generate();
@@ -109,6 +107,13 @@ export const update = <E, R>(
 		}),
 	);
 
+/** The home's identity, created with the machine on first use. */
+export const identity = Effect.fn("Machine.identity")(function* (home: string) {
+	const stored = yield* read(home);
+	if (Option.isSome(stored) && stored.value.identity !== undefined) return stored.value.identity;
+	return (yield* update(home, {}, Effect.succeed)).identity;
+});
+
 const created = (machineId: string | undefined): Machine =>
 	machineId === undefined
 		? { id: uuidv7(), source: "generated", workspaces: {} }
@@ -132,4 +137,15 @@ export const removeLink = (home: string, workspaceId: string, keyId: string) =>
 	update(home, {}, (machine) => {
 		const { [workspaceId]: link, ...workspaces } = machine.workspaces;
 		return Effect.succeed(link === undefined || link.keyId !== keyId ? machine : { ...machine, workspaces });
+	});
+
+/** Marks the link as leaving, only while it still holds `keyId`. */
+export const markLeaving = (home: string, workspaceId: string, keyId: string) =>
+	update(home, {}, (machine) => {
+		const link = machine.workspaces[workspaceId];
+		return Effect.succeed(
+			link === undefined || link.keyId !== keyId
+				? machine
+				: { ...machine, workspaces: { ...machine.workspaces, [workspaceId]: { ...link, leaving: true } } },
+		);
 	});

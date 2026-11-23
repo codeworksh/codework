@@ -375,7 +375,7 @@ export const ServerKind = Schema.Literals(["local", "remote"]);
 /** The server the app always has, which cannot be removed. */
 export const LOCAL_SERVER = "local";
 
-/** How a server is named: the user's `override`, else the `host` name its server reports, else where it is. */
+/** How a local server is named: the user's `override`, else the `host` name its server reports. */
 const ServerNaming = {
 	/** As shown. */
 	name: Schema.String,
@@ -406,13 +406,57 @@ export const LocalServerStatus = Schema.Struct({
 });
 export type LocalServerStatus = typeof LocalServerStatus.Type;
 
-/** A remote server: only where to reach it; it has no executable or home here. */
+/**
+ * What keeps a paired machine from connecting: `machine`, its address answers with another key;
+ * `clock`, its clock is past the proof window from this computer's.
+ */
+export const Mismatch = Schema.Union([
+	Schema.Struct({
+		kind: Schema.Literal("machine"),
+		/** The fingerprint of the key the address answers with, `SHA256:<thumbprint>`; none when it presents none. */
+		fingerprint: Schema.NullOr(Schema.String),
+	}),
+	Schema.Struct({
+		kind: Schema.Literal("clock"),
+		/** The machine's clock minus this computer's, in milliseconds; positive when the machine is ahead. */
+		skew: Schema.Number,
+	}),
+]);
+export type Mismatch = typeof Mismatch.Type;
+
+/**
+ * A paired machine: a server on another computer, reached with a pairing code. It has no executable or
+ * home here. Its hostname and label are the machine's own, as it last reported them.
+ */
 export const RemoteServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("remote"),
-	...ServerNaming,
+	/** As shown: its label, else its hostname, else where it is. */
+	name: Schema.String,
+	/** The computer's own name; none before the machine was ever reached. */
+	host: Schema.NullOr(Schema.String),
+	/** The friendly name stored on the machine; none when it has none. */
+	label: Schema.NullOr(Schema.String),
 	isDefault: Schema.Boolean,
 	url: Schema.String,
+	/** Whether this app's key is paired on it; false once the server refuses it (revoked or lapsed): pair again. */
+	paired: Schema.Boolean,
+	/** The fingerprint of the key it paired with, `SHA256:<thumbprint>`; none on a row from before keys. */
+	fingerprint: Schema.NullOr(Schema.String),
+	/** What last kept it from connecting while paired; pairing again takes the key a `machine` mismatch answers with. */
+	mismatch: Schema.NullOr(Mismatch),
+	/** Whether it is answering now. */
+	online: Schema.Boolean,
+	/** When it last answered, in epoch milliseconds; none before it ever did. */
+	seenAt: Schema.NullOr(Schema.Number),
+	/** The build it last reported; none before it was ever reached. */
+	version: Schema.NullOr(Schema.String),
+	/** The machine's own id, as it last reported it; none before it was reached or before its first connect. */
+	machineId: Schema.NullOr(Schema.String),
+	/** The workspaces it is linked to, each with the thumbprint of its key, as it last reported them. */
+	workspaces: Schema.Array(
+		Schema.Struct({ id: Schema.String, keyId: Schema.String, leaving: Schema.optionalKey(Schema.Boolean) }),
+	),
 });
 export type RemoteServerStatus = typeof RemoteServerStatus.Type;
 
@@ -432,8 +476,9 @@ export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
 /**
- * A new server. A local one needs a home of its own, since a home names one server; a remote one
- * needs its WebSocket URL. A blank or absent `name` is no override.
+ * A new server. A local one needs a home of its own, since a home names one server; a blank or absent
+ * `name` is no override. A remote one needs its WebSocket URL and a pairing code from
+ * `codework service pair` on that machine; it is named by its own label.
  */
 export const ServerAdd = Schema.Union([
 	Schema.Struct({
@@ -443,13 +488,18 @@ export const ServerAdd = Schema.Union([
 		home: Schema.String,
 		args: Schema.String,
 	}),
-	Schema.Struct({ kind: Schema.Literal("remote"), name: Schema.optionalKey(Schema.String), url: Schema.String }),
+	Schema.Struct({
+		kind: Schema.Literal("remote"),
+		url: Schema.String,
+		code: Schema.String,
+	}),
 ]);
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
  * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
- * a blank `name` removes the override; `env` replaces every variable. `url` is for a remote server only, the rest but `name` for a local one.
+ * a blank `name` removes the override; `env` replaces every variable. `url` and `code` are for a remote
+ * server only, the rest for a local one; a `code` pairs again, at the new `url` when given.
  */
 export const ServerUpdate = Schema.Struct({
 	id: Schema.String,
@@ -459,12 +509,18 @@ export const ServerUpdate = Schema.Struct({
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
 	url: Schema.optionalKey(Schema.String),
+	code: Schema.optionalKey(Schema.String),
 });
 export type ServerUpdate = typeof ServerUpdate.Type;
 
 export const ServerId = Schema.Struct({ id: Schema.String });
 
 export class ServersError extends Schema.TaggedError<ServersError>()("Server.ServersError", {
+	message: Schema.String,
+}) {}
+
+/** A remote server refused the pairing code: wrong, used or expired. */
+export class PairingRefused extends Schema.TaggedError<PairingRefused>()("Server.PairingRefused", {
 	message: Schema.String,
 }) {}
 
@@ -829,17 +885,17 @@ export const Api = RpcGroup.make(
 		success: Machine.Status,
 		error: CodeworkUnavailable,
 	}),
-	/** Disconnects the default machine from a workspace. */
+	/** Disconnects the default machine, or the paired machine `serverId`, from a workspace. */
 	Rpc.make("machine.disconnect", {
-		payload: Machine.Disconnect,
+		payload: { ...Machine.Disconnect.fields, serverId: Schema.optionalKey(Schema.String) },
 		success: Machine.Disconnected,
-		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		error: Schema.Union([CodeworkUnavailable, ServersError, Machine.ConnectError]),
 	}),
-	/** Connects the default machine to a workspace: the code to approve, then the link. */
+	/** Connects the default machine, or the paired machine `serverId`, to a workspace: the code to approve, then the link. */
 	Rpc.make("machine.connect", {
-		payload: { workspaceId: Schema.String },
+		payload: { workspaceId: Schema.String, serverId: Schema.optionalKey(Schema.String) },
 		success: Machine.ConnectEvent,
-		error: Schema.Union([CodeworkUnavailable, Machine.ConnectError]),
+		error: Schema.Union([CodeworkUnavailable, ServersError, Machine.ConnectError]),
 		stream: true,
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
@@ -995,14 +1051,24 @@ export const Api = RpcGroup.make(
 		payload: ServerHealth,
 		success: Schema.Void,
 	}),
+	/** A remote server is paired with its code before it is stored. */
 	Rpc.make("servers.add", {
 		payload: ServerAdd,
 		success: Schema.String,
-		error: ServersError,
+		error: Schema.Union([ServersError, PairingRefused]),
 	}),
 	/** A new home for the default server reconnects the app at once. */
 	Rpc.make("servers.update", {
 		payload: ServerUpdate,
+		success: Schema.Void,
+		error: Schema.Union([ServersError, PairingRefused]),
+	}),
+	/**
+	 * Sets the label stored on a paired machine, over its connection; an empty one clears it. Pairing is
+	 * direct access to the machine, so this needs nothing more.
+	 */
+	Rpc.make("servers.label", {
+		payload: { id: Schema.String, label: Schema.String },
 		success: Schema.Void,
 		error: ServersError,
 	}),

@@ -22,6 +22,7 @@ import {
 import { Global } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import type * as Contract from "../../../../server/contract.ts";
 import { InvalidInputError, OAuthError } from "../../../error.ts";
 import { Cmd } from "../../cmd.ts";
@@ -140,16 +141,11 @@ export const selectProvider = (flags: {
 		: Effect.fail(new InvalidInputError({ message: checked.message }));
 };
 
-/** Reject the local-credential flags when the credentials live on a server. */
+/** Reject the local credential file when the credentials live on a server. */
 export const assertServerScope = (authFile: Option.Option<string>) =>
-	Effect.gen(function* () {
-		const shared = yield* Cmd.spec;
-		if (Option.isSome(authFile) || Option.isSome(shared.home)) {
-			return yield* new InvalidInputError({
-				message: "--auth-file and --home belong on codework serve when using --server",
-			});
-		}
-	});
+	Option.isSome(authFile)
+		? Effect.fail(new InvalidInputError({ message: "--auth-file belongs on codework serve when using --server" }))
+		: Effect.void;
 
 /** Credential operations against this machine's auth.json. */
 export const localOps = (provider: Provider, authFile: Option.Option<string>) =>
@@ -165,7 +161,6 @@ export const localOps = (provider: Provider, authFile: Option.Option<string>) =>
 	});
 
 /** Run an effect against the RPC server at `url`, discharging the client. */
-export const withServer = <A, E, R>(url: string, program: Effect.Effect<A, E, R>) =>
-	program.pipe(Effect.provide(Client.layer(url)), Effect.scoped);
+export const withServer = <A, E, R>(url: string, program: Effect.Effect<A, E, R>) => program.pipe(Service.connect(url));
 
 export { Client, oauthProviderLabel };

@@ -329,6 +329,40 @@ const migrations = {
 		// The one organization the UI uses until auth exists.
 		yield* sql`INSERT INTO organization ${sql.insert({ id: "personal", name: "Personal", createdAt: now, updatedAt: now })}`;
 	}),
+
+	// A remote machine's session token, which its pairing gave and each socket's ticket is taken with.
+	"202611200001_token": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN token TEXT`;
+	}),
+
+	// What a machine last reported over its connection, and when it last answered. A remote machine is
+	// named by the label stored on it, so `name` is a local machine's override only.
+	"202611200002_label": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN label TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN version TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN seen_at INTEGER`;
+		yield* sql`UPDATE machine SET name = NULL WHERE kind = 'remote'`;
+	}),
+
+	// A remote machine's own id and the workspaces it is linked to (JSON), as it last reported them.
+	"202611210001_identity": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE machine ADD COLUMN identity TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN workspaces TEXT`;
+	}),
+
+	// Pairing holds keys, not a session token. `device` is this app's one key (a private JWK), which every
+	// remote machine keeps the public half of; a remote row keeps the id that machine gave this app and the
+	// machine's identity key (a public JWK). A row paired with a token pairs again.
+	"202611210002_keys": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`CREATE TABLE device (key TEXT NOT NULL)`;
+		yield* sql`ALTER TABLE machine DROP COLUMN token`;
+		yield* sql`ALTER TABLE machine ADD COLUMN device TEXT`;
+		yield* sql`ALTER TABLE machine ADD COLUMN machine_key TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

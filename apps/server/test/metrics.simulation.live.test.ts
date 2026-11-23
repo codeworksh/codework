@@ -224,8 +224,10 @@ describeMachines("metrics simulation across OrbStack machines", () => {
 		cases.seeded = { "cw-a": a, "cw-b": b };
 		appHome = tempDir("metrics-simulation-app");
 		desk = await app(appHome);
-		for (const m of pool)
-			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url })));
+		for (const m of pool) {
+			const code = await m.pair();
+			ids.set(m.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: m.url, code })));
+		}
 	}, 3_600_000);
 
 	afterAll(async () => {
@@ -407,7 +409,8 @@ describeMachines("metrics simulation across OrbStack machines", () => {
 			[cwA, a],
 			[removed, b],
 		]);
-		ids.set(cwB.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: cwB.url })));
+		const code = await cwB.pair();
+		ids.set(cwB.name, await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: cwB.url, code })));
 		await rolled(cwB);
 		const again = await agrees([
 			[cwA, a],

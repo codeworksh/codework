@@ -30,7 +30,7 @@ const registerLocal = (appHome: string, server: Codework, port: number) => {
 	mkdirSync(cli, { recursive: true });
 	writeFileSync(
 		join(cli, "service.json"),
-		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port }),
+		JSON.stringify({ pid: server.proc.pid, version: "0.0.0", url: server.url, port, token: server.token }),
 	);
 };
 
@@ -45,17 +45,17 @@ const names = (rpc: AppRpc) =>
 		yield* rpc["servers.check"](undefined);
 		const statuses = yield* rpc["servers.watch"](undefined).pipe(Stream.runHead, Effect.map(Option.getOrThrow));
 		const listed = threads.lists.flatMap((list) => list.threads);
-		return statuses.map(({ id, name, host, override }) => ({
-			id,
-			name,
-			host,
-			override,
-			sidebar: sidebar.find((project) => project.machine.id === id)?.machine.name,
-			allThreads: listed.find((thread) => thread.machine.id === id)?.machine.name,
+		return statuses.map((status) => ({
+			id: status.id,
+			name: status.name,
+			host: status.host,
+			...(status.kind === "local" ? { override: status.override } : { label: status.label }),
+			sidebar: sidebar.find((project) => project.machine.id === status.id)?.machine.name,
+			allThreads: listed.find((thread) => thread.machine.id === status.id)?.machine.name,
 		}));
 	});
 
-const stored = (appHome: string) => query(appHome, "SELECT id, kind, name, host FROM machine ORDER BY pos");
+const stored = (appHome: string) => query(appHome, "SELECT id, kind, name, label, host FROM machine ORDER BY pos");
 
 /** The stored row and every read of each machine. */
 const read = async (appHome: string, desk: Awaited<ReturnType<typeof app>>) => {
@@ -68,7 +68,7 @@ const shown = (state: Awaited<ReturnType<typeof read>>, id: string) => {
 	return [machine?.name, machine?.sidebar, machine?.allThreads];
 };
 
-it("a machine is named by its server's host unless the user names it, else by where it is", async () => {
+it("a machine is named by its server's host unless the user names a local one or labels a remote one, else by where it is", async () => {
 	const localHome = tempDir("host-local");
 	const remoteHome = tempDir("host-remote");
 	const olderHome = tempDir("host-older");
@@ -85,8 +85,10 @@ it("a machine is named by its server's host unless the user names it, else by wh
 
 	registerLocal(appHome, local, localPort);
 	const desk = await app(appHome);
-	const remoteId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: remote.url }));
-	const olderId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", name: "  ", url: older.url }));
+	const remoteCode = await remote.pair();
+	const remoteId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: remote.url, code: remoteCode }));
+	const olderCode = await older.pair();
+	const olderId = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: older.url, code: olderCode }));
 	await synced(appHome, Contract.LOCAL_SERVER, local);
 	await synced(appHome, remoteId, remote);
 	await synced(appHome, olderId, older);
@@ -96,13 +98,17 @@ it("a machine is named by its server's host unless the user names it, else by wh
 	expect(shown(reported, remoteId)).toEqual(Array(3).fill("ubuntu"));
 	expect(shown(reported, olderId)).toEqual(Array(3).fill(`127.0.0.1:${olderPort}`));
 
-	await desk.run((rpc) => rpc["servers.update"]({ id: remoteId, name: " Build Box " }));
-	const overridden = await read(appHome, desk);
-	expect(shown(overridden, remoteId)).toEqual(Array(3).fill("Build Box"));
+	await desk.run((rpc) => rpc["servers.label"]({ id: remoteId, label: " Build Box " }));
+	await desk.run((rpc) => rpc["servers.update"]({ id: Contract.LOCAL_SERVER, name: " Desk " }));
+	const named = await read(appHome, desk);
+	expect(shown(named, remoteId)).toEqual(Array(3).fill("Build Box"));
+	expect(shown(named, Contract.LOCAL_SERVER)).toEqual(Array(3).fill("Desk"));
 
-	await desk.run((rpc) => rpc["servers.update"]({ id: remoteId, name: "" }));
+	await desk.run((rpc) => rpc["servers.label"]({ id: remoteId, label: "" }));
+	await desk.run((rpc) => rpc["servers.update"]({ id: Contract.LOCAL_SERVER, name: "" }));
 	const cleared = await read(appHome, desk);
 	expect(shown(cleared, remoteId)).toEqual(Array(3).fill("ubuntu"));
+	expect(shown(cleared, Contract.LOCAL_SERVER)).toEqual(Array(3).fill("Studio Mac"));
 
 	// The same server comes back under a new name.
 	await stop(remote.proc);
@@ -114,7 +120,7 @@ it("a machine is named by its server's host unless the user names it, else by wh
 	const renamed = await read(appHome, desk);
 	expect(shown(renamed, remoteId)).toEqual(Array(3).fill("ubuntu-2"));
 
-	const steps = { reported, overridden, cleared, renamed };
+	const steps = { reported, named, cleared, renamed };
 	expect(JSON.stringify(steps)).not.toContain("CodeWork");
 	await snapshot(
 		"names",

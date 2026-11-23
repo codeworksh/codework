@@ -24,19 +24,40 @@ export const waitForLine = (child: ChildProcess, match: (line: string) => string
 		});
 	});
 
-/** A relay on a fresh database of the compose Postgres, at a free port; `env` adds to its environment. */
+/**
+ * A relay on a fresh database of the compose Postgres, at a free port; `env` adds to its environment.
+ * `down` stops it and `up` serves the same database at the same address again.
+ */
 export const startRelay = async (run: string, env: Record<string, string> = {}) => {
 	const database = `relay_e2e_${run}`;
 	compose(["up", "-d", "--wait"]);
 	compose(["exec", "-T", "postgres", "psql", "-U", "relay", "-d", "relay", "-c", `CREATE DATABASE ${database}`]);
-	const server = spawn(process.execPath, ["src/main.ts"], {
-		cwd: root,
-		env: { ...process.env, ...env, PORT: "0", DATABASE_URL: `postgres://relay:relay@127.0.0.1:55432/${database}` },
-		stdio: ["ignore", "pipe", "inherit"],
-	});
-	const base = await waitForLine(server, (line) => /http:\/\/[\d.]+:\d+/.exec(line)?.[0]);
+	const serve = async (port: string) => {
+		const server = spawn(process.execPath, ["src/main.ts"], {
+			cwd: root,
+			env: {
+				...process.env,
+				...env,
+				PORT: port,
+				DATABASE_URL: `postgres://relay:relay@127.0.0.1:55432/${database}`,
+			},
+			stdio: ["ignore", "pipe", "inherit"],
+		});
+		return { server, base: await waitForLine(server, (line) => /http:\/\/[\d.]+:\d+/.exec(line)?.[0]) };
+	};
+	const first = await serve("0");
+	const base = first.base;
+	let server = first.server;
 	return {
 		base,
+		down: () =>
+			new Promise<void>((resolve) => {
+				server.once("exit", () => resolve());
+				server.kill("SIGKILL");
+			}),
+		up: async () => {
+			server = (await serve(new URL(base).port)).server;
+		},
 		psql: (query: string) =>
 			compose(["exec", "-T", "postgres", "psql", "-U", "relay", "-d", database, "-tAc", query]).trim(),
 		stop: () => {

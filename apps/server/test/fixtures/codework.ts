@@ -1,9 +1,9 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- a CodeWork server run as its own process by the sync suite. */
 import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { NodeHttpServer, NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Clock, Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
-import { RpcSerialization, RpcServer } from "effect/rpc";
+import { RpcSerialization } from "effect/rpc";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
@@ -13,11 +13,11 @@ import { testModel } from "../../../../packages/harness/test/fixtures/model.ts";
 import type * as LLM from "../../../../packages/harness/src/runner/llm.ts";
 import * as Clones from "../../../../packages/codework/src/server/clones.ts";
 import * as Contract from "../../../../packages/codework/src/server/contract.ts";
-import * as EventFeed from "../../../../packages/codework/src/server/feed.ts";
-import * as Handlers from "../../../../packages/codework/src/server/handlers.ts";
 import * as Host from "../../../../packages/codework/src/server/host.ts";
 import * as Identity from "../../../../packages/codework/src/server/identity.ts";
 import * as OAuth from "../../../../packages/codework/src/server/oauth.ts";
+import * as Principal from "../../../../packages/codework/src/server/principal.ts";
+import * as Registration from "../../../../packages/codework/src/server/registration.ts";
 import * as Server from "../../../../packages/codework/src/server/server.ts";
 import { Control, Harness } from "../../../../packages/harness/src/effect.ts";
 import { bashPlugin } from "../../../../packages/harness/src/plugin/builtin/tool/bash.ts";
@@ -38,6 +38,7 @@ import * as DaytonaDriver from "../../../../packages/harness/src/sandboxes/dayto
  * With `older`, it serves every call but `usage.sync`, and names no host, as a server built before it did.
  * It reports its host as `CODEWORK_FIXTURE_HOST` (none when blank), else `Fixture`: never this computer's name,
  * unless `CODEWORK_FIXTURE_HOST_OS=1`, which a live machine sets to report its own name as a real server does.
+ * `CODEWORK_FIXTURE_SKEW` runs its clock that many milliseconds off this computer's; sleeps stay real.
  */
 
 const [home, port, host = "127.0.0.1", mode] = process.argv.slice(2);
@@ -179,20 +180,49 @@ const identity =
 				Identity.Service.of(named === "" ? Identity.current : { ...Identity.current, host: { name: named } }),
 			);
 
-/** The RPC server alone, without the calls a server older than this build lacks. */
-const older = HttpRouter.serve(
-	RpcServer.layerHttp({ group: Contract.Api.omit("usage.sync"), path: Contract.path, protocol: "websocket" }).pipe(
-		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
+/** The RPC server alone, without the calls a server older than this build lacks; registered as any server is. */
+const older = HttpRouter.serve(Server.endpoint(Contract.Api.omit("usage.sync")), { disableListenLog: true }).pipe(
+	Layer.merge(
+		Layer.unwrap(
+			Effect.map(Principal.Token, (token) =>
+				Registration.register({
+					home,
+					info: {
+						pid: process.pid,
+						version: Identity.current.version,
+						url: `ws://${host}:${port}${Contract.path}`,
+						port: Number(port),
+						token,
+					},
+				}).pipe(Layer.provide(NodeServices.layer)),
+			),
+		),
 	),
-	{ disableListenLog: true },
-).pipe(
 	Layer.provide(OAuth.layer({ home })),
 	Layer.provide(Host.layer),
 	Layer.provide(Clones.layer),
 	Layer.provide(NodeHttpServer.layer(createServer, { host, port: Number(port) })),
 	Layer.provide(RpcSerialization.layerNdjson),
 	Layer.provide(Layer.succeed(Identity.Service, Identity.current)),
+	Layer.provide(Principal.layerToken),
 	Layer.provide(Harness.layer(harness)),
+);
+
+const skew = Number(process.env.CODEWORK_FIXTURE_SKEW ?? "0");
+const skewed = Layer.effect(
+	Clock.Clock,
+	Effect.gen(function* () {
+		const real = yield* Clock.Clock;
+		return {
+			currentTimeMillisUnsafe: () => real.currentTimeMillisUnsafe() + skew,
+			currentTimeMillis: Effect.sync(() => real.currentTimeMillisUnsafe() + skew),
+			currentTimeNanosUnsafe: () => real.currentTimeNanosUnsafe() + BigInt(skew) * 1_000_000n,
+			currentTimeNanos: Effect.sync(() => real.currentTimeNanosUnsafe() + BigInt(skew) * 1_000_000n),
+			monotonicTimeNanosUnsafe: () => real.monotonicTimeNanosUnsafe(),
+			monotonicTimeNanos: real.monotonicTimeNanos,
+			sleep: (duration) => real.sleep(duration),
+		} satisfies Clock.Clock;
+	}),
 );
 
 NodeRuntime.runMain(
@@ -205,7 +235,11 @@ NodeRuntime.runMain(
 			})
 		: Effect.gen(function* () {
 				yield* Layer.build(
-					mode === "older" ? older : Server.layer({ host, port: Number(port), harness, identity }),
+					mode === "older"
+						? older
+						: Server.layer({ host, port: Number(port), harness, identity }).pipe(
+								Layer.provide(skew === 0 ? Layer.empty : skewed),
+							),
 				);
 				yield* Effect.sync(() => process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`));
 				return yield* Effect.never;

@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/utils";
 import { Server } from "../../kernel/rpc";
-import { Code, quietField } from "../blocks";
+import { Code, DialogRow, quietField } from "../blocks";
 import { Badge, Mark } from "./local";
 
 const addAtom = Server.mutation("servers.add");
@@ -98,8 +98,8 @@ export function AddServer({
 							<KindTile
 								icon={<GlobeIcon className="size-5 text-ink-muted" />}
 								title="Remote"
-								detail="Another machine's server"
-								badge={<Badge tone="info">Coming soon</Badge>}
+								detail="Another machine’s server"
+								badge={<Badge tone="info">Coming Soon</Badge>}
 							/>
 						</div>
 					</div>
@@ -107,7 +107,7 @@ export function AddServer({
 
 				{step === 1 && (
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<Row title="Name" description="Shown in the provider list.">
+						<DialogRow title="Name" description="Shown in the provider list">
 							<Input
 								aria-label="Name"
 								value={name}
@@ -117,13 +117,13 @@ export function AddServer({
 								onChange={(event) => setName(event.target.value)}
 								onKeyDown={(event) => event.key === "Enter" && canContinue && setStep(2)}
 							/>
-						</Row>
+						</DialogRow>
 					</div>
 				)}
 
 				{step === 2 && (
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<Row title="Executable" description="Path to the codework binary used by this instance.">
+						<DialogRow title="Executable" description="Path to the codework binary used by this instance">
 							<Input
 								aria-label="Executable"
 								value={executable}
@@ -131,14 +131,14 @@ export function AddServer({
 								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setExecutable(event.target.value)}
 							/>
-						</Row>
-						<Row
+						</DialogRow>
+						<DialogRow
 							title={
 								<>
-									<Code>CODEWORK_HOME_DIR</Code> path
+									<Code>CODEWORK_HOME_DIR</Code> Path
 								</>
 							}
-							description="codework home and config directory, its own: a home names one server."
+							description="codework home and config directory, its own: a home names one server"
 						>
 							<Input
 								aria-label="CODEWORK_HOME_DIR path"
@@ -148,8 +148,8 @@ export function AddServer({
 								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setHome(event.target.value)}
 							/>
-						</Row>
-						<Row
+						</DialogRow>
+						<DialogRow
 							title="Launch Args"
 							description={
 								<>
@@ -164,7 +164,7 @@ export function AddServer({
 								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setArgs(event.target.value)}
 							/>
-						</Row>
+						</DialogRow>
 					</div>
 				)}
 
@@ -223,19 +223,6 @@ function KindTile({
 			</span>
 			{badge}
 			{selected && <CheckIcon className="size-4 text-info" />}
-		</div>
-	);
-}
-
-/** A setting in the dialog: its title and description beside its field. */
-function Row({ title, description, children }: { title: ReactNode; description: ReactNode; children: ReactNode }) {
-	return (
-		<div className="grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[1fr_16rem]">
-			<span className="flex flex-col gap-1">
-				<span className="font-medium">{title}</span>
-				<span className="text-sm text-ink-muted">{description}</span>
-			</span>
-			{children}
 		</div>
 	);
 }

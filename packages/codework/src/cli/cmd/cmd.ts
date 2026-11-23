@@ -45,8 +45,8 @@ const ServerAddress = {
 
 /** For commands that only talk to a server that is already running. */
 const RunningServer = Flag.String("server").pipe(
-	Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
-	Flag.withDefault("ws://127.0.0.1:7433/rpc/v1"),
+	Flag.withDescription("RPC server URL (defaults to this home's server)"),
+	Flag.optional,
 );
 
 /** A thread's MCP server in a running server: every thread sharing its instance is affected. */
@@ -398,10 +398,20 @@ export const Cmd = Spec.make("codework", {
 					),
 					Flag.withDefault(false),
 				),
+				trustedProxy: Flag.String("trusted-proxy").pipe(
+					Flag.withDescription(
+						"Address or CIDR range of a TLS proxy in front of the server, repeatable or comma-separated (default: CODEWORK_TRUSTED_PROXY, then server.trustedProxy in user settings)",
+					),
+					Flag.atLeast(0),
+				),
 			},
 			examples: [
 				{ command: "codework serve", description: "Start the RPC server on 127.0.0.1:7433" },
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
+				{
+					command: "codework serve --host 0.0.0.0 --trusted-proxy 10.0.0.0/8",
+					description: "Believe X-Forwarded-Proto from a proxy in 10.0.0.0/8",
+				},
 			],
 		}),
 		Spec.make("service", {
@@ -411,6 +421,14 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("restart", { description: "Restart the background server", params: ServerAddress }),
 				Spec.make("status", { description: "Show background server status" }),
 				Spec.make("stop", { description: "Stop the background server" }),
+				Spec.make("pair", {
+					description: "Print a one-time code another computer pairs with, valid 10 minutes",
+				}),
+				Spec.make("devices", { description: "List paired devices" }),
+				Spec.make("revoke", {
+					description: "Unpair a device and end its connections",
+					params: { id: Argument.String("device-id").pipe(Argument.withDescription("The device to unpair")) },
+				}),
 			],
 		}),
 		Spec.make("session", {

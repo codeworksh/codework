@@ -1,7 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
+import { isSignedInApp } from "./auth";
 import { serversAtom } from "./kernel/servers";
+import { settledAtom } from "./setup";
 
 // A status that is slow to come is shown when it comes; the app does not wait longer for it.
 const LONGEST = 2_000;
@@ -18,11 +20,14 @@ export function reveal() {
 }
 
 /**
- * Keeps the splash up over the mounted app until the servers' status first arrives, so the first
- * frame shown already says whether the default server works. Reading the status starts it.
+ * Keeps the splash up over the mounted app until the servers' status first arrives and the setup check
+ * has opened the first page, so the first frame shown is the page that stays. Reading the status starts it.
  */
 export function Splash() {
-	const known = useAtomValue(serversAtom)._tag !== "Initial";
+	const status = useAtomValue(serversAtom);
+	const settled = useAtomValue(settledAtom);
+	// Without sign-in there is no setup check to wait for.
+	const known = status._tag !== "Initial" && (settled || !isSignedInApp);
 	useEffect(() => {
 		if (known) return reveal();
 		const timer = setTimeout(reveal, LONGEST);

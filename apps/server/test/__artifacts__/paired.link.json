@@ -1,0 +1,43 @@
+{
+	"once paired": {
+		"machineId": "<machine id>",
+		"workspaces": []
+	},
+	"machine.connect": {
+		"_tag": "Machine.ConnectError",
+		"message": "Could not connect: HttpClientError: Transport error (POST <relay>/v1/pairings)"
+	},
+	"machine.disconnect of a workspace it is not linked to": {
+		"_tag": "Machine.ConnectError",
+		"message": "This machine is not connected to workspace acme"
+	},
+	"machine.connect on the local server by id": {
+		"_tag": "Server.ServersError",
+		"message": "Only a paired Machine is reached here."
+	},
+	"machine.disconnect while it is stopped": {
+		"_tag": "Server.ServersError",
+		"message": "Fixture did not answer."
+	},
+	"machine.connect while it is silent": {
+		"reply": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture did not answer."
+		},
+		"within the bound": true
+	},
+	"back after a restart": {
+		"machineId": "<machine id>",
+		"workspaces": []
+	},
+	"after device.revoke": {
+		"connect": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture is not paired any more. Pair it again."
+		},
+		"disconnect": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture is not paired any more. Pair it again."
+		}
+	}
+}

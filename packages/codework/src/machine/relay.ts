@@ -53,7 +53,12 @@ export const status = Effect.fn("Machine.status")(function* (home: string) {
 		id: machine.id,
 		localHostName,
 		givenName: machine.givenName ?? null,
-		workspaces: Object.entries(machine.workspaces).map(([id, link]) => ({ id, name: link.name, keyId: link.keyId })),
+		workspaces: Object.entries(machine.workspaces).map(([id, link]) => ({
+			id,
+			name: link.name,
+			keyId: link.keyId,
+			leaving: link.leaving === true,
+		})),
 	} satisfies Machine.Status;
 });
 
@@ -158,8 +163,32 @@ export const connect = Effect.fn("Machine.connect")(function* (options: {
 });
 
 /**
+ * Asks the link's relay to revoke it, signed with its own key: true once the relay confirms, or says it
+ * was revoked already; false when it can't be reached in time.
+ */
+const revoke = (machineId: string, workspaceId: string, link: File.Machine["workspaces"][string]) =>
+	Effect.gen(function* () {
+		const claims: Relay.RevokeClaims = {
+			op: "machine.revoke",
+			iat: yield* Clock.currentTimeMillis,
+			jti: uuidv7(),
+			workspaceId,
+			machineId,
+		};
+		const api = yield* at(link.relay);
+		yield* api.machine.revoke({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
+	}).pipe(
+		// Leave time for the local update before the desktop RPC expires.
+		Effect.timeout("3 seconds"),
+		Effect.as(true),
+		Effect.catchTag("Relay.MachineRevoked", () => Effect.succeed(true)),
+		Effect.catch((error) => Effect.logDebug(`Revoke at ${link.name} failed`, error).pipe(Effect.as(false))),
+	);
+
+/**
  * One heartbeat per connected workspace, each to the relay its link was made with, all at once. A link
- * the relay refuses as revoked is removed, but only while it still holds the refused key.
+ * the relay refuses as revoked is removed, but only while it still holds the refused key. A leaving link
+ * asks for its revoke again instead, and is removed once the relay confirms.
  */
 export const heartbeat = Effect.fn("Machine.heartbeat")(function* (home: string) {
 	const stored = yield* File.read(home);
@@ -169,35 +198,45 @@ export const heartbeat = Effect.fn("Machine.heartbeat")(function* (home: string)
 	yield* Effect.forEach(
 		Object.entries(machine.workspaces),
 		([workspaceId, link]) =>
-			Effect.gen(function* () {
-				const api = yield* at(link.relay);
-				const claims: Relay.HeartbeatClaims = {
-					op: "machine.heartbeat",
-					iat: yield* Clock.currentTimeMillis,
-					workspaceId,
-					machine: info,
-				};
-				yield* api.machine.heartbeat({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
-			}).pipe(
-				Effect.timeout("10 seconds"),
-				Effect.catchTags({
-					"Relay.MachineRevoked": (revoked) =>
-						Effect.logWarning(`Disconnected from ${link.name}: ${revoked.message}`).pipe(
-							Effect.andThen(File.removeLink(home, workspaceId, link.keyId)),
+			link.leaving === true
+				? revoke(machine.id, workspaceId, link).pipe(
+						Effect.flatMap((revoked) =>
+							revoked ? File.removeLink(home, workspaceId, link.keyId).pipe(Effect.asVoid) : Effect.void,
 						),
-					// Refused but not revoked, most often a clock more than a minute off: worth seeing in the log.
-					"Relay.Unauthorized": (refused) =>
-						Effect.logWarning(`Heartbeat to ${link.name} refused: ${refused.message}`),
-				}),
-				Effect.catch((error) => Effect.logDebug(`Heartbeat to ${link.name} failed`, error)),
-			),
+						Effect.catch((error) => Effect.logDebug(`Leaving ${link.name} failed`, error)),
+					)
+				: Effect.gen(function* () {
+						const api = yield* at(link.relay);
+						const claims: Relay.HeartbeatClaims = {
+							op: "machine.heartbeat",
+							iat: yield* Clock.currentTimeMillis,
+							workspaceId,
+							machine: info,
+						};
+						yield* api.machine.heartbeat({
+							payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) },
+						});
+					}).pipe(
+						Effect.timeout("10 seconds"),
+						Effect.catchTags({
+							"Relay.MachineRevoked": (revoked) =>
+								Effect.logWarning(`Disconnected from ${link.name}: ${revoked.message}`).pipe(
+									Effect.andThen(File.removeLink(home, workspaceId, link.keyId)),
+								),
+							// Refused but not revoked, most often a clock more than a minute off: worth seeing in the log.
+							"Relay.Unauthorized": (refused) =>
+								Effect.logWarning(`Heartbeat to ${link.name} refused: ${refused.message}`),
+						}),
+						Effect.catch((error) => Effect.logDebug(`Heartbeat to ${link.name} failed`, error)),
+					),
 		{ concurrency: "unbounded", discard: true },
 	);
 });
 
 /**
- * Leaves a workspace: asks the link's relay to revoke it, then forgets it locally. The local link is
- * removed even when the relay can't be reached; `revoked` says whether it confirmed.
+ * Leaves a workspace: asks the link's relay to revoke it, then forgets it locally. When the relay can't
+ * confirm, the link is kept as leaving, with its key, and each heartbeat asks again until it does; the
+ * relay still lists it until then. `revoked` says whether it confirmed now.
  */
 export const disconnect = Effect.fn("Machine.disconnect")(function* (
 	home: string,
@@ -211,23 +250,7 @@ export const disconnect = Effect.fn("Machine.disconnect")(function* (
 	}
 	if (expectedKeyId !== undefined && link.keyId !== expectedKeyId)
 		return yield* new Machine.ConnectError({ message: "This machine link has changed" });
-	const claims: Relay.RevokeClaims = {
-		op: "machine.revoke",
-		iat: yield* Clock.currentTimeMillis,
-		jti: uuidv7(),
-		workspaceId,
-		machineId: stored.value.id,
-	};
-	const revoked = yield* Effect.gen(function* () {
-		const api = yield* at(link.relay);
-		yield* api.machine.revoke({ payload: { jws: yield* Jws.sign(claims, link.key, { kid: link.keyId }) } });
-	}).pipe(
-		// Leave time for the local update and fallback before the desktop RPC expires.
-		Effect.timeout("3 seconds"),
-		Effect.as(true),
-		Effect.catchTag("Relay.MachineRevoked", () => Effect.succeed(true)),
-		Effect.orElseSucceed(() => false),
-	);
-	yield* File.removeLink(home, workspaceId, link.keyId);
+	const revoked = yield* revoke(stored.value.id, workspaceId, link);
+	yield* revoked ? File.removeLink(home, workspaceId, link.keyId) : File.markLeaving(home, workspaceId, link.keyId);
 	return { workspace: link.name, revoked };
 });
