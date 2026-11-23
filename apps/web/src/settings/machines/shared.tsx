@@ -7,6 +7,7 @@ import { Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useCallback, useContext } from "react";
 
+import { CopyButton } from "@/components/copyable";
 import { isSignedInApp } from "../../auth";
 import { machinesAtom, relayFailure, workspaceAtom } from "../../kernel/relay";
 import { serversAtom } from "../../kernel/servers";
@@ -31,6 +32,9 @@ export function useWorkspace(): { readonly ready: boolean; readonly workspace: R
 		workspace: AsyncResult.isSuccess(current) ? current.value : undefined,
 	};
 }
+
+/** A machine id kept short: they share their leading timestamp, so the end is kept too, where they differ. */
+export const shortId = (id: string) => (id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id);
 
 /** Whether a paired machine answers as itself, so what it says about its links holds. */
 export const isReachable = (server: RemoteServerStatus) => server.paired && server.mismatch === null && server.online;
@@ -146,6 +150,7 @@ export function MachineRow({
 	name,
 	marks,
 	description,
+	id,
 	status,
 	open,
 	menu,
@@ -154,6 +159,8 @@ export function MachineRow({
 	readonly name: string;
 	readonly marks?: ReactNode;
 	readonly description: string;
+	/** The machine's id, kept short at the end of the description, with a copy button. */
+	readonly id?: string | undefined;
 	readonly status: ReactNode;
 	/** The paired machine whose page the row opens. */
 	readonly open?: string | undefined;
@@ -182,8 +189,23 @@ export function MachineRow({
 					)}
 					{marks}
 				</span>
-				<span className="truncate text-xs font-book text-ink-muted" title={description}>
-					{description}
+				<span className="flex min-w-0 items-center gap-1 text-xs font-book text-ink-muted">
+					{/* With an id, the description takes a fixed width, so the ids and their buttons line up down the list as a column of their own. */}
+					<span className={`truncate ${id === undefined ? "" : "w-56"}`} title={description}>
+						{description}
+					</span>
+					{id !== undefined && (
+						<>
+							<span className="w-28 shrink-0 truncate tabular-nums" title={id}>
+								{shortId(id)}
+							</span>
+							<CopyButton
+								value={id}
+								label={`Copy ID of ${name}`}
+								className="-my-1 size-5 shrink-0 before:-inset-2.5"
+							/>
+						</>
+					)}
 				</span>
 			</span>
 			<span className="shrink-0">{status}</span>

@@ -23,7 +23,7 @@ import { useMachineAtom } from "../../shell/connect";
 import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
 import { Done, EmptyState, SeenStatus, StatusDot } from "../controls";
 import { Badge } from "../servers/local";
-import { addressOf, isPlain, PairDialog } from "./pair";
+import { isPlain, PairDialog } from "./pair";
 import {
 	linkText,
 	Loaded,
@@ -33,6 +33,7 @@ import {
 	Status,
 	useMembership,
 	usePaired,
+	isReachable,
 	useRefreshMachines,
 	useWorkspace,
 } from "./shared";
@@ -45,12 +46,6 @@ const renameAtom = Server.mutation("machine.rename");
 export function MachinesSettings() {
 	const { ready, workspace } = useWorkspace();
 	const paired = usePaired();
-	// The machines this computer reaches itself are listed once, as paired.
-	const pairedIds = new Set(
-		AsyncResult.isSuccess(paired)
-			? paired.value.flatMap((server) => (server.machineId === null ? [] : [server.machineId]))
-			: [],
-	);
 	return (
 		<Page
 			title="Machines"
@@ -65,10 +60,10 @@ export function MachinesSettings() {
 			{workspace !== undefined ? (
 				<>
 					<Waiting key={`waiting-${workspace.id}`} workspace={workspace} />
-					<NotPaired
+					<Linked
 						key={`linked-${workspace.id}`}
 						workspace={workspace}
-						pairedIds={AsyncResult.isSuccess(paired) ? pairedIds : undefined}
+						paired={AsyncResult.isSuccess(paired) ? paired.value : undefined}
 					/>
 				</>
 			) : (
@@ -330,13 +325,14 @@ function PairedRow({
 	readonly workspace: Relay.Workspace | undefined;
 	readonly fresh: boolean;
 }) {
-	const address = `${addressOf(server.url)}${isPlain(server.url) ? " · Insecure" : ""}`;
 	const membership = useMembership(server.machineId, server.workspaces, workspace);
 	const link = workspace === undefined ? undefined : linkText(membership, workspace);
+	// Its page shows the address; the row keeps only whether the route is plain.
+	const insecure = isPlain(server.url) ? "Insecure" : undefined;
 	return (
 		<MachineRow
 			name={server.name}
-			description={link === undefined ? address : `${link} · ${address}`}
+			description={[link, insecure].filter((part) => part !== undefined).join(" · ")}
 			status={fresh ? <Done>Paired</Done> : <Status server={server} />}
 			open={server.id}
 			className={`transition-colors duration-700 ease-out hover:duration-150 motion-reduce:transition-none ${fresh ? "bg-selection-subtle" : ""}`}
@@ -344,14 +340,14 @@ function PairedRow({
 	);
 }
 
-/** The workspace's machines this computer is not paired with. This machine's own link is in its card. */
-function NotPaired({
+/** Every machine Relay lists in the workspace: this machine first, then the newest. */
+function Linked({
 	workspace,
-	pairedIds,
+	paired,
 }: {
 	readonly workspace: Relay.Workspace;
-	/** The paired machines' ids; unknown until the app server answers, and the list waits for them. */
-	readonly pairedIds: ReadonlySet<string> | undefined;
+	/** The paired machines; unknown until the app server answers, and the list waits for them. */
+	readonly paired: ReadonlyArray<RemoteServerStatus> | undefined;
 }) {
 	const machines = useAtomValue(machinesAtom(workspace.id));
 	const refresh = useAtomRefresh(machinesAtom(workspace.id));
@@ -379,9 +375,9 @@ function NotPaired({
 		if (reach === "ok") refresh();
 	}, [reach, refresh]);
 
-	const title = `Linked to ${workspace.name}, Not Paired`;
-	const about = `Machines in ${workspace.name} that this computer is not paired with`;
-	if (AsyncResult.isInitial(machines) || AsyncResult.isInitial(local) || pairedIds === undefined) {
+	const title = `Linked to ${workspace.name}`;
+	const about = `Machines that belong to ${workspace.name}`;
+	if (AsyncResult.isInitial(machines) || AsyncResult.isInitial(local) || paired === undefined) {
 		return (
 			<Section title={title} description={about}>
 				<Placeholder rows={2} />
@@ -400,9 +396,41 @@ function NotPaired({
 	const stale = last !== undefined;
 	const all = AsyncResult.isSuccess(machines) ? machines.value : (last?.value ?? []);
 	if (seen === null && AsyncResult.isSuccess(machines)) setSeen(new Set(all.map((machine) => machine.id)));
-	// The newest first: a machine just added appears where you are looking.
-	const list = all.filter((machine) => machine.id !== localId && !pairedIds.has(machine.id)).reverse();
-	const command = `codework connect --workspace ${workspace.id}`;
+	// This machine first, then the newest: a machine just added appears where you are looking.
+	const list = [
+		...all.filter((machine) => machine.id === localId),
+		...all.filter((machine) => machine.id !== localId).reverse(),
+	];
+	const byMachine = new Map(
+		paired.flatMap((server) => (server.machineId === null ? [] : [[server.machineId, server] as const])),
+	);
+	const own = AsyncResult.isSuccess(local) ? local.value.workspaces : [];
+	const holds = (links: ReadonlyArray<{ readonly id: string; readonly keyId: string }>, machine: Relay.Machine) =>
+		links.some((link) => link.id === workspace.id && link.keyId === machine.keyId);
+	// This machine, or a paired one that answers and holds the key, ends its own link; Relay removes any other.
+	const unlinkOf = (machine: Relay.Machine): { relation: string; via: Target["via"]; allowed: boolean } => {
+		if (machine.id === localId)
+			return {
+				relation: "This Machine",
+				via: holds(own, machine) ? { kind: "local" } : { kind: "relay" },
+				allowed: true,
+			};
+		const server = byMachine.get(machine.id);
+		if (server !== undefined)
+			return {
+				relation: "Paired",
+				via:
+					isReachable(server) && holds(server.workspaces, machine)
+						? { kind: "paired", serverId: server.id }
+						: { kind: "relay", serverId: server.id },
+				allowed: true,
+			};
+		return {
+			relation: "Not Paired",
+			via: { kind: "relay" },
+			allowed: workspace.role !== "member" || machine.ownerId === accountId,
+		};
+	};
 	return (
 		<Section
 			title={title}
@@ -414,23 +442,17 @@ function NotPaired({
 					<EmptyState
 						icon={<UsersThreeIcon size={22} aria-hidden />}
 						title="No Linked Machines"
-						description={`A machine that joins ${workspace.name} with codework connect shows up here`}
-						action={
-							<div className="w-72 max-w-full text-left">
-								<CopyCommand command={command} />
-							</div>
-						}
+						description={`Machines that join ${workspace.name} show up here`}
 					/>
 				) : (
 					<Group>
 						{list.map((machine) => (
-							<NotPairedRow
+							<LinkedRow
 								key={machine.keyId}
 								machine={machine}
 								workspace={workspace}
-
+								{...unlinkOf(machine)}
 								fresh={seen !== null && !seen.has(machine.id)}
-								canRemove={workspace.role !== "member" || machine.ownerId === accountId}
 								stale={stale}
 								onGone={refresh}
 							/>
@@ -442,19 +464,24 @@ function NotPaired({
 	);
 }
 
-function NotPairedRow({
+function LinkedRow({
 	machine,
 	workspace,
+	relation,
+	via,
+	allowed,
 	fresh,
-	canRemove,
 	stale,
 	onGone,
 }: {
 	readonly machine: Relay.Machine;
 	readonly workspace: Relay.Workspace;
-
+	/** How it relates to this computer, as the Paired section says how a machine relates to the workspace. */
+	readonly relation: string;
+	readonly via: Target["via"];
+	/** Whether this person may unlink it. */
+	readonly allowed: boolean;
 	readonly fresh: boolean;
-	readonly canRemove: boolean;
 	/** The last list the relay gave, while it can't be reached: online state is unknown and nothing acts. */
 	readonly stale: boolean;
 	readonly onGone: () => void;
@@ -476,8 +503,8 @@ function NotPairedRow({
 			<div className="min-h-0 overflow-hidden">
 				<MachineRow
 					name={name}
-
-					description={`${machine.os} ${machine.arch} · v${machine.version} · ${machine.id}`}
+					description={`${relation} · ${machine.os} ${machine.arch} · v${machine.version}`}
+					id={machine.id}
 					status={
 						stale ? (
 							<StatusDot tone="muted">Unknown</StatusDot>
@@ -490,13 +517,14 @@ function NotPairedRow({
 					}
 					menu={
 						!stale &&
-						canRemove && (
+						allowed && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
 									<Button
 										ref={trigger}
 										size="icon-sm"
 										variant="ghost"
+										className="relative before:absolute before:-inset-1.5 before:content-['']"
 										aria-label={`Actions for ${name} (${machine.id})`}
 									>
 										<DotsThreeIcon weight="bold" aria-hidden />
@@ -511,7 +539,7 @@ function NotPairedRow({
 												workspace,
 												machineId: machine.id,
 												keyId: machine.keyId,
-												via: { kind: "relay" },
+												via,
 											})
 										}
 									>

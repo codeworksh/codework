@@ -223,6 +223,9 @@ function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined 
 					<div className="flex items-center justify-between">
 						<Button
 							variant="ghost"
+							className={current === 3 ? "invisible" : undefined}
+							aria-hidden={current === 3 || undefined}
+							tabIndex={current === 3 ? -1 : undefined}
 							onClick={() => {
 								if (workspaceId !== undefined) setUpLater(workspaceId);
 								// Skipping the link leaves a machine ready to use.
@@ -332,7 +335,7 @@ function Step({
 							type="button"
 							aria-expanded={terminal}
 							onClick={() => setTerminal((shown) => !shown)}
-							className="flex items-center gap-1 rounded-md text-xs text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+							className="relative flex items-center gap-1 rounded-md text-xs text-ink-muted outline-none before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-[''] hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							<CaretRightIcon
 								size={10}

@@ -160,9 +160,14 @@ function Detail({
 		<Sub
 			title={server.name}
 			description={
-				<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+				<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
 					<Status server={server} />
-					{workspace !== undefined && <span className="text-xs">{linkText(membership, workspace)}</span>}
+					{workspace !== undefined && linkText(membership, workspace) !== undefined && (
+						<>
+							<span aria-hidden>·</span>
+							<span>{linkText(membership, workspace)}</span>
+						</>
+					)}
 				</span>
 			}
 		>
@@ -213,7 +218,9 @@ function Detail({
 					</Row>
 					{server.paired && server.fingerprint !== null && (
 						<Row title="Machine Key" description="Printed by codework service pair">
-							<CopyCommand command={server.fingerprint} label="Copy Machine Key" />
+							<div className="w-full min-w-0 shrink-0 @min-[560px]:w-64">
+								<CopyCommand command={server.fingerprint} label="Copy Machine Key" />
+							</div>
 						</Row>
 					)}
 					<Row title="Version">
