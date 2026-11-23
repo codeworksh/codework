@@ -3,7 +3,7 @@
 /* @effect-diagnostics globalFetchInEffect:off -- the integration suite calls its local test server. */
 import type { Message } from "@codeworksh/aikit";
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
-import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
 import { NodeServices } from "@effect/platform-node";
 import { HttpServer } from "effect/http";
 import { RpcTest } from "effect/rpc";
@@ -25,18 +25,22 @@ import * as Handlers from "../src/server/handlers.ts";
 import * as Host from "../src/server/host.ts";
 import * as Identity from "../src/server/identity.ts";
 import * as OAuth from "../src/server/oauth.ts";
+import * as Pairing from "../src/server/pairing.ts";
 import * as Server from "../src/server/server.ts";
 import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
+import { connect, door } from "./utils/client.ts";
 
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const mcpEcho = fileURLToPath(new URL("./fixtures/mcp-echo.mjs", import.meta.url));
 
-const execCli = async (args: ReadonlyArray<string>, cwd?: string) => {
+/** The CLI as a person runs it, in `home`: the home whose service.json gives it the server's token. */
+const execCli = async (args: ReadonlyArray<string>, cwd: string, home: string) => {
 	try {
 		const result = await exec(process.execPath, ["--conditions=development", cli, ...args], {
-			...(cwd === undefined ? {} : { cwd }),
+			cwd,
+			env: { ...process.env, CODEWORK_HOME_DIR: home },
 			timeout: 10_000,
 		});
 		return { status: 0, stdout: result.stdout, stderr: result.stderr };
@@ -56,11 +60,13 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
+		Layer.provide(Pairing.layer),
 		Layer.provide(OAuth.layer({ home })),
 		Layer.provide(Host.layer.pipe(Layer.provide(NodeServices.layer))),
 		Layer.provide(Clones.layer.pipe(Layer.provide(NodeServices.layer))),
 		Layer.provide(Identity.layer),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
+		Layer.provideMerge(door),
 	);
 };
 
@@ -544,7 +550,10 @@ describe("server", () => {
 					result: { sameId: renamed.id === firstProject?.id, name: renamed.name },
 					first: yield* nameOf(first.session.id),
 					second: yield* nameOf(second.session.id),
-					missing: { _tag: missing._tag, projectId: missing.projectId },
+					missing: {
+						_tag: missing._tag,
+						projectId: missing._tag === "ProjectNotFoundError" ? missing.projectId : undefined,
+					},
 				},
 				invalid,
 				sessionsCreatedByInvalid: after - before,
@@ -832,6 +841,9 @@ describe("server", () => {
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 });
 
+/** The home of the server {@link websocket} runs: its service.json holds the server's token. */
+class Served extends Context.Service<Served, string>()("@codeworksh/cli/test/server.test/Served") {}
+
 const websocket = (options: Harness.Options = {}, port = 0) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-ws-"));
 	homes.push(home);
@@ -839,14 +851,11 @@ const websocket = (options: Harness.Options = {}, port = 0) => {
 		host: "127.0.0.1",
 		port,
 		harness: { home, hostCwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
-	});
+	}).pipe(Layer.merge(Layer.succeed(Served, options.home ?? home)));
 };
 
 const connectedClient = Effect.gen(function* () {
-	const server = yield* HttpServer.HttpServer;
-	if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-	const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${server.address.port}/rpc/v1`));
-	return yield* Client.make.pipe(Effect.provideContext(context));
+	return yield* connect(yield* Served);
 });
 
 /** Two checkouts of one project, each with `packages/x`: a session can move between them. */
@@ -1003,8 +1012,13 @@ describe("WebSocket client", () => {
 			const server = yield* HttpServer.HttpServer;
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const port = server.address.port;
+			const home = yield* Served;
 			const result = yield* Effect.promise(() =>
-				execCli(["auth", "status", "--openai-codex", "--server", `ws://127.0.0.1:${port}/rpc/v1`], process.cwd()),
+				execCli(
+					["auth", "status", "--openai-codex", "--server", `ws://127.0.0.1:${port}/rpc/v1`],
+					process.cwd(),
+					home,
+				),
 			);
 
 			expect(result.status).toBe(1);
@@ -1019,17 +1033,18 @@ describe("WebSocket client", () => {
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
 			const rpc = yield* connectedClient;
+			const home = yield* Served;
 			const session = yield* rpc["session.create"]({});
 
 			const linked = yield* Effect.promise(() =>
-				execCli(["session", "link", session.session.id, project, "--server", url], project),
+				execCli(["session", "link", session.session.id, project, "--server", url], project, home),
 			);
 			expect(linked.status).toBe(0);
 			expect(linked.stdout).toContain(`Linked ${session.session.id} to ${project}`);
 			expect((yield* rpc["thread.info"]({ sessionId: session.session.id })).session.hostDir).toBe(project);
 
 			const unlinked = yield* Effect.promise(() =>
-				execCli(["session", "link", session.session.id, "--unlink", "--server", url], project),
+				execCli(["session", "link", session.session.id, "--unlink", "--server", url], project, home),
 			);
 			expect(unlinked.status).toBe(0);
 			expect(unlinked.stdout).toContain(`Unlinked ${session.session.id}`);
@@ -1047,13 +1062,14 @@ describe("WebSocket client", () => {
 			const server = yield* HttpServer.HttpServer;
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
+			const home = yield* Served;
 
-			const succeeded = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			const succeeded = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root, home));
 			expect(succeeded.status).toBe(0);
 			expect(succeeded.stdout).toMatch(/^Reloaded \d+ plugins?\.\n$/);
 
 			yield* Effect.sync(() => writeFileSync(module, "export default { nope: true };\n"));
-			const failed = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			const failed = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root, home));
 			expect(failed.status).toBe(1);
 			expect(failed.stdout).toContain("Reload failed, keeping");
 			expect(failed.stdout).toContain("Missing key");
@@ -1072,7 +1088,8 @@ describe("WebSocket client", () => {
 			// A server already on the default port, such as a running service, is never talked to.
 			const built = yield* Effect.exit(Layer.build(websocket({}, 7433)));
 			if (Exit.isFailure(built)) return undefined;
-			return yield* Effect.promise(() => execCli(["plugin", "reload"], root));
+			const home = Context.get(built.value, Served);
+			return yield* Effect.promise(() => execCli(["plugin", "reload"], root, home));
 		}).pipe(Effect.scoped, Effect.timeout("20 seconds"), Effect.runPromise);
 		if (result === undefined) return context.skip("port 7433 is in use");
 		expect(result.status, result.stderr).toBe(0);
@@ -1416,7 +1433,8 @@ describe("WebSocket client", () => {
 			yield* Client.run(rpc, { sessionId, threadId: main.id, text: "hello" }, quiet);
 			const reply = (yield* rpc["thread.history"]({ sessionId })).entries.at(-1);
 			if (reply === undefined) return yield* Effect.die("main thread has no reply");
-			const cli = (...args: string[]) => Effect.promise(() => execCli([...args, "--server", url], root));
+			const home = yield* Served;
+			const cli = (...args: string[]) => Effect.promise(() => execCli([...args, "--server", url], root, home));
 
 			const at = yield* cli("thread", "fork", sessionId, "--at", reply.id);
 			const forkId = Session.ThreadSchema.ID.make(at.stdout.trim());
@@ -1526,7 +1544,7 @@ describe("WebSocket client", () => {
 						Effect.andThen(Effect.sync(() => (contexts.at(-1)?.tools ?? []).map((tool) => tool.name))),
 					);
 				const cli = (...args: string[]) =>
-					Effect.promise(() => execCli([...args, "--server", url], home)).pipe(
+					Effect.promise(() => execCli([...args, "--server", url], home, home)).pipe(
 						Effect.map((run) => ({
 							status: run.status,
 							stdout: scrub(run.stdout),
@@ -1597,6 +1615,7 @@ describe("WebSocket client", () => {
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const port = server.address.port;
 			const rpc = yield* connectedClient;
+			const home = yield* Served;
 			const sandbox = yield* rpc["sandbox.create"]({ driver: "memory" });
 			const result = yield* Effect.promise(() =>
 				exec(
@@ -1615,7 +1634,7 @@ describe("WebSocket client", () => {
 						"gpt-6-luna",
 						"hello",
 					],
-					{ timeout: 10000 },
+					{ timeout: 10000, env: { ...process.env, CODEWORK_HOME_DIR: home } },
 				).catch((error: { stdout: string; stderr: string }) => {
 					throw new Error(error.stdout + error.stderr);
 				}),
@@ -1747,7 +1766,7 @@ describe("WebSocket client", () => {
 			const server = () => Server.layer({ host: "127.0.0.1", port: 0, harness });
 
 			const id = yield* Effect.gen(function* () {
-				const rpc = yield* connectedClient;
+				const rpc = yield* connect(home);
 				const sandbox = yield* rpc["sandbox.create"]({ driver: "memory" });
 				expect(sandbox.status).toBe("online");
 				return sandbox.id;
@@ -1756,7 +1775,7 @@ describe("WebSocket client", () => {
 			// A second process over the same database sees what the first left behind:
 			// the instance it provisioned was stopped on the way out.
 			yield* Effect.gen(function* () {
-				const rpc = yield* connectedClient;
+				const rpc = yield* connect(home);
 				const listed = yield* rpc["sandbox.list"]({});
 				expect(listed.find((instance) => instance.id === id)?.status).toBe("offline");
 			}).pipe(Effect.scoped, Effect.provide(server()));

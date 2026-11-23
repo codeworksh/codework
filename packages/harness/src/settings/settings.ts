@@ -319,12 +319,13 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 	// Catalog entries accumulate the same way, each keeping its file; the catalog applies them in
 	// this order, so for one model the highest layer's entry wins.
 	let models: ReadonlyArray<DeclaredModel> = defaults.models;
-	for (const group of files) {
+	for (const [layer, group] of files.entries()) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
-				const { models: entries, ...patch } = anchor(result.success, path);
-				settings = merge(settings, patch);
+				const { models: entries, server, ...patch } = anchor(result.success, path);
+				// A project must not say which proxy its machine believes: `server` is the user layer's alone.
+				settings = merge(settings, patch, layer === 0 ? { server } : undefined);
 				if (entries !== undefined) models = [...models, ...entries.map((entry) => ({ entry, file: path }))];
 				// Each entry keeps the file that declared it: it is what anchors a relative path,
 				// what `plugin list` names, and what the missing-plugin diagnostic points at.
@@ -381,4 +382,4 @@ export const layer = (options: Omit<Options, "hostDir"> = {}) =>
 		}),
 	);
 
-export { defaults } from "./schema.ts";
+export { defaults, proxyNetwork } from "./schema.ts";

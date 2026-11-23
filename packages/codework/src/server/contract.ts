@@ -20,13 +20,30 @@ import {
 	ThreadStore,
 	UsageSchema,
 } from "@codeworksh/harness/effect";
+import { Machine } from "@codeworksh/schema";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
 import { Part } from "./part.ts";
+import * as Principal from "./principal.ts";
 
 /** The HTTP path the RPC endpoint is served on; the version moves with breaking wire changes. */
 export const path = "/rpc/v1";
+
+/** A computer paired with this machine. */
+export const DeviceInfo = Schema.Struct({
+	id: Schema.String,
+	label: Schema.String,
+	/** Its key's fingerprint, `SHA256:<thumbprint>`. */
+	fingerprint: Schema.String,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	/** When it last took a ticket, epoch milliseconds; a device unseen for 30 days is refused. */
+	seenAt: Schema.Finite,
+	/** Whether it last paired or took a ticket over TLS, which ends at a proxy in front of this server. */
+	encrypted: Schema.optional(Schema.Boolean),
+});
+export type DeviceInfo = typeof DeviceInfo.Type;
 
 export const SandboxInfo = Schema.Struct({
 	id: Sandbox.SandboxInstance.ID,
@@ -526,6 +543,8 @@ export const Api = RpcGroup.make(
 			rev: Schema.Int,
 			/** The machine it runs on, by the name its user knows it; absent when the OS names it nothing. */
 			host: optional(Schema.Struct({ name: Schema.String })),
+			/** The id in the home's `machine.json`; absent until the home has one. */
+			machineId: optional(Schema.String),
 		}),
 	}),
 	/**
@@ -916,6 +935,63 @@ export const Api = RpcGroup.make(
 		success: McpStatus,
 		error: McpErrors,
 	}),
+	/** This machine and the workspaces it is connected to. */
+	Rpc.make("machine.info", {
+		payload: {},
+		success: Machine.Status,
+	}),
+	/** Names this machine for people; an empty name goes back to the OS's. */
+	Rpc.make("machine.rename", {
+		payload: { givenName: Schema.String },
+		success: Machine.Status,
+	}),
+	/** Leaves a workspace: the relay revokes this machine's link, and the machine forgets it. */
+	Rpc.make("machine.disconnect", {
+		payload: Machine.Disconnect,
+		success: Machine.Disconnected,
+		error: Machine.ConnectError,
+	}),
+	/**
+	 * Connects this machine to a workspace: the code a member approves, then the link once they have.
+	 * `workspaceId` is the workspace it is meant for; without one the approver picks it.
+	 */
+	Rpc.make("machine.connect", {
+		payload: { workspaceId: Schema.optional(Schema.String) },
+		success: Machine.ConnectEvent,
+		error: Machine.ConnectError,
+		stream: true,
+	}),
+	/**
+	 * A one-time code another computer exchanges at `POST /api/v1/devices` to pair its key, and the
+	 * fingerprint of this machine's key, which that computer keeps. Valid 10 minutes, once; held in
+	 * memory, so a restart forgets it. Local callers only.
+	 */
+	Rpc.make("device.pair", {
+		payload: {},
+		success: Schema.Struct({ code: Schema.String, expiresAt: Schema.Finite, fingerprint: Schema.String }),
+		error: Principal.Forbidden,
+	}),
+	/** Every paired device, oldest first. Local callers only. */
+	Rpc.make("device.list", {
+		payload: {},
+		success: Schema.Array(DeviceInfo),
+		error: Principal.Forbidden,
+	}),
+	/** Forgets a device and ends its open connections; `applied` is false when none has `id`. Local callers only. */
+	Rpc.make("device.revoke", {
+		payload: { id: Schema.String },
+		success: Schema.Struct({ applied: Schema.Boolean }),
+		error: Principal.Forbidden,
+	}),
+	/**
+	 * Ends the calling device's own pairing, as `device.revoke` would. Its sockets end with it, this one
+	 * too, so the reply may never arrive: the connection dropping after the call is sent means it left.
+	 * Devices only; a local caller has no pairing to leave.
+	 */
+	Rpc.make("device.leave", {
+		payload: {},
+		error: Principal.Forbidden,
+	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {
 		payload: {},
@@ -1043,4 +1119,4 @@ export const Api = RpcGroup.make(
 		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
 		stream: true,
 	}),
-);
+).middleware(Principal.Door);

@@ -1,6 +1,12 @@
 import { Global } from "@codeworksh/harness/effect";
-import { Effect, Option } from "effect";
+import { Door } from "@codeworksh/schema";
+import { Effect, Option, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
+import { RpcClientError } from "effect/rpc";
+import * as Client from "../server/client.ts";
 import type * as Discovery from "../server/discovery.ts";
+import * as Registration from "../server/registration.ts";
+import { Cmd } from "./cmd/cmd.ts";
 
 interface Shared {
 	readonly userConfigDir: Option.Option<string>;
@@ -29,3 +35,105 @@ export const options = (shared: Shared, server: { readonly host: string; readonl
 			],
 		})),
 	);
+
+class ConnectError extends Schema.TaggedError<ConnectError>()("CLI.ConnectError", {
+	message: Schema.String,
+}) {}
+
+const isClientError = Schema.is(RpcClientError.RpcClientError);
+
+/** Names for this computer; a server bound to every address answers to all of them. */
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]", "0.0.0.0", "[::]"]);
+
+/** Two URLs of one server: equal, or the same port and path under two of this computer's names. */
+const same = (a: string, b: string) => {
+	if (a === b) return true;
+	const [x, y] = [URL.parse(a), URL.parse(b)];
+	return (
+		x !== null &&
+		y !== null &&
+		loopback.has(x.hostname) &&
+		loopback.has(y.hostname) &&
+		x.port === y.port &&
+		x.pathname === y.pathname
+	);
+};
+
+/**
+ * The server the home's `service.json` names, and that only: the token goes nowhere else, as any
+ * other server, however local it looks, may belong to someone else. A `url` must name it; a loopback
+ * alias of that URL is the server as filed.
+ */
+const target = Effect.fn("CLI.target")(function* (url: string | undefined) {
+	const paths = yield* home(yield* Cmd.spec);
+	const registered = yield* Registration.read(Registration.file(paths.home));
+	if (registered === undefined)
+		return yield* new ConnectError({
+			message: ["no CodeWork server is running for this home", "hint: start one with `codework service start`"].join(
+				"\n",
+			),
+		});
+	if (url !== undefined && !same(registered.url, url))
+		return yield* new ConnectError({
+			message: [
+				`${url} is not this home's server`,
+				`hint: this home's server is ${registered.url}; pass --home for another home's server`,
+			].join("\n"),
+		});
+	return { url: registered.url, token: registered.token };
+});
+
+/**
+ * Why a socket to `server` did not open. The WebSocket hides the HTTP status, so the same request
+ * is made again as a plain GET, with the token offered the same way, and the door's status read.
+ */
+const refused = Effect.fn("CLI.refused")(function* (url: string, server: Client.Target) {
+	const status = yield* HttpClient.get(server.url.replace(/^ws/, "http"), {
+		headers: { "sec-websocket-protocol": Door.protocols(server.token).join(", ") },
+	}).pipe(
+		Effect.map((response) => response.status),
+		Effect.timeout("2 seconds"),
+		Effect.provide(FetchHttpClient.layer),
+		Effect.orElseSucceed(() => undefined),
+	);
+	switch (status) {
+		case 401:
+			return yield* new ConnectError({
+				message: [
+					`the CodeWork server at ${url} refused this home's token`,
+					"hint: restart it with `codework service restart`, or check --home names its home",
+				].join("\n"),
+			});
+		case 403:
+			return yield* new ConnectError({
+				message: `the CodeWork server at ${url} refused the request's origin`,
+			});
+		default:
+			return yield* new ConnectError({
+				message: [
+					`could not connect to the CodeWork server at ${url}`,
+					"hint: check it is running with `codework service status`",
+				].join("\n"),
+			});
+	}
+});
+
+/**
+ * Runs `program` against the server at `url`, or the home's when none is named, naming why when its
+ * socket does not open.
+ */
+export const connect =
+	(url?: string) =>
+	<A, E, R>(program: Effect.Effect<A, E, R>) =>
+		Effect.gen(function* () {
+			const server = yield* target(url);
+			return yield* program.pipe(
+				// Scoped inside the client, so the program's own finalizers still reach the server.
+				Effect.scoped,
+				Effect.provide(Client.layer(server)),
+				Effect.catchIf(
+					(error) => isClientError(error) && error.reason._tag === "SocketOpenError",
+					() => refused(url ?? server.url, server),
+				),
+			);
+		});

@@ -82,9 +82,9 @@ it("serves the git daemon over RPC: filtered push, replay, daemon.call and resta
 		});
 
 	const artifact: Record<string, unknown> = {};
-	const connect = (url: string) =>
+	const connect = (server: Client.Target) =>
 		Effect.gen(function* () {
-			const context = yield* Layer.build(Client.layer(url));
+			const context = yield* Layer.build(Client.layer(server));
 			return yield* Client.make.pipe(Effect.provideContext(context));
 		});
 	const prompt = (rpc: Client.Client, sessionId: SessionId, next: string) =>
@@ -109,7 +109,7 @@ it("serves the git daemon over RPC: filtered push, replay, daemon.call and resta
 	await Effect.runPromise(
 		Effect.scoped(
 			Effect.gen(function* () {
-				const rpc = yield* connect(first.url);
+				const rpc = yield* connect(first);
 				const seen: Array<EventEnvelope> = [];
 				yield* rpc["event.subscribe"]({ types: [STATUS] }).pipe(
 					Stream.runForEach((frame) => Effect.sync(() => seen.push(frame))),
@@ -160,7 +160,7 @@ it("serves the git daemon over RPC: filtered push, replay, daemon.call and resta
 	await Effect.runPromise(
 		Effect.scoped(
 			Effect.gen(function* () {
-				const rpc = yield* connect(second.url);
+				const rpc = yield* connect(second);
 				artifact["replayed after a restart, before any run"] = yield* replay(rpc);
 				const seen: Array<EventEnvelope> = [];
 				yield* rpc["event.subscribe"]({ types: [STATUS] }).pipe(

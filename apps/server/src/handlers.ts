@@ -1,3 +1,4 @@
+import { Codework as Client } from "@codeworksh/widget/backend";
 import type * as Mirror from "@codeworksh/widget/codework";
 import { Effect, Predicate, Stream } from "effect";
 import { SqlClient } from "effect/sql";
@@ -10,6 +11,7 @@ import {
 	ModelsError,
 	ProjectError,
 	type ServerAdd,
+	ServersError,
 	SettingsConflict,
 	SettingsError,
 	type ServerUpdate,
@@ -84,6 +86,32 @@ export const layer = Contract.Api.toLayer(
 			).pipe(
 				Effect.flatMap((reply) => ("failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.value))),
 			);
+		/**
+		 * The connection to a paired machine, in the app's own words when there is none: refused once it is
+		 * not paired any more, its address answers as another machine or its clock is apart, or not answering.
+		 */
+		const paired = Effect.fn("paired")(function* (id: string) {
+			const row = yield* servers.get(id);
+			if (row.kind !== "remote")
+				return yield* new ServersError({ message: "Only a paired Machine is reached here." });
+			if (row.device === null)
+				return yield* new ServersError({ message: `${row.name} is not paired any more. Pair it again.` });
+			if (row.mismatch?.kind === "machine")
+				return yield* new ServersError({ message: "This address answers as a different Machine. Pair it again." });
+			if (row.mismatch?.kind === "clock")
+				return yield* new ServersError({ message: "This computer’s clock differs from the Machine’s." });
+			const unanswered = new ServersError({ message: `${row.name} did not answer.` });
+			const client = yield* sync.client(id).pipe(Effect.mapError(() => unanswered));
+			return { client, unanswered };
+		});
+		/** Stores what a paired machine's own record says now, so a link or an unlink shows at once. */
+		const reread = (id: string, client: typeof Client.Service) =>
+			Codework.call((rpc) => rpc("machine.info", {})).pipe(
+				Effect.provideService(Client, client),
+				Effect.flatMap((status) => servers.reached(id, Servers.factsOf(status))),
+				Effect.andThen(health.check),
+				Effect.ignore,
+			);
 		// A changed default reconnects the app; the status read after waits for it to reach the server.
 		const changingDefault = <A, E, R>(change: Effect.Effect<A, E, R>) =>
 			Effect.gen(function* () {
@@ -110,6 +138,59 @@ export const layer = Contract.Api.toLayer(
 			"metrics.usage": (input) => Metrics.usage(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 			"metrics.hours": (input) => Metrics.hours(input).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
 
+			"machine.info": Effect.fn("machine.info")(function* () {
+				return yield* call((client) => client("machine.info", {}));
+			}),
+			"machine.rename": Effect.fn("machine.rename")(function* ({ givenName }) {
+				return yield* call((client) => client("machine.rename", { givenName }));
+			}),
+			// The CLI's own failure (not connected to that workspace) keeps its message.
+			"machine.disconnect": Effect.fn("machine.disconnect")(function* ({ serverId, ...input }) {
+				const disconnect = (client: typeof Client.Service) =>
+					client("machine.disconnect", input).pipe(
+						Effect.map((disconnected) => ({ disconnected })),
+						Effect.catchTag("Machine.ConnectError", (failed) => Effect.succeed({ failed })),
+					);
+				if (serverId === undefined) {
+					const reply = yield* call(disconnect);
+					return yield* "failed" in reply ? Effect.fail(reply.failed) : Effect.succeed(reply.disconnected);
+				}
+				const { client, unanswered } = yield* paired(serverId);
+				const reply = yield* Codework.call(disconnect).pipe(
+					Effect.provideService(Client, client),
+					Effect.mapError(() => unanswered),
+				);
+				if ("failed" in reply) return yield* reply.failed;
+				yield* servers.reached(serverId, Servers.factsOf(reply.disconnected.status));
+				yield* health.check;
+				return reply.disconnected;
+			}),
+			// The CLI's own connect failure (the relay unreachable, the code expired) keeps its message; only
+			// a dropped server reads as unavailable, and a paired machine as not answering.
+			"machine.connect": ({ workspaceId, serverId }) => {
+				const connect = (client: typeof Client.Service) =>
+					client("machine.connect", { workspaceId }).pipe(
+						Stream.map((event) => ({ event })),
+						Stream.catchTag("Machine.ConnectError", (failed) => Stream.succeed({ failed })),
+					);
+				const unwrap = Stream.flatMap((item: Stream.Success<ReturnType<typeof connect>>) =>
+					"failed" in item ? Stream.fail(item.failed) : Stream.succeed(item.event),
+				);
+				if (serverId === undefined) return Codework.stream(connect).pipe(unwrap);
+				return Stream.unwrap(
+					paired(serverId).pipe(
+						Effect.map(({ client, unanswered }) =>
+							Codework.stream(connect).pipe(
+								Stream.provideService(Client, client),
+								Stream.mapError(() => unanswered),
+								unwrap,
+								// Stored before the link reaches the app, so the machine's status already shows it.
+								Stream.tap((event) => (event._tag === "Connected" ? reread(serverId, client) : Effect.void)),
+							),
+						),
+					),
+				);
+			},
 			"host.info": Effect.fn("host.info")(function* () {
 				return yield* call((client) => client("host.info", {}));
 			}),
@@ -198,13 +279,45 @@ export const layer = Contract.Api.toLayer(
 				yield* changingDefault(servers.update(input));
 				yield* health.check;
 			}),
+			"servers.label": Effect.fn("servers.label")(function* ({
+				id,
+				label,
+			}: {
+				readonly id: string;
+				readonly label: string;
+			}) {
+				const row = yield* servers.get(id);
+				if (row.kind !== "remote")
+					return yield* new ServersError({ message: "Only a paired Machine has a Label." });
+				const { client, unanswered } = yield* paired(id);
+				const status = yield* Codework.call((rpc) => rpc("machine.rename", { givenName: label.trim() })).pipe(
+					Effect.provideService(Client, client),
+					Effect.mapError(() => unanswered),
+				);
+				yield* servers.reached(id, { label: status.givenName });
+				yield* health.check;
+			}),
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {
+				const row = yield* servers.get(id);
+				// Best effort: the row goes whether the machine answers or not.
+				if (row.kind === "remote" && row.device !== null)
+					yield* sync.client(id).pipe(
+						Effect.flatMap((client) =>
+							Codework.call((rpc) => rpc("device.leave", {}), { timeout: "3 seconds" }).pipe(
+								Effect.provideService(Client, client),
+							),
+						),
+						Effect.ignore,
+					);
 				yield* servers.remove(id);
 				yield* health.check;
 			}),
 			"servers.setDefault": Effect.fn("servers.setDefault")(function* ({ id }: { readonly id: string }) {
 				yield* changingDefault(servers.setDefault(id));
 				yield* health.check;
+			}),
+			"servers.install": Effect.fn("servers.install")(function* ({ id }: { readonly id: string }) {
+				yield* Cli.install(yield* servers.getLocal(id)).pipe(Effect.ensuring(health.check));
 			}),
 			"servers.service": Effect.fn("servers.service")(function* ({
 				id,

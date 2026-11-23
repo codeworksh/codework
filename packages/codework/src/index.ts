@@ -6,7 +6,6 @@ import { Effect } from "effect";
 import type { CliError } from "effect/cli";
 import pkg from "../package.json" with { type: "json" };
 import { Cmd } from "./cli/cmd/cmd.ts";
-import type { CommandError } from "./cli/error.ts";
 import * as Runtime from "./framework/runtime.ts";
 
 const Handlers = Runtime.handlers(Cmd, {
@@ -25,6 +24,8 @@ const Handlers = Runtime.handlers(Cmd, {
 		reconnect: () => import("./cli/cmd/handlers/mcp/reconnect.ts"),
 		disconnect: () => import("./cli/cmd/handlers/mcp/disconnect.ts"),
 	},
+	connect: () => import("./cli/cmd/handlers/connect.ts"),
+	disconnect: () => import("./cli/cmd/handlers/disconnect.ts"),
 	run: () => import("./cli/cmd/handlers/run.ts"),
 	serve: () => import("./cli/cmd/handlers/serve.ts"),
 	service: {
@@ -32,6 +33,9 @@ const Handlers = Runtime.handlers(Cmd, {
 		restart: () => import("./cli/cmd/handlers/service/restart.ts"),
 		status: () => import("./cli/cmd/handlers/service/status.ts"),
 		stop: () => import("./cli/cmd/handlers/service/stop.ts"),
+		pair: () => import("./cli/cmd/handlers/service/pair.ts"),
+		devices: () => import("./cli/cmd/handlers/service/devices.ts"),
+		revoke: () => import("./cli/cmd/handlers/service/revoke.ts"),
 	},
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),
@@ -58,7 +62,7 @@ const Handlers = Runtime.handlers(Cmd, {
 	},
 });
 
-export const main: Effect.Effect<void, CommandError | CliError.CliError> = Runtime.run(Cmd, Handlers, {
+export const main: Effect.Effect<void, CliError.CliError> = Runtime.run(Cmd, Handlers, {
 	version: pkg.version,
 }).pipe(Effect.provide(NodeServices.layer));
 

@@ -124,7 +124,7 @@ function Failed({
 			className={
 				alone
 					? "flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
-					: "mx-auto flex max-w-[1100px] items-center gap-2 px-6 pt-6 text-2xs"
+					: "mx-auto flex max-w-metrics items-center gap-2 px-6 pt-6 text-2xs"
 			}
 		>
 			<span className={alone ? "flex flex-col items-center gap-1" : "flex min-w-0 items-center gap-1.5"}>
@@ -151,7 +151,7 @@ function Failed({
 function Loading() {
 	const card = "flex flex-col gap-4 rounded-lg border border-edge p-4";
 	return (
-		<div aria-hidden className="mx-auto flex max-w-[1100px] flex-col gap-4 px-6 py-6">
+		<div aria-hidden className="mx-auto flex max-w-metrics flex-col gap-4 px-6 py-6">
 			<div className="grid grid-cols-1 gap-4 @lg:grid-cols-3">
 				{[0, 1, 2].map((tile) => (
 					<div key={tile} className="flex h-[146px] flex-col gap-2 rounded-lg border border-edge p-4">

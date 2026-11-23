@@ -1,4 +1,4 @@
-/** Synchronous IPC: the renderer reads the app server's RPC URL once, at load. */
+/** Synchronous IPC: the renderer reads the app server's RPC URL and token once, at load. */
 export const SERVER_CHANNEL = "codework:server";
 /** Synchronous IPC: the user's home directory, the folder a new project starts from. */
 export const HOME_CHANNEL = "codework:home";

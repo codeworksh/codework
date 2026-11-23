@@ -1,0 +1,132 @@
+{
+	"once paired": {
+		"id": "<machine>",
+		"kind": "remote",
+		"name": "Fixture",
+		"host": "Fixture",
+		"label": null,
+		"isDefault": false,
+		"url": "<machine url>",
+		"paired": true,
+		"fingerprint": "<fingerprint>",
+		"mismatch": null,
+		"online": true,
+		"seenAt": "<time>",
+		"version": "<version>",
+		"machineId": "<machine id>",
+		"workspaces": []
+	},
+	"servers.label": {
+		"reply": "labelled",
+		"status": {
+			"id": "<machine>",
+			"kind": "remote",
+			"name": "Build Box",
+			"host": "Fixture",
+			"label": "Build Box",
+			"isDefault": false,
+			"url": "<machine url>",
+			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		},
+		"machine.info givenName": "Build Box"
+	},
+	"an empty label": {
+		"reply": "labelled",
+		"status": {
+			"id": "<machine>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<machine url>",
+			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		},
+		"machine.info givenName": null
+	},
+	"the machine stopped": {
+		"status": {
+			"id": "<machine>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<machine url>",
+			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": false,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		},
+		"servers.label": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture did not answer."
+		}
+	},
+	"the machine restarted": {
+		"id": "<machine>",
+		"kind": "remote",
+		"name": "Fixture",
+		"host": "Fixture",
+		"label": null,
+		"isDefault": false,
+		"url": "<machine url>",
+		"paired": true,
+		"fingerprint": "<fingerprint>",
+		"mismatch": null,
+		"online": true,
+		"seenAt": "<time>",
+		"version": "<version>",
+		"machineId": "<machine id>",
+		"workspaces": []
+	},
+	"servers.update with a name": {
+		"_tag": "Server.ServersError",
+		"message": "A paired Machine is renamed with its Label."
+	},
+	"servers.label on the local server": {
+		"_tag": "Server.ServersError",
+		"message": "Only a paired Machine has a Label."
+	},
+	"after device.revoke": {
+		"status": {
+			"id": "<machine>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<machine url>",
+			"paired": false,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": false,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		},
+		"servers.label": {
+			"_tag": "Server.ServersError",
+			"message": "Fixture is not paired any more. Pair it again."
+		}
+	}
+}

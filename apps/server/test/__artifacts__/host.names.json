@@ -5,6 +5,7 @@
 				"id": "<id 1>",
 				"kind": "local",
 				"name": null,
+				"label": null,
 				"host": "Studio Mac"
 			},
 			"id": "<id 1>",
@@ -19,12 +20,13 @@
 				"id": "<remote machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": "ubuntu"
 			},
 			"id": "<remote machine>",
 			"name": "ubuntu",
 			"host": "ubuntu",
-			"override": null,
+			"label": null,
 			"sidebar": "ubuntu",
 			"allThreads": "ubuntu"
 		},
@@ -33,42 +35,45 @@
 				"id": "<older machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": null
 			},
 			"id": "<older machine>",
 			"name": "127.0.0.1:<older port>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"sidebar": "127.0.0.1:<older port>",
 			"allThreads": "127.0.0.1:<older port>"
 		}
 	],
-	"overridden": [
+	"named": [
 		{
 			"stored": {
 				"id": "<id 1>",
 				"kind": "local",
-				"name": null,
+				"name": "Desk",
+				"label": null,
 				"host": "Studio Mac"
 			},
 			"id": "<id 1>",
-			"name": "Studio Mac",
+			"name": "Desk",
 			"host": "Studio Mac",
-			"override": null,
-			"sidebar": "Studio Mac",
-			"allThreads": "Studio Mac"
+			"override": "Desk",
+			"sidebar": "Desk",
+			"allThreads": "Desk"
 		},
 		{
 			"stored": {
 				"id": "<remote machine>",
 				"kind": "remote",
-				"name": "Build Box",
+				"name": null,
+				"label": "Build Box",
 				"host": "ubuntu"
 			},
 			"id": "<remote machine>",
 			"name": "Build Box",
 			"host": "ubuntu",
-			"override": "Build Box",
+			"label": "Build Box",
 			"sidebar": "Build Box",
 			"allThreads": "Build Box"
 		},
@@ -77,12 +82,13 @@
 				"id": "<older machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": null
 			},
 			"id": "<older machine>",
 			"name": "127.0.0.1:<older port>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"sidebar": "127.0.0.1:<older port>",
 			"allThreads": "127.0.0.1:<older port>"
 		}
@@ -93,6 +99,7 @@
 				"id": "<id 1>",
 				"kind": "local",
 				"name": null,
+				"label": null,
 				"host": "Studio Mac"
 			},
 			"id": "<id 1>",
@@ -107,12 +114,13 @@
 				"id": "<remote machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": "ubuntu"
 			},
 			"id": "<remote machine>",
 			"name": "ubuntu",
 			"host": "ubuntu",
-			"override": null,
+			"label": null,
 			"sidebar": "ubuntu",
 			"allThreads": "ubuntu"
 		},
@@ -121,12 +129,13 @@
 				"id": "<older machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": null
 			},
 			"id": "<older machine>",
 			"name": "127.0.0.1:<older port>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"sidebar": "127.0.0.1:<older port>",
 			"allThreads": "127.0.0.1:<older port>"
 		}
@@ -137,6 +146,7 @@
 				"id": "<id 1>",
 				"kind": "local",
 				"name": null,
+				"label": null,
 				"host": "Studio Mac"
 			},
 			"id": "<id 1>",
@@ -151,12 +161,13 @@
 				"id": "<remote machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": "ubuntu-2"
 			},
 			"id": "<remote machine>",
 			"name": "ubuntu-2",
 			"host": "ubuntu-2",
-			"override": null,
+			"label": null,
 			"sidebar": "ubuntu-2",
 			"allThreads": "ubuntu-2"
 		},
@@ -165,12 +176,13 @@
 				"id": "<older machine>",
 				"kind": "remote",
 				"name": null,
+				"label": null,
 				"host": null
 			},
 			"id": "<older machine>",
 			"name": "127.0.0.1:<older port>",
 			"host": null,
-			"override": null,
+			"label": null,
 			"sidebar": "127.0.0.1:<older port>",
 			"allThreads": "127.0.0.1:<older port>"
 		}

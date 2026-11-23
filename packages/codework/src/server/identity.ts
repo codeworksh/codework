@@ -25,7 +25,8 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export const current: Interface = { pid: process.pid, version: pkg.version };
 
 // macOS's computer name is the one Finder and sharing show; its hostname is a mangled copy of it.
-const hostName = Effect.gen(function* () {
+/** The machine's name as its user knows it, read from the OS; empty when it names nothing. */
+export const hostName = Effect.gen(function* () {
 	if (process.platform !== "darwin") return os.hostname().trim();
 	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 	const computer = yield* spawner

@@ -2,6 +2,7 @@ import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	DaemonHost,
+	Global,
 	Event,
 	EventList,
 	EventRegistry,
@@ -22,7 +23,11 @@ import {
 	ThreadSchema,
 	ThreadStore,
 } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option, Predicate, Schema, Stream } from "effect";
+import { Machine } from "@codeworksh/schema";
+import { DateTime, Effect, Option, Predicate, Queue, Schema, Stream } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import * as MachineFile from "../machine/file.ts";
+import * as MachineRelay from "../machine/relay.ts";
 import * as Contract from "./contract.ts";
 import {
 	type HistoryEntry,
@@ -41,12 +46,17 @@ import {
 import * as Envelope from "./envelope.ts";
 import { type EncodingError, type EventEnvelope } from "./envelope.ts";
 import * as Clones from "./clones.ts";
+import * as Door from "./door.ts";
 import * as EventFeed from "./feed.ts";
 import * as Host from "./host.ts";
 import * as Identity from "./identity.ts";
 import * as OAuth from "./oauth.ts";
+import * as Pairing from "./pairing.ts";
 import * as MessagePart from "./part.ts";
+import * as Principal from "./principal.ts";
 import * as Rows from "./rows.ts";
+
+const isConnectError = Schema.is(Machine.ConnectError);
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -282,6 +292,14 @@ export const layer = Contract.Api.toLayer(
 		const host = yield* Host.Service;
 		const clones = yield* Clones.Service;
 		const store = yield* Store.Service;
+		const global = yield* Global.Service;
+		const pairing = yield* Pairing.Service;
+		const connections = yield* Door.Connections;
+		/** Forgets a device and ends its open connections; false when none has `id`. */
+		const forget = (id: string) =>
+			pairing
+				.revoke(id)
+				.pipe(Effect.tap(() => Effect.forEach(connections.device(id), connections.end, { discard: true })));
 		const mcpControl = (operation: "connect" | "disconnect") =>
 			Effect.fnUntraced(function* ({ server, ...ref }: Control.ThreadRef & { readonly server: string }) {
 				return yield* mcp[operation](yield* resolve(ref), server);
@@ -299,7 +317,18 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			"server.info": Effect.fnUntraced(function* () {
 				const head = yield* store.head;
-				return { ...identity, storeId: head.id, rev: head.rev };
+				// Read per call, so a `codework connect` made while the server runs shows without a restart. An
+				// unreadable file reads as none: this is the health probe, and must still answer.
+				const machine = yield* MachineFile.read(global.home).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.orElseSucceed(() => Option.none<MachineFile.Machine>()),
+				);
+				return {
+					...identity,
+					storeId: head.id,
+					rev: head.rev,
+					...(Option.isSome(machine) ? { machineId: machine.value.id } : {}),
+				};
 			}),
 			"index.sync": ({ after, boot }) =>
 				Rows.resume(
@@ -625,6 +654,71 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"mcp.connect": mcpControl("connect"),
 			"mcp.disconnect": mcpControl("disconnect"),
+			"machine.info": () => MachineRelay.status(global.home).pipe(Effect.provide(NodeServices.layer), Effect.orDie),
+			"machine.rename": ({ givenName }) =>
+				MachineRelay.rename(global.home, givenName).pipe(
+					// The relay hears the new name now rather than on the next beat; a miss is retried then.
+					Effect.tap(() =>
+						MachineRelay.heartbeat(global.home).pipe(
+							Effect.provide(NodeServices.layer),
+							Effect.ignore,
+							Effect.forkDetach,
+						),
+					),
+					Effect.provide(NodeServices.layer),
+					Effect.orDie,
+				),
+			"machine.disconnect": ({ workspaceId, keyId }) =>
+				MachineRelay.disconnect(global.home, workspaceId, keyId).pipe(
+					Effect.flatMap(({ revoked }) =>
+						MachineRelay.status(global.home).pipe(Effect.map((status) => ({ status, revoked }))),
+					),
+					Effect.provide(NodeServices.layer),
+					Effect.catchIf(
+						(error) => !isConnectError(error),
+						(error) =>
+							Effect.fail(new Machine.ConnectError({ message: `Could not disconnect: ${String(error)}` })),
+					),
+				),
+			"machine.connect": ({ workspaceId }) =>
+				Stream.callback<Machine.ConnectEvent, Machine.ConnectError>((queue) =>
+					MachineRelay.connect({
+						home: global.home,
+						workspaceId,
+						onCode: (userCode) => Queue.offer(queue, { _tag: "Code", userCode }).pipe(Effect.asVoid),
+					}).pipe(
+						// The workspace sees it online now rather than on the next beat; a miss is retried then.
+						Effect.tap(() =>
+							MachineRelay.heartbeat(global.home).pipe(
+								Effect.provide(NodeServices.layer),
+								Effect.ignore,
+								Effect.forkDetach,
+							),
+						),
+						Effect.flatMap((connected) => Queue.offer(queue, { _tag: "Connected", connected })),
+						Effect.andThen(Queue.end(queue)),
+						Effect.provide([MachineRelay.Client.layer, NodeServices.layer]),
+						Effect.catch((error) =>
+							Queue.fail(
+								queue,
+								isConnectError(error)
+									? error
+									: new Machine.ConnectError({ message: `Could not connect: ${String(error)}` }),
+							),
+						),
+						Effect.forkScoped,
+					),
+				),
+			"device.pair": () => Principal.local(pairing.code),
+			"device.list": () => Principal.local(pairing.list),
+			"device.revoke": ({ id }) => Principal.local(Effect.map(forget(id), (applied) => ({ applied }))),
+			"device.leave": () =>
+				Effect.gen(function* () {
+					const caller = yield* Principal.Current;
+					if (caller.kind !== "device")
+						return yield* new Principal.Forbidden({ message: "This computer has no pairing to leave" });
+					yield* forget(caller.id);
+				}),
 			"host.info": () => Effect.succeed(host.info),
 			"host.browse": ({ path }) => host.browse(path),
 			"host.create": ({ name }) => host.create(name),

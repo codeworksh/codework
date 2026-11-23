@@ -13,10 +13,12 @@
 		"package": "node scripts/package.mjs"
 	},
 	"devDependencies": {
+		"@clerk/electron": "0.1.10",
 		"@types/node": "catalog:",
 		"bumpp": "^12.3.0",
 		"electron": "44.4.2",
 		"electron-builder": "^26.15.3",
+		"electron-store": "8.2.0",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	}

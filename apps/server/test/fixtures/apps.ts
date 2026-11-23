@@ -3,7 +3,7 @@ import { Effect, Layer, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,8 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { expect } from "vite-plus/test";
-import { Contract } from "@codeworksh/contract";
+import { Contract, type RemoteServerStatus, type ServerStatus } from "@codeworksh/contract";
+import { Door } from "@codeworksh/schema";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
 
 const appEntry = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
@@ -45,14 +46,28 @@ export const freePort = () =>
 		});
 	});
 
+/** What the app server's ready line says: its port and the token its door takes. */
+export interface Ready {
+	readonly port: number;
+	readonly token: string;
+}
+
 /** Resolves with the first stdout line that is a JSON `ready` message. */
-const ready = (proc: ChildProcess) =>
-	new Promise<{ port?: number }>((resolve, reject) => {
+export const ready = <A = Ready>(proc: ChildProcess) =>
+	new Promise<A>((resolve, reject) => {
 		proc.once("exit", (code) => reject(new Error(`exited before ready (code ${code})`)));
 		createInterface({ input: proc.stdout! }).on("line", (line) => {
-			if (line.startsWith('{"type":"ready"')) resolve(JSON.parse(line) as { port?: number });
+			if (line.startsWith('{"type":"ready"')) resolve(JSON.parse(line) as A);
 		});
 	});
+
+/** A connection to the app server, opened as the desktop app's page opens it but with no `Origin`. */
+export const appProtocol = ({ port, token }: Ready) =>
+	RpcClient.layerProtocolSocket().pipe(
+		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`, { protocols: Door.protocols(token) })),
+		Layer.provide(Socket.layerWebSocketConstructorGlobal),
+		Layer.provide(RpcSerialization.layerNdjson),
+	);
 
 export async function stop(proc: ChildProcess, signal: NodeJS.Signals = "SIGKILL") {
 	processes.delete(proc);
@@ -79,33 +94,64 @@ export const waitFor = async <A>(
 /**
  * A CodeWork server of the fixture in `home` on `port`, with its scripted model; `older` lacks
  * `usage.sync` and a host name. `host` is the host name it reports (`null` for none), else `Fixture`.
+ * `relay` is where its connects go (`CODEWORK_RELAY_URL`). `skew` runs its clock that many milliseconds off.
  */
 export const codework = async (
 	home: string,
 	port: number,
-	options: { readonly older?: boolean; readonly host?: string | null } = {},
+	options: {
+		readonly older?: boolean;
+		readonly host?: string | null;
+		readonly relay?: string;
+		readonly skew?: number;
+	} = {},
 ) => {
 	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
 	const proc = spawn(process.execPath, ["--conditions=development", ...args], {
-		env: options.host === undefined ? process.env : { ...process.env, CODEWORK_FIXTURE_HOST: options.host ?? "" },
+		env: {
+			...process.env,
+			...(options.host === undefined ? {} : { CODEWORK_FIXTURE_HOST: options.host ?? "" }),
+			...(options.relay === undefined ? {} : { CODEWORK_RELAY_URL: options.relay }),
+			...(options.skew === undefined ? {} : { CODEWORK_FIXTURE_SKEW: String(options.skew) }),
+		},
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	processes.add(proc);
-	await ready(proc);
+	await ready<object>(proc);
 	const url = `ws://127.0.0.1:${port}/rpc/v1`;
+	// Registered before it reports ready; a call from this computer takes the token.
+	const { token } = JSON.parse(readFileSync(join(home, "service.json"), "utf8")) as { token: string };
+	const run = <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
+		Effect.gen(function* () {
+			return yield* use(yield* Client.make);
+		}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise);
 	return {
 		url,
+		token,
 		proc,
 		database: join(home, "data", "codework.db"),
 		/** The oldest held reply takes its next step. */
 		release: () => proc.stdin!.write("release\n"),
-		run: <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
-			Effect.gen(function* () {
-				return yield* use(yield* Client.make);
-			}).pipe(Effect.scoped, Effect.provide(Client.layer(url)), Effect.runPromise),
+		run,
+		/** A fresh pairing code, as `codework service pair` prints it. */
+		pair: () => run((rpc) => rpc["device.pair"]({})).then(({ code }) => code),
+		/** The fingerprint of its machine key, as `codework service pair` prints it. */
+		fingerprint: () => run((rpc) => rpc["device.pair"]({})).then(({ fingerprint }) => fingerprint),
 	};
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
+
+/** A status as an artifact keeps it: a remote one's build, last answer, machine id and key vary per run. */
+export const stable = (status: ServerStatus | undefined) =>
+	status?.kind === "remote"
+		? {
+				...status,
+				version: status.version === null ? null : "<version>",
+				seenAt: status.seenAt === null ? null : "<time>",
+				fingerprint: status.fingerprint === null ? null : "<fingerprint>",
+				machineId: status.machineId === null ? null : "<machine id>",
+			}
+		: status;
 
 const appClient = RpcClient.make(Contract.Api);
 export type AppRpc = Effect.Success<typeof appClient>;
@@ -120,13 +166,10 @@ export const app = async (home: string) => {
 	// Its stdout, the log included, line by line.
 	const lines: Array<string> = [];
 	createInterface({ input: proc.stdout! }).on("line", (line) => lines.push(line));
-	const { port } = await ready(proc);
-	const protocol = RpcClient.layerProtocolSocket().pipe(
-		Layer.provide(Socket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`)),
-		Layer.provide(Socket.layerWebSocketConstructorGlobal),
-		Layer.provide(RpcSerialization.layerNdjson),
-	);
+	const started = await ready(proc);
+	const protocol = appProtocol(started);
 	return {
+		...started,
 		proc,
 		lines,
 		run: <A, E>(use: (rpc: AppRpc) => Effect.Effect<A, E>) =>
@@ -145,6 +188,16 @@ export const app = async (home: string) => {
 		},
 	};
 };
+
+/** Statuses of `id` from `servers.watch`, waited for until one passes `test`. */
+export const watchOf =
+	(desk: Awaited<ReturnType<typeof app>>, id: string) =>
+	(what: string, test: (status: RemoteServerStatus) => boolean) =>
+		waitFor(async () => {
+			const statuses = await desk.run((rpc) => rpc["servers.watch"](undefined).pipe(Stream.runHead));
+			const found = statuses._tag === "Some" ? statuses.value.find((each) => each.id === id) : undefined;
+			return found?.kind === "remote" && test(found) ? found : undefined;
+		}, what);
 
 /** Reads app.db while the app runs; each read opens the file afresh. */
 export const query = (home: string, statement: string, ...params: Array<string | number | null>): Array<Row> => {
@@ -165,15 +218,24 @@ export const write = (home: string, statement: string, ...params: Array<string |
 	}
 };
 
+/** The private part of the app's device key, which nothing it sends may contain. */
+export const deviceSecret = (home: string) =>
+	(JSON.parse(query(home, "SELECT key FROM device")[0]!.key as string) as { d: string }).d;
+
+/** The id a remote machine gave the app's key; none once it is not paired. */
+export const deviceOf = (home: string, id: string) =>
+	query(home, "SELECT device FROM machine WHERE id = ?", id)[0]!.device as string | null;
+
 export const machineRow = (home: string, id: string) =>
 	query(home, "SELECT store_id, cursor FROM machine WHERE id = ?", id)[0] as {
 		store_id: string | null;
 		cursor: number;
 	};
 
-/** Adds the CodeWork server as a remote machine, then waits until the app holds its head. */
+/** Adds the CodeWork server as a remote machine, paired with a fresh code, then waits until the app holds its head. */
 export const addMachine = async (home: string, server: Codework, run: Awaited<ReturnType<typeof app>>["run"]) => {
-	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", name: "Scripted", url: server.url }));
+	const code = await server.pair();
+	const id = await run((rpc) => rpc["servers.add"]({ kind: "remote", url: server.url, code }));
 	await synced(home, id, server);
 	return id;
 };
@@ -204,12 +266,12 @@ export const rolled = async (home: string, machineId: string, server: Codework) 
 	return { storeId, rev };
 };
 
-/** Events on `topics` from the moment it resolves, collected until `stop`. */
-export const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>) => {
+/** Events on `topics` from the moment it resolves (past `after` when given), collected until `stop`. */
+export const follow = async (desk: Awaited<ReturnType<typeof app>>, topics: ReadonlyArray<string>, after?: number) => {
 	const events: Array<{ topic: string; payload: Row }> = [];
 	let subscribed = false;
 	const background = desk.background((rpc) =>
-		rpc["event.subscribe"]({ topics }).pipe(
+		rpc["event.subscribe"]({ topics, ...(after === undefined ? {} : { after }) }).pipe(
 			Stream.runForEach((item) =>
 				Effect.sync(() => {
 					if ("_tag" in item) subscribed = true;

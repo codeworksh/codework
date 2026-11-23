@@ -66,6 +66,8 @@ export default defineConfig({
 	},
 	test: {
 		include: ["test/**/*.test.ts"],
+		// These tests spawn the real CLI and server, which start slowly when many run at once.
+		testTimeout: 30_000,
 	},
 	lint: {
 		...recommended,

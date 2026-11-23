@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Codework } from "./codework.ts";
 import { type CliAction, type CliInstall, type CliServer, ServersError, type ServerStatus } from "@codeworksh/contract";
+import { Jws } from "@codeworksh/schema";
 import { Servers } from "./servers.ts";
 
 // Where the install script puts the binary unless told otherwise.
@@ -35,11 +36,12 @@ const run = (
 		return { output: output.trim(), code: Number(code) };
 	}).pipe(Effect.scoped, Effect.timeout(timeout));
 
-// A Node crash prints the source line first; the error line says what went wrong.
+// A Node crash prints the source line first; the error line says what went wrong, shown without its
+// "Error:" label. The exit code only stands in when there is no output to show.
 const reason = (output: string, code: number) => {
 	const lines = output.split("\n").map((line) => line.trim());
 	const line = lines.findLast((candidate) => /error/i.test(candidate)) ?? lines.findLast(Boolean);
-	return line === undefined ? `exited with code ${code}` : `exited with code ${code}: ${line.slice(0, 240)}`;
+	return line === undefined ? `exited with code ${code}` : line.replace(/^error:\s*/i, "").slice(0, 240);
 };
 
 // An app opened from the Dock does not inherit the terminal's PATH, so the login shell is asked.
@@ -116,9 +118,7 @@ const executableOf = (row: Servers.LocalRow, foundOnce: typeof found) => {
 export const liveAt = (home: string) =>
 	Effect.gen(function* () {
 		const registered = yield* Codework.registrationAt(home);
-		return Option.isSome(registered) && (yield* Codework.reachable(registered.value.url))
-			? registered
-			: Option.none();
+		return Option.isSome(registered) && (yield* Codework.reachable(registered.value)) ? registered : Option.none();
 	});
 
 /**
@@ -159,7 +159,11 @@ export const statuses = Effect.gen(function* () {
 		yield* servers.list,
 		(row) =>
 			Effect.gen(function* () {
-				if (row.kind === "remote") return row satisfies ServerStatus;
+				if (row.kind === "remote") {
+					const { device, machineKey, ...status } = row;
+					const fingerprint = machineKey === null ? null : yield* Jws.fingerprint(machineKey).pipe(Effect.orDie);
+					return { ...status, paired: device !== null && machineKey !== null, fingerprint } satisfies ServerStatus;
+				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(
 					[executableOf(row, foundOnce), serverAt(home.path, row.isDefault)],
@@ -201,9 +205,49 @@ export const service = Effect.fn("Cli.service")(function* (row: Servers.LocalRow
 	const { output, code } = yield* run(file, [...prefix, "service", action, ...args], "30 seconds", {
 		...env,
 		CODEWORK_HOME_DIR: servers.homeOf(row).path,
-	}).pipe(Effect.mapError((error) => new ServersError({ message: `codework service ${action}: ${error.message}` })));
-	if (code !== 0) return yield* new ServersError({ message: `codework service ${action} ${reason(output, code)}` });
+	}).pipe(
+		Effect.mapError((error) => new ServersError({ message: `Couldn't ${action} the server: ${error.message}` })),
+	);
+	if (code !== 0)
+		return yield* new ServersError({ message: `Couldn't ${action} the server: ${reason(output, code)}` });
 	if (row.isDefault && action !== "stop") yield* awaitConnection;
+});
+
+// The script `curl -fsSL https://codework.sh/install | sh` runs; overridable so a test serves its own.
+const installScript = Config.String("CODEWORK_INSTALL_SCRIPT").pipe(
+	Config.withDefault("https://codework.sh/install"),
+	Effect.orDie,
+);
+
+/**
+ * Installs codework the way the install command does, into the install script's folder, then starts
+ * `row`. The shell's startup file is left alone: the app finds the binary in that folder by itself.
+ * A development or canary build of the app installs the newest development build.
+ */
+export const install = Effect.fn("Cli.install")(function* (row: Servers.LocalRow) {
+	const url = yield* installScript;
+	const channel = yield* Config.String("CODEWORK_CHANNEL").pipe(Config.withDefault("latest"), Effect.orDie);
+	const script = yield* Effect.tryPromise({
+		try: () =>
+			fetch(url).then((response) => {
+				if (!response.ok) throw new Error(`the download answered ${response.status}`);
+				return response.text();
+			}),
+		// fetch rejects with a TypeError when the network is down or the host unknown.
+		catch: (error) =>
+			new ServersError({
+				message:
+					error instanceof TypeError
+						? "Couldn't download the installer. Check your connection, then try again."
+						: `Couldn't download the installer: ${error instanceof Error ? error.message : String(error)}`,
+			}),
+	});
+	const flags = ["--no-modify-path", ...(channel === "dev" || channel === "canary" ? ["--dev"] : [])];
+	const { output, code } = yield* run("sh", ["-c", script, "install", ...flags], "300 seconds", {
+		CODEWORK_INSTALL_DIR: yield* installDir,
+	}).pipe(Effect.mapError((error) => new ServersError({ message: `Couldn't install codework: ${error.message}` })));
+	if (code !== 0) return yield* new ServersError({ message: `Couldn't install codework: ${reason(output, code)}` });
+	yield* service(row, "start");
 });
 
 export * as Cli from "./cli.ts";

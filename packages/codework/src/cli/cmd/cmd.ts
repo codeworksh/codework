@@ -45,8 +45,8 @@ const ServerAddress = {
 
 /** For commands that only talk to a server that is already running. */
 const RunningServer = Flag.String("server").pipe(
-	Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
-	Flag.withDefault("ws://127.0.0.1:7433/rpc/v1"),
+	Flag.withDescription("RPC server URL (defaults to this home's server)"),
+	Flag.optional,
 );
 
 /** A thread's MCP server in a running server: every thread sharing its instance is affected. */
@@ -350,6 +350,36 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 		}),
+		Spec.make("connect", {
+			description: "Connect this machine to a workspace",
+			params: {
+				workspace: Flag.String("workspace").pipe(
+					Flag.withDescription("Workspace to connect to; otherwise the approver picks it"),
+					Flag.optional,
+				),
+				machineId: Flag.String("machine-id").pipe(
+					Flag.withDescription("Set this home's machine id instead of generating one, e.g. build-box-1"),
+					Flag.optional,
+				),
+			},
+			examples: [
+				{ command: "codework connect", description: "Show a code to approve in the CodeWork app" },
+				{
+					command: "codework connect --machine-id build-box-1",
+					description: "Connect with a fixed id, replacing a rebuilt machine's old link",
+				},
+			],
+		}),
+		Spec.make("disconnect", {
+			description: "Disconnect this machine from a workspace",
+			params: {
+				workspace: Flag.String("workspace").pipe(
+					Flag.withDescription("Workspace to leave; optional when only one is connected"),
+					Flag.optional,
+				),
+			},
+			examples: [{ command: "codework disconnect", description: "Leave the only connected workspace" }],
+		}),
 		Spec.make("serve", {
 			description: "Start the CodeWork RPC server",
 			params: {
@@ -368,10 +398,20 @@ export const Cmd = Spec.make("codework", {
 					),
 					Flag.withDefault(false),
 				),
+				trustedProxy: Flag.String("trusted-proxy").pipe(
+					Flag.withDescription(
+						"Address or CIDR range of a TLS proxy in front of the server, repeatable or comma-separated (default: CODEWORK_TRUSTED_PROXY, then server.trustedProxy in user settings)",
+					),
+					Flag.atLeast(0),
+				),
 			},
 			examples: [
 				{ command: "codework serve", description: "Start the RPC server on 127.0.0.1:7433" },
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
+				{
+					command: "codework serve --host 0.0.0.0 --trusted-proxy 10.0.0.0/8",
+					description: "Believe X-Forwarded-Proto from a proxy in 10.0.0.0/8",
+				},
 			],
 		}),
 		Spec.make("service", {
@@ -381,6 +421,14 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("restart", { description: "Restart the background server", params: ServerAddress }),
 				Spec.make("status", { description: "Show background server status" }),
 				Spec.make("stop", { description: "Stop the background server" }),
+				Spec.make("pair", {
+					description: "Print a one-time code another computer pairs with, valid 10 minutes",
+				}),
+				Spec.make("devices", { description: "List paired devices" }),
+				Spec.make("revoke", {
+					description: "Unpair a device and end its connections",
+					params: { id: Argument.String("device-id").pipe(Argument.withDescription("The device to unpair")) },
+				}),
 			],
 		}),
 		Spec.make("session", {

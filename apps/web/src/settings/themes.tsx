@@ -56,7 +56,7 @@ export function ThemesSettings() {
 	const [current, setTheme] = useAtom(themeAtom);
 
 	return (
-		<Page title="Themes" description="Choose how CodeWork looks on this device.">
+		<Page title="Themes" description="Choose how CodeWork looks on this device">
 			<fieldset className="flex max-w-xl flex-col gap-3">
 				<legend className="mb-3 text-ui font-medium text-ink">Appearance</legend>
 				<div className="grid grid-cols-1 gap-4 @min-[440px]:grid-cols-2">
@@ -80,7 +80,7 @@ export function ThemesSettings() {
 									<span className="flex flex-col gap-1">
 										<span className="text-ui font-medium text-ink">{theme.name}</span>
 										<span className="text-xs text-ink-muted">
-											{theme.id === "light" ? "Bright and clear." : "Easy on the eyes."}
+											{theme.id === "light" ? "Bright and clear" : "Easy on the eyes"}
 										</span>
 									</span>
 									<span

@@ -19,4 +19,8 @@ declare module "@tanstack/react-router" {
 	interface Register {
 		router: AppRouter;
 	}
+	interface StaticDataRouteOption {
+		/** The page fills the window, without the app's sidebar and title bar. */
+		fullWindow?: boolean;
+	}
 }

@@ -1,0 +1,116 @@
+{
+	"upgrade": {
+		"no protocol header": 401,
+		"fixed name only": 401,
+		"token first": 401,
+		"wrong token": 401,
+		"right token, foreign Origin": 403,
+		"right token, Host evil.example": 101,
+		"right token, Host localhost": 101,
+		"right token, Origin codework://app": 101,
+		"right token, Origin codeworkdev://app": 101,
+		"right token": 101,
+		"protocol selected": "codework",
+		"token in the response": false
+	},
+	"the last start's token": 401,
+	"after the local server restarts": {
+		"synced": true
+	},
+	"a good code": {
+		"synced": true,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		}
+	},
+	"a wrong code": {
+		"_tag": "Server.PairingRefused",
+		"message": "That pairing code was not accepted. Run codework service pair on the machine for a new one."
+	},
+	"a row from before pairing": {
+		"row": {
+			"store_id": null,
+			"cursor": 0
+		},
+		"status": {
+			"id": "stored",
+			"kind": "remote",
+			"name": "<good host>",
+			"host": null,
+			"label": null,
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": false,
+			"fingerprint": null,
+			"mismatch": null,
+			"online": false,
+			"seenAt": null,
+			"version": null,
+			"machineId": null,
+			"workspaces": []
+		}
+	},
+	"after the machine restarts": {
+		"synced": true
+	},
+	"after device.revoke": {
+		"device": null,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": false,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": false,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		}
+	},
+	"devices": [
+		{
+			"label": "Fixture"
+		}
+	],
+	"paired again": {
+		"synced": true,
+		"status": {
+			"id": "<good>",
+			"kind": "remote",
+			"name": "Fixture",
+			"host": "Fixture",
+			"label": null,
+			"isDefault": false,
+			"url": "<good url>",
+			"paired": true,
+			"fingerprint": "<fingerprint>",
+			"mismatch": null,
+			"online": true,
+			"seenAt": "<time>",
+			"version": "<version>",
+			"machineId": "<machine id>",
+			"workspaces": []
+		},
+		"a new device": true
+	}
+}

@@ -4,6 +4,19 @@ import { AsyncResult, Atom, Reactivity } from "effect/reactivity";
 
 import { Server } from "./rpc";
 
+/** Starts, restarts or stops a server through its CLI. */
+export const serviceAtom = Server.mutation("servers.service");
+
+/** The install script, for running it by hand. */
+export const INSTALL = "curl -fsSL https://codework.sh/install | sh";
+
+/** Runs the install script for a server whose CLI is missing. */
+export const installAtom = Server.mutation("servers.install");
+
+export const updateAtom = Server.mutation("servers.update");
+
+export const removeAtom = Server.mutation("servers.remove");
+
 /** Queries answered by the default CodeWork server; they load again once it is back. */
 export const codeworkKey = ["codework"];
 
@@ -76,9 +89,14 @@ export const serversAtom = Server.runtime
 	)
 	.pipe(Atom.keepAlive);
 
+/** The default server's status once known; undefined until then. */
+export const defaultServerAtom = Atom.make((get) => {
+	const result = get(serversAtom);
+	return AsyncResult.isSuccess(result) ? defaultOf(result.value) : undefined;
+});
+
 /** The default server's problem once its status is known; undefined until then, and while there is none. */
 export const problemAtom = Atom.make((get) => {
-	const result = get(serversAtom);
-	const status = AsyncResult.isSuccess(result) ? defaultOf(result.value) : undefined;
+	const status = get(defaultServerAtom);
 	return status === undefined ? undefined : problemOf(status);
 });

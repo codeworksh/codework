@@ -1,0 +1,14 @@
+{
+	"revokeStatus": 204,
+	"lostReply": {
+		"exitCode": 0,
+		"output": "Leaving <workspace>: Relay didn’t confirm, so this machine keeps the link until it does. The server retries while it runs.\n",
+		"localLinkLeaving": true,
+		"relayLinkRemoved": true
+	},
+	"retry": {
+		"exitCode": 0,
+		"output": "Disconnected from <workspace>\n",
+		"localLinkRemoved": true
+	}
+}

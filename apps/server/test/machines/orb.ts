@@ -1,13 +1,15 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the machine suite drives OrbStack machines through the orb CLI. */
+import { Jws, type Pairing as Wire } from "@codeworksh/schema";
 import { Effect } from "effect";
 import { spawn, spawnSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Client from "../../../../packages/codework/src/server/client.ts";
+import { Pairing } from "../../src/pairing.ts";
 
 const scripts = fileURLToPath(new URL(".", import.meta.url));
-/** The checkout under test: each machine overlays its sources from here through the Mac mount. */
+/** The checkout under test: each machine's setup copies it from here through the Mac mount. */
 export const checkout = fileURLToPath(new URL("../../../../", import.meta.url)).replace(/\/$/, "");
 
 export const available = spawnSync("which", ["orb"]).status === 0;
@@ -49,6 +51,29 @@ export const machine = (name: string) => {
 	const script = (file: string, args: ReadonlyArray<string>, timeout?: number) =>
 		orb(["-m", name, "bash", join(scripts, file), ...args], { timeout: timeout ?? 120_000 });
 	const sh = (command: string, input?: string) => orb(["-m", name, "bash", "-c", command], { input: input ?? "" });
+	/** RPC calls made inside the machine over loopback: they work while the network is cut. */
+	const drive = async (calls: ReadonlyArray<readonly [string, unknown]>): Promise<Array<unknown>> => {
+		const out = await orb(
+			["-m", name, node, "--conditions=development", `${home}/codework/apps/server/test/machines/drive.ts`],
+			{ input: JSON.stringify(calls) },
+		);
+		return JSON.parse(out.trim().split("\n").at(-1)!) as Array<unknown>;
+	};
+	/** A fresh pairing code, as `codework service pair` prints it there. */
+	const pair = async () => ((await drive([["device.pair", {}]]))[0] as { code: string }).code;
+	// The suite's own device, which its calls from the Mac take tickets with; paired again once refused.
+	const key = Effect.runPromise(Jws.generate());
+	let paired: typeof Wire.Device.Type | undefined;
+	const take = async (device: typeof Wire.Device.Type) => {
+		const answer = await Effect.runPromise(Pairing.ticket(url, device.id, await key, device.machine));
+		return answer._tag === "Ticket" ? answer.ticket : undefined;
+	};
+	const ticket = async () => {
+		const taken = paired === undefined ? undefined : await take(paired);
+		if (taken !== undefined) return taken;
+		paired = (await Effect.runPromise(Pairing.exchange(url, await pair(), "Suite", await key)))!;
+		return (await take(paired))!;
+	};
 	return {
 		name,
 		url,
@@ -66,9 +91,8 @@ export const machine = (name: string) => {
 					name,
 					"bash",
 					"-c",
-					'while IFS= read -r line && [ -n "$line" ]; do export "$line"; done; exec bash "$0" "$1"',
+					'while IFS= read -r line && [ -n "$line" ]; do export "$line"; done; exec bash "$0"',
 					join(scripts, "start.sh"),
-					checkout,
 				],
 				{
 					input: `${Object.entries(env)
@@ -78,11 +102,13 @@ export const machine = (name: string) => {
 				},
 			),
 		/** Sweeps the store's open runs as a start would, without listening. */
-		sweep: () => script("start.sh", [checkout, "sweep"]),
+		sweep: () => script("start.sh", ["sweep"]),
 		stop: (signal: "TERM" | "KILL" = "TERM") => script("stop.sh", [signal]),
 		net: (mode: "cut" | "restore" | "slow" | "fast") => script("net.sh", [mode]),
-		/** A fresh CodeWork home: a new store. */
-		wipe: () => sh(`rm -rf ${cwHome}`),
+		/** A fresh CodeWork home: a new store, keeping the devices paired with it. */
+		wipe: () =>
+			sh(`[ ! -d ${cwHome} ] || find ${cwHome} -mindepth 1 -maxdepth 1 ! -name devices.json -exec rm -rf {} +`),
+		pair,
 		sh,
 		/** The oldest held reply takes its next step. */
 		release: () => sh(`echo release > ${home}/cw.ctl`),
@@ -99,18 +125,14 @@ export const machine = (name: string) => {
 				() => undefined,
 				(error: Error) => error.message.replace(/^.*exited \d+: /s, "").trim(),
 			),
-		/** RPC calls made inside the machine over loopback: they work while the network is cut. */
-		drive: async (calls: ReadonlyArray<readonly [string, unknown]>): Promise<Array<unknown>> => {
-			const out = await orb(
-				["-m", name, node, "--conditions=development", `${home}/codework/apps/server/test/machines/drive.ts`],
-				{ input: JSON.stringify(calls) },
-			);
-			return JSON.parse(out.trim().split("\n").at(-1)!) as Array<unknown>;
-		},
-		run: <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) =>
-			Effect.gen(function* () {
+		drive,
+		/** Calls from the Mac, on a socket opened with a ticket of the suite's device. */
+		run: async <A, E>(use: (rpc: Client.Client) => Effect.Effect<A, E>) => {
+			const token = await ticket();
+			return Effect.gen(function* () {
 				return yield* use(yield* Client.make);
-			}).pipe(Effect.scoped, Effect.provide(Client.layer(url)), Effect.runPromise),
+			}).pipe(Effect.scoped, Effect.provide(Client.layer({ url, token })), Effect.runPromise);
+		},
 	};
 };
 export type Machine = ReturnType<typeof machine>;

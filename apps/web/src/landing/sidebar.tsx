@@ -5,7 +5,6 @@ import {
 	ChatsIcon,
 	FolderIcon,
 	FolderOpenIcon,
-	GearSixIcon,
 	MagnifyingGlassIcon,
 	NotePencilIcon,
 	PlusIcon,
@@ -29,6 +28,7 @@ import {
 	SidebarInput,
 	SidebarRail,
 } from "@/components/ui/sidebar";
+import { ConnectionStatus } from "../shell/status";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress, threadRef } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
@@ -38,6 +38,7 @@ import { useTabs, tabTag } from "../wm/tabs";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
+import { WorkspaceSwitcher } from "../shell/workspace";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
@@ -52,9 +53,9 @@ import { type Entry, GROUPS, type Group, groupLabel, groupsOf, ORDERS, useDispla
  * Recent sessions across every project, newest first, beside every page. With none yet it invites
  * adding a project: the folder the start page's composer then works in.
  */
-/** A sidebar action: New, Threads, Settings. Each sets its own colour: New, the primary action, is full ink. */
+/** A sidebar action: New, Threads. Each sets its own colour: New, the primary action, is full ink. */
 const NAV_ROW =
-	"flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+	"flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-ui font-medium outline-none hover:bg-selection-subtle hover:text-ink active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const collapsedKey = "codework.sidebar.collapsed";
 const decodeCollapsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
@@ -142,6 +143,7 @@ export function SessionsSidebar() {
 	return (
 		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-1 px-2 pt-2 pb-3">
+				<WorkspaceSwitcher />
 				<button type="button" onClick={startNew} className={`${NAV_ROW} text-ink`}>
 					<NotePencilIcon size={15} className="shrink-0" aria-hidden />
 					<span>New</span>
@@ -149,7 +151,7 @@ export function SessionsSidebar() {
 				<div className="relative">
 					<MagnifyingGlassIcon
 						size={15}
-						className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-ink-muted"
+						className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-muted"
 						aria-hidden
 					/>
 					<SidebarInput
@@ -165,7 +167,7 @@ export function SessionsSidebar() {
 								setQuery("");
 							}
 						}}
-						className="h-7 rounded-md border-0 bg-transparent pr-7 pl-[30px] text-ui shadow-none dark:bg-transparent placeholder:text-ink-muted not-placeholder-shown:bg-selection-subtle hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-1 focus-visible:ring-edge focus-visible:ring-inset [&::-webkit-search-cancel-button]:appearance-none"
+						className="h-7 rounded-lg border-0 bg-transparent pr-7 pl-9 text-ui font-medium shadow-none dark:bg-transparent placeholder:text-ink-muted not-placeholder-shown:bg-selection-subtle hover:bg-selection-subtle focus-visible:bg-selection-subtle focus-visible:ring-1 focus-visible:ring-edge focus-visible:ring-inset [&::-webkit-search-cancel-button]:appearance-none"
 					/>
 					{query !== "" && (
 						<button
@@ -257,15 +259,12 @@ export function SessionsSidebar() {
 				)}
 			</SidebarContent>
 			<SidebarFooter className="flex-row items-center gap-0.5 p-2">
-				<Link to="/settings/tabs" className={`${NAV_ROW} min-w-0 flex-1 text-ink-muted`}>
-					<GearSixIcon size={15} className="shrink-0 text-ink-muted" aria-hidden />
-					<span>Settings</span>
-				</Link>
+				<ConnectionStatus />
 				<Link
 					to="/metrics"
 					aria-label="Metrics"
 					title="Metrics"
-					className="active:scale-[0.97] grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection-current aria-[current=page]:text-ink"
+					className="active:scale-[0.97] ml-auto grid size-7 shrink-0 place-items-center rounded-md text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-selection-current aria-[current=page]:text-ink"
 				>
 					<ChartBarIcon size={15} aria-hidden />
 				</Link>

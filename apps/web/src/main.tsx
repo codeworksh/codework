@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserHistory, createHashHistory, RouterProvider } from "@tanstack/react-router";
 
+import { Auth } from "./auth";
 import { isElectron } from "./env";
 import { getRouter } from "./router";
 import "./style.css";
@@ -17,9 +18,11 @@ const router = getRouter(history);
 export const startup = router.load().then(() => {
 	ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 		<React.StrictMode>
-			<RegistryProvider>
-				<RouterProvider router={router} />
-			</RegistryProvider>
+			<Auth>
+				<RegistryProvider>
+					<RouterProvider router={router} />
+				</RegistryProvider>
+			</Auth>
 		</React.StrictMode>,
 	);
 });

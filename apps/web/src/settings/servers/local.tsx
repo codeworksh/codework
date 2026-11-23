@@ -1,4 +1,4 @@
-import { ArrowCounterClockwiseIcon, CheckIcon, CopyIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useAtomSet } from "@effect/atom-react";
 import { type CliAction, LOCAL_SERVER, type LocalServerStatus, type ServerUpdate } from "@codeworksh/contract";
 
@@ -19,15 +19,12 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import brand from "../../assets/codework.png";
 import { Server } from "../../kernel/rpc";
+import { INSTALL, installAtom, removeAtom, serviceAtom, updateAtom } from "../../kernel/servers";
 import { Code, Group as Card, quietField as field, SavingInput } from "../blocks";
 import { Variables } from "./variables";
+import { CopyCommand } from "@/components/copyable";
 
-const serviceAtom = Server.mutation("servers.service");
-const updateAtom = Server.mutation("servers.update");
-const removeAtom = Server.mutation("servers.remove");
 const setDefaultAtom = Server.mutation("servers.setDefault");
-
-const INSTALL = "curl -fsSL https://codework.sh/install | sh";
 
 type Tone = "success" | "warning" | "danger" | "info" | "muted";
 
@@ -118,15 +115,15 @@ const DOTS: Record<Tone, string> = {
 
 /** A server's state in a few words, as its row in the list reads it. */
 function stateOf({ cli, server }: LocalServerStatus): { tone: Tone; text: string } {
-	if (cli === null) return { tone: "warning", text: "Not installed" };
-	if ("failure" in cli) return { tone: "danger", text: "Won't start" };
+	if (cli === null) return { tone: "warning", text: "Not Installed" };
+	if ("failure" in cli) return { tone: "danger", text: "Won’t Start" };
 	switch (server._tag) {
 		case "Running":
 			return { tone: "success", text: `Running · ${new URL(server.url).host}` };
 		case "Unreachable":
-			return { tone: "warning", text: "Not answering" };
+			return { tone: "warning", text: "Not Answering" };
 		case "Incompatible":
-			return { tone: "danger", text: "Incompatible version" };
+			return { tone: "danger", text: "Incompatible Version" };
 		case "Stopped":
 			return { tone: "muted", text: "Stopped" };
 	}
@@ -176,7 +173,7 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 			</header>
 
 			<Card>
-				<Field title="Name" description="Shown in your provider list.">
+				<Field title="Name" description="Shown in your provider list">
 					<SavingInput
 						label="Server name"
 						value={status.override ?? ""}
@@ -225,20 +222,25 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						label="Executable"
 						description={
 							cli === null
-								? "No codework found in the install script's folder or on your login shell's PATH. Enter its path, or install it:"
-								: "Path to the codework binary used by this instance."
+								? "No codework found in the install script’s folder or on your login shell’s PATH. Enter its path, or install it:"
+								: "Path to the codework binary used by this instance"
 						}
 						value={cli?.custom ? cli.path : ""}
 						placeholder={cli !== null && !cli.custom ? cli.path : "codework"}
 						onSave={(next) => configure({ executable: next || null })}
 					>
-						{cli === null && <CopyCommand command={INSTALL} />}
+						{cli === null && (
+							<span className="flex flex-col items-start gap-2">
+								<Install id={status.id} />
+								<CopyCommand command={INSTALL} />
+							</span>
+						)}
 						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
-						title="Home directory"
+						title="Home Directory"
 						label="CODEWORK_HOME_DIR path"
-						description="Where this provider stores its sessions and configuration."
+						description="Where this provider stores its sessions and configuration"
 						// An added server always has its own home, so only the built-in one shows a default to reset to.
 						value={status.home.fallback === null || status.home.custom ? status.home.path : ""}
 						placeholder={status.home.fallback ?? "~/.codework-2"}
@@ -246,11 +248,11 @@ export function LocalDetail({ status }: { status: LocalServerStatus }) {
 						onSave={(next) => configure({ home: next || null })}
 					/>
 					<SettingField
-						title="Launch arguments"
+						title="Launch Arguments"
 						label="Launch arguments"
 						description={
 							<>
-								Additional CLI arguments passed to <Code>codework service start</Code>.
+								Additional CLI arguments passed to <Code>codework service start</Code>
 							</>
 						}
 						value={status.args}
@@ -327,7 +329,7 @@ function ServerActions({ status, onError }: { status: LocalServerStatus; onError
 						<AlertDialogHeader>
 							<AlertDialogTitle>Remove {status.name}?</AlertDialogTitle>
 							<AlertDialogDescription>
-								The app forgets this server's settings. Its home, and a server running from it, are left as they
+								The app forgets this server’s settings. Its home, and a server running from it, are left as they
 								are.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
@@ -407,7 +409,7 @@ function SettingField({
 						size="icon-xs"
 						variant="ghost"
 						aria-label={`Reset ${label} to default`}
-						title="Reset to default"
+						title="Reset to Default"
 						disabled={saving}
 						onClick={() => save("")}
 					>
@@ -446,25 +448,27 @@ function ServerLine({ status }: { status: LocalServerStatus }) {
 	return "Not running. Once started, it keeps running in the background after the app quits.";
 }
 
-function CopyCommand({ command }: { command: string }) {
-	const [copied, setCopied] = useState(false);
+/** Runs the install command for the user, then starts this server; the status shows the result. */
+function Install({ id }: { id: string }) {
+	const install = useAtomSet(installAtom, { mode: "promise" });
+	const [installing, setInstalling] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	return (
-		<span className="flex items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">
-			<code className="flex-1 font-mono text-xs">{command}</code>
+		<span className="flex flex-col items-start gap-1">
 			<Button
-				size="icon-xs"
-				variant="ghost"
-				aria-label="Copy install command"
-				title="Copy"
-				onClick={() =>
-					void navigator.clipboard.writeText(command).then(() => {
-						setCopied(true);
-						setTimeout(() => setCopied(false), 1500);
-					})
-				}
+				size="sm"
+				disabled={installing}
+				onClick={() => {
+					setInstalling(true);
+					setError(null);
+					install({ payload: { id } })
+						.catch((cause: unknown) => setError(messageOf(cause)))
+						.finally(() => setInstalling(false));
+				}}
 			>
-				{copied ? <CheckIcon /> : <CopyIcon />}
+				{installing ? "Installing…" : "Install CodeWork"}
 			</Button>
+			{error !== null && <span className="text-sm text-destructive">{error}</span>}
 		</span>
 	);
 }

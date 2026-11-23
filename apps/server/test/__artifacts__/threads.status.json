@@ -12,7 +12,7 @@
 					"title": "Thread A",
 					"machine": {
 						"id": "<machine>",
-						"name": "Scripted"
+						"name": "Fixture"
 					},
 					"project": {
 						"id": "<id 1>",
@@ -40,7 +40,7 @@
 					"title": "Thread B",
 					"machine": {
 						"id": "<machine>",
-						"name": "Scripted"
+						"name": "Fixture"
 					},
 					"project": {
 						"id": "<id 1>",
@@ -68,7 +68,7 @@
 					"title": "Thread A",
 					"machine": {
 						"id": "<machine>",
-						"name": "Scripted"
+						"name": "Fixture"
 					},
 					"project": {
 						"id": "<id 1>",
@@ -90,7 +90,7 @@
 					"title": "Thread D",
 					"machine": {
 						"id": "<machine>",
-						"name": "Scripted"
+						"name": "Fixture"
 					},
 					"project": {
 						"id": "<id 1>",
@@ -123,7 +123,7 @@
 					"title": "Thread C",
 					"machine": {
 						"id": "<machine>",
-						"name": "Scripted"
+						"name": "Fixture"
 					},
 					"project": {
 						"id": "<id 1>",

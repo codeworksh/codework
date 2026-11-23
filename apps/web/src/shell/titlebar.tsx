@@ -3,6 +3,7 @@ import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@t
 
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { isMac } from "@codeworksh/widget/view";
+import { isSettingsPath } from "../settings/sections";
 import { MAX_TABS, useCreateTab, useTabs, useTabReturn, tabRoute } from "../wm/tabs";
 import { Switcher } from "./switcher";
 
@@ -17,7 +18,7 @@ const chromeButton =
 /** Window-level navigation remains available on Home, tabs, and settings. */
 export function NavigationControls() {
 	const { open, isMobile } = useSidebar();
-	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
+	const inSettings = useLocation({ select: (location) => isSettingsPath(location.pathname) });
 	const withSidebar = open && !isMobile;
 	const { tabId } = useParams({ strict: false });
 	const tabs = useTabs();
@@ -79,7 +80,7 @@ function CloseSettings() {
 		<button
 			type="button"
 			aria-label="Close settings"
-			title="Close settings (Esc)"
+			title="Close settings"
 			className={`${chromeButton} ml-auto`}
 			onClick={() => void navigate(back)}
 		>

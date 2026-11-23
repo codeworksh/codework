@@ -19,6 +19,13 @@ export default defineConfig({
 		},
 	],
 	test: {
-		include: ["test/**/*.test.ts"],
+		projects: [
+			{
+				extends: true,
+				test: { name: "server", include: ["test/**/*.test.ts"], exclude: ["test/**/*.live.test.ts"] },
+			},
+			// The live suites share the OrbStack machines, and each start stops the server another one runs.
+			{ extends: true, test: { name: "live", include: ["test/**/*.live.test.ts"], fileParallelism: false } },
+		],
 	},
 });

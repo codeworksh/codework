@@ -1,18 +1,19 @@
-/* The desktop light and dark palettes. Dark applies when no theme is selected. */
+/* The desktop light and dark palettes. Dark applies when no theme is selected. Both follow Linear's
+   palettes: its sidebar, base and card surfaces, border and text scale, and indigo accent. */
 
 :root,
 [data-theme="dark"] {
 	--t-bg: #09090a;
 	--t-surface: #121213;
 	--t-surface-2: #1b1b1d;
-	--t-border-subtle: #252527;
+	--t-border-subtle: #212224;
 	--t-border-strong: #7a7a7a;
-	--t-text: #ebebeb;
-	--t-text-secondary: #c4c4c4;
-	--t-text-muted: #969696;
-	--t-scrollbar: rgba(235, 235, 235, 0.28);
-	--t-brand: #4c9ef5;
-	--t-brand-ink: #171717;
+	--t-text: #f7f8f8;
+	--t-text-secondary: #e3e4e6;
+	--t-text-muted: #959597;
+	--t-scrollbar: rgba(247, 248, 248, 0.28);
+	--t-brand: #6d78d5;
+	--t-brand-ink: #ffffff;
 	--t-field-bg: #070707;
 	--t-field-dim: #2f2f2f;
 	--t-field-mid: #5a5a5a;
@@ -26,13 +27,13 @@
 	--t-bg: #efeff0;
 	--t-surface: #f9f9fa;
 	--t-surface-2: #ffffff;
-	--t-border-subtle: #dedee2;
+	--t-border-subtle: #e2e2e2;
 	--t-border-strong: #c0c0c0;
-	--t-text: #2e2e2e;
-	--t-text-secondary: #383838;
-	--t-text-muted: #6d6d6d;
-	--t-scrollbar: rgba(46, 46, 46, 0.28);
-	--t-brand: #1f6fc4;
+	--t-text: #1b1b1b;
+	--t-text-secondary: #3b3b3d;
+	--t-text-muted: #5e5e60;
+	--t-scrollbar: rgba(27, 27, 27, 0.28);
+	--t-brand: #5e6ad2;
 	--t-brand-ink: #ffffff;
 	--t-field-bg: #e8e8e8;
 	--t-field-dim: #c3c3c3;

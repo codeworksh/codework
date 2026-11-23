@@ -1,0 +1,13 @@
+{
+	"device.leave": "left",
+	"its other socket's stream": "failed: SocketCloseError",
+	"a call on the socket it left on": "ended",
+	"a ticket it took before": 401,
+	"a new ticket": "signed with the machine key, echoing its nonce",
+	"device.list": [
+		"<Tablet>"
+	],
+	"the other device's stream sees a session made after": "live",
+	"the other device calls": true,
+	"device.leave from this computer": "Server.Forbidden"
+}

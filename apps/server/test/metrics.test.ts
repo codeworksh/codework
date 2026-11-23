@@ -83,7 +83,8 @@ const turn = (server: Codework, ref: Parameters<Client.Client["thread.wait"]>[0]
 
 /** Adds `server` with no name of its own: it is named by the host it reports. */
 const addServer = async (home: string, server: Codework, desk: Desk) => {
-	const id = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: server.url }));
+	const code = await server.pair();
+	const id = await desk.run((rpc) => rpc["servers.add"]({ kind: "remote", url: server.url, code }));
 	await synced(home, id, server);
 	return id;
 };

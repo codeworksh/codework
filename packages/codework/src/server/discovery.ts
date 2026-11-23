@@ -4,11 +4,12 @@ import * as Health from "./health.ts";
 import * as Identity from "./identity.ts";
 import * as Registration from "./registration.ts";
 
-/** A server a client can connect to, and the process and port behind it. */
+/** A server a client can connect to, the process and port behind it, and the token it takes. */
 export interface Endpoint {
 	readonly url: string;
 	readonly pid: number;
 	readonly port: number;
+	readonly token: string;
 }
 
 /** A managed server could not be produced, in the words the CLI prints. */
@@ -30,16 +31,6 @@ export interface Options {
 const START_TIMEOUT = "20 seconds";
 const RACE_GRACE = "2 seconds";
 const STOP_TIMEOUT = "5 seconds";
-
-const decode = Schema.decodeUnknownEffect(Registration.infoJson);
-
-const read = (path: string) =>
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const text = yield* fs.readFileString(path).pipe(Effect.option);
-		if (Option.isNone(text)) return undefined;
-		return yield* decode(text.value).pipe(Effect.option, Effect.map(Option.getOrUndefined));
-	});
 
 const remove = (path: string) =>
 	Effect.gen(function* () {
@@ -69,13 +60,18 @@ const exits = (pid: number, timeout: typeof STOP_TIMEOUT) =>
  */
 const registered = (path: string) =>
 	Effect.gen(function* () {
-		const info = yield* read(path);
+		const info = yield* Registration.read(path);
 		if (info === undefined) return undefined;
-		const live = yield* Health.probe(info.url);
+		const live = yield* Health.probe(info);
 		return { info, live: live?.pid === info.pid ? live : undefined };
 	});
 
-const endpoint = (info: Registration.Info): Endpoint => ({ url: info.url, pid: info.pid, port: info.port });
+const endpoint = (info: Registration.Info): Endpoint => ({
+	url: info.url,
+	pid: info.pid,
+	port: info.port,
+	token: info.token,
+});
 
 /** The running server registered for `home`, with the build it reports. */
 export const discover = (home: string) =>
@@ -183,7 +179,7 @@ const terminate = (path: string, pid: number) =>
 			yield* exits(pid, STOP_TIMEOUT);
 		}
 		// A server removes its own file on a clean exit; this covers the SIGKILL path.
-		const info = yield* read(path);
+		const info = yield* Registration.read(path);
 		if (info?.pid === pid) yield* remove(path);
 	});
 

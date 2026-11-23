@@ -57,6 +57,7 @@
 		"zod": "4.6.5"
 	},
 	"devDependencies": {
+		"@codeworksh/schema": "workspace:*",
 		"@types/node": "catalog:",
 		"bumpp": "^12.3.0",
 		"node-gyp": "^13.0.2"

@@ -1,10 +1,10 @@
-import { Session } from "@codeworksh/harness/effect";
-import { Effect, type Option } from "effect";
+import { Effect, Option } from "effect";
 import * as Runtime from "../../../../framework/runtime.ts";
 import * as Client from "../../../../server/client.ts";
+import * as Service from "../../../service.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
-import { threadFlag } from "../../../thread.ts";
+import { sessionId, threadFlag } from "../../../ids.ts";
 import { Cmd } from "../../cmd.ts";
 import { describe, MARKS } from "./shared.ts";
 
@@ -22,13 +22,14 @@ const control = (operation: "connect" | "disconnect") =>
 		readonly name: string;
 		readonly session: string;
 		readonly thread: Option.Option<string>;
-		readonly server: string;
+		readonly server: Option.Option<string>;
 	}) {
+		const id = yield* sessionId(session);
 		const program = Effect.gen(function* () {
 			const threadId = yield* threadFlag(thread);
 			const rpc = yield* Client.make;
 			const status = yield* rpc[`mcp.${operation}`]({
-				sessionId: Session.SessionSchema.ID.make(session),
+				sessionId: id,
 				...(threadId === undefined ? {} : { threadId }),
 				server: name,
 			});
@@ -39,7 +40,7 @@ const control = (operation: "connect" | "disconnect") =>
 			yield* writeOut(`${lines.join("\n")}\n`);
 			if (status.state !== (operation === "connect" ? "connected" : "disconnected")) process.exitCode = 1;
 		});
-		return yield* program.pipe(Effect.provide(Client.layer(server)), Effect.scoped, Effect.catch(reportFailure));
+		return yield* program.pipe(Service.connect(Option.getOrUndefined(server)), Effect.catch(reportFailure));
 	});
 
 export const reconnect = Runtime.handler(Cmd.commands.mcp.commands.reconnect, control("connect"));
