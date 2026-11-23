@@ -513,6 +513,10 @@ function LinkedRow({
 	const [tint, setTint] = useState(fresh);
 	const [unlinking, setUnlinking] = useState<Target | null>(null);
 	const trigger = useRef<HTMLButtonElement>(null);
+	const row = useRef<HTMLDivElement>(null);
+	// Where focus goes once the row is gone with its menu: the next row's first control, else the previous
+	// one's, else the last control of the section above.
+	const after = useRef<HTMLElement | null>(null);
 	useEffect(() => {
 		if (!tint) return;
 		const timer = setTimeout(() => setTint(false), 1600);
@@ -521,6 +525,7 @@ function LinkedRow({
 	const name = machine.givenName ?? machine.localHostName;
 	return (
 		<div
+			ref={row}
 			className={`grid transition-[grid-template-rows,opacity] duration-250 ease-(--ease-out) motion-reduce:transition-none ${leaving ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`}
 		>
 			<div className="min-h-0 overflow-hidden">
@@ -579,10 +584,15 @@ function LinkedRow({
 				target={unlinking}
 				onClose={() => setUnlinking(null)}
 				onDone={() => {
+					const near = (row.current?.nextElementSibling ?? row.current?.previousElementSibling)?.querySelector(
+						"button",
+					);
+					const above = row.current?.closest("section")?.previousElementSibling?.querySelectorAll("button");
+					after.current = near ?? above?.item(above.length - 1) ?? null;
 					setLeaving(true);
 					setTimeout(onGone, 260);
 				}}
-				returnFocus={() => trigger.current}
+				returnFocus={() => after.current ?? trigger.current}
 			/>
 		</div>
 	);
