@@ -29,7 +29,18 @@ import { EmptyState } from "../controls";
 import { Badge } from "../servers/local";
 import { Notice } from "./notice";
 import { addressOf, isPlain, NOT_ENCRYPTED, urlOf } from "./pair";
-import { Failure, isReachable, linkText, RELAY_REFRESH_MS, Status, useLink, usePaired, useWorkspace } from "./shared";
+import {
+	Failure,
+	isReachable,
+	linkText,
+	type Membership,
+	membershipNote,
+	RELAY_REFRESH_MS,
+	Status,
+	useMembership,
+	usePaired,
+	useWorkspace,
+} from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 
 const labelAtom = Server.mutation("servers.label");
@@ -137,8 +148,7 @@ function Detail({
 	const [labelError, setLabelError] = useState<string | null>(null);
 	const [addressError, setAddressError] = useState<string | null>(null);
 	const address = addressOf(server.url);
-	const link = useLink(server, workspace);
-	const linked = link !== undefined;
+	const membership = useMembership(server.machineId, server.workspaces, workspace);
 	const readdress = (typed: string) => {
 		setAddressError(null);
 		const url = urlOf(typed);
@@ -152,7 +162,7 @@ function Detail({
 			description={
 				<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 					<Status server={server} />
-					{workspace !== undefined && <span className="text-xs">{linkText(linked, workspace)}</span>}
+					{workspace !== undefined && <span className="text-xs">{linkText(membership, workspace)}</span>}
 				</span>
 			}
 		>
@@ -215,11 +225,15 @@ function Detail({
 					</Row>
 				</Group>
 			</Section>
-			{workspace !== undefined && (
+			{workspace !== undefined && membership !== undefined && (
 				<Section title="Workspace">
-					<Group>
-						<Membership server={server} workspace={workspace} link={link} />
-					</Group>
+					{membership.state === "loading" ? (
+						<Placeholder rows={1} />
+					) : (
+						<Group>
+							<Membership server={server} workspace={workspace} membership={membership} />
+						</Group>
+					)}
 				</Section>
 			)}
 			<Section title="Remove">
@@ -227,7 +241,7 @@ function Detail({
 					<Row
 						title="Remove from This Computer"
 						description={
-							linked && workspace !== undefined
+							membership?.state === "linked" && workspace !== undefined
 								? `It stays linked to ${workspace.name}, and nothing on the machine is deleted`
 								: "Its threads leave the sidebar, and nothing on the machine is deleted"
 						}
@@ -244,11 +258,11 @@ function Detail({
 function Membership({
 	server,
 	workspace,
-	link,
+	membership,
 }: {
 	readonly server: RemoteServerStatus;
 	readonly workspace: Relay.Workspace;
-	readonly link: { readonly keyId: string; readonly held: boolean } | undefined;
+	readonly membership: Membership;
 }) {
 	const [unlinking, setUnlinking] = useState<Target | null>(null);
 	const [linking, setLinking] = useState(false);
@@ -260,24 +274,26 @@ function Membership({
 		const timer = setInterval(refreshMachines, RELAY_REFRESH_MS);
 		return () => clearInterval(timer);
 	}, [refreshMachines]);
-	const linked = link !== undefined;
+	const linked = membership.state === "linked";
+	// Nothing acts on a membership the relay can't confirm now.
+	const known = (membership.state === "linked" || membership.state === "unlinked") && !membership.stale;
 	// Only a Machine that answers as itself can link, or end its own link.
 	const reachable = isReachable(server);
 	const target: Target | undefined =
-		link === undefined || server.machineId === null
+		membership.state !== "linked" || server.machineId === null
 			? undefined
 			: {
 					name: server.name,
 					workspace,
 					machineId: server.machineId,
-					keyId: link.keyId,
+					keyId: membership.keyId,
 					// Only a machine that answers and holds the key ends the link itself; the relay removes any other.
 					via:
-						reachable && link.held
+						reachable && membership.held
 							? { kind: "paired", serverId: server.id }
 							: { kind: "relay", serverId: server.id },
 				};
-	const title = linkText(linked, workspace);
+	const title = linkText(membership, workspace);
 	// Why it can't link now, if it can't.
 	const blocked =
 		!server.paired || server.mismatch?.kind === "machine"
@@ -296,7 +312,9 @@ function Membership({
 					</span>
 				}
 				description={
-					!linked && blocked !== null ? (
+					error === null && membershipNote(membership) !== undefined ? (
+						membershipNote(membership)
+					) : !linked && blocked !== null ? (
 						blocked
 					) : error !== null ? (
 						<span role="alert" className="text-destructive">
@@ -312,14 +330,20 @@ function Membership({
 				{/* Its control changes with the link; focus comes back to whichever is here. */}
 				<div ref={action} className="contents">
 					{target !== undefined ? (
-						<Button size="sm" variant="secondary" className="min-w-28" onClick={() => setUnlinking(target)}>
+						<Button
+							size="sm"
+							variant="secondary"
+							className="min-w-28"
+							disabled={!known}
+							onClick={() => setUnlinking(target)}
+						>
 							Unlink…
 						</Button>
 					) : (
 						<Button
 							size="sm"
 							className="min-w-28"
-							disabled={blocked !== null || linking}
+							disabled={!known || blocked !== null || linking}
 							onClick={() => {
 								setError(null);
 								setLinking(true);

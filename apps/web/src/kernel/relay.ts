@@ -114,9 +114,7 @@ export const relayFailure = (cause: unknown) => {
 	if (isUnauthorized(Cause.isCause(cause) ? Cause.squash(cause) : cause))
 		return "Your sign-in expired. Sign in again.";
 	const message = messageOf(cause);
-	return unreachable.test(message)
-		? "Can't reach CodeWork's servers. Check your connection, then try again."
-		: message;
+	return unreachable.test(message) ? "Can’t reach Relay servers. Check your connection, then try again." : message;
 };
 
 /** A failure that passes on its own: the relay or its sign-in vendor out of reach, or no session yet. */

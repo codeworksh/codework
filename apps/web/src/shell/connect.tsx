@@ -3,7 +3,7 @@ import { Effect, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
-import { approveAtom, relayFailure } from "../kernel/relay";
+import { approveAtom, machinesAtom, relayFailure } from "../kernel/relay";
 import { Server } from "../kernel/rpc";
 import { defaultServerAtom } from "../kernel/servers";
 
@@ -40,6 +40,7 @@ export function useConnect(workspaceId: string, serverId?: string) {
 	const progress = useAtomValue(connectAtom(key));
 	const restart = useAtomRefresh(connectAtom(key));
 	const refreshMachine = useAtomRefresh(useMachineAtom());
+	const refreshMachines = useAtomRefresh(machinesAtom(workspaceId));
 	const approve = useAtomSet(approveAtom, { mode: "promise" });
 	const [sent, setSent] = useState<"approving" | "approved" | null>(null);
 	// The approved code stays on screen once the stream moves past it, until the link folds the step.
@@ -49,10 +50,12 @@ export function useConnect(workspaceId: string, serverId?: string) {
 	const failure = AsyncResult.isFailure(progress) ? relayFailure(progress.cause) : null;
 	const linked = event?._tag === "Connected" ? event.connected : undefined;
 	const code = event?._tag === "Code" ? event.userCode : approved;
-	// The machine's own record of its workspaces changed; the menu and setup read it.
+	// The relay lists it now, and the machine holds the key.
 	useEffect(() => {
-		if (linked !== undefined) refreshMachine();
-	}, [linked, refreshMachine]);
+		if (linked === undefined) return;
+		refreshMachine();
+		refreshMachines();
+	}, [linked, refreshMachine, refreshMachines]);
 	const phase =
 		linked !== undefined
 			? "connected"
@@ -95,9 +98,9 @@ export const approveLabel = (phase: ReturnType<typeof useConnect>["phase"]) =>
 	phase === "approving"
 		? "Approving…"
 		: phase === "approved"
-			? "Connecting…"
+			? "Linking…"
 			: phase === "connected"
-				? "Connected"
+				? "Linked"
 				: phase === "failed"
 					? "Try Again"
 					: "Approve";

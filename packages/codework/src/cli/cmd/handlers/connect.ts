@@ -39,7 +39,7 @@ export default Runtime.handler(
 		Effect.catchReason("HttpClientError", "TransportError", (reason) =>
 			Effect.fail(
 				new Machine.ConnectError({
-					message: `Can't reach CodeWork's servers at ${new URL(reason.request.url).origin}; check your connection, then run connect again`,
+					message: `Can't reach Relay servers at ${new URL(reason.request.url).origin}; check your connection, then run connect again`,
 				}),
 			),
 		),

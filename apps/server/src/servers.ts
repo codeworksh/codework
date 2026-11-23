@@ -121,7 +121,11 @@ export interface Facts {
 export const factsOf = (status: Machine.Status): Facts => ({
 	label: status.givenName,
 	machineId: status.id,
-	workspaces: status.workspaces.map(({ id, keyId }) => ({ id, keyId })),
+	workspaces: status.workspaces.map(({ id, keyId, leaving }) => ({
+		id,
+		keyId,
+		...(leaving === undefined ? {} : { leaving }),
+	})),
 });
 
 const Workspaces = Schema.fromJsonString(RemoteServerStatus.fields.workspaces);
@@ -231,8 +235,6 @@ export class Service extends Context.Service<
 		readonly lost: (id: string) => Effect.Effect<void>;
 		/** Records what kept a remote server from connecting while paired, or none once it connects. */
 		readonly answered: (id: string, mismatch: Mismatch | null) => Effect.Effect<void>;
-		/** Forgets a remote server's link to a workspace that was removed at the relay, without it. */
-		readonly unlinked: (id: string, workspaceId: string) => Effect.Effect<void, ServersError>;
 		readonly add: (input: ServerAdd) => Effect.Effect<string, ServersError | PairingRefused>;
 		readonly update: (input: ServerUpdate) => Effect.Effect<void, ServersError | PairingRefused>;
 		/** Drops a remote server's pairing once the server refused it, unless the row paired again since. */
@@ -433,16 +435,6 @@ export const layer = Layer.effect(
 				if (!online.delete(id)) return;
 				const seenAt = yield* Clock.currentTimeMillis;
 				yield* sql`UPDATE machine SET seen_at = ${seenAt} WHERE id = ${id}`.pipe(Effect.orDie);
-				yield* announce;
-			}),
-
-			unlinked: Effect.fn("Servers.unlinked")(function* (id, workspaceId) {
-				const row = yield* get(id);
-				if (row.kind !== "remote") return yield* fail("Only a paired Machine has links of its own.");
-				const workspaces = row.workspaces.filter((link) => link.id !== workspaceId);
-				yield* sql`UPDATE machine SET workspaces = ${encodeWorkspaces(workspaces)} WHERE id = ${id}`.pipe(
-					Effect.orDie,
-				);
 				yield* announce;
 			}),
 

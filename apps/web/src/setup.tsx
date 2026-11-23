@@ -15,9 +15,10 @@ import { Frame } from "./frame";
 import { isSignedInApp } from "./auth";
 import { workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
+import { type Membership, useMembership } from "./settings/machines/shared";
 import { approveLabel, canAct, CodeSlot, useMachineAtom, useConnect } from "./shell/connect";
 
-/** Set Up Later, per workspace: the app stops opening this page for it. */
+/** Set Up Later or Skip, per workspace: the app stops opening this page for it. */
 const laterKey = (workspaceId: string) => `codework.setup.later.${workspaceId}`;
 
 const setUpLater = (workspaceId: string) => {
@@ -36,6 +37,9 @@ const putOff = (workspaceId: string) => {
 	}
 };
 
+/** Set up for the workspace: the relay lists this machine under a key it holds, and it isn't leaving. */
+const isLinked = (membership: Membership) => membership.state === "linked" && membership.held && !membership.leaving;
+
 // Once per sign-in: after that, the app stays where the person goes. The atom registry is mounted inside
 // the auth gate, so it starts over for each account that signs in.
 const checkedAtom = Atom.make(false).pipe(Atom.keepAlive);
@@ -45,8 +49,9 @@ export const settledAtom = Atom.make(false).pipe(Atom.keepAlive);
 
 /**
  * Opens setup when this machine isn't set up for the workspace the app opens in: the CLI missing, its
- * server not running, or the machine not connected. Not for a workspace set up later, and never while the
- * relay or the local server is still unknown; local work never waits on it.
+ * server not running, or the relay not listing it. Not for a workspace set up later, never while the
+ * local server is still unknown, and not for the link while the relay can't be reached; local work
+ * never waits on it.
  */
 export function SetupGate() {
 	const navigate = useNavigate();
@@ -57,15 +62,22 @@ export function SetupGate() {
 	const machineAtom = useMachineAtom();
 	const machine = useAtomValue(machineAtom);
 	const workspace = AsyncResult.isSuccess(current) ? current.value : undefined;
+	const membership = useMembership(
+		AsyncResult.isSuccess(machine) ? machine.value.id : null,
+		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
+		workspace,
+	);
 	const running = status?.server._tag === "Running";
 	const needs =
 		workspace === undefined || status === undefined
 			? undefined
 			: status.cli === null || !("version" in status.cli) || !running
 				? true
-				: AsyncResult.isSuccess(machine)
-					? !machine.value.workspaces.some((option) => option.id === workspace.id)
-					: undefined;
+				: !AsyncResult.isSuccess(machine) || membership === undefined || membership.state === "loading"
+					? undefined
+					: membership.state === "unknown" || membership.stale
+						? false
+						: !isLinked(membership);
 	useEffect(() => {
 		if (checked || !isSignedInApp || workspace === undefined || needs === undefined) return;
 		setChecked(true);
@@ -84,9 +96,9 @@ export function SetupPage() {
 }
 
 /**
- * Sets up this machine for a workspace in three steps: install the CLI, start its server, connect to
- * the workspace. Only the current step is open; each also offers its terminal command. Until the
- * workspace is known, there is nothing to connect to.
+ * Sets up this machine for a workspace in three steps: install the CLI, start its server, link it to
+ * the workspace. Only the current step is open; each also offers its terminal command. The link can be
+ * skipped: the machine works without it. Until the workspace is known, there is nothing to link to.
  */
 function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined }) {
 	const navigate = useNavigate();
@@ -108,8 +120,12 @@ function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined 
 	// The terminal commands reach this server's home: a home chosen in Settings isn't the CLI's default.
 	const home =
 		status !== undefined && "home" in status && status.home.custom ? ` --home ${shellQuoted(status.home.path)}` : "";
-	const connected =
-		AsyncResult.isSuccess(machine) && machine.value.workspaces.some((option) => option.id === workspaceId);
+	const membership = useMembership(
+		AsyncResult.isSuccess(machine) ? machine.value.id : null,
+		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
+		workspace,
+	);
+	const connected = membership !== undefined && isLinked(membership);
 	const name = AsyncResult.isSuccess(machine)
 		? (machine.value.givenName ?? machine.value.localHostName)
 		: (status?.name ?? "This Machine");
@@ -188,7 +204,7 @@ function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined 
 						<Step
 							index={2}
 							current={current}
-							title={`Connect to ${workspaceName}`}
+							title={`Link to ${workspaceName}`}
 							summary={`Linked to ${workspaceName}`}
 							line={`${name} shows up in ${workspaceName} for everyone in it.`}
 							problem={null}
@@ -199,7 +215,7 @@ function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined 
 								<Connecting workspaceId={workspaceId} onCancel={() => setConnecting(false)} />
 							) : (
 								<Button disabled={workspaceId === undefined} onClick={() => setConnecting(true)}>
-									Connect
+									Link
 								</Button>
 							)}
 						</Step>
@@ -209,10 +225,11 @@ function Setup({ workspace }: { readonly workspace: Relay.Workspace | undefined 
 							variant="ghost"
 							onClick={() => {
 								if (workspaceId !== undefined) setUpLater(workspaceId);
-								void navigate({ to: "/settings/machines" });
+								// Skipping the link leaves a machine ready to use.
+								void navigate({ to: current === 2 ? "/" : "/settings/machines" });
 							}}
 						>
-							Set Up Later
+							{current === 2 ? "Skip" : "Set Up Later"}
 						</Button>
 						<Button disabled={current !== 3} onClick={() => void navigate({ to: "/" })}>
 							Done

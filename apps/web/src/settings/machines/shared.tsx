@@ -1,13 +1,14 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { RemoteServerStatus, ServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
 import { CaretRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
+import { Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback, useContext } from "react";
 
 import { isSignedInApp } from "../../auth";
-import { machinesAtom, workspaceAtom } from "../../kernel/relay";
+import { machinesAtom, relayFailure, workspaceAtom } from "../../kernel/relay";
 import { serversAtom } from "../../kernel/servers";
 import { SeenStatus, StatusDot } from "../controls";
 
@@ -34,33 +35,100 @@ export function useWorkspace(): { readonly ready: boolean; readonly workspace: R
 /** Whether a paired machine answers as itself, so what it says about its links holds. */
 export const isReachable = (server: RemoteServerStatus) => server.paired && server.mismatch === null && server.online;
 
-const noMachines = Atom.make<Atom.Type<ReturnType<typeof machinesAtom>>>(AsyncResult.initial());
+type Machines = Atom.Type<ReturnType<typeof machinesAtom>>;
+
+const noMachines = Atom.make<Machines>(AsyncResult.initial());
 
 /** How often a page showing links asks the relay again, so a change made elsewhere shows. */
 export const RELAY_REFRESH_MS = 15_000;
 
-/**
- * A paired machine's link to the workspace: the key it is under, and whether the machine holds that key
- * itself. The relay's list decides: a machine hears a link ended elsewhere only on its next heartbeat, and
- * this app hears from it only when it connects. Its own last word stands in while the relay can't answer.
- */
-export function useLink(
-	server: RemoteServerStatus,
-	workspace: Relay.Workspace | undefined,
-): { readonly keyId: string; readonly held: boolean } | undefined {
-	const machines = useAtomValue(workspace === undefined ? noMachines : machinesAtom(workspace.id));
-	if (workspace === undefined) return undefined;
-	const own = server.workspaces.find((link) => link.id === workspace.id);
-	if (!AsyncResult.isSuccess(machines)) return own === undefined ? undefined : { keyId: own.keyId, held: true };
-	// A link it lost stays listed under its id until removed; the one under its own key comes first.
-	const listed =
-		machines.value.find((machine) => machine.id === server.machineId && machine.keyId === own?.keyId) ??
-		machines.value.find((machine) => machine.id === server.machineId);
-	return listed === undefined ? undefined : { keyId: listed.keyId, held: listed.keyId === own?.keyId };
+/** A machine's own record of a link, as it reports it. */
+interface Own {
+	readonly id: string;
+	readonly keyId: string;
+	readonly leaving?: boolean;
 }
 
-export const linkText = (linked: boolean, workspace: Relay.Workspace) =>
-	linked ? `Linked to ${workspace.name}` : "Not Linked";
+/**
+ * Whether a machine is in a workspace. The relay alone decides; while it can't be reached, its last
+ * answer stands, marked stale. The machine's own record only says whether it holds the listed key, and
+ * whether it is leaving.
+ */
+export type Membership =
+	| { readonly state: "loading" }
+	| { readonly state: "unknown"; readonly reason: string }
+	| { readonly state: "unlinked"; readonly stale: boolean }
+	| {
+			readonly state: "linked";
+			readonly keyId: string;
+			readonly held: boolean;
+			readonly leaving: boolean;
+			readonly stale: boolean;
+	  };
+
+export function membershipOf(
+	machines: Machines,
+	machineId: string | null,
+	links: ReadonlyArray<Own>,
+	workspaceId: string,
+): Membership {
+	if (AsyncResult.isInitial(machines)) return { state: "loading" };
+	const last = AsyncResult.isFailure(machines) ? Option.getOrUndefined(machines.previousSuccess) : undefined;
+	if (AsyncResult.isFailure(machines) && last === undefined)
+		return { state: "unknown", reason: relayFailure(machines.cause) };
+	const list = AsyncResult.isSuccess(machines) ? machines.value : (last?.value ?? []);
+	const stale = !AsyncResult.isSuccess(machines);
+	// The relay holds one link per machine and workspace; linking again replaces its key.
+	const listed = list.find((machine) => machine.id === machineId);
+	if (listed === undefined) return { state: "unlinked", stale };
+	const own = links.find((link) => link.id === workspaceId);
+	const held = listed.keyId === own?.keyId;
+	return { state: "linked", keyId: listed.keyId, held, leaving: held && own?.leaving === true, stale };
+}
+
+/** A machine's membership in the workspace the app works in; none without a workspace. */
+export function useMembership(
+	machineId: string | null,
+	links: ReadonlyArray<Own>,
+	workspace: Relay.Workspace | undefined,
+): Membership | undefined {
+	const machines = useAtomValue(workspace === undefined ? noMachines : machinesAtom(workspace.id));
+	return workspace === undefined ? undefined : membershipOf(machines, machineId, links, workspace.id);
+}
+
+/** Asks the relay for the workspace's machines again. */
+export function useRefreshMachines(workspace: Relay.Workspace | undefined) {
+	const registry = useContext(RegistryContext);
+	return useCallback(() => {
+		if (workspace !== undefined) registry.refresh(machinesAtom(workspace.id));
+	}, [registry, workspace]);
+}
+
+/** The membership in a few words; none while the relay's first answer is on its way. */
+export const linkText = (membership: Membership | undefined, workspace: Relay.Workspace) => {
+	switch (membership?.state) {
+		case "linked":
+			return `Linked to ${workspace.name}`;
+		case "unlinked":
+			return "Not Linked";
+		case "unknown":
+			return "Unknown Link";
+		default:
+			return undefined;
+	}
+};
+
+/** Every fact that qualifies a membership: an answer gone stale, a key lost, an unlink on its way. */
+export const membershipNote = (membership: Membership | undefined) => {
+	if (membership === undefined || membership.state === "loading") return undefined;
+	if (membership.state === "unknown") return membership.reason;
+	const notes = [
+		membership.stale && "Relay can’t be reached; this is its last status",
+		membership.state === "linked" && !membership.held && "The machine no longer holds its key",
+		membership.state === "linked" && membership.leaving && "Unlinking; it finishes once the machine reaches Relay",
+	].filter((note) => note !== false);
+	return notes.length === 0 ? undefined : notes.join(" · ");
+};
 
 /** Whether it is paired, then what keeps it from connecting, then whether it answers. */
 export function Status({ server }: { readonly server: RemoteServerStatus }) {

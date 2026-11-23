@@ -297,10 +297,6 @@ export const layer = Contract.Api.toLayer(
 				yield* servers.reached(id, { label: status.givenName });
 				yield* health.check;
 			}),
-			"servers.unlinked": Effect.fn("servers.unlinked")(function* ({ id, workspaceId }) {
-				yield* servers.unlinked(id, workspaceId);
-				yield* health.check;
-			}),
 			"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {
 				const row = yield* servers.get(id);
 				// Best effort: the row goes whether the machine answers or not.

@@ -24,7 +24,18 @@ import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from 
 import { Done, EmptyState, SeenStatus, StatusDot } from "../controls";
 import { Badge } from "../servers/local";
 import { addressOf, isPlain, PairDialog } from "./pair";
-import { linkText, Loaded, MachineRow, RELAY_REFRESH_MS, Status, useLink, usePaired, useWorkspace } from "./shared";
+import {
+	linkText,
+	Loaded,
+	MachineRow,
+	membershipNote,
+	RELAY_REFRESH_MS,
+	Status,
+	useMembership,
+	usePaired,
+	useRefreshMachines,
+	useWorkspace,
+} from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 import { Waiting } from "./waiting";
 
@@ -93,8 +104,14 @@ function ThisMachine({
 	const [error, setError] = useState<string | null>(null);
 	const [unlinking, setUnlinking] = useState<Target | null>(null);
 	const action = useRef<HTMLDivElement>(null);
+	const membership = useMembership(
+		AsyncResult.isSuccess(machine) ? machine.value.id : null,
+		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
+		workspace,
+	);
+	const refreshMachines = useRefreshMachines(workspace);
 	// The rows the answer brings, held from the start so nothing below moves when it lands.
-	if (AsyncResult.isInitial(machine) || !ready) {
+	if (AsyncResult.isInitial(machine) || !ready || membership?.state === "loading") {
 		return (
 			<Section title="This Machine" description="The computer this app runs on">
 				<Placeholder rows={workspace === undefined && ready ? 3 : 4} />
@@ -110,10 +127,6 @@ function ThisMachine({
 	}
 	const status = machine.value;
 	const machineId = status.id;
-	const link =
-		workspace === undefined || machineId === null
-			? undefined
-			: status.workspaces.find((option) => option.id === workspace.id);
 	const name = status.givenName ?? status.localHostName;
 	return (
 		<Section title="This Machine" description="The computer this app runs on">
@@ -150,36 +163,47 @@ function ThisMachine({
 							</div>
 						)}
 					</Row>
-					{workspace !== undefined && (
+					{workspace !== undefined && membership !== undefined && (
 						<Row
 							title={
-								<span className="block truncate" title={linkText(link !== undefined, workspace)}>
-									{linkText(link !== undefined, workspace)}
+								<span className="block truncate" title={linkText(membership, workspace)}>
+									{linkText(membership, workspace)}
 								</span>
 							}
 							description={
-								link === undefined
-									? `This machine isn’t linked to ${workspace.name} yet`
-									: "The workspace this machine belongs to"
+								membershipNote(membership) ??
+								(membership.state === "linked"
+									? "The workspace this machine belongs to"
+									: `This machine isn’t linked to ${workspace.name} yet`)
 							}
 						>
 							{/* Its control changes with the link; focus comes back to whichever is here. */}
 							<div ref={action} className="contents">
-								{link === undefined || machineId === null ? (
-									<Button size="sm" className="min-w-28" asChild>
-										<Link to="/settings/machines/setup">Set Up</Link>
-									</Button>
-								) : (
+								{membership.state === "linked" && machineId !== null ? (
 									<Button
 										size="sm"
 										variant="secondary"
 										className="min-w-28"
+										disabled={membership.stale}
 										onClick={() =>
-											setUnlinking({ name, workspace, machineId, keyId: link.keyId, via: { kind: "local" } })
+											setUnlinking({
+												name,
+												workspace,
+												machineId,
+												keyId: membership.keyId,
+												// A key it no longer holds is removed at the relay.
+												via: membership.held ? { kind: "local" } : { kind: "relay" },
+											})
 										}
 									>
 										Unlink…
 									</Button>
+								) : (
+									membership.state === "unlinked" && (
+										<Button size="sm" className="min-w-28" asChild>
+											<Link to="/settings/machines/setup">Link</Link>
+										</Button>
+									)
 								)}
 							</div>
 						</Row>
@@ -189,6 +213,7 @@ function ThisMachine({
 			<UnlinkDialog
 				target={unlinking}
 				onClose={() => setUnlinking(null)}
+				onDone={refreshMachines}
 				returnFocus={() => action.current?.querySelector<HTMLElement>("a, button")}
 			/>
 		</Section>
@@ -306,11 +331,12 @@ function PairedRow({
 	readonly fresh: boolean;
 }) {
 	const address = `${addressOf(server.url)}${isPlain(server.url) ? " · Insecure" : ""}`;
-	const linked = useLink(server, workspace) !== undefined;
+	const membership = useMembership(server.machineId, server.workspaces, workspace);
+	const link = workspace === undefined ? undefined : linkText(membership, workspace);
 	return (
 		<MachineRow
 			name={server.name}
-			description={workspace === undefined ? address : `${linkText(linked, workspace)} · ${address}`}
+			description={link === undefined ? address : `${link} · ${address}`}
 			status={fresh ? <Done>Paired</Done> : <Status server={server} />}
 			open={server.id}
 			className={`transition-colors duration-700 ease-out hover:duration-150 motion-reduce:transition-none ${fresh ? "bg-selection-subtle" : ""}`}
@@ -318,10 +344,7 @@ function PairedRow({
 	);
 }
 
-/**
- * The workspace's machines this computer is not paired with. This machine's own link is in its card;
- * a link under its id but another key is one it lost, which only Unlink clears, so it stays here.
- */
+/** The workspace's machines this computer is not paired with. This machine's own link is in its card. */
 function NotPaired({
 	workspace,
 	pairedIds,
@@ -337,14 +360,12 @@ function NotPaired({
 	const refreshLocal = useAtomRefresh(machineAtom);
 	const me = useAtomValue(meAtom);
 	const localId = AsyncResult.isSuccess(local) ? local.value.id : null;
-	const localKey = AsyncResult.isSuccess(local)
-		? local.value.workspaces.find((option) => option.id === workspace.id)?.keyId
-		: undefined;
+
 	const accountId = AsyncResult.isSuccess(me) ? me.value.account.id : null;
 	// Machines seen when the page opened; any other is new and arrives with a highlight.
 	const [seen, setSeen] = useState<ReadonlySet<string> | null>(null);
-	// The relay's list and this machine's own record both move: a link removed elsewhere is forgotten on
-	// the machine's next heartbeat, and a terminal can connect or disconnect it.
+	// The relay's list moves with changes made elsewhere; this machine's own record with a terminal's
+	// connect or disconnect, and with a leaving link the relay confirmed.
 	useEffect(() => {
 		const timer = setInterval(() => {
 			refresh();
@@ -380,15 +401,13 @@ function NotPaired({
 	const all = AsyncResult.isSuccess(machines) ? machines.value : (last?.value ?? []);
 	if (seen === null && AsyncResult.isSuccess(machines)) setSeen(new Set(all.map((machine) => machine.id)));
 	// The newest first: a machine just added appears where you are looking.
-	const list = all
-		.filter((machine) => !(machine.id === localId && machine.keyId === localKey) && !pairedIds.has(machine.id))
-		.reverse();
+	const list = all.filter((machine) => machine.id !== localId && !pairedIds.has(machine.id)).reverse();
 	const command = `codework connect --workspace ${workspace.id}`;
 	return (
 		<Section
 			title={title}
 			count={list.length}
-			description={stale ? "As CodeWork last said; it can’t be reached now" : about}
+			description={stale ? "Relay can’t be reached; this is its last status" : about}
 		>
 			<Loaded>
 				{list.length === 0 ? (
@@ -409,7 +428,7 @@ function NotPaired({
 								key={machine.keyId}
 								machine={machine}
 								workspace={workspace}
-								strayLocal={machine.id === localId}
+
 								fresh={seen !== null && !seen.has(machine.id)}
 								canRemove={workspace.role !== "member" || machine.ownerId === accountId}
 								stale={stale}
@@ -426,7 +445,6 @@ function NotPaired({
 function NotPairedRow({
 	machine,
 	workspace,
-	strayLocal,
 	fresh,
 	canRemove,
 	stale,
@@ -434,8 +452,7 @@ function NotPairedRow({
 }: {
 	readonly machine: Relay.Machine;
 	readonly workspace: Relay.Workspace;
-	/** This machine's id under a key it doesn't hold: a link it lost, which only Unlink clears. */
-	readonly strayLocal: boolean;
+
 	readonly fresh: boolean;
 	readonly canRemove: boolean;
 	/** The last list the relay gave, while it can't be reached: online state is unknown and nothing acts. */
@@ -459,7 +476,7 @@ function NotPairedRow({
 			<div className="min-h-0 overflow-hidden">
 				<MachineRow
 					name={name}
-					marks={strayLocal && <Badge tone="muted">This Machine · Not Linked Here</Badge>}
+
 					description={`${machine.os} ${machine.arch} · v${machine.version} · ${machine.id}`}
 					status={
 						stale ? (
@@ -473,7 +490,7 @@ function NotPairedRow({
 					}
 					menu={
 						!stale &&
-						(canRemove || strayLocal) && (
+						canRemove && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
 									<Button

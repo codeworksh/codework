@@ -454,7 +454,9 @@ export const RemoteServerStatus = Schema.Struct({
 	/** The machine's own id, as it last reported it; none before it was reached or before its first connect. */
 	machineId: Schema.NullOr(Schema.String),
 	/** The workspaces it is linked to, each with the thumbprint of its key, as it last reported them. */
-	workspaces: Schema.Array(Schema.Struct({ id: Schema.String, keyId: Schema.String })),
+	workspaces: Schema.Array(
+		Schema.Struct({ id: Schema.String, keyId: Schema.String, leaving: Schema.optionalKey(Schema.Boolean) }),
+	),
 });
 export type RemoteServerStatus = typeof RemoteServerStatus.Type;
 
@@ -1067,12 +1069,6 @@ export const Api = RpcGroup.make(
 	 */
 	Rpc.make("servers.label", {
 		payload: { id: Schema.String, label: Schema.String },
-		success: Schema.Void,
-		error: ServersError,
-	}),
-	/** A paired machine's link removed at the relay, which the machine can't report itself. */
-	Rpc.make("servers.unlinked", {
-		payload: { id: Schema.String, workspaceId: Schema.String },
 		success: Schema.Void,
 		error: ServersError,
 	}),
