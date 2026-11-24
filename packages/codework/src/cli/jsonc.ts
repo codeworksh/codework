@@ -26,7 +26,7 @@ export const write = (path: string, source: string, at: ReadonlyArray<string>, v
 	SettingsFile.save(path, SettingsFile.edit(source, at, value));
 
 /**
- * Serialize one read-modify-rename of `path` across CLI processes and the app server. Only the local
+ * Serialize one read-modify-rename of `path` across CLI processes and the RPC server. Only the local
  * edit is locked, so work that precedes it does not wait behind another process.
  */
 export const locked = <A, E, R>(path: string, edit: Effect.Effect<A, E, R>) =>

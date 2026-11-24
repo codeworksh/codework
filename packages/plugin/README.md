@@ -1,20 +1,14 @@
 # @codeworksh/plugin
 
-The SDK for building [CodeWork](https://www.codework.sh) plugins.
-
-A plugin is a module that default-exports one plugin object. It registers tools, composes the
-system prompt, and reads the session's sandbox, location, model and settings off a context the
-harness hands it. This package is exactly that contract — and `@codeworksh/harness` depends on it
-too, so a plugin compiled against these types is the same plugin the harness loads, not a
-structurally similar copy.
+The SDK for building [CodeWork](https://www.codework.sh) plugins. A plugin is a module that default-exports one `Plugin.define(...)` object. During `setup` it adds MCP servers, registers tools or writes into the system prompt. `@codeworksh/harness` imports these same types, so a plugin compiled against them is exactly the plugin the harness loads.
 
 ```bash
-pnpm add @codeworksh/plugin effect
+pnpm add @codeworksh/plugin @codeworksh/aikit effect@4.0.5
 ```
 
-`effect` is a peer dependency: the harness and every plugin share one copy of it.
+`@codeworksh/aikit` and `effect` are peer dependencies, so the harness and every plugin share one copy of each.
 
-## A tool plugin
+## A Tool Plugin
 
 ```ts
 import { Plugin, Tool } from "@codeworksh/plugin";
@@ -24,8 +18,8 @@ import { Effect, Schema } from "effect";
 export default Plugin.define({
 	id: "acme.tool.wc",
 	kind: "tool",
-	setup: Effect.fn("WcPlugin.setup")(function* (ctx, options) {
-		// The session's shell, wherever it runs — this machine, a container, a remote sandbox.
+	setup: Effect.fn("WcPlugin.setup")(function* (ctx) {
+		// The session's shell, wherever the sandbox runs.
 		const shell = yield* SandboxIO.Shell;
 		ctx.plugin.tools.add(
 			Tool.register(
@@ -46,74 +40,58 @@ export default Plugin.define({
 });
 ```
 
-`setup` may be synchronous, return a promise, or be an `Effect` — only the `Effect` form can ask
-for a capability such as `SandboxIO.Shell`.
+`setup` may be synchronous, return a promise, or be an `Effect`. Only the `Effect` form can ask for a capability such as `SandboxIO.Shell`. Its second argument is the plugin's `options` block from settings, passed through unvalidated, so check its shape yourself and fall back rather than fail.
 
-## A prompt plugin
+## Kinds
 
-```ts
-import { Plugin, Section } from "@codeworksh/plugin";
+`kind` decides what a plugin writes into and when it runs. Within one kind, plugins run in the order their settings entries were written.
 
-const GithubPrRules = Section.define("github_pr_rules", { format: "list" });
+| Kind     | Writes into                                      | Runs   |
+| -------- | ------------------------------------------------ | ------ |
+| `mcp`    | `ctx.plugin.mcp`, the session's MCP servers      | first  |
+| `tool`   | `ctx.plugin.tools`                               | second |
+| `prompt` | `ctx.plugin.prompt`, the foundation and sections | third  |
 
-export default Plugin.define({
-	id: "acme.prompt.house-style",
-	kind: "prompt",
-	setup(ctx) {
-		// Merges into the one <rules> every plugin writes to.
-		ctx.plugin.prompt.sections.append(Section.Rules, "No `any`.");
-		// Opens <github_pr_rules> on first use; later appends, from any plugin, land in it.
-		ctx.plugin.prompt.sections.append(GithubPrRules, "Link the issue in every PR description.");
-	},
-});
-```
+So MCP tools exist before any tool plugin runs, and a prompt plugin always sees the full tool set. A prompt plugin appends to a shared section such as `Section.Rules`, or opens its own with `Section.define("name")`.
 
-The harness renders the system prompt from what plugins wrote: the foundation first and untagged
-(`ctx.plugin.prompt.foundation.set`), then `<tools>`, `<rules>`, `<addendum>`, `<project_context>`,
-`<skills>`, `<cwd>`, and custom sections in the order they were first written. `tools` and `cwd`
-belong to the harness. A `list` section renders its entries as deduplicated `- ` bullets; a `text`
-section (the default) keeps them verbatim, separated by a blank line.
+## Being Installed
 
-## `kind` decides when a plugin runs
-
-Every `tool` plugin runs before any `prompt` plugin, whichever settings layer each came from, so a
-prompt plugin always sees the complete tool set. Plugins within one domain keep the order their
-entries were written in — which is where composition actually happens, a plugin patching another's
-tool or appending to the prompt it rendered.
-
-## Being installed
-
-A user selects a plugin from a settings file. A string entry loads a module; an object entry
-configures one something else already selected:
+`codework plugin add <spec>` installs a plugin and adds it to a settings file. A string entry loads a module; an object entry configures one that is already selected:
 
 ```jsonc
 {
-	"plugins": ["@acme/codework-plugin-wc", { "package": "@acme/codework-plugin-wc", "options": { "limit": 40 } }],
+	"plugins": ["@acme/codework-tool-wc", { "package": "@acme/codework-tool-wc", "options": { "limit": 40 } }],
 }
 ```
 
-The `options` block is handed to `setup` untouched — the harness never looks inside it, so a
-plugin validates its own shape and falls back rather than failing the boot.
+Publish built JavaScript. Node will not strip types under `node_modules`, so a package that ships TypeScript can only be loaded by path.
 
-Publish built JavaScript. Node will not strip types under `node_modules`, so a package that ships
-TypeScript can only be loaded by path.
+## What It Owns
 
-## What is in here
+This package is the contract: what a plugin is and what it may write. It knows nothing about how the harness finds, installs or runs a plugin; that lives in `@codeworksh/harness`. The dependency points one way: the harness depends on this package, never the reverse, and a new extension point gets its contract here first.
 
-| Import                       | What it gives you                                     |
-| ---------------------------- | ----------------------------------------------------- |
-| `@codeworksh/plugin`         | `Plugin` and `Tool` — defining a plugin and its tools |
-| `@codeworksh/plugin/sandbox` | the mount (`SandboxIO`) and the sandbox driver SDK    |
+Sandbox driver contracts live here too (`@codeworksh/plugin/sandbox`), but drivers are not plugins. The embedder hands them to the harness in code, and settings never select one.
 
-That is the whole authoring surface. The package publishes further subpaths — `./event`,
-`./ids`, `./location`, `./settings` and others — because `@codeworksh/harness` imports them across
-the package boundary; they are reachable if you genuinely need one, but they are not re-exported
-from the root entry and are not covered by the stability that `Plugin` and `Tool` carry.
+The authoring surface is the root entry (`Plugin`, `Section`, `Tool`) and `@codeworksh/plugin/sandbox`. Other subpaths such as `./event` or `./settings` exist because the harness imports them across the package boundary. They are not re-exported from the root and carry no stability promise.
 
-Sandbox driver packages use `@codeworksh/plugin/sandbox` the same way: `SandboxDriver.module`
-defines the default export the harness loads.
+## Code Map
 
-## Versioning
+- [`src/index.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/index.ts): the root entry.
+- [`src/plugin/plugin.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/plugin.ts): `Plugin.define`, the kinds and their run order.
+- [`src/plugin/context.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/context.ts): the context `setup` receives.
+- [`src/plugin/mcp.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/mcp.ts), [`tool.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/tool.ts), [`prompt.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/prompt.ts): the registry each kind writes into.
+- [`src/plugin/section.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/section.ts): built-in and custom prompt sections.
+- [`src/plugin/ref.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/plugin/ref.ts): the shapes of a `plugins` entry.
+- [`src/tool.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/tool.ts): `Tool.make`, `Tool.register` and exposure.
+- [`src/sandbox.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/sandbox.ts): `SandboxIO` and the driver contract ([`src/sandbox/driver.ts`](https://github.com/codeworksh/codework/blob/main/packages/plugin/src/sandbox/driver.ts)).
 
-`0.x` — the contract still moves. Pin the version you build against, and keep it in step with the
-`@codeworksh/harness` you target.
+## Working Locally
+
+From `packages/plugin`:
+
+```bash
+pnpm check   # vp check
+pnpm build   # vp pack
+```
+
+The package is `0.x` and the contract still moves: pin the version you build against and keep it in step with the `@codeworksh/harness` you target. For ids, the store, `.npmrc` handling and MCP, see [docs/internals/08_plugins.md](https://github.com/codeworksh/codework/blob/main/docs/internals/08_plugins.md).

@@ -1,177 +1,86 @@
 # @codeworksh/aikit
 
-AiKit is a **TypeScript SDK** that provides a unified API for working with multiple LLM providers, automatic model discovery, provider configurations, token and cost tracking, and mid-session hand-off to other models.
-It gives you the basic primitives for streaming LLM responses without the extra bloat, letting you handle the orchestration yourself.
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Supported Providers](#supported-providers)
-- [Quick Start](#quick-start)
-- [Tools](#tools)
-- [Providers and Models](#providers-and-models)
-- [CLI Tools](#cli-tools)
-   - [Model Generation](#model-generation)
-   - [OAuth Providers](#oauth-providers)
-- [Contribute](#contribute)
-
-## Installation
+aikit is the model layer of [CodeWork](https://www.codework.sh): one message and event shape over many LLM providers, a model catalog with pricing, and cost tracking per message. The CodeWork harness makes every model call through it, and you can use it on its own when you want streaming primitives and to run the loop yourself.
 
 ```bash
-npm install @codeworksh/aikit
+pnpm add @codeworksh/aikit
 ```
 
-Node `>=22.0.0` is required.
-
-## Supported Providers
-
-Built on top of the Vercel AI SDK, `@codeworksh/aikit` supports a wide array of providers natively:
-
-- **Anthropic** (`@ai-sdk/anthropic`)
-- **OpenAI** (`@ai-sdk/openai`)
-- **Google** (`@ai-sdk/google`)
-- **Google Vertex AI** (`@ai-sdk/google-vertex`)
-- **xAI** (`@ai-sdk/xai`)
-- **OpenRouter** (`@openrouter/ai-sdk-provider`)
-- **OpenAI Compatible APIs** (`@ai-sdk/openai-compatible`)
+Node 22 or later is required.
 
 ## Quick Start
 
 ```ts
-import { llm, stream, Message } from "@codeworksh/aikit";
+import { llm, Message, stream } from "@codeworksh/aikit";
 
-// Resolve a model from the built-in registry
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Model not found");
+const model = await llm("anthropic", "claude-haiku-4-5");
+if (!model) throw new Error("Model not in the catalog");
 
-// Setup conversation context
 const context: Message.Context = {
 	systemPrompt: "You are a helpful coding assistant.",
 	messages: [
 		Message.createUserMessage({
 			role: "user",
 			time: { created: Date.now() },
-			parts: [{ type: "text", text: "Write a simple loop in TypeScript." }],
+			parts: [{ type: "text", text: "Write a loop in TypeScript." }],
 		}),
 	],
 };
 
-// Option 1: Stream events
-const s = stream(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
-
+// The key is read from ANTHROPIC_API_KEY unless you pass { apiKey }.
+const s = stream(model, context);
 for await (const event of s) {
-	if (event.type === "text.delta") {
-		process.stdout.write(event.delta);
-	}
+	if (event.type === "text.delta") process.stdout.write(event.delta);
 }
 
-const finalMessage = await s.result();
-console.log(`\nMessage ID: ${finalMessage.messageId}`);
-
-// Option 2: Get complete response without streaming
-const message = await stream.complete(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
-console.log(message.parts);
+const message = await s.result();
+console.log(message.stopReason, message.usage.cost.total);
 ```
 
-## Tools
+A failed request does not throw. The stream ends with an `error` event, and the final message has `stopReason: "error"` and an `errorMessage`. `stream.complete(model, context)` skips the events and resolves the final message.
 
-Tools enable LLMs to interact with external systems. `@codeworksh/aikit` provides native support for function calling and schema validation using TypeBox.
+## What It Owns
 
-```ts
-import { Type, llm, stream, Message, validateToolArguments } from "@codeworksh/aikit";
+aikit owns the wire shape (`Message`, `Event`), the provider adapters, the catalog format, error normalization and cost. Protocols: `anthropic`, `openai`, `openai-codex`, `github-copilot`, `openrouter`, `google`, `google-vertex`, `google-vertex-anthropic`, `xai` and `openai-compatible`. The transport underneath is the AI SDK.
 
-const calculatorTool = {
-	name: "calculator",
-	description: "Evaluate arithmetic expressions",
-	parameters: Type.Object({
-		expression: Type.String(),
-	}),
-};
+It depends on no other CodeWork package and does not use Effect. The harness depends on it, never the reverse, so aikit stays a plain library anyone can embed. Where credentials live, how fresh the catalog is, and retries belong to the embedder.
 
-const context: Message.Context = {
-	messages: [
-		Message.createUserMessage({
-			role: "user",
-			time: { created: Date.now() },
-			parts: [{ type: "text", text: "What is 25 * 18?" }],
-		}),
-	],
-	tools: [calculatorTool],
-};
+A session can switch models between turns. aikit replays signatures and reasoning only to the provider that produced them, so one vendor's opaque state never reaches another.
 
-const response = await stream.complete(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
+## The Model Catalog
 
-// Check for tool calls in the response
-for (const part of response.parts) {
-	if (part.type === "toolCall") {
-		console.log(`Executing tool: ${part.name}`);
+`llm(provider, model)` looks a model up in `./models.gen.json`, or the file `CODEWORK_MODELS_FILE` names. A bundled baseline covers `anthropic`, `openai` and `openrouter`, so a first run works with no file at all. `llm.providers()` and `llm.models(provider)` list what the catalog has.
 
-		// Validates arguments against TypeBox schema automatically
-		const args = validateToolArguments(calculatorTool.parameters, part.arguments);
-		// Execute your tool logic here...
-	}
-}
-```
-
-## Providers and Models
-
-`@codeworksh/aikit` uses a registry to fetch model specifications and metadata.
-
-```ts
-import { llm } from "@codeworksh/aikit";
-
-// Get all available providers
-const providers = await llm.providers();
-console.log(providers);
-
-// Get all models for a specific provider
-const anthropicModels = await llm.models("anthropic");
-
-// Get a specific model directly
-const gpt4 = await llm.model("openai", "gpt-4o");
-```
-
-## CLI Tools
-
-`@codeworksh/aikit` ships with a CLI tool for managing local metadata and authentication.
-
-You can invoke it using `npx aikit` or `pnpm aikit`.
-
-### Model Generation
-
-Generate a `models.gen.json` file fetching the latest metadata about providers and their available models from `models.dev`.
+The package ships an `aikit` binary:
 
 ```bash
-pnpm aikit modelgen [path]
+aikit modelgen [path]               # build the catalog from models.dev and OpenRouter's listing
+aikit auth --openai-codex           # OAuth login; --device for a device code, --status, --refresh, --logout
+aikit auth --github-copilot         # device flow; --enterprise <domain> for GitHub Enterprise
 ```
 
-### OAuth Providers
+## Code Map
 
-Manage OAuth credentials for providers that require it, such as OpenAI Codex and GitHub Copilot.
+- [`src/index.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/index.ts): the public exports.
+- [`src/stream.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/stream.ts): `stream` and `stream.complete`.
+- [`src/llm.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/llm.ts): model lookup over the catalog.
+- [`src/message/message.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/message/message.ts): `Context`, messages, tools and usage.
+- [`src/event/event.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/event/event.ts): the stream's events.
+- [`src/llm/`](https://github.com/codeworksh/codework/tree/main/packages/aikit/src/llm): protocol registry, provider options, cross-model replay ([`transform.ts`](https://github.com/codeworksh/codework/blob/main/packages/aikit/src/llm/transform.ts)) and failures.
+- [`src/model/`](https://github.com/codeworksh/codework/tree/main/packages/aikit/src/model): catalog loading and the bundled baseline.
+- [`src/providers/`](https://github.com/codeworksh/codework/tree/main/packages/aikit/src/providers): the `openai-codex` and `github-copilot` providers.
+- [`src/oauth/`](https://github.com/codeworksh/codework/tree/main/packages/aikit/src/oauth) and [`src/cli/`](https://github.com/codeworksh/codework/tree/main/packages/aikit/src/cli): logins and the `aikit` binary.
+
+## Working Locally
+
+From `packages/aikit`:
 
 ```bash
-# Start an OAuth login flow in your browser
-pnpm aikit auth --openai-codex
-
-# Codex with a device code instead: no localhost callback port, so it works
-# over SSH, in containers, and when something else holds port 1455
-pnpm aikit auth --openai-codex --device
-
-# GitHub Copilot uses the device flow; add --enterprise <domain> for GitHub Enterprise
-pnpm aikit auth --github-copilot
-
-# Check the status of your stored credentials
-pnpm aikit auth --openai-codex --status
-pnpm aikit auth --github-copilot --status
-
-# Refresh your current credentials
-pnpm aikit auth --openai-codex --refresh
-
-# Clear stored credentials
-pnpm aikit auth --openai-codex --logout
-pnpm aikit auth --github-copilot --logout
+pnpm test        # unit tests
+pnpm test:e2e    # also runs test/e2e, which calls live providers
+pnpm typecheck
+pnpm build       # vp pack
+pnpm cli modelgen
 ```
 
-## Contribute
-
-`@codeworksh/aikit` is open to community contribution. Please ensure you submit an issue before submitting a pull request. The project prefers open community discussion before accepting new features.
+For the rules on credentials, catalog publishing and adding a protocol, see [docs/internals/03_models.md](https://github.com/codeworksh/codework/blob/main/docs/internals/03_models.md).
