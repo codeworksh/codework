@@ -1,6 +1,6 @@
 /*
  * @file Reading and editing one settings file -- `settings.jsonc` or `mcp.json` -- for the CLI and
- * the app server.
+ * the RPC server.
  *
  * Edits go through `jsonc-parser`, so a hand-written file keeps its comments, key order and
  * formatting. A write is a temp file renamed over the original under the settings lock, so an

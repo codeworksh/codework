@@ -44,7 +44,7 @@ List every provider and model with `codework models`.
 - **Persistent sessions** — resume any session by ID; state lives in a local database.
 - **Sandboxes** — run locally or in `daytona`, `vercel`, `memory`, or `sqldb` sandboxes.
 - **Server mode** — `codework serve` owns sessions and sandboxes; clients attach with `--server`.
-- **Plugins** — `codework plugin add <pkg>` adds tools, prompts, and sandbox drivers, per project or globally (`-g`).
+- **Plugins** — `codework plugin add <pkg>` adds tools, prompt sections, and MCP servers, per project or globally (`-g`).
 
 See the [docs](https://codework.sh/docs/) for every command and flag.
 
@@ -65,12 +65,11 @@ Requires Node.js 24.14.1+ and pnpm.
 git clone https://github.com/codeworksh/codework.git
 cd codework
 pnpm install
-pnpm cli -- --help            # run the CLI from source
-pnpm exec vp check
-pnpm exec vp run typecheck
+vp run dev:cli --help         # run the CLI from source
+vp run verify                 # the checks CI runs
 ```
 
-Read [AGENTS.md](./AGENTS.md) for repository conventions, and [open an issue](https://github.com/codeworksh/codework/issues) for bugs or ideas.
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request, [docs/operations/00_development.md](./docs/operations/00_development.md) to run the dev servers, and [AGENTS.md](./AGENTS.md) for repository conventions.
 
 ## Acknowledgements
 

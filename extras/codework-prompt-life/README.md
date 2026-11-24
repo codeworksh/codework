@@ -1,31 +1,45 @@
 # @acme/codework-prompt-life
 
-An example third-party **prompt plugin**: it adds a `<meaning_of_life>` section to the system
-prompt.
+An example third-party **prompt plugin**. It adds a `<meaning_of_life>` section to the system prompt, with an answer you can configure. Read it to see the smallest complete prompt plugin; the `@acme` scope stands in for your own.
 
-The package uses the example `@acme` namespace to demonstrate how a third-party scoped plugin is
-loaded and then configured by package name.
+## How It Works
 
-## Using it
+The package default-exports one `Plugin.define({ id: "acme.prompt.life", kind: "prompt", setup })` object from [`@codeworksh/plugin`](../../packages/plugin/src/index.ts), which is all the loader reads.
+
+- **It opens its own section.** `Section.define("meaning_of_life")` names the block, and `setup` appends to it. The harness renders custom sections after the built-in ones, so where it lands does not depend on which plugin ran first.
+- **It checks its own options.** The harness hands the `options` block over untouched. A missing or non-numeric `answer` falls back to `42` instead of failing the boot.
+
+| Option   | Default | Meaning                            |
+| -------- | ------- | ---------------------------------- |
+| `answer` | `42`    | The number the short version gives |
+
+## Loading It
+
+A string entry loads the module, and an object entry configures a module already loaded. In this repository, add it from the repo root:
+
+```sh
+codework plugin add ./extras/codework-prompt-life
+```
+
+That writes the path into `.codework/settings.jsonc`, anchored to the settings file. Then configure it:
 
 ```jsonc
+// .codework/settings.jsonc
 {
-	"plugins": ["@acme/codework-prompt-life", { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }],
+	"plugins": [
+		"../extras/codework-prompt-life",
+		{ "package": "@acme/codework-prompt-life", "options": { "answer": 42 } },
+	],
 }
 ```
 
-The string loads the module, the object configures it.
+The `package` entry can use the npm name because a local package is also known by the name its `package.json` declares. `codework plugin list` shows what each entry resolved to.
 
-> **Not installable as written**, for the same reason as `@acme/codework-tool-proc`: it exports
-> TypeScript, and Node will not strip types under `node_modules`. In this repository it is loaded
-> by path as a dev-only example; a published plugin package ships built JavaScript.
+> [!NOTE]
+> This example is not installable from a registry as written. It exports TypeScript from `src/`, and Node will not strip types under `node_modules`. A published plugin ships built JavaScript.
 
-| option   | type   | default | meaning                            |
-| -------- | ------ | ------- | ---------------------------------- |
-| `answer` | number | `42`    | the number the short version gives |
+## Code Map
 
-## Worth noting
+- [`src/index.ts`](./src/index.ts): the whole plugin.
 
-- **It writes a section, not the prompt.** `Section.define("meaning_of_life")` names its block, and
-  the harness renders it as `<meaning_of_life>` after the built-in sections. Order between plugins
-  no longer decides where it lands.
+See [Plugins](../../docs/internals/08_plugins.md) for kinds, entries and the store.

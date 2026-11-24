@@ -1,47 +1,44 @@
 # @acme/codework-tool-proc
 
-An example third-party **tool plugin**: it registers `list_processes`, which runs `ps` in the
-session's sandbox and returns the busiest processes.
+An example third-party **tool plugin**. It registers `list_processes`, which runs `ps` in the session's sandbox and returns the busiest processes. Read it to see a complete tool plugin built only on the public SDK; the `@acme` scope stands in for your own.
 
-It exists to be read. It uses only the public surfaces — `@codeworksh/plugin` for
-`Plugin`/`Tool` and `@codeworksh/plugin/sandbox` for the shell — and default-exports one plugin
-object, which is what the loader imports.
+## How It Works
 
-## Using it
+The package default-exports one `Plugin.define({ id: "acme.tool.proc", kind: "tool", setup })` object, which is all the loader reads. It imports `Plugin` and `Tool` from [`@codeworksh/plugin`](../../packages/plugin/src/index.ts) and `SandboxIO` from `@codeworksh/plugin/sandbox`, nothing from the harness.
+
+- **It runs in the sandbox.** The handler uses `SandboxIO.Shell`, not `node:child_process`, so it lists processes wherever the session runs: this machine, a container or a remote sandbox.
+- **Failures are typed.** A non-zero `ps` becomes a model-visible `ProcFailed` carrying stderr, so the model can try another filter. A shell that cannot run at all becomes a defect, because the model cannot act on it.
+- **It shows up in the tool list.** Tool plugins run before prompt plugins, so `list_processes` and its `promptSnippet` reach the system prompt's `<tools>` section.
+- **It checks its own options.** The harness hands the `options` block over untouched. A bad `limit` falls back to `20` instead of failing the boot.
+
+| Option  | Default | Meaning                                                   |
+| ------- | ------- | --------------------------------------------------------- |
+| `limit` | `20`    | How many rows to return, busiest first (positive integer) |
+
+## Loading It
+
+A string entry loads the module, and an object entry configures a module already loaded. An object never installs anything, so a name that matches nothing is ignored. In this repository, add it from the repo root:
+
+```sh
+codework plugin add ./extras/codework-tool-proc
+```
+
+That writes the path into `.codework/settings.jsonc`, anchored to the settings file. Then configure it:
 
 ```jsonc
-// <project>/.codework/settings.json, ~/.codework/settings.json, or a --user-config-dir
+// .codework/settings.jsonc
 {
-	"plugins": ["@acme/codework-tool-proc@1.2.0", { "package": "@acme/codework-tool-proc", "options": { "limit": 40 } }],
+	"plugins": ["../extras/codework-tool-proc", { "package": "@acme/codework-tool-proc", "options": { "limit": 40 } }],
 }
 ```
 
-Two entries, and they do different jobs. The **string** is the module: it installs the package
-and puts the plugin in the selection. The **object** configures it — `package` names the module
-it came from, and `{ "plugin": "acme.tool.proc" }` names the same plugin by its ID if you happen
-to know it. An object never installs anything, so a name that matches nothing is ignored rather
-than fetched.
+The object can name the package (a local package is also known by its `package.json` name) or the plugin, as `{ "plugin": "acme.tool.proc" }`. A real published plugin would be added by spec instead, for example `codework plugin add @acme/codework-tool-proc@1.2.0`.
 
-> **This example is not installable as written.** It exports TypeScript from `src/`, and Node
-> refuses to strip types under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`). It
-> lives in this repository as a dev-only workspace example, loaded by path:
-> `"plugins": ["../extras/codework-tool-proc", { "package": "@acme/codework-tool-proc", … }]` —
-> the `package` entry still works, because a local package is aliased by the name its manifest
-> declares. A plugin package published for real ships built JavaScript and points `exports` at it.
+> [!NOTE]
+> This example is not installable from a registry as written. It exports TypeScript from `src/`, and Node refuses to strip types under `node_modules`. A published plugin ships built JavaScript and points `exports` at it.
 
-| option  | type             | default | meaning                                |
-| ------- | ---------------- | ------- | -------------------------------------- |
-| `limit` | positive integer | `20`    | how many rows to return, busiest first |
+## Code Map
 
-The block is opaque to the harness: it arrives as the second argument to `setup`, and this
-plugin checks it and falls back rather than failing the boot on a bad value.
+- [`src/index.ts`](./src/index.ts): the whole plugin: options, schemas, the `ps` parser and the tool.
 
-## Worth noting
-
-- **It runs in the sandbox.** The tool executes through `SandboxIO.Shell`, not
-  `node:child_process`, so it lists processes wherever the session actually runs — this machine,
-  a container, or a remote sandbox.
-- **Failures are typed.** A non-zero `ps` becomes a model-visible `ProcFailed` carrying stderr; a
-  shell that cannot run at all is a defect, because the model cannot act on it.
-- **Order matters.** A tool plugin must run before the prompt plugin that indexes tools, or its
-  tool reaches the provider but is missing from the system prompt's list.
+See [Plugins](../../docs/internals/08_plugins.md) for kinds, entries and the store.

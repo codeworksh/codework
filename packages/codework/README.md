@@ -1,250 +1,88 @@
 # @codeworksh/cli
 
-Run coding-agent sessions in your repo or a sandbox.
+The `codework` binary: run coding-agent sessions from your terminal, and serve them to the CLI, the desktop app and paired machines from a long-lived RPC server.
 
-## Installation
+## Install
 
 ```bash
 pnpm add -g @codeworksh/cli
-# or run directly
-pnpm dlx @codeworksh/cli <command>
 ```
 
-After install, every command is `codework <command>`.
+Requires Node 24.14.1 or newer. Every command is then `codework <command>`, and `codework <command> --help` lists its flags.
 
-## Development
-
-From `packages/codework`, or `pnpm cli` at the repo root:
+## Quick Start
 
 ```bash
-pnpm start -- --help
-pnpm start -- models
-pnpm start -- run "Inspect the failing tests"
+# Sign in with an OAuth provider, or set its usual API key env var (e.g. ANTHROPIC_API_KEY)
+codework auth login --openai-codex
+
+# Start a session in this directory, with the harness running in-process
+codework run "Inspect the failing tests"
+
+# Continue it, on its main thread or another one
+codework run --session <session-id> "Now fix them"
+codework run --session <session-id> --thread <thread-id> "Try it without the cache"
+
+# Or keep a server running and send runs to it
+codework service start
+codework run --server ws://127.0.0.1:7433/rpc/v1 "Inspect the failing tests"
 ```
-
-`start` runs `src/index.ts` with `--conditions=development` so workspace packages resolve to source. The published `codework` binary is the packed `dist` build.
-
----
 
 ## Commands
 
-### `codework run`
+| Command                  | What it does                                                                     |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `run`                    | Start or continue a session, in-process or on the server with `--server`         |
+| `serve`                  | Run the RPC server in the foreground (default `127.0.0.1:7433`)                  |
+| `service`                | Start, stop or check the background server; pair, list and revoke devices        |
+| `session link`, `relink` | Anchor a session to a host directory, or move a session or thread somewhere else |
+| `thread list`, `fork`    | List a session's threads, or start a new one from a point in a thread's history  |
+| `auth`                   | Log in to, inspect, refresh or log out of `openai-codex` and `github-copilot`    |
+| `mcp`                    | Add, remove, list, sign in to and reconnect MCP servers in `mcp.json`            |
+| `plugin`                 | Add, install, list, update, reload and remove plugins in `settings.jsonc`        |
+| `models`                 | List catalog models and providers, or refresh the catalog                        |
+| `connect`, `disconnect`  | Link this machine to a Relay workspace, or leave one                             |
+| `acp`                    | Serve the Agent Client Protocol on stdio for editors, always in-process          |
 
-Run an agent session with a prompt.
+Every command takes `--home` (default `~/.codework`, or `CODEWORK_HOME_DIR`): the user settings, credentials, catalog, database and machine identity it works with. `--user-config-dir` replaces the user settings file, and `--database` picks the SQLite file.
 
-```bash
-# Start a new session
-codework run "Inspect and fix the failing tests"
+## What It Owns
 
-# Create a session with explicit provider and model
-codework run --provider openai --model gpt-5.5 --thinking high "Plan database migration"
+This package is the host: the only place an agent runs. It owns the CLI, the RPC server and its contract, and the machine's identity, which is its paired devices and its Relay workspace links. It builds on `@codeworksh/harness` and `@codeworksh/aikit`, and nothing in the core imports it, so the harness never knows how it is reached.
 
-# Continue an existing session (its main thread)
-codework run --session ses_01a070f0 "Now implement the migration script"
+Two rules shape the CLI:
 
-# Continue one of its threads
-codework run --session ses_01a070f0 --thread thr_01a071c2 "Try it without the cache"
+- **In-process and `--server` both stay supported.** They share the home and database, so a session made by one is readable by the other. With `--server`, harness flags like `--database` belong on `serve`.
+- **The CLI only talks to its own home's server.** `--server` must be the server `<home>/service.json` names. Other machines are reached by the desktop app as a paired device.
 
-# Run in an isolated sandbox (local, daytona, vercel, memory, sqldb)
-codework run --sandbox-driver daytona "Inspect repository"
-codework run --sandbox-driver daytona --sandbox-provider-id <remote-id> "Continue in sandbox"
-```
+See [docs/internals/09_server.md](https://github.com/codeworksh/codework/blob/main/docs/internals/09_server.md) for the contract, admission, pairing and shutdown rules.
 
-#### Flags:
+## Code Map
 
-- `--server <url>` — Connect to a running RPC server, e.g. `ws://127.0.0.1:7433/rpc/v1`.
-- `-s, --session <id>` — Continue an existing session.
-- `--thread <id>` — Thread of `--session` to continue: a thread ID, or `main` (default).
-- `-C, --cwd <path>` — Working directory for a new session.
-- `--sandbox-driver <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
-- `--sandbox-id <id>` — Reuse an existing sandbox instance; mutually exclusive with driver/provider coordinates.
-- `--sandbox-provider-id <id>` — Provider ID of an existing remote sandbox.
-- `--provider <id>` — Model catalog provider ID.
-- `--model <id>` — Model ID.
-- `--thinking <level>` — Reasoning effort the model uses before answering (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
+- [`src/index.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/index.ts) is the entry point, mapping each command to its lazily imported handler.
+- [`src/cli/cmd/cmd.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/cli/cmd/cmd.ts) declares every command, flag and example.
+- [`src/cli/cmd/handlers`](https://github.com/codeworksh/codework/tree/main/packages/codework/src/cli/cmd/handlers) holds one handler per command.
+- [`src/cli/harness.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/cli/harness.ts) builds the harness options `run` and `serve` must share.
+- [`src/cli/service.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/cli/service.ts) finds and connects to the home's server.
+- [`src/server/server.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/server.ts) assembles the RPC server and fixes its startup and shutdown order.
+- [`src/server/contract.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/contract.ts) is the RPC contract; [`src/server/handlers.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/handlers.ts) implements it over harness services.
+- [`src/server/door.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/door.ts) and [`src/server/pairing.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/pairing.ts) decide who may connect.
+- [`src/machine`](https://github.com/codeworksh/codework/tree/main/packages/codework/src/machine) keeps `machine.json`, Relay connects and the heartbeat.
+- [`src/acp`](https://github.com/codeworksh/codework/tree/main/packages/codework/src/acp) is the ACP server.
 
-Global flags: `--user-config-dir`, `--home`, `--database`.
+## Working Locally
 
----
-
-### `codework thread`
-
-A session holds one or more threads: its `main` thread, and the forks made from it. These commands talk to a running server (`--server`, default `http://127.0.0.1:7433`).
-
-```bash
-# List a session's threads with their model and usage
-codework thread list ses_01a070f0
-
-# Start a new thread through an entry, or just before a prompt to send it again
-codework thread fork ses_01a070f0 --at <entry-id>
-codework thread fork ses_01a070f0 --thread thr_01a071c2 --before <entry-id>
-
-# Move one thread into another checkout of the project, keeping its position under it;
-# the rest of the session stays where it is
-codework session relink ses_01a070f0 --thread thr_01a071c2 -C ~/work/api
-```
-
-`thread fork` prints the new thread ID, then for `--before` the text of the prompt it left out. `--json` prints the wire form.
-
----
-
-### `codework serve`
-
-Start a persistent server that owns sessions and sandboxes:
+From `packages/codework` (or `pnpm dev:cli` at the repo root), `start` runs `src/index.ts` with `--conditions=development` so workspace packages resolve to source:
 
 ```bash
-codework serve --host 127.0.0.1 --port 7433
-codework run --server ws://127.0.0.1:7433/rpc/v1 "Inspect the failing tests"
-codework run --server ws://127.0.0.1:7433/rpc/v1 --session <id> "Now fix them"
-codework run --server ws://127.0.0.1:7433/rpc/v1 --sandbox-id <sandbox-id> "Start another session in this sandbox"
+pnpm start --help
+pnpm start models
+pnpm start run "Inspect the failing tests"
+pnpm test
+pnpm check
 ```
 
-The default address is `127.0.0.1:7433`; `--port 0` picks an available port and prints the actual URL. Set `--home`, `--database`, and `--user-config-dir` on the server. Model credentials, plugins, and working directories are resolved by the server. A remote run does not boot a local harness.
-
-Events are live and not replayed. The client subscribes before admitting its prompt and waits for execution completion after rendering. Lost connections and overflow fail the command; disconnecting leaves server work running. Ctrl-C sends `thread.interrupt`, which stops the thread the run prompted. Remote runs print the sandbox ID for reuse. `thread.interrupt` returns `{ interrupted }` as soon as the stop is accepted; `thread.wait` is the separate cleanup barrier, and `session.interrupt` stops every thread of a session. A busy period reports itself as `session.execution.started` followed by exactly one of `succeeded`, `failed`, or `interrupted` -- a failure carries a category (`provider-authentication-error`, `model-not-found-error`, `sandbox-mount-error`, ...) that the client renders, and an interruption carries whether it was the user or a server shutdown. Managed sandboxes remain available until explicitly stopped or server shutdown; external sandboxes are not stopped.
-
-The v0 endpoint has no authentication; its default binding is loopback. Plugins publish their own event types by declaring them (`Plugin.define({ events: [...] })`, namespaced `plugin.<plugin-id>.*`); the feed carries those and skips types nothing declared. Invalid payloads for declared types fail with a typed encoding error.
-
----
-
-### `codework auth login|status|refresh|logout`
-
-Sign in to OpenAI Codex with your ChatGPT account, or to GitHub Copilot with your GitHub account. Credentials are
-stored under the selected Codework home and are loaded automatically when a run uses an `openai-codex` or
-`github-copilot` model.
-
-```bash
-# Sign in
-codework auth login --openai-codex
-codework auth login --github-copilot
-
-# Codex without a local callback port (SSH, containers, port 1455 in use)
-codework auth login --openai-codex --device
-
-# Inspect credential metadata without printing tokens
-codework auth status --openai-codex
-codework auth status --github-copilot
-
-# Renew an expired login, or clear one
-codework auth refresh --openai-codex
-codework auth logout --github-copilot
-
-# Authenticate the home owned by a running RPC server
-codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc/v1
-```
-
-`--home` keeps authentication alongside the rest of that Codework installation; `--auth-file` overrides the credential
-file directly. Both providers share one `auth.json`, keyed by provider, so signing out of one leaves the other alone.
-With `--server`, the CLI runs the interactive login locally -- a browser callback and a device prompt both need this
-terminal -- and sends only the resulting credentials to the RPC server for storage.
-
-**OpenAI Codex** has two flows. The default keeps Aikit's registered `http://localhost:1455/auth/callback` redirect,
-and falls back to asking for the redirect URL if the callback never arrives. `--device` instead prints a code to enter
-at `auth.openai.com/codex/device` and needs no local port at all — use it over SSH, inside a container, or when another
-sign-in already holds 1455. That port is fixed by the redirect registered against the OAuth client, so it cannot move.
-
-**GitHub Copilot** uses the GitHub device flow: the CLI prints a user code, opens `github.com/login/device`, and waits.
-The token does not expire, so there is no `--refresh` -- sign in again on persistent 401s. `--enterprise <domain>`
-logs into a GitHub Enterprise host, and `--enable-models` turns on catalog models the account has left unconfigured.
-Login records the plan-specific Copilot API host, which later runs use in place of the catalog default.
-
----
-
-### `codework models`
-
-List catalog models as `provider/model`, one per line.
-
-```bash
-# List all models across all providers
-codework models
-
-# List models for a specific provider
-codework models --provider openai
-
-# List all supported provider IDs
-codework models providers
-```
-
----
-
-### `codework models refresh`
-
-The model catalog lives at `<home>/models.gen.json` (`~/.codework` unless `--home` says otherwise). Every local command checks it before use and downloads a new one once it is older than 15 minutes (`CODEWORK_MODELS_TTL`, e.g. `"1 hour"`); `codework serve` also re-checks every minute and reloads the file whenever it changes. A failed download keeps the previous catalog.
-
-```bash
-# Download the catalog if it is missing or stale; no network call otherwise
-codework models refresh
-
-# Download it now
-codework models refresh --force
-```
-
----
-
-### `codework plugin add` / `codework plugin remove`
-
-Install a plugin and record it in a settings file, or take it back out. Scoping follows npm: the
-project is the default, `-g` is user-wide.
-
-```bash
-# This project: edits .codework/settings.jsonc, creating .codework/ here if no ancestor has one
-codework plugin add @acme/codework-tool-proc@1.2.0
-
-# Every project this user runs: writes ~/.codework/settings.jsonc
-codework plugin add @acme/codework-tool-proc@1.2.0 -g
-
-# Remove it, along with any configuration written against it
-codework plugin remove @acme/codework-tool-proc
-```
-
-The project is found the way the harness finds it, and the way git finds a repository: the
-nearest ancestor holding a `.codework` directory. Run from `packages/app`, the command edits the
-repository's own `.codework/settings.jsonc` rather than starting a second project beside it. An
-empty `.codework/` is enough — the marker is the directory, so creating it is how you say a
-project begins here. When no ancestor has one, `add` creates `.codework/` in the directory you are
-in and prints the path, because that decides where every later plugin entry lands.
-
-`add` installs and imports the module before writing anything, so a spec that is not a plugin
-fails with its own error and leaves the file untouched; the line it prints names the plugin ID the
-module actually declared. Adding a plugin that is already configured under another spelling — a
-different version, or the path instead of the package — rewrites that entry in place rather than
-leaving a second loader behind, the way `npm install pkg@2` updates the spec already recorded.
-Configuration written against the plugin is left where it is. Edits preserve comments, key order and formatting, and are written
-through a temp file so an interrupted run cannot truncate your settings.
-
-`remove` drops the module entry and any configuration object naming the same plugin, whichever
-spelling each was written with: the version it was added with is not part of its identity, and the
-ID a module declares removes the entry that loads it. Resolving an ID reads what is installed and
-never fetches anything. A plugin can also be kept but switched off without removing it, with
-`{ "plugin": "acme.tool.proc", "enabled": false }`.
-
-#### Flags:
-
-| Flag                | Description                                                                        |
-| :------------------ | :--------------------------------------------------------------------------------- |
-| `-g`, `--global`    | Edit the user-wide settings file instead of this project's                         |
-| `--home`            | Where that user-wide file lives (default: `CODEWORK_HOME_DIR`, else `~/.codework`) |
-| `--user-config-dir` | Edit `<dir>/settings.jsonc`; outranks both of the above                            |
-
-Plugin entries accumulate across settings layers, so a user-wide plugin still applies inside a
-project that declares its own. A project that wants an inherited plugin gone says so in its own
-file, with `{ "plugin": "<id>", "enabled": false }`.
-
----
-
-## Environment Variables
-
-| Variable                       | Description                                                         |
-| :----------------------------- | :------------------------------------------------------------------ |
-| `CODEWORK_MODELS_FILE`         | Pin the catalog to a file you manage; never refreshed automatically |
-| `CODEWORK_MODELS_TTL`          | How old the catalog may get before a refresh (default `15 minutes`) |
-| `OPENAI_API_KEY`               | API key for OpenAI models                                           |
-| `ANTHROPIC_API_KEY`            | API key for Anthropic models                                        |
-| `OPENROUTER_API_KEY`           | API key for OpenRouter models                                       |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | API key for Google models                                           |
-| `XAI_API_KEY`                  | API key for xAI models                                              |
-
----
+`pnpm build` packs the published `dist` build.
 
 ## License
 
