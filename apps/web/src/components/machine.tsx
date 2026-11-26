@@ -60,7 +60,7 @@ const noLinked: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<Relay.Machine>, 
 	AsyncResult.success([]),
 );
 
-const availabilityOf = (status: ServerStatus): Availability => {
+export const availabilityOf = (status: ServerStatus): Availability => {
 	if (status.kind === "local") return status.server._tag === "Running" ? { kind: "ready" } : { kind: "stopped" };
 	if (!status.paired) return { kind: "unpaired" };
 	if (status.mismatch !== null) return { kind: "mismatch", what: status.mismatch.kind };
@@ -167,7 +167,7 @@ export function useStartMachine() {
 }
 
 /** What keeps a machine from being picked, in a few words. */
-function useReason(machine: MachineEntry) {
+export function useReason(machine: Pick<MachineEntry, "availability">) {
 	const now = useNowMinute();
 	const a = machine.availability;
 	switch (a.kind) {
