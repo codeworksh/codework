@@ -60,8 +60,11 @@ export const layer = Layer.effect(
 			);
 		// In memory only: a round trip is as old as the check that took it.
 		const trips = new Map<string, number | null>();
+		// A machine not answering now has no round trip, whatever the last timing said.
+		const answering = (status: ServerStatus) =>
+			status.kind === "remote" ? status.online : status.server._tag === "Running";
 		const withTrips = (statuses: ReadonlyArray<ServerStatus>) =>
-			statuses.map((status) => ({ ...status, rtt: trips.get(status.id) ?? null }));
+			statuses.map((status) => ({ ...status, rtt: answering(status) ? (trips.get(status.id) ?? null) : null }));
 		const timings = yield* Queue.sliding<void>(1);
 
 		// A check never waits on a round trip: one to a machine that just stopped takes the whole timeout.

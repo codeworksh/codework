@@ -12,7 +12,7 @@ import { useSent } from "../widgets/session/display";
 import { handoffs } from "../widgets/session/handoff";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
-import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
+import { ModelPicker, ThinkingPicker, useAvailableModel, useChoice, useModelsNotice } from "@/components/model";
 import { Arcade } from "./arcade";
 import { cloneBlock, useClone, useCloneNotice } from "../shell/clones";
 import { useAddProject } from "../shell/palette";
@@ -41,20 +41,19 @@ export function Landing() {
 	const setPicked = useAtomSet(machineAtom);
 	const [chosen, setPlace] = useAtom(placeAtom);
 	const { machines, machine, machineId } = useStartMachine();
-	// A folder belongs to the machine it was picked on; on another one it is not picked. One named by
-	// no machine, or by the default one's id, is on the default machine.
-	const placeMachine = chosen.kind === "folder" ? (chosen.machineId ?? machines.defaultEntry?.id) : undefined;
+	// A folder belongs to the machine it was picked on; on another one it is not picked.
 	const place =
-		chosen.kind === "folder" && machine !== undefined && placeMachine === machine.id
+		chosen.kind === "folder" && machine !== undefined && chosen.machineId === machine.id
 			? chosen
 			: ({ kind: "none" } as const);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	// Remembered across restarts; an absent pick leaves it to settings.
 	const [choice, setChoice] = useChoice();
-	const { model, thinkingLevel: thinking } = choice;
+	const { thinkingLevel: thinking } = choice;
 	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
+	const model = useAvailableModel(hostDir, choice.model, machineId);
 	const notice = useModelsNotice(hostDir, machineId);
 	const cloneNotice = useCloneNotice(hostDir, machineId);
 	const blocked = cloneBlock(useClone(hostDir, machineId));
@@ -115,9 +114,9 @@ export function Landing() {
 							machines={machines}
 							value={machine}
 							onChange={(next) => {
-								if (next.id === machine.id) return;
+								// Kept even when it is the machine shown: that may be the default standing in for one away.
 								setPicked(next.isDefault ? undefined : next.id);
-								setPlace({ kind: "none" });
+								if (next.id !== machine.id) setPlace({ kind: "none" });
 							}}
 						/>
 					)}

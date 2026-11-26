@@ -73,6 +73,8 @@ export const SidebarProject = Schema.Struct({
 	name: Schema.String,
 	/** Its newest primary-space session's folder, else its primary space's location: where a new thread starts. */
 	path: Schema.String,
+	/** Whether `path` is a folder on its machine; a project only in sandboxes has none to start a session in. */
+	onHost: Schema.Boolean,
 	/** When it was first seen; epoch milliseconds. */
 	created: Schema.Finite,
 	sessions: Schema.Array(SidebarSession),

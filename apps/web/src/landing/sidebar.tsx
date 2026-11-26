@@ -15,7 +15,7 @@ import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Option, Schema } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import type { SidebarSession } from "@codeworksh/contract";
+import type { SidebarProject, SidebarSession } from "@codeworksh/contract";
 import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { DisplayMenu } from "@/components/display";
@@ -80,16 +80,15 @@ export function SessionsSidebar() {
 	const servers = useAtomValue(serversAtom);
 	const defaultId = AsyncResult.isSuccess(servers) ? servers.value.find((server) => server.isDefault)?.id : undefined;
 	// The start page on a project's machine and folder; the default machine is named by no id, as everywhere.
+	// A project only in sandboxes has no folder there to start in, so only its machine carries over.
 	const startOn = useCallback(
-		(project: { readonly path: string; readonly name: string; readonly machine: { readonly id: string } }) => {
-			const machineId = project.machine.id === defaultId ? undefined : project.machine.id;
-			setMachine(machineId);
-			setPlace({
-				kind: "folder",
-				path: project.path,
-				name: project.name,
-				...(machineId === undefined ? {} : { machineId }),
-			});
+		(project: Pick<SidebarProject, "path" | "name" | "onHost" | "machine">) => {
+			setMachine(project.machine.id === defaultId ? undefined : project.machine.id);
+			setPlace(
+				project.onHost
+					? { kind: "folder", path: project.path, name: project.name, machineId: project.machine.id }
+					: { kind: "none" },
+			);
 		},
 		[defaultId, setMachine, setPlace],
 	);
@@ -103,19 +102,17 @@ export function SessionsSidebar() {
 	const focusedId = tab === undefined ? undefined : focusedOn.get(tab.id);
 	// A frame in front that is not a session's (Git Changes, shared by a space's sessions) leaves the
 	// session last in front on the tab as current: the user is still working in it.
-	const sessionOf = (id: string | undefined) =>
-		threadRef(
-			instances.find((instance) => instance.id === id && tab !== undefined && (instance.tags & tabTag(tab)) !== 0)
-				?.address,
-		)?.sessionId;
-	const current = sessionOf(focusedId) ?? order.focusOrder.map(sessionOf).find((id) => id !== undefined);
-	const shown = new Set(
-		tab === undefined
-			? []
-			: instances.flatMap((instance) =>
-					(instance.tags & tabTag(tab)) === 0 ? [] : (threadRef(instance.address)?.sessionId ?? []),
-				),
-	);
+	// The tab's session frames, by frame id, read once: the lookups below stay linear in the desk.
+	const sessionFrames = new Map<string, string>();
+	if (tab !== undefined)
+		for (const instance of instances) {
+			const sessionId = (instance.tags & tabTag(tab)) === 0 ? undefined : threadRef(instance.address)?.sessionId;
+			if (sessionId !== undefined) sessionFrames.set(instance.id, sessionId);
+		}
+	const current =
+		(focusedId === undefined ? undefined : sessionFrames.get(focusedId)) ??
+		sessionFrames.get(order.focusOrder.find((id) => sessionFrames.has(id)) ?? "");
+	const shown = new Set(sessionFrames.values());
 	// A new session starts on the start page, in the current session's project when one is in front.
 	const startNew = () => {
 		const project = AsyncResult.isSuccess(result)

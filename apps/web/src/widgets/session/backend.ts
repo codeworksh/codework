@@ -334,7 +334,7 @@ export const session = defineBackend({
 						},
 					}),
 				),
-				Effect.tap((info) => (machineId === undefined ? Effect.void : sync.claim(info.session.id, machineId))),
+				Effect.tap((info) => sync.claim(info.session.id, machineId)),
 				Effect.flatMap((info) =>
 					prompt({ sessionId: info.session.id, messageId, text }).pipe(Effect.as(info.session.id)),
 				),

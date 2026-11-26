@@ -3,7 +3,7 @@ import { Session } from "../../../packages/harness/src/effect.ts";
 import { Effect } from "effect";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Contract, type ThreadLine } from "@codeworksh/contract";
 import {
 	addMachine,
@@ -166,9 +166,9 @@ it("the sidebar filters to the default machine or reads every machine, each proj
 	const everywhere = await desk.run((rpc) => sidebar(rpc, "all"));
 	expect(onDefault.map((project) => [project.machine.id, project.name])).toEqual([[Contract.LOCAL_SERVER, "Local"]]);
 	const byName = everywhere.toSorted((a, b) => a.name.localeCompare(b.name));
-	expect(byName.map((project) => [project.machine.id, project.name])).toEqual([
-		[Contract.LOCAL_SERVER, "Local"],
-		[remoteId, "Remote"],
+	expect(byName.map((project) => [project.machine.id, project.name, project.onHost])).toEqual([
+		[Contract.LOCAL_SERVER, "Local", true],
+		[remoteId, "Remote", true],
 	]);
 
 	await snapshot(
@@ -183,6 +183,69 @@ it("the sidebar filters to the default machine or reads every machine, each proj
 		)(elide({ default: onDefault, all: byName })),
 	);
 }, 90_000);
+
+// Daytona runs when this computer has its key, as the fixture's server then offers its driver.
+describe.each([
+	{ driver: "memory", env: undefined },
+	{ driver: "daytona", env: "DAYTONA_API_KEY" },
+] as const)("a $driver sandbox", ({ driver, env }) => {
+	it.skipIf(env !== undefined && !process.env[env]?.trim())(
+		"a project only in a sandbox on a paired machine has no folder there, though the CLI anchors its session to one",
+		async () => {
+			const localHome = tempDir(`sandbox-${driver}-local`);
+			const remoteHome = tempDir(`sandbox-${driver}-remote`);
+			const appHome = tempDir(`sandbox-${driver}-app`);
+			const localPort = await freePort();
+			const local = await codework(localHome, localPort);
+			const remote = await codework(remoteHome, await freePort());
+			try {
+				await session(remote, remoteHome, "In a folder", "Folder");
+				await remote.run((rpc) =>
+					Effect.gen(function* () {
+						const created = yield* rpc["session.create"]({
+							sandbox: { driver },
+							hostDir: Session.AbsolutePath.make(remoteHome),
+							project: { name: "Sandboxed" },
+						});
+						yield* rpc["thread.prompt"]({ sessionId: created.session.id, text: "In a sandbox" });
+						yield* rpc["thread.wait"]({ sessionId: created.session.id });
+					}),
+				);
+
+				registerLocal(appHome, local, localPort);
+				const desk = await app(appHome);
+				const remoteId = await addMachine(appHome, remote, desk.run);
+				const { storeId } = await synced(appHome, remoteId, remote);
+				const projects = (await desk.run((rpc) => sidebar(rpc, "all")))
+					.filter((project) => project.machine.id === remoteId)
+					.toSorted((a, b) => a.name.localeCompare(b.name));
+				expect(projects.map((project) => [project.name, project.onHost])).toEqual([
+					["Folder", true],
+					["Sandboxed", false],
+				]);
+
+				await snapshot(
+					`sandbox.${driver}`,
+					normalizer([localHome, remoteHome, appHome], [[storeId, "<remote store>"]])(elide(projects)),
+				);
+			} finally {
+				// A remote sandbox outlives the server that made it until it is stopped.
+				await remote.run((rpc) =>
+					rpc["sandbox.list"]({}).pipe(
+						Effect.flatMap((sandboxes) =>
+							Effect.forEach(
+								sandboxes.filter((sandbox) => sandbox.driver === driver),
+								(sandbox) => rpc["sandbox.stop"]({ sandboxId: sandbox.id }),
+								{ discard: true },
+							),
+						),
+					),
+				);
+			}
+		},
+		240_000,
+	);
+});
 
 it("a fork's line pages through inherited entries by keyset, takes its ancestor's title, and reads below its floor after sync.page", async () => {
 	const cwHome = tempDir("line-cw");
@@ -368,7 +431,8 @@ it("a session created for a paired machine starts there with its first prompt, a
 	const appHome = tempDir("create-app");
 	const localPort = await freePort();
 	const local = await codework(localHome, localPort);
-	const remote = await codework(remoteHome, await freePort());
+	// Its own OS home, so a host call that reached the default machine instead would list another `~`.
+	const remote = await codework(remoteHome, await freePort(), { osHome: remoteHome });
 	const folder = join(remoteHome, "project");
 	mkdirSync(folder);
 
@@ -400,7 +464,10 @@ it("a session created for a paired machine starts there with its first prompt, a
 	const thread = { sessionId, threadId: onRemote[0]!.id };
 	// The first prompt runs on the paired machine's scripted model; its history holds it once taken.
 	await remote.run((rpc) => rpc["thread.wait"](thread));
-	const first = (await remote.run((rpc) => rpc["thread.history"](thread))).entries[0];
+	const history = (await remote.run((rpc) => rpc["thread.history"](thread))).entries;
+	const first = history[0];
+	// The scripted model answers the prompt's own text, so the reply shows it arrived whole and ran.
+	const replied = JSON.stringify(history).includes("reply to hello");
 	await synced(appHome, remoteId, remote);
 	const row = query(appHome, "SELECT machine_id FROM session WHERE id = ?", sessionId);
 
@@ -419,7 +486,7 @@ it("a session created for a paired machine starts there with its first prompt, a
 	);
 	const renamed = await desk.run((rpc) => rpc["projects.rename"]({ machineId: remoteId, projectId, name: "Renamed" }));
 
-	const browsed = await desk.run((rpc) => rpc["host.browse"]({ machineId: remoteId, path: remoteHome }));
+	const browsed = await desk.run((rpc) => rpc["host.browse"]({ machineId: remoteId, path: "~" }));
 	const unknown = await refused((rpc) => rpc["host.browse"]({ machineId: "nowhere", path: remoteHome }));
 	await stop(remote.proc);
 	const away = await waitFor(async () => {
@@ -437,6 +504,7 @@ it("a session created for a paired machine starts there with its first prompt, a
 	expect(onRemote.map((thread) => thread.id)).toHaveLength(1);
 	expect(onLocal).toEqual([]);
 	expect(first).toMatchObject({ id: messageId, role: "user" });
+	expect(replied).toBe(true);
 	expect(row).toEqual([{ machine_id: remoteId }]);
 	expect(set).toBe("answered");
 	expect(written).toBe(true);
@@ -445,6 +513,7 @@ it("a session created for a paired machine starts there with its first prompt, a
 	expect(announced).toHaveLength(1);
 	expect(announced[0]!.removed).toEqual([sessionId]);
 	expect(left).toEqual([]);
+	expect(browsed.path).toBe(remoteHome);
 	expect(browsed.entries.map((entry) => entry.name)).toContain("project");
 
 	await snapshot(
@@ -463,11 +532,12 @@ it("a session created for a paired machine starts there with its first prompt, a
 				"threads on the paired machine": onRemote.length,
 				"threads on the default machine": onLocal.length,
 				"first entry": { id: first?.id, role: first?.role },
+				"the model replied to it": replied,
 				"its row in app.db": row,
 				"settings.set on its machine": { reply: set, written },
 				"settings.set without the machine": elsewhere,
 				"projects.rename on its machine": renamed.name,
-				"host.browse there": { path: browsed.path, readable: browsed.readable },
+				"host.browse of ~ there": { path: browsed.path, readable: browsed.readable },
 				"a machine the app does not know": unknown,
 				"the machine stopped": away,
 				"servers.remove": {

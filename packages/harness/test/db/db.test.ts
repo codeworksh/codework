@@ -95,6 +95,7 @@ describe("Database", () => {
 					"202610290001_init",
 					"202611140001_usage",
 					"202611140002_boot",
+					"202611260001_space_state",
 				]);
 				const tables = yield* sql<{ name: string }>`
 					SELECT name FROM sqlite_master
@@ -115,6 +116,7 @@ describe("Database", () => {
 					"sequence",
 					"session",
 					"space",
+					"space_state",
 					"store",
 					"tally",
 					"thread",

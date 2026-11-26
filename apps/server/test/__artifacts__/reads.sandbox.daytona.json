@@ -1,0 +1,54 @@
+[
+	{
+		"machine": {
+			"id": "<id 1>",
+			"name": "Fixture"
+		},
+		"id": "<id 2>",
+		"name": "Folder",
+		"path": "<home>",
+		"onHost": true,
+		"created": "<time>",
+		"sessions": [
+			{
+				"id": "<ses 1>",
+				"threadId": "<thr 1>",
+				"spaceKind": "plain",
+				"color": null,
+				"title": "In a folder",
+				"runState": "idle",
+				"status": "working",
+				"priority": 0,
+				"created": "<time>",
+				"updated": "<time>",
+				"path": "<home>"
+			}
+		]
+	},
+	{
+		"machine": {
+			"id": "<id 1>",
+			"name": "Fixture"
+		},
+		"id": "<id 3>",
+		"name": "Sandboxed",
+		"path": "/home/daytona",
+		"onHost": false,
+		"created": "<time>",
+		"sessions": [
+			{
+				"id": "<ses 2>",
+				"threadId": "<thr 2>",
+				"spaceKind": "plain",
+				"color": null,
+				"title": "In a sandbox",
+				"runState": "idle",
+				"status": "working",
+				"priority": 0,
+				"created": "<time>",
+				"updated": "<time>",
+				"path": "/home/daytona"
+			}
+		]
+	}
+]

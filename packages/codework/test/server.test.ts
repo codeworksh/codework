@@ -583,7 +583,8 @@ describe("server", () => {
 			);
 	}, 60_000);
 
-	it("host.browse says what a path is: listed, unreadable, missing or a file", () => {
+	// Root reads a folder whatever its mode, so the unreadable case needs an ordinary user.
+	it.skipIf(process.getuid?.() === 0)("host.browse says what a path is: listed, unreadable, missing or a file", () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-browse-")));
 		homes.push(root);
 		mkdirSync(join(root, "open", "b"), { recursive: true });
@@ -599,7 +600,7 @@ describe("server", () => {
 			const listed = (result: {
 				readonly path: string;
 				readonly entries: ReadonlyArray<Contract.Folder>;
-				readonly readable: boolean;
+				readonly readable?: boolean | undefined;
 			}) => ({
 				path: relative(result.path),
 				readable: result.readable,

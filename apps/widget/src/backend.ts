@@ -127,8 +127,8 @@ export class Sync extends Context.Service<
 		readonly machine: (sessionId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
 		/** The CodeWork server of a machine, by its id. */
 		readonly client: (machineId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
-		/** Records the machine a session was just created on, so commands reach it before its index does. */
-		readonly claim: (sessionId: string, machineId: string) => Effect.Effect<void>;
+		/** Records the machine a session was just created on (none: the default one), so commands reach it before its index does. */
+		readonly claim: (sessionId: string, machineId: string | undefined) => Effect.Effect<void>;
 		/**
 		 * Done once that machine's index is applied up to its store's head now, so a row written
 		 * before the call is held; at once while the machine is away.

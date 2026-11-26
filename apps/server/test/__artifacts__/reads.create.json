@@ -9,6 +9,7 @@
 		"id": "<message>",
 		"role": "user"
 	},
+	"the model replied to it": true,
 	"its row in app.db": [
 		{
 			"machine_id": "<remote>"
@@ -23,7 +24,7 @@
 		"message": "This project is no longer on its server."
 	},
 	"projects.rename on its machine": "Renamed",
-	"host.browse there": {
+	"host.browse of ~ there": {
 		"path": "<home>",
 		"readable": true
 	},

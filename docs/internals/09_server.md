@@ -71,7 +71,7 @@ Logins run in the CLI, because a browser callback or a device code cannot travel
 
 ## Two Ways to Keep Up
 
-`event.subscribe` is the live feed ([feed.ts](../../packages/codework/src/server/feed.ts)). Each event is encoded once and shared by every subscriber. Each subscriber has a bounded queue, and its filter runs before an event takes a place in it. A client that falls behind fails alone with an overflow. An event that cannot be encoded is a server bug and disconnects every subscriber. Types outside the registry are dropped before they reach any queue. The feed replays no durable history. With `types`, it first sends the last event of each type a space daemon published.
+`event.subscribe` is the live feed ([feed.ts](../../packages/codework/src/server/feed.ts)). Each event is encoded once and shared by every subscriber. Each subscriber has a bounded queue, and its filter runs before an event takes a place in it. A client that falls behind fails alone with an overflow. An event that cannot be encoded is a server bug and disconnects every subscriber. Types outside the registry are dropped before they reach any queue. The feed replays no durable history. With `types`, it first sends the last event of each type a space daemon published. Those are kept in the store's `space_state`, so a client that connects after a restart still sees each space's git status and skills before the space mounts again, and a stopped sandbox is never woken to read them.
 
 The `server.connected` frame is a readiness barrier. It is sent only after the subscriber is registered, so a prompt sent after it cannot land in a gap.
 

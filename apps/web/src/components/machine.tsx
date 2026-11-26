@@ -52,6 +52,11 @@ export interface MachineEntry {
 const RECENT = 3;
 // Long enough to cross a neighbouring row on the way to the open submenu.
 const SWITCH_DELAY = 150;
+// A row is h-7; the submenu adds its padding and border, and lists at most this much before scrolling.
+const ROW_HEIGHT = 28;
+const SUB_CHROME = 10;
+const SUB_LIST = 288;
+const EDGE = 8;
 
 const isReady = (machine: MachineEntry) => machine.availability.kind === "ready";
 
@@ -60,22 +65,25 @@ const noLinked: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<Relay.Machine>, 
 	AsyncResult.success([]),
 );
 
-const availabilityOf = (status: ServerStatus): Availability => {
+export const availabilityOf = (status: ServerStatus): Availability => {
 	if (status.kind === "local") return status.server._tag === "Running" ? { kind: "ready" } : { kind: "stopped" };
 	if (!status.paired) return { kind: "unpaired" };
 	if (status.mismatch !== null) return { kind: "mismatch", what: status.mismatch.kind };
 	return status.online ? { kind: "ready" } : { kind: "offline", seenAt: status.seenAt };
 };
 
-/** A machine's name as the app shows it: this computer's by its host name, a paired one's as labelled. */
-const machineName = (status: ServerStatus) => (status.kind === "local" ? (status.host ?? status.name) : status.name);
-
 /** The name of the machine with this row id; undefined until the app server has listed it. */
 export function useMachineName(machineId: string) {
 	const servers = useAtomValue(serversAtom);
 	if (!AsyncResult.isSuccess(servers)) return undefined;
-	const status = servers.value.find((candidate) => candidate.id === machineId);
-	return status === undefined ? undefined : machineName(status);
+	return servers.value.find((candidate) => candidate.id === machineId)?.name;
+}
+
+/** The row id host calls name `machineId` by: none is the default machine's. */
+export function useRowId(machineId: string | undefined) {
+	const servers = useAtomValue(serversAtom);
+	if (machineId !== undefined) return machineId;
+	return AsyncResult.isSuccess(servers) ? servers.value.find((status) => status.isDefault)?.id : undefined;
 }
 
 const holds = (status: RemoteServerStatus, workspaceId: string) =>
@@ -93,15 +101,23 @@ function useMachines() {
 	const linked = useAtomValue(workspace === undefined ? noLinked : machinesAtom(workspace.id));
 	const local = useAtomValue(useMachineAtom());
 	const statuses = AsyncResult.isSuccess(servers) ? servers.value : [];
+	// Relay's list is the membership; the link a host keeps is only its last word, until Relay answers.
+	const members = AsyncResult.isSuccess(linked) ? new Set(linked.value.map((machine) => machine.id)) : undefined;
+	const inWorkspace = (status: ServerStatus) =>
+		workspace !== undefined &&
+		status.kind === "remote" &&
+		(members === undefined
+			? holds(status, workspace.id)
+			: status.machineId !== null && members.has(status.machineId));
 
 	const entries: Array<MachineEntry> = statuses.map((status) => ({
 		id: status.id,
-		name: machineName(status),
+		name: status.name,
 		host: status.host,
 		os: null,
 		relation: status.kind === "local" ? "local" : "paired",
 		isDefault: status.isDefault,
-		inWorkspace: workspace !== undefined && status.kind === "remote" && holds(status, workspace.id),
+		inWorkspace: inWorkspace(status),
 		availability: availabilityOf(status),
 		rtt: status.rtt,
 	}));
@@ -167,7 +183,7 @@ export function useStartMachine() {
 }
 
 /** What keeps a machine from being picked, in a few words. */
-function useReason(machine: MachineEntry) {
+export function useReason(machine: Pick<MachineEntry, "availability">) {
 	const now = useNowMinute();
 	const a = machine.availability;
 	switch (a.kind) {
@@ -334,7 +350,7 @@ export function MachinePicker({
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useState("");
-	const [sub, setSub] = useState<{ section: Section; top: number } | null>(null);
+	const [sub, setSub] = useState<{ section: Section; top: number; height: number } | null>(null);
 	const content = useRef<HTMLDivElement>(null);
 	const search = useRef<HTMLInputElement>(null);
 	const subInput = useRef<HTMLInputElement>(null);
@@ -371,9 +387,14 @@ export function MachinePicker({
 		window.clearTimeout(timer.current);
 		const at = rows.current[section];
 		const box = content.current?.getBoundingClientRect();
+		const count = sections.find((each) => each.section === section)?.items.length ?? 0;
 		if (at === null || at === undefined || box === undefined) return;
-		// Its first row lines up with the row that opened it: up by its padding and border.
-		setSub({ section, top: at.getBoundingClientRect().top - box.top - 5 });
+		// Its first row lines up with the row that opened it: up by its padding and border. One that
+		// would run past the window moves up, and scrolls once taller than the window itself.
+		const top = at.getBoundingClientRect().top - SUB_CHROME / 2;
+		const height = Math.min(count * ROW_HEIGHT, SUB_LIST, window.innerHeight - 2 * EDGE - SUB_CHROME);
+		const over = Math.max(0, top + height + SUB_CHROME - (window.innerHeight - EDGE));
+		setSub({ section, top: top - over - box.top, height });
 		if (focus) requestAnimationFrame(() => subInput.current?.focus());
 	};
 	// Hovering moves the submenu only once the pointer settles, so a diagonal path keeps it.
@@ -521,32 +542,33 @@ export function MachinePicker({
 							</>
 						)}
 					</CommandPrimitive.List>
-					<div className="flex items-center gap-1 border-t border-edge p-1">
-						<button
-							type="button"
-							onClick={() => {
-								close();
-								void navigate({ to: "/settings/machines" });
-							}}
-							className={`${button} flex-1`}
-						>
-							<PlusIcon className="size-3.5" aria-hidden />
-							Pair a Machine
-						</button>
-						<button
-							type="button"
-							aria-label="Manage Machines"
-							title="Manage Machines"
-							onClick={() => {
-								close();
-								void navigate({ to: "/settings/machines" });
-							}}
-							className={`${button} w-7 justify-center px-0`}
-						>
-							<GearSixIcon className="size-3.5" aria-hidden />
-						</button>
-					</div>
 				</CommandPrimitive>
+				{/* Outside cmdk's root, which would turn Enter on these into the highlighted row's. */}
+				<div className="flex items-center gap-1 border-t border-edge p-1">
+					<button
+						type="button"
+						onClick={() => {
+							close();
+							void navigate({ to: "/settings/machines" });
+						}}
+						className={`${button} flex-1`}
+					>
+						<PlusIcon className="size-3.5" aria-hidden />
+						Pair a Machine
+					</button>
+					<button
+						type="button"
+						aria-label="Manage Machines"
+						title="Manage Machines"
+						onClick={() => {
+							close();
+							void navigate({ to: "/settings/machines" });
+						}}
+						className={`${button} w-7 justify-center px-0`}
+					>
+						<GearSixIcon className="size-3.5" aria-hidden />
+					</button>
+				</div>
 				{sub !== null && shown !== undefined && (
 					<div
 						onPointerEnter={() => window.clearTimeout(timer.current)}
@@ -563,7 +585,10 @@ export function MachinePicker({
 						>
 							{/* Holds focus for cmdk's arrow keys; the main search does the searching. */}
 							<CommandPrimitive.Input ref={subInput} className="sr-only" aria-label={shown.title} />
-							<CommandPrimitive.List className="max-h-72 overflow-y-auto p-1 scrollbar-thin">
+							<CommandPrimitive.List
+								style={{ maxHeight: sub.height + SUB_CHROME - 2 }}
+								className="overflow-y-auto p-1 scrollbar-thin"
+							>
 								{shown.items.map((machine) => (
 									<MachineItem
 										key={machine.id}

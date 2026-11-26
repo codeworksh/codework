@@ -7,6 +7,7 @@ import { Composer, ComposerButton, ComposerSubmit, type Submit } from "@/compone
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
 import { useSent } from "./display";
+import { SessionPlace } from "./place";
 import { type Info, Json, type ThreadRef, threadKey, topics } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -166,6 +167,7 @@ export const SessionComposer = memo(function SessionComposer({
 			onChange={setText}
 			onSubmit={(submit) => void send(submit)}
 			placeholder={running ? "Steer the agent, or queue a follow-up…" : "Ask for changes or send a follow-up…"}
+			tray={<SessionPlace thread={thread} info={info} />}
 			controls={
 				<>
 					<ModelPicker

@@ -125,8 +125,33 @@ export const layer = (options: Options) =>
 			const instances = new Map<string, Instance>();
 			/** The space each running thread's events belong to. */
 			const threads = new Map<string, string>();
-			/** Last published event per `spaceId \0 type`. */
+			/**
+			 * Last published event per `spaceId \0 type`: `space_state`, read once here and written through on
+			 * each publish, kept in memory because a subscriber reads it in the same step it registers.
+			 */
 			const lastEvents = new Map<string, EventSchema.Payload>();
+			const definitions = new Map(
+				options.daemons.flatMap((daemon) =>
+					(daemon.events ?? []).map((definition) => [definition.type, definition]),
+				),
+			);
+			const stored = yield* sql<{ spaceId: string; type: string; id: string; data: string }>`
+				SELECT space_id, type, id, data FROM space_state
+			`.pipe(Effect.orDie);
+			for (const row of stored) {
+				// A daemon no longer loaded, or one whose events changed shape, starts over at its next publish.
+				const definition = definitions.get(row.type);
+				if (definition === undefined) continue;
+				const data = yield* Schema.decodeEffect(Schema.fromJsonString(definition.data))(row.data).pipe(
+					Effect.option,
+				);
+				if (Option.isSome(data))
+					lastEvents.set(`${row.spaceId}\0${row.type}`, {
+						id: EventSchema.ID.make(row.id),
+						type: row.type,
+						data: data.value,
+					});
+			}
 
 			const readable = (instance: Instance) =>
 				instance.env === undefined ? Effect.succeed(false) : controller.held(instance.env);
@@ -199,19 +224,32 @@ export const layer = (options: Options) =>
 								const observedAt = yield* Clock.currentTimeMillis;
 								const full = { ...data, spaceId: instance.spaceId, observedAt };
 								// Checked before it reaches the bus: an event the feed cannot encode disconnects every client.
-								const valid = yield* Schema.encodeUnknownEffect(definition.data)(full).pipe(
-									Effect.as(true),
-									Effect.catchCause((cause) =>
-										Effect.logWarning(
-											`daemon ${running.daemon.id} published an invalid ${definition.type}`,
-											cause,
-										).pipe(Effect.as(false)),
+								const encoded = yield* Schema.encodeUnknownEffect(Schema.fromJsonString(definition.data))(
+									full,
+								).pipe(
+									Effect.option,
+									Effect.tap((encoded) =>
+										Option.isNone(encoded)
+											? Effect.logWarning(
+													`daemon ${running.daemon.id} published an invalid ${definition.type}`,
+												)
+											: Effect.void,
 									),
 								);
-								if (!valid) return;
+								if (Option.isNone(encoded)) return;
 								// Kept before it publishes, so a client subscribing meanwhile gets it from the replay if
-								// not live; a copy received twice is the same value.
+								// not live; a copy received twice is the same value. A space removed meanwhile keeps none.
 								const id = EventSchema.ID.create();
+								yield* sql`
+									INSERT INTO space_state (space_id, type, id, data)
+									SELECT ${instance.spaceId}, ${definition.type}, ${id}, ${encoded.value}
+									WHERE EXISTS (SELECT 1 FROM space WHERE id = ${instance.spaceId})
+									ON CONFLICT (space_id, type) DO UPDATE SET id = excluded.id, data = excluded.data
+								`.pipe(
+									Effect.catchCause((cause) =>
+										Effect.logWarning(`daemon ${running.daemon.id} could not keep ${definition.type}`, cause),
+									),
+								);
 								lastEvents.set(`${instance.spaceId}\0${definition.type}`, {
 									id,
 									type: definition.type,

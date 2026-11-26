@@ -104,6 +104,8 @@ export const codework = async (
 		readonly host?: string | null;
 		readonly relay?: string;
 		readonly skew?: number;
+		/** The OS home its `~` and host folders resolve against; the test runner's when omitted. */
+		readonly osHome?: string;
 	} = {},
 ) => {
 	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
@@ -113,6 +115,7 @@ export const codework = async (
 			...(options.host === undefined ? {} : { CODEWORK_FIXTURE_HOST: options.host ?? "" }),
 			...(options.relay === undefined ? {} : { CODEWORK_RELAY_URL: options.relay }),
 			...(options.skew === undefined ? {} : { CODEWORK_FIXTURE_SKEW: String(options.skew) }),
+			...(options.osHome === undefined ? {} : { HOME: options.osHome }),
 		},
 		stdio: ["pipe", "pipe", "inherit"],
 	});

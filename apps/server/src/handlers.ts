@@ -84,15 +84,16 @@ export const layer = Contract.Api.toLayer(
 			);
 		/** A machine's connection, as Sync holds it; not connected, it says so by the machine's name. */
 		const connection = (machineId: string) =>
-			sync
-				.client(machineId)
-				.pipe(
-					Effect.catch(() =>
-						Effect.flatMap(nameOf(machineId), (name) =>
-							Effect.fail(new CodeworkUnavailable({ message: `${name} is not connected.` })),
-						),
-					),
-				);
+			sync.client(machineId).pipe(
+				// One added twice keeps Sync's own reason; any other is not connected, said by its name.
+				Effect.catch((error) =>
+					sync.isDuplicate(machineId)
+						? Effect.fail(error)
+						: Effect.flatMap(nameOf(machineId), (name) =>
+								Effect.fail(new CodeworkUnavailable({ message: `${name} is not connected.` })),
+							),
+				),
+			);
 		/**
 		 * A host call on `machineId`'s server, else the default one's. A named machine that does not answer
 		 * says so by name: the default server's advice to start it does not fit a machine elsewhere.
@@ -124,6 +125,27 @@ export const layer = Contract.Api.toLayer(
 					: Stream.unwrap(
 							Effect.map(connection(machineId), (client) => Stream.provideService(stream, Client, client)),
 						);
+		/**
+		 * A project call: a project the server no longer has is its answer, kept apart from an unreachable
+		 * server, which is all a failure inside a call otherwise turns into.
+		 */
+		const projectCall = <A, E>(use: Parameters<typeof Codework.callHost<A, E>>[0]) =>
+			callHost((client) =>
+				use(client).pipe(
+					Effect.map((value) => ({ value })),
+					Effect.catchIf(
+						(error): error is Extract<typeof error, { readonly _tag: "ProjectNotFoundError" }> =>
+							Predicate.hasProperty(error, "_tag") && error._tag === "ProjectNotFoundError",
+						() => Effect.succeed({ gone: true as const }),
+					),
+				),
+			).pipe(
+				Effect.flatMap((reply) =>
+					"gone" in reply
+						? Effect.fail(new ProjectError({ message: "This project is no longer on its server." }))
+						: Effect.succeed(reply.value),
+				),
+			);
 		/** A settings call: the server's refusals reach the app with their reason; anything else is an unreachable server. */
 		const settingsCall = <A, E>(use: Parameters<typeof Codework.call<A, E>>[0]) =>
 			call((client) =>
@@ -255,15 +277,7 @@ export const layer = Contract.Api.toLayer(
 				);
 			}),
 			"projects.remote": Effect.fn("projects.remote")(function* ({ machineId, projectId }) {
-				return yield* onMachine(machineId)(
-					callHost((client) =>
-						client("project.remote", { projectId }).pipe(
-							Effect.catchTag("ProjectNotFoundError", () =>
-								Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
-							),
-						),
-					),
-				);
+				return yield* onMachine(machineId)(projectCall((client) => client("project.remote", { projectId })));
 			}),
 			// A project's files are on its machine; the host is not told which machine it is.
 			"settings.read": ({ machineId, ...input }) =>
@@ -273,15 +287,7 @@ export const layer = Contract.Api.toLayer(
 			"settings.set": ({ machineId, ...input }) =>
 				onMachine(machineId)(settingsCall((client) => client("settings.set", input))),
 			"projects.rename": Effect.fn("projects.rename")(function* ({ machineId, projectId, name }) {
-				return yield* onMachine(machineId)(
-					callHost((client) =>
-						client("project.rename", { projectId, name }).pipe(
-							Effect.catchTag("ProjectNotFoundError", () =>
-								Effect.fail(new ProjectError({ message: "This project is no longer on its server." })),
-							),
-						),
-					),
-				);
+				return yield* onMachine(machineId)(projectCall((client) => client("project.rename", { projectId, name })));
 			}),
 			"host.add": Effect.fn("host.add")(function* ({ machineId, path }) {
 				return yield* onMachine(machineId)(callHost((client) => client("host.add", { path })));
@@ -291,7 +297,8 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"host.clones": ({ machineId }) =>
 				streamOnMachine(machineId)(Codework.stream((client) => client("host.clones", {}))).pipe(
-					Stream.tapError(() => health.poke),
+					// Only the default machine's failure says anything about the default server's health.
+					Stream.tapError(() => (machineId === undefined ? health.poke : Effect.void)),
 				),
 			"host.cancel": Effect.fn("host.cancel")(function* ({ machineId, path }) {
 				return yield* onMachine(machineId)(call((client) => client("host.cancel", { path })));
@@ -378,35 +385,37 @@ export const layer = Contract.Api.toLayer(
 						),
 						Effect.ignore,
 					);
-				// Its rows cascade away with it; the notice in the same transaction has every view read again.
-				const sessions = yield* sql<{ id: string }>`SELECT id FROM session WHERE machine_id = ${id}`.pipe(
-					Effect.orDie,
-				);
-				const projects = yield* sql<{ projectId: string }>`
-					SELECT DISTINCT project_id FROM space WHERE machine_id = ${id}
-				`.pipe(Effect.orDie);
+				// Its rows cascade away with it. What it holds is read in the same transaction, so a batch landing
+				// meanwhile is named too, and the notice has every view read again.
 				yield* events
 					.transact((append) =>
-						servers.remove(id).pipe(
-							Effect.andThen(
-								append({
-									topic: syncTopics.changed,
-									source: "servers",
-									payload: {
-										machineId: id,
-										full: true,
-										items: 0,
-										project: projects.map((row) => row.projectId),
-										space: [],
-										session: [],
-										thread: [],
-										entry: [],
-										inbox: [],
-										removed: sessions.map((row) => row.id),
-									},
-								}),
-							),
-						),
+						Effect.gen(function* () {
+							const ids = (rows: ReadonlyArray<{ readonly id: string }>) => rows.map((row) => row.id);
+							const sessions = yield* sql<{ id: string }>`SELECT id FROM session WHERE machine_id = ${id}`;
+							const threads = yield* sql<{ id: string }>`
+								SELECT thread.id FROM thread JOIN session ON session.id = thread.session_id
+								WHERE session.machine_id = ${id}
+							`;
+							const spaces = yield* sql<{ id: string }>`SELECT id FROM space WHERE machine_id = ${id}`;
+							const projects = yield* sql<{ id: string }>`SELECT id FROM project WHERE machine_id = ${id}`;
+							yield* servers.remove(id);
+							yield* append({
+								topic: syncTopics.changed,
+								source: "servers",
+								payload: {
+									machineId: id,
+									full: true,
+									items: 0,
+									project: ids(projects),
+									space: ids(spaces),
+									session: [],
+									thread: ids(threads),
+									entry: [],
+									inbox: [],
+									removed: ids(sessions),
+								},
+							});
+						}),
 					)
 					.pipe(Effect.catchTag("SqlError", Effect.die));
 				yield* health.check;

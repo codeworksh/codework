@@ -460,6 +460,9 @@ function Conversation({
 	if (loaded.status === "ready" && sent.length > 0) {
 		const echoed = new Set(loaded.messages.map((message) => message.id));
 		if (sent.some((message) => echoed.has(message.id))) setSent(sent.filter((message) => !echoed.has(message.id)));
+		// A parked prompt waits for the next message as a queue row, with its actions, whichever page shows it first.
+		const parked = new Set(loaded.info.parked ? loaded.queued.map((prompt) => prompt.id) : []);
+		if (sent.some((message) => parked.has(message.id))) setSent(sent.filter((message) => !parked.has(message.id)));
 	}
 	// A run that stops or fails before taking a prompt in leaves it queued for the next wake: its
 	// stand-in goes, so the queue row and its actions show again.

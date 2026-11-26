@@ -1,16 +1,16 @@
 import { Atom } from "effect/reactivity";
 
 /**
- * Where a new project lives: nowhere yet, or a folder on a machine, by its row id, none being the
- * default machine. Memory sessions are not offered until they outlive the server that made them;
- * the Session backend can still create them.
+ * Where a new project lives: nowhere yet, or a folder on a machine, by its row id, the default
+ * machine's too: a later change of default does not move the folder. Memory sessions are not
+ * offered until they outlive the server that made them; the Session backend can still create them.
  */
 export type Place =
 	| { kind: "none" }
 	| {
 			kind: "folder";
 			path: string;
-			machineId?: string;
+			machineId: string;
 			/** The project's name, when it is one already. */ name?: string;
 	  };
 

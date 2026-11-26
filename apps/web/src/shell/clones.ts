@@ -5,23 +5,35 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { toast } from "sonner";
 
 import type { Notice } from "@/components/banner";
+import { useRowId } from "@/components/machine";
 import { messageOf } from "@/lib/utils";
 import { Server } from "../kernel/rpc";
 import { placeAtom } from "../landing/place";
 
-/** Every clone a machine's server tracks (`""` is the default machine), as one list: the current one first, then each change. */
+/**
+ * Every clone a machine's server tracks (`""` is the default machine), as one list: the current one
+ * first, then each change. Streamed only while something reads it, so a machine left or removed stops.
+ */
 const clonesAtom = Atom.family((machineId: string) =>
-	Server.runtime
-		.atom(
-			Stream.unwrap(
-				Server.use((client) => Effect.succeed(client("host.clones", machineId === "" ? {} : { machineId }))),
-			).pipe(
-				// A dropped stream is a reconnect; the next list is whole again.
-				Stream.retry(Schedule.spaced("1 second")),
-			),
-		)
-		.pipe(Atom.keepAlive),
+	Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) => Effect.succeed(client("host.clones", machineId === "" ? {} : { machineId }))),
+		).pipe(
+			// A dropped stream is a reconnect; the next list is whole again.
+			Stream.retry(Schedule.spaced("1 second")),
+		),
+	),
 );
+
+/** The machines a clone was started on while the app runs (`""` is the default machine); the toasts follow each. */
+export const cloneMachinesAtom = Atom.make<ReadonlySet<string>>(new Set([""])).pipe(Atom.keepAlive);
+
+/** Records that a clone starts on `machineId`, so its toasts follow it from then on. */
+export function useWatchClones() {
+	const set = useAtomSet(cloneMachinesAtom);
+	return (machineId: string | undefined) =>
+		set((machines) => (machines.has(machineId ?? "") ? machines : new Set([...machines, machineId ?? ""])));
+}
 
 const NONE: ReadonlyArray<Clone> = [];
 
@@ -77,6 +89,7 @@ export function useCloneActions(machineId?: string) {
 	const retry = useAtomSet(retryAtom, { mode: "promise" });
 	const discard = useAtomSet(discardAtom, { mode: "promise" });
 	const setPlace = useAtomSet(placeAtom);
+	const rowId = useRowId(machineId);
 	const on = machineId === undefined ? {} : { machineId };
 	return {
 		cancel: (path: string) => cancel({ payload: { ...on, path } }),
@@ -84,7 +97,7 @@ export function useCloneActions(machineId?: string) {
 		remove: async (path: string) => {
 			await discard({ payload: { ...on, path } });
 			setPlace((place) =>
-				place.kind === "folder" && place.path === path && place.machineId === machineId ? { kind: "none" } : place,
+				place.kind === "folder" && place.path === path && place.machineId === rowId ? { kind: "none" } : place,
 			);
 		},
 	};

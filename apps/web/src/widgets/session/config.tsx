@@ -14,6 +14,7 @@ import { PlusIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { codeworkKey } from "../../kernel/servers";
 import { tilde } from "../../shell/paths";
+import { infoAtom } from "../../shell/sources";
 import { failed } from "../threads/common";
 
 type File = "settings" | "mcp";
@@ -136,11 +137,9 @@ export function Tag({ children }: { readonly children: string }) {
 	);
 }
 
-const infoAtom = Server.query("host.info", {});
-
-/** `path` with the home folder as `~`, once the server has said where home is. */
+/** `path` with its machine's home folder as `~`, once that machine's server has said where home is. */
 export const useTilde = () => {
-	const info = useAtomValue(infoAtom);
+	const info = useAtomValue(infoAtom(useContext(SettingsMachine) ?? ""));
 	const home = AsyncResult.isSuccess(info) ? info.value.home : undefined;
 	return (path: string) => tilde(path, home);
 };

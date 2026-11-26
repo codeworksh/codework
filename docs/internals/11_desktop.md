@@ -35,7 +35,7 @@ Each channel installs side by side with its own identity ([electron.config.ts](.
 
 ## The App Server Is a Client
 
-The app server never touches project files. Browsing folders, creating and cloning projects, git diffs and skills are all RPC calls to a host ([handlers.ts](../../apps/server/src/handlers.ts)). A host call names its machine, or goes to the default one, and runs over the connection Sync holds for that machine. The native folder picker only returns a path on this computer, so it is offered only for the default machine.
+The app server never touches project files. Browsing folders, creating and cloning projects, git diffs and skills are all RPC calls to a host ([handlers.ts](../../apps/server/src/handlers.ts)). A host call that names its machine runs over the connection Sync holds for it. One that names none goes to the default machine, over the app's main connection. The native folder picker only returns a path on this computer, so it is offered only for the default machine.
 
 The UI speaks [apps/contract](../../apps/contract/src/contract.ts), never the harness protocol. The app server speaks the harness protocol through a copy in [apps/widget/src/codework.ts](../../apps/widget/src/codework.ts). Its source of truth is `packages/codework/src/server`, and the two must change together. A reply the copy cannot decode surfaces as `CodeworkUnavailable`. A default server that answers `server.info` but fails `thread.list` shows as Incompatible.
 
@@ -66,7 +66,7 @@ The app does no WSL discovery. On Windows the preload omits the folder picker an
 - **Thread detail.** It syncs only while some window has the thread open. A first open replaces the thread's entries, and older entries are paged in below a floor. A live delta is kept only if it continues the held draft exactly, and is never stored.
 - **Daemon state.** Git status and skills are mirrored from the host's event stream, so a stopped sandbox shows its last state without being woken ([changes.ts](../../apps/server/src/changes.ts)).
 
-Reads ([reads.ts](../../apps/server/src/reads.ts), [metrics.ts](../../apps/server/src/metrics.ts)) never call CodeWork, so they answer while a machine is away. Commands go to the machine a session is on. A session the index has not brought yet is on the machine that created it, which Sync holds in memory until the index brings it, else on the default machine; `settle` waits for that machine's index to catch up so a fresh session is readable. Removing a server cascades its rows, except usage, which has no foreign keys and stays as history; a `sync/changed` notice in the same transaction names its sessions and projects, so every view reads again.
+Reads ([reads.ts](../../apps/server/src/reads.ts), [metrics.ts](../../apps/server/src/metrics.ts)) never call CodeWork, so they answer while a machine is away. Commands go to the machine a session is on. A session the index has not brought yet is on the machine that created it, which Sync holds in memory until the index brings it; `settle` waits for that machine's index to catch up so a fresh session is readable. Removing a server cascades its rows, except usage, which has no foreign keys and stays as history; a `sync/changed` notice in the same transaction names its sessions, threads, spaces and projects, so the views showing them read again.
 
 ## Desktop-Only State
 

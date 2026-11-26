@@ -1008,7 +1008,12 @@ export const Api = RpcGroup.make(
 	 */
 	Rpc.make("host.browse", {
 		payload: { path: Schema.String },
-		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder), readable: Schema.Boolean }),
+		// Optional: a client of this contract may reach a server from before it, which lists every folder as readable.
+		success: Schema.Struct({
+			path: Schema.String,
+			entries: Schema.Array(Folder),
+			readable: optional(Schema.Boolean),
+		}),
 		error: HostError,
 	}),
 	/**

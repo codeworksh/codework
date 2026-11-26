@@ -86,7 +86,8 @@ export function useModelsNotice(hostDir: string | undefined, machineId?: string)
 	const result = useAtomValue(modelsOf(hostDir, machineId));
 	const error = AsyncResult.isFailure(result) ? Option.getOrUndefined(Cause.findErrorOption(result.cause)) : undefined;
 	if (error?._tag !== "Server.ModelsError" || error.source !== "settings") return undefined;
-	const { reveal } = window.desktopBridge ?? {};
+	// The desktop reveals this computer's files only; another machine's file is fixed there.
+	const reveal = machineId === undefined ? window.desktopBridge?.reveal : undefined;
 	return {
 		title: "Settings Error",
 		description: error.message,
@@ -135,6 +136,20 @@ export function useModelName(
 }
 
 /**
+ * `value` while the machine's list can call it, else none, so settings pick one this machine has. A
+ * pick made on another machine, for a provider this one is not signed in to, does not carry over.
+ */
+export function useAvailableModel(
+	hostDir: string | undefined,
+	value: ModelRef | undefined,
+	machineId?: string,
+): ModelRef | undefined {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
+	if (value === undefined || !AsyncResult.isSuccess(result)) return value;
+	return lookup(result.value.providers, value) === undefined ? undefined : value;
+}
+
+/**
  * Picks the model a new session uses: providers down a rail on the left, their models on the
  * right, and a search across all of them. `value` undefined means settings decide; the trigger
  * then shows the model they pick, muted when this server has no credentials for it.
@@ -147,10 +162,10 @@ interface ModelPickerProps {
 	readonly onChange: (model: ModelRef) => void;
 }
 
-/** The model picker, or, while the default server has a problem, the way to the provider settings. */
+/** The model picker, or, while the default server has a problem, the way to its provider settings. */
 export function ModelPicker(props: ModelPickerProps) {
 	const problem = useAtomValue(problemAtom);
-	return problem === undefined ? (
+	return problem === undefined || props.machineId !== undefined ? (
 		<Models {...props} />
 	) : (
 		<OpenProviderSettings problem={problem} className="h-6.5 shrink-0 rounded-md bg-selection px-1.5 text-2xs" />
@@ -388,7 +403,8 @@ interface ThinkingPickerProps {
 
 /** The reasoning picker; gone while the default server has a problem, as the model picker is. */
 export function ThinkingPicker(props: ThinkingPickerProps) {
-	return useAtomValue(problemAtom) === undefined ? <Thinking {...props} /> : null;
+	const problem = useAtomValue(problemAtom);
+	return problem === undefined || props.machineId !== undefined ? <Thinking {...props} /> : null;
 }
 
 function Thinking({ hostDir, machineId, model, value, onChange }: ThinkingPickerProps) {
