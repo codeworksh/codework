@@ -58,11 +58,13 @@ export interface Interface {
 	) => Effect.Effect<{ readonly entries: number; readonly floor: number | null }, CodeworkUnavailable | SyncError>;
 	/** The connection to a machine's server, for commands to its sessions. */
 	readonly client: (machineId: string) => Effect.Effect<Connection, CodeworkUnavailable>;
-	/** The machine a synced session is on. */
+	/** The machine a session is on: as synced, else as claimed when it was just created. */
 	readonly machineOf: (sessionId: string) => Effect.Effect<Option.Option<string>>;
+	/** Records the machine a session was just created on, until its index brings the session. */
+	readonly claim: (sessionId: string, machineId: string) => Effect.Effect<void>;
 	/**
-	 * Done once the machine a session is on (the default one for a session not synced) has applied
-	 * its index up to the head its store has now; at once while that machine is away.
+	 * Done once the machine a session is on (claimed, else the default one, for a session not synced)
+	 * has applied its index up to the head its store has now; at once while that machine is away.
 	 */
 	readonly settle: (sessionId: string) => Effect.Effect<void>;
 }
@@ -141,9 +143,17 @@ export const layer = Layer.effect(
 				),
 			);
 
+		// Sessions created on a machine whose index has not brought them yet; in memory, since a restart
+		// syncs them anyway.
+		const claimed = new Map<string, string>();
 		const machineOf = (sessionId: string) =>
 			sql<{ machineId: string }>`SELECT machine_id FROM session WHERE id = ${sessionId}`.pipe(
-				Effect.map((rows) => Option.fromNullishOr(rows[0]?.machineId)),
+				Effect.map((rows) => {
+					const synced = rows[0]?.machineId;
+					if (synced === undefined) return Option.fromNullishOr(claimed.get(sessionId));
+					claimed.delete(sessionId);
+					return Option.some(synced);
+				}),
 				Effect.orDie,
 			);
 
@@ -548,6 +558,7 @@ export const layer = Layer.effect(
 
 		return Service.of({
 			machineOf,
+			claim: (sessionId, machineId) => Effect.sync(() => void claimed.set(sessionId, machineId)),
 			settle: Effect.fn("Sync.settle")(function* (sessionId) {
 				const known = yield* machineOf(sessionId);
 				const machineId = Option.isSome(known)

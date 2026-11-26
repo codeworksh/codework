@@ -28,7 +28,9 @@ export const layer = Layer.effectDiscard(
 			line: (input) => read(Reads.line(input)),
 			entries: (ids) => read(Reads.entries(ids)),
 			settle: sync.settle,
-			// A session the index has not brought yet was just created, on the default machine.
+			client: sync.client,
+			claim: sync.claim,
+			// A session the index has not brought yet was just created: on the machine it claimed, else the default one.
 			machine: (sessionId) =>
 				sync.machineOf(sessionId).pipe(
 					Effect.flatMap(

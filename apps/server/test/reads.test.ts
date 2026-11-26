@@ -1,6 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite registers CodeWork servers in temp homes. */
+import { Session } from "../../../packages/harness/src/effect.ts";
 import { Effect } from "effect";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vite-plus/test";
 import { Contract, type ThreadLine } from "@codeworksh/contract";
@@ -13,7 +14,9 @@ import {
 	codework,
 	follow,
 	freePort,
+	lastSeq,
 	normalizer,
+	notices,
 	query,
 	type Row,
 	snapshot as match,
@@ -354,6 +357,127 @@ it("a command on a remote machine's session reaches that machine, and a fork's t
 				forked,
 				forkRow,
 				onLocal,
+			}),
+		),
+	);
+}, 90_000);
+
+it("a session created for a paired machine starts there with its first prompt, and host calls go to the machine named", async () => {
+	const localHome = tempDir("create-local");
+	const remoteHome = tempDir("create-remote");
+	const appHome = tempDir("create-app");
+	const localPort = await freePort();
+	const local = await codework(localHome, localPort);
+	const remote = await codework(remoteHome, await freePort());
+	const folder = join(remoteHome, "project");
+	mkdirSync(folder);
+
+	registerLocal(appHome, local, localPort);
+	const desk = await app(appHome);
+	const remoteId = await addMachine(appHome, remote, desk.run);
+	const { storeId } = await synced(appHome, remoteId, remote);
+	const request = (topic: string, payload: Row) =>
+		desk.run((rpc) => rpc["event.request"]({ topic, source: "test", payload })).then((reply) => reply.payload as Row);
+	const refused = <A, E extends { readonly _tag: string; readonly message: string }>(
+		use: (rpc: AppRpc) => Effect.Effect<A, E>,
+	) =>
+		desk.run((rpc) =>
+			use(rpc).pipe(
+				Effect.match({ onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: () => "answered" }),
+			),
+		);
+
+	const messageId = crypto.randomUUID();
+	const created = await request("codework/session.create", {
+		place: { _tag: "Folder", path: folder },
+		machineId: remoteId,
+		messageId,
+		text: "hello",
+	});
+	const sessionId = Session.SessionSchema.ID.make(created.sessionId as string);
+	const onRemote = await remote.run((rpc) => rpc["thread.list"]({ sessionId }));
+	const onLocal = await local.run((rpc) => rpc["thread.list"]({}));
+	const thread = { sessionId, threadId: onRemote[0]!.id };
+	// The first prompt runs on the paired machine's scripted model; its history holds it once taken.
+	await remote.run((rpc) => rpc["thread.wait"](thread));
+	const first = (await remote.run((rpc) => rpc["thread.history"](thread))).entries[0];
+	await synced(appHome, remoteId, remote);
+	const row = query(appHome, "SELECT machine_id FROM session WHERE id = ?", sessionId);
+
+	// The project's own files and name live on its machine; without the machine, the default one does not know it.
+	const projectId = query(
+		appHome,
+		"SELECT space.project_id FROM session JOIN space ON space.machine_id = session.machine_id AND space.id = session.space_id WHERE session.id = ?",
+		sessionId,
+	)[0]!.project_id as string;
+	const set = await refused((rpc) =>
+		rpc["settings.set"]({ machineId: remoteId, projectId, file: "settings", at: ["retry", "maxRetries"], value: 2 }),
+	);
+	const written = readFileSync(join(folder, ".codework", "settings.jsonc"), "utf8").includes("maxRetries");
+	const elsewhere = await refused((rpc) =>
+		rpc["settings.set"]({ projectId, file: "settings", at: ["retry", "maxRetries"], value: 3 }),
+	);
+	const renamed = await desk.run((rpc) => rpc["projects.rename"]({ machineId: remoteId, projectId, name: "Renamed" }));
+
+	const browsed = await desk.run((rpc) => rpc["host.browse"]({ machineId: remoteId, path: remoteHome }));
+	const unknown = await refused((rpc) => rpc["host.browse"]({ machineId: "nowhere", path: remoteHome }));
+	await stop(remote.proc);
+	const away = await waitFor(async () => {
+		const reply = await refused((rpc) => rpc["host.info"]({ machineId: remoteId }));
+		return reply === "answered" ? undefined : reply;
+	}, "the stopped machine refused");
+
+	// Removing the machine takes its rows with it, and says so, so every view reads again.
+	const beforeRemove = lastSeq(appHome);
+	await desk.run((rpc) => rpc["servers.remove"]({ id: remoteId }));
+	const announced = notices(appHome, "sync/changed", beforeRemove).filter((notice) => notice.machineId === remoteId);
+	const left = query(appHome, "SELECT id FROM session WHERE id = ?", sessionId);
+
+	expect(created._tag).toBe("Created");
+	expect(onRemote.map((thread) => thread.id)).toHaveLength(1);
+	expect(onLocal).toEqual([]);
+	expect(first).toMatchObject({ id: messageId, role: "user" });
+	expect(row).toEqual([{ machine_id: remoteId }]);
+	expect(set).toBe("answered");
+	expect(written).toBe(true);
+	expect(elsewhere).toMatchObject({ _tag: "Server.ProjectError" });
+	expect(renamed.name).toBe("Renamed");
+	expect(announced).toHaveLength(1);
+	expect(announced[0]!.removed).toEqual([sessionId]);
+	expect(left).toEqual([]);
+	expect(browsed.entries.map((entry) => entry.name)).toContain("project");
+
+	await snapshot(
+		"create",
+		normalizer(
+			[localHome, remoteHome, appHome],
+			[
+				[storeId, "<store>"],
+				[sessionId, "<session>"],
+				[remoteId, "<remote>"],
+				[messageId, "<message>"],
+			],
+		)(
+			elide({
+				created,
+				"threads on the paired machine": onRemote.length,
+				"threads on the default machine": onLocal.length,
+				"first entry": { id: first?.id, role: first?.role },
+				"its row in app.db": row,
+				"settings.set on its machine": { reply: set, written },
+				"settings.set without the machine": elsewhere,
+				"projects.rename on its machine": renamed.name,
+				"host.browse there": { path: browsed.path, readable: browsed.readable },
+				"a machine the app does not know": unknown,
+				"the machine stopped": away,
+				"servers.remove": {
+					notices: announced.map((notice) => ({
+						full: notice.full,
+						removed: notice.removed,
+						projects: (notice.project as Array<string>).length,
+					})),
+					"its session in app.db": left.length,
+				},
 			}),
 		),
 	);

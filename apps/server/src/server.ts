@@ -114,9 +114,10 @@ export const layer = Layer.unwrap(
 		).pipe(
 			// The servers' status is checked from launch, so the first page already has it.
 			Layer.provide(
-				Layer.mergeAll(Health.layer, Sync.layer).pipe(
-					Layer.provideMerge(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)),
-				),
+				// Health times each check's call over Sync's connections.
+				Health.layer
+					.pipe(Layer.provideMerge(Sync.layer))
+					.pipe(Layer.provideMerge(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer))),
 			),
 			// The app's servers decide which one its connection goes to, and the handlers manage them too.
 			Layer.provideMerge(Servers.layer),

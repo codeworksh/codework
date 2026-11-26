@@ -57,6 +57,8 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	const paired = await next("the machine online", (status) => status.online && status.host !== null);
 	expect(paired).toMatchObject({ host: "Fixture", label: null, name: "Fixture", version });
 	expect(paired.seenAt).toBeTypeOf("number");
+	// Timed after a check over the open connection, so it arrives on its own.
+	const timed = await next("a round trip", (status) => status.online && status.rtt !== null);
 
 	const labelled = { reply: await label(id, "  Build Box  ") };
 	const withLabel = await next("the label", (status) => status.label !== null);
@@ -68,6 +70,7 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 
 	await stop(machine.proc);
 	const offline = await next("the machine offline", (status) => !status.online);
+	const untimed = await next("no round trip while it is away", (status) => !status.online && status.rtt === null);
 	expect(offline.seenAt).toBeGreaterThanOrEqual(paired.seenAt!);
 	const unanswered = await label(id, "Away");
 
@@ -90,6 +93,7 @@ it("a paired machine shows its host, build and label, goes offline and back unas
 	expect(deviceOf(appHome, id)).toBeNull();
 	const text = JSON.stringify({
 		"once paired": stable(paired),
+		"round trip": { "while online": typeof timed.rtt, "while away": untimed.rtt },
 		"servers.label": { ...labelled, status: stable(withLabel), "machine.info givenName": onMachine },
 		"an empty label": { ...cleared, status: stable(withoutLabel), "machine.info givenName": clearedOnMachine },
 		"the machine stopped": { status: stable(offline), "servers.label": unanswered },

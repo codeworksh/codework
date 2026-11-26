@@ -319,17 +319,22 @@ export const session = defineBackend({
 		yield* handle(topics.prompt, Prompt, (input) => answer(prompt(input)));
 
 		// A folder anchors the session on the host and is where its tools run. A memory sandbox has
-		// no folder to name its project after, so it is named here. A new session opens on the default machine.
-		yield* handle(topics.create, Create, ({ place, messageId, text, model, thinkingLevel }) =>
-			codework("session.create", {
-				...(place._tag === "Folder"
-					? { directory: place.path, hostDir: place.path }
-					: { sandbox: { driver: "memory" }, project: { name: "Memory" } }),
-				runtime: {
-					...(model === undefined ? {} : { model }),
-					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
-				},
-			}).pipe(
+		// no folder to name its project after, so it is named here. A session opens on the machine
+		// asked for, else the default one, and is claimed there so its first prompt follows it.
+		yield* handle(topics.create, Create, ({ place, machineId, messageId, text, model, thinkingLevel }) =>
+			(machineId === undefined ? Effect.succeed(codework) : sync.client(machineId)).pipe(
+				Effect.flatMap((client) =>
+					client("session.create", {
+						...(place._tag === "Folder"
+							? { directory: place.path, hostDir: place.path }
+							: { sandbox: { driver: "memory" }, project: { name: "Memory" } }),
+						runtime: {
+							...(model === undefined ? {} : { model }),
+							...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+						},
+					}),
+				),
+				Effect.tap((info) => (machineId === undefined ? Effect.void : sync.claim(info.session.id, machineId))),
 				Effect.flatMap((info) =>
 					prompt({ sessionId: info.session.id, messageId, text }).pipe(Effect.as(info.session.id)),
 				),

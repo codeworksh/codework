@@ -321,10 +321,14 @@ export function Desktop({ tab }: DesktopProps) {
 			const widget = resolve(builtins, address, kind);
 			if (widget === undefined) throw new Error(`No widget opens ${address}`);
 			if (mode === "replace") {
-				// A one-per-desk widget is the same frame whatever address it was opened by.
+				// A one-per-desk widget is the same frame whatever address it was opened by, on whichever tab.
+				// Any other is reused only on this tab: one open on another tab stays there, and this tab
+				// gets its own, rather than the window leaving the tab the user is working in.
 				const existing = recent.find(
 					(instance) =>
-						instance.kind === widget.kind && (widget.cardinality === "one" || instance.address === address),
+						instance.kind === widget.kind &&
+						(widget.cardinality === "one" ||
+							(instance.address === address && (instance.tags & activeTags) !== 0)),
 				);
 				if (existing !== undefined) {
 					if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));

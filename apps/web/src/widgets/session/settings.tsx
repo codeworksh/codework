@@ -7,12 +7,12 @@ import { toast } from "sonner";
 import { ArrowLeftIcon, CheckIcon, CopyIcon, FolderIcon } from "@phosphor-icons/react";
 import { Server } from "../../kernel/rpc";
 import { failed } from "../threads/common";
-import { Files, General, Mcp, Row, Section, Tag, useTilde } from "./config";
+import { Files, General, Mcp, Row, Section, SettingsMachine, Tag, useTilde } from "./config";
 import { projectsAtom, spacesAtom } from "./projects";
 import { Skills } from "./skills";
 
 const renameProject = Server.mutation("projects.rename");
-const remoteOf = (projectId: string) => Server.query("projects.remote", { projectId });
+const remoteOf = (machineId: string, projectId: string) => Server.query("projects.remote", { machineId, projectId });
 
 /** A session's project settings in place of its thread; Esc or the back row returns to the thread. */
 export function ProjectSettings({ sessionId, onBack }: { readonly sessionId: string; readonly onBack: () => void }) {
@@ -66,7 +66,7 @@ interface View {
  */
 function Page({ project }: { readonly project: SidebarProject }) {
 	const spaces = useAtomValue(spacesAtom(`${project.machine.id}/${project.id}`));
-	const remote = useAtomValue(remoteOf(project.id));
+	const remote = useAtomValue(remoteOf(project.machine.id, project.id));
 	const settled = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
 		AsyncResult.isSuccess(result) || AsyncResult.isFailure(result);
 	// A repository's main worktree, or the folder of a project that is not one.
@@ -79,13 +79,13 @@ function Page({ project }: { readonly project: SidebarProject }) {
 	if (ready && (view?.project !== project || view.main !== main || view.url !== url)) setView({ project, main, url });
 	if (view === undefined) return null;
 	return (
-		<>
+		<SettingsMachine.Provider value={view.project.machine.id}>
 			{/* Keyed, so a name typed for one project never carries into the next. */}
 			<Banner key={view.project.id} project={view.project} />
 			{view.main !== undefined && (
 				<>
 					<Repository main={view.main} url={view.url} />
-					{/* Settings and MCP files are read on this computer; a project only in a sandbox has none. */}
+					{/* Settings and MCP files are read on the project's machine; a project only in a sandbox has none. */}
 					{view.main.env === null ? (
 						<General projectId={view.project.id} hostDir={view.main.location} />
 					) : (
@@ -100,7 +100,7 @@ function Page({ project }: { readonly project: SidebarProject }) {
 					)}
 				</>
 			)}
-		</>
+		</SettingsMachine.Provider>
 	);
 }
 
@@ -130,10 +130,12 @@ function Banner({ project }: { readonly project: SidebarProject }) {
 		setDraft(undefined);
 		if (next === "" || next === name) return;
 		setPending(next);
-		void rename({ payload: { projectId: project.id, name: next } }).catch((error: unknown) => {
-			setPending(undefined);
-			failed(error);
-		});
+		void rename({ payload: { machineId: project.machine.id, projectId: project.id, name: next } }).catch(
+			(error: unknown) => {
+				setPending(undefined);
+				failed(error);
+			},
+		);
 	};
 	return (
 		<header className="flex items-center gap-3">

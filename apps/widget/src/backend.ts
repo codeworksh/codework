@@ -123,8 +123,12 @@ export class Sync extends Context.Service<
 		readonly line: (input: LineRequest) => Effect.Effect<ThreadLine, SyncError>;
 		/** The stored entries with these ids, with their parts, oldest first. */
 		readonly entries: (ids: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<HistoryEntry>>;
-		/** The CodeWork server of the machine a session is on; the default one for a session not synced yet. */
+		/** The CodeWork server of the machine a session is on: claimed, else the default one, for a session not synced yet. */
 		readonly machine: (sessionId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
+		/** The CodeWork server of a machine, by its id. */
+		readonly client: (machineId: string) => Effect.Effect<typeof Codework.Service, CodeworkUnavailable>;
+		/** Records the machine a session was just created on, so commands reach it before its index does. */
+		readonly claim: (sessionId: string, machineId: string) => Effect.Effect<void>;
 		/**
 		 * Done once that machine's index is applied up to its store's head now, so a row written
 		 * before the call is held; at once while the machine is away.

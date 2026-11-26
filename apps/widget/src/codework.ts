@@ -468,13 +468,14 @@ export const RuntimeConfig = Schema.Struct({
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
-/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class ProjectNotFoundError extends Schema.TaggedError<ProjectNotFoundError>()("ProjectNotFoundError", {
 	projectId: Schema.String,
 }) {}
 
+/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
+	reason: Schema.optionalKey(Schema.Literals(["missing", "file"])),
 }) {}
 
 /**
@@ -852,7 +853,12 @@ export const Api = RpcGroup.make(
 	/** The directories in `path` (a leading `~` is the OS home), hidden ones included; an unreadable one lists empty. */
 	Rpc.make("host.browse", {
 		payload: { path: Schema.String },
-		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder) }),
+		// Optional: a server from before it lists every folder it answers for as readable.
+		success: Schema.Struct({
+			path: Schema.String,
+			entries: Schema.Array(Folder),
+			readable: Schema.optionalKey(Schema.Boolean),
+		}),
 		error: HostError,
 	}),
 	/** A new git-initialised folder under `projects`; `commitError` says why the first commit was skipped. */

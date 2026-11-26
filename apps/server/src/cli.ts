@@ -162,7 +162,12 @@ export const statuses = Effect.gen(function* () {
 				if (row.kind === "remote") {
 					const { device, machineKey, ...status } = row;
 					const fingerprint = machineKey === null ? null : yield* Jws.fingerprint(machineKey).pipe(Effect.orDie);
-					return { ...status, paired: device !== null && machineKey !== null, fingerprint } satisfies ServerStatus;
+					return {
+						...status,
+						paired: device !== null && machineKey !== null,
+						fingerprint,
+						rtt: null,
+					} satisfies ServerStatus;
 				}
 				const home = servers.homeOf(row);
 				const [cli, server] = yield* Effect.all(
@@ -177,6 +182,7 @@ export const statuses = Effect.gen(function* () {
 					name: row.name,
 					host: row.host,
 					override: row.override,
+					rtt: null,
 					isDefault: row.isDefault,
 					home,
 					cli,

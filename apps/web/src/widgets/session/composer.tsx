@@ -168,9 +168,15 @@ export const SessionComposer = memo(function SessionComposer({
 			placeholder={running ? "Steer the agent, or queue a follow-up…" : "Ask for changes or send a follow-up…"}
 			controls={
 				<>
-					<ModelPicker hostDir={info.hostDir} value={model} onChange={(next) => configure({ model: next })} />
+					<ModelPicker
+						hostDir={info.hostDir}
+						machineId={info.machineId}
+						value={model}
+						onChange={(next) => configure({ model: next })}
+					/>
 					<ThinkingPicker
 						hostDir={info.hostDir}
+						machineId={info.machineId}
 						model={model}
 						value={thinkingLevel}
 						onChange={(level) => configure({ thinkingLevel: level })}

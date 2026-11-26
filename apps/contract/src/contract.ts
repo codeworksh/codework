@@ -204,9 +204,10 @@ export class ChangesError extends Schema.TaggedError<ChangesError>()("Server.Cha
 	message: Schema.String,
 }) {}
 
-/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
+/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused; `reason` as the host's. */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
+	reason: Schema.optionalKey(Schema.Literals(["missing", "file"])),
 }) {}
 
 /** A project operation that failed, such as renaming one the server no longer has. */
@@ -236,6 +237,8 @@ export class SettingsConflict extends Schema.TaggedError<SettingsConflict>()("Se
 
 /** `settings.jsonc` or `mcp.json`: the project's with `projectId`, else the user's. */
 export const SettingsFileRef = {
+	/** The machine whose files these are, by its row id; the default machine when omitted. */
+	machineId: Schema.optionalKey(Schema.String),
 	projectId: Schema.optionalKey(Schema.String),
 	file: Schema.Literals(["settings", "mcp"]),
 };
@@ -376,6 +379,9 @@ export const ServerKind = Schema.Literals(["local", "remote"]);
 export const LOCAL_SERVER = "local";
 
 /** How a local server is named: the user's `override`, else the `host` name its server reports. */
+/** How long the last health check's call to its server took, in ms; none while not connected or not answering. */
+const RoundTrip = { rtt: Schema.NullOr(Schema.Finite) };
+
 const ServerNaming = {
 	/** As shown. */
 	name: Schema.String,
@@ -390,6 +396,7 @@ export const LocalServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("local"),
 	...ServerNaming,
+	...RoundTrip,
 	/** The one the app connects to. */
 	isDefault: Schema.Boolean,
 	/**
@@ -431,6 +438,7 @@ export type Mismatch = typeof Mismatch.Type;
 export const RemoteServerStatus = Schema.Struct({
 	id: Schema.String,
 	kind: Schema.Literal("remote"),
+	...RoundTrip,
 	/** As shown: its label, else its hostname, else where it is. */
 	name: Schema.String,
 	/** The computer's own name; none before the machine was ever reached. */
@@ -806,6 +814,9 @@ export class TrackingError extends Schema.TaggedError<TrackingError>()("Server.T
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
+/** The machine a host call goes to, by its row id; the default machine when omitted. */
+const OnMachine = { machineId: Schema.optionalKey(Schema.String) };
+
 export const Api = RpcGroup.make(
 	/**
 	 * An organization's active projects, newest activity first, each with its sessions that are not
@@ -870,7 +881,7 @@ export const Api = RpcGroup.make(
 	}),
 	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
 	Rpc.make("models.list", {
-		payload: { hostDir: Schema.optionalKey(Schema.String) },
+		payload: { ...OnMachine, hostDir: Schema.optionalKey(Schema.String) },
 		success: ModelList,
 		error: Schema.Union([CodeworkUnavailable, ModelsError]),
 	}),
@@ -900,24 +911,25 @@ export const Api = RpcGroup.make(
 	}),
 	/** The OS home directory, and the folder `host.create` makes projects in. */
 	Rpc.make("host.info", {
+		payload: OnMachine,
 		success: Schema.Struct({ home: Schema.String, projects: Schema.String }),
 		error: CodeworkUnavailable,
 	}),
-	/** The directories in `path` (a leading `~` is the OS home), hidden ones included; an unreadable one lists empty. */
+	/** The directories in `path` (a leading `~` is the OS home), hidden ones included; an unreadable one lists empty, `readable` false. */
 	Rpc.make("host.browse", {
-		payload: { path: Schema.String },
-		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder) }),
+		payload: { ...OnMachine, path: Schema.String },
+		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder), readable: Schema.Boolean }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
 	/** A new git-initialised folder under `projects`; `commitError` says why the first commit was skipped. */
 	Rpc.make("host.create", {
-		payload: { name: Schema.String },
+		payload: { ...OnMachine, name: Schema.String },
 		success: Schema.Struct({ path: Schema.String, commitError: Schema.optionalKey(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
 	/** The `origin` URL of a project's main checkout, credentials taken out; null when it has none. */
 	Rpc.make("projects.remote", {
-		payload: { projectId: Schema.String },
+		payload: { ...OnMachine, projectId: Schema.String },
 		success: Schema.Struct({ url: Schema.NullOr(Schema.String) }),
 		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
 	}),
@@ -945,19 +957,19 @@ export const Api = RpcGroup.make(
 	}),
 	/** Renames a project on the CodeWork server; the sidebar follows once the change syncs back. */
 	Rpc.make("projects.rename", {
-		payload: { projectId: Schema.String, name: Schema.Trimmed.check(Schema.isNonEmpty()) },
+		payload: { ...OnMachine, projectId: Schema.String, name: Schema.Trimmed.check(Schema.isNonEmpty()) },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
 		error: Schema.Union([CodeworkUnavailable, HostError, ProjectError]),
 	}),
 	/** An existing folder as an absolute path; a missing one is created. */
 	Rpc.make("host.add", {
-		payload: { path: Schema.String },
+		payload: { ...OnMachine, path: Schema.String },
 		success: Schema.Struct({ path: Schema.String }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
 	/** Starts a background clone of `remote` into `path`, which must be missing or empty; `host.clones` follows it. */
 	Rpc.make("host.clone", {
-		payload: { remote: Schema.String, path: Schema.String },
+		payload: { ...OnMachine, remote: Schema.String, path: Schema.String },
 		success: Schema.Struct({ path: Schema.String, remote: Schema.String }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
@@ -966,36 +978,38 @@ export const Api = RpcGroup.make(
 	 * server goes away; subscribe again to pick up the list it has then.
 	 */
 	Rpc.make("host.clones", {
+		payload: OnMachine,
 		success: Schema.Array(Clone),
 		error: CodeworkUnavailable,
 		stream: true,
 	}),
 	/** Stops a running clone and empties its folder; `applied` is false when it was not running. */
 	Rpc.make("host.cancel", {
-		payload: { path: Schema.String },
+		payload: { ...OnMachine, path: Schema.String },
 		success: Schema.Struct({ applied: Schema.Boolean }),
 		error: CodeworkUnavailable,
 	}),
 	/** Clones a failed or cancelled one again into its emptied folder; `applied` is false otherwise. */
 	Rpc.make("host.retry", {
-		payload: { path: Schema.String },
+		payload: { ...OnMachine, path: Schema.String },
 		success: Schema.Struct({ applied: Schema.Boolean }),
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),
 	/** Stops tracking a clone, stopping it and emptying its folder unless it finished. */
 	Rpc.make("host.discard", {
-		payload: { path: Schema.String },
+		payload: { ...OnMachine, path: Schema.String },
 		success: Schema.Void,
 		error: CodeworkUnavailable,
 	}),
 	/** Whether `gh` is installed and signed in; `hint` says what to do when it is not. */
 	Rpc.make("github.status", {
+		payload: OnMachine,
 		success: Schema.Struct({ ready: Schema.Boolean, hint: Schema.optionalKey(Schema.String) }),
 		error: CodeworkUnavailable,
 	}),
 	/** A repository by `owner/name`, `host/owner/name`, its URL, or a bare name of the signed-in user's. */
 	Rpc.make("github.lookup", {
-		payload: { repository: Schema.String },
+		payload: { ...OnMachine, repository: Schema.String },
 		success: Repository,
 		error: Schema.Union([CodeworkUnavailable, HostError]),
 	}),

@@ -16,6 +16,10 @@
 		"machineId": "<machine id>",
 		"workspaces": []
 	},
+	"round trip": {
+		"while online": "number",
+		"while away": null
+	},
 	"servers.label": {
 		"reply": "labelled",
 		"status": {

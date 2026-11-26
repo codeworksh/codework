@@ -428,9 +428,13 @@ export const OAuthInfo = Schema.Struct({
 });
 export type OAuthInfo = typeof OAuthInfo.Type;
 
-/** A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. */
+/**
+ * A host folder operation that failed: unreadable, not a directory, taken, or git/gh refused. `reason`
+ * names a path that is not there, or is a file, so a client can offer to create it only when it is missing.
+ */
 export class HostError extends Schema.TaggedError<HostError>()("Server.HostError", {
 	message: Schema.String,
+	reason: optional(Schema.Literals(["missing", "file"])),
 }) {}
 
 /** A directory on the host, by its name and absolute path. */
@@ -999,11 +1003,12 @@ export const Api = RpcGroup.make(
 	}),
 	/**
 	 * The directories in `path` (a leading `~` is the OS home), hidden ones included, symlinks and
-	 * files left out. One the server may not read lists as empty.
+	 * files left out. One the server may not read lists as empty with `readable` false: it can still
+	 * be added, as a folder macOS keeps from the server can.
 	 */
 	Rpc.make("host.browse", {
 		payload: { path: Schema.String },
-		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder) }),
+		success: Schema.Struct({ path: Schema.String, entries: Schema.Array(Folder), readable: Schema.Boolean }),
 		error: HostError,
 	}),
 	/**

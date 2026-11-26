@@ -11,7 +11,8 @@ import {
 } from "@phosphor-icons/react";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
-import { AsyncResult } from "effect/reactivity";
+import { Cause, Option, Predicate } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,11 @@ import { useLast } from "@/hooks/last";
 import { CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { messageOf } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
+import type { SidebarProject } from "@codeworksh/contract";
+import { useStartMachine } from "@/components/machine";
 import { runQuery, Server } from "../kernel/rpc";
 import { placeAtom } from "../landing/place";
+import { projectsAtom } from "../widgets/session/projects";
 import {
 	cloneName,
 	cloneTarget,
@@ -67,9 +71,15 @@ const LISTING_TTL = "5 seconds";
 const bridge = window.desktopBridge;
 const fileManager = isMac ? "Finder" : "Files";
 
-const infoAtom = Server.query("host.info", undefined);
-const githubAtom = Server.query("github.status", undefined);
-const listing = (path: string) => Server.query("host.browse", { path }, { timeToLive: LISTING_TTL });
+// Keyed by machine, `""` being the default one: each machine has its own home, folders and gh.
+const on = (machineId: string | undefined) => (machineId === undefined ? {} : { machineId });
+const infoAtom = Atom.family((machineId: string) => Server.query("host.info", on(machineId || undefined)));
+// gh checks its login over the network: kept a while, so opening the palette again does not ask anew.
+const githubAtom = Atom.family((machineId: string) =>
+	Server.query("github.status", on(machineId || undefined), { timeToLive: "5 minutes" }),
+);
+const listing = (path: string, machineId: string | undefined) =>
+	Server.query("host.browse", { ...on(machineId), path }, { timeToLive: LISTING_TTL });
 const addAtom = Server.mutation("host.add");
 const createAtom = Server.mutation("host.create");
 const cloneAtom = Server.mutation("host.clone");
@@ -77,6 +87,15 @@ const lookupAtom = Server.mutation("github.lookup");
 
 const failureOf = <A, E>(result: AsyncResult.AsyncResult<A, E>) =>
 	AsyncResult.isFailure(result) ? messageOf(result.cause) : undefined;
+
+/** Why a listing failed, when the host says: a path that is not there, or is a file. */
+const reasonOf = <A, E>(result: AsyncResult.AsyncResult<A, E>) => {
+	if (!AsyncResult.isFailure(result)) return undefined;
+	const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+	return Predicate.hasProperty(error, "reason") && (error.reason === "missing" || error.reason === "file")
+		? error.reason
+		: undefined;
+};
 
 /** The palette's Add Project steps: pick a source, then browse, name, or clone into a folder. */
 export function AddProject(nav: Nav) {
@@ -97,9 +116,10 @@ export function AddProject(nav: Nav) {
 /** The step's folder becomes the start page's project, and the palette closes there. */
 function useFinish(close: () => void) {
 	const setPlace = useAtomSet(placeAtom);
+	const { machineId } = useStartMachine();
 	const navigate = useNavigate();
-	return (path: string) => {
-		setPlace({ kind: "folder", path });
+	return (path: string, name?: string) => {
+		setPlace({ kind: "folder", path, ...on(machineId), ...(name === undefined ? {} : { name }) });
 		close();
 		void navigate({ to: "/" });
 	};
@@ -108,18 +128,43 @@ function useFinish(close: () => void) {
 /** The native folder dialog, opening at `from`; finishes on a pick. Absent outside the desktop app and on Windows. */
 function usePick(close: () => void) {
 	const finish = useFinish(close);
+	const { machineId } = useStartMachine();
 	const pickFolder = bridge?.pickFolder;
-	if (pickFolder === undefined) return undefined;
+	// The native dialog shows this computer's folders: of no use for another machine.
+	if (pickFolder === undefined || machineId !== undefined) return undefined;
 	return (from: string) =>
 		void pickFolder(from).then((picked) => {
 			if (picked !== null) finish(picked);
 		});
 }
 
+const RECENT = 3;
+
+/** When a project was last worked in: its newest session's activity, else when it was first seen. */
+const lastActive = (project: SidebarProject) =>
+	Math.max(project.created, ...project.sessions.map((session) => session.updated));
+
+/** The start machine's projects, from the sidebar's synced list, last worked in first. */
+function useRecentProjects() {
+	const projects = useAtomValue(projectsAtom);
+	const machineId = useStartMachine().machine?.id;
+	if (machineId === undefined || !AsyncResult.isSuccess(projects)) return [];
+	return projects.value
+		.filter((project) => project.machine.id === machineId)
+		.toSorted((a, b) => lastActive(b) - lastActive(a));
+}
+
 function Sources({ step, setQuery, push, pop, close }: Nav) {
 	const pick = usePick(close);
-	const github = useAtomValue(githubAtom);
+	const finish = useFinish(close);
+	const { machine, machineId } = useStartMachine();
+	const github = useAtomValue(githubAtom(machineId ?? ""));
 	const status = AsyncResult.isSuccess(github) ? github.value : undefined;
+	const info = useAtomValue(infoAtom(machineId ?? ""));
+	const home = AsyncResult.isSuccess(info) ? info.value.home : undefined;
+	const recent = useRecentProjects();
+	// A few at rest; searching reaches every one.
+	const shown = step.query.trim() === "" ? recent.slice(0, RECENT) : recent;
 	return (
 		<>
 			<Input
@@ -131,6 +176,21 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 			/>
 			<CommandList className={PALETTE_LIST}>
 				<CommandEmpty>No Sources Match</CommandEmpty>
+				{shown.length > 0 && (
+					<CommandGroup heading="Recent">
+						{shown.map((project) => (
+							<Row
+								key={project.id}
+								value={`recent:${project.id}`}
+								keywords={[project.path]}
+								icon={<FolderIcon />}
+								title={project.name}
+								detail={tilde(project.path, home)}
+								onSelect={() => finish(project.path, project.name)}
+							/>
+						))}
+					</CommandGroup>
+				)}
 				<CommandGroup heading="Sources">
 					{pick !== undefined && bridge !== undefined && (
 						<Row
@@ -174,20 +234,26 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
 						detail="Clone GitHub owner/repo"
 						disabled={status?.ready === false}
 						trailing={
-							status?.ready === false && (
-								<span
-									title={status.hint}
-									className="ml-auto shrink-0 rounded-sm border border-edge px-1.5 py-0.5 text-2xs text-ink-muted"
-								>
-									Setup Required
-								</span>
-							)
+							// Its slot is held from the start, so the badge fades in without moving the row.
+							<span
+								title={status?.hint}
+								aria-hidden={status?.ready !== false}
+								data-shown={status?.ready === false}
+								className="ml-auto shrink-0 rounded-sm border border-edge px-1.5 py-0.5 text-2xs text-ink-muted opacity-0 transition-opacity duration-150 ease-out data-[shown=true]:opacity-100 motion-reduce:transition-none"
+							>
+								Setup Required
+							</span>
 						}
 						onSelect={() => push({ kind: "remote", source: "github" })}
 					/>
 				</CommandGroup>
 			</CommandList>
-			{status?.ready === false && status.hint !== undefined && <Footer note={status.hint} />}
+			{/* Always there, so the palette keeps its height while gh is asked: the machine, else gh's hint. */}
+			<Footer
+				note={
+					status?.ready === false ? status.hint : machine === undefined ? undefined : `Adding to ${machine.name}`
+				}
+			/>
 		</>
 	);
 }
@@ -198,11 +264,12 @@ function Sources({ step, setQuery, push, pop, close }: Nav) {
  */
 function useEnter(type: (query: string) => void) {
 	const registry = useContext(RegistryContext);
+	const { machineId } = useStartMachine();
 	const latest = useRef(0);
 	return {
 		enter: (next: string) => {
 			const move = ++latest.current;
-			void runQuery(registry, listing(directoryOf(next)))
+			void runQuery(registry, listing(directoryOf(next), machineId))
 				.catch(() => undefined)
 				.then(() => {
 					if (latest.current === move) type(next);
@@ -220,7 +287,8 @@ function useFolders(query: string, pinned?: string) {
 	const browsing = isBrowseQuery(query);
 	const directory = directoryOf(query);
 	const leaf = leafOf(query);
-	const result = useAtomValue(listing(browsing ? directory : BROWSE_START));
+	const { machineId } = useStartMachine();
+	const result = useAtomValue(listing(browsing ? directory : BROWSE_START, machineId));
 	const listed = AsyncResult.isSuccess(result) ? result.value : undefined;
 	// The last folder's rows stay until the next folder's arrive, so the list never blinks empty.
 	const last = useLast(listed);
@@ -238,8 +306,11 @@ function useFolders(query: string, pinned?: string) {
 		exact,
 		up: browsing ? up : null,
 		resolved: listed?.path,
+		// Unknown until it is listed; a folder the server may not read still lists, empty.
+		readable: listed?.readable ?? true,
 		loading,
 		failure: browsing ? failureOf(result) : undefined,
+		reason: browsing ? reasonOf(result) : undefined,
 	};
 }
 
@@ -249,12 +320,15 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 	const finish = useFinish(close);
 	const pick = usePick(close);
 	const add = useAtomSet(addAtom, { mode: "promise" });
+	const { machineId } = useStartMachine();
 	const [picked, setPicked] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 
-	// Missing: a leaf no folder has, or a listed folder that isn't there.
-	const missing = folders.leaf === "" ? folders.failure !== undefined : folders.exact === undefined;
+	// Missing: a folder the host says is not there, or a leaf no folder has. Under a folder the server
+	// may not read, a leaf's folder may exist unseen, so it is added as typed.
+	const missing = folders.leaf === "" ? folders.reason === "missing" : folders.readable && folders.exact === undefined;
+	const isFile = folders.leaf === "" && folders.reason === "file";
 	const target = folders.leaf === "" ? (folders.resolved ?? query) : (folders.exact?.path ?? query.trim());
 
 	const change = (next: string) => {
@@ -266,7 +340,7 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 	const submit = () => {
 		if (!folders.browsing || pending) return;
 		setPending(true);
-		add({ payload: { path: target } })
+		add({ payload: { ...on(machineId), path: target } })
 			.then((added) => finish(added.path))
 			.catch((cause: unknown) => setError(messageOf(cause)))
 			.finally(() => setPending(false));
@@ -327,9 +401,11 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 							? "Loading folders…"
 							: folders.leaf === "" && folders.failure !== undefined
 								? folders.failure
-								: missing
-									? "Press Enter to create this folder and add it as a project."
-									: undefined)
+								: !folders.readable
+									? "This folder can’t be read here, so its folders aren’t shown."
+									: missing
+										? "Press Enter to create this folder and add it as a project."
+										: undefined)
 				}
 				failed={error !== undefined || (folders.leaf === "" && folders.failure !== undefined)}
 				start={
@@ -341,7 +417,7 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 					)
 				}
 				action={
-					<Action disabled={!folders.browsing || pending} onClick={submit}>
+					<Action disabled={!folders.browsing || pending || isFile} onClick={submit}>
 						{pending ? "Adding…" : missing ? "Create & Add" : "Add"}
 					</Action>
 				}
@@ -352,7 +428,8 @@ function Browse({ step, setQuery, pop, close }: Nav) {
 
 function Create({ step, setQuery, pop, close }: Nav) {
 	const name = step.query;
-	const info = useAtomValue(infoAtom);
+	const { machineId } = useStartMachine();
+	const info = useAtomValue(infoAtom(machineId ?? ""));
 	const home = AsyncResult.isSuccess(info) ? info.value.home : undefined;
 	const root = AsyncResult.isSuccess(info) ? tilde(info.value.projects, home) : undefined;
 	const finish = useFinish(close);
@@ -370,7 +447,7 @@ function Create({ step, setQuery, pop, close }: Nav) {
 		submitting.current = true;
 		setPending(true);
 		setError(undefined);
-		create({ payload: { name: name.trim() } })
+		create({ payload: { ...on(machineId), name: name.trim() } })
 			.then((created) =>
 				created.commitError === undefined
 					? finish(created.path)
@@ -445,6 +522,7 @@ function Create({ step, setQuery, pop, close }: Nav) {
 function Remote({ step, setQuery, push, pop, source }: Nav & { source: "url" | "github" }) {
 	const input = step.query;
 	const lookup = useAtomSet(lookupAtom, { mode: "promise" });
+	const { machineId } = useStartMachine();
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	const github = source === "github";
@@ -463,7 +541,7 @@ function Remote({ step, setQuery, push, pop, source }: Nav & { source: "url" | "
 		if (ownerOnly(trimmed)) return setError("Enter the full owner/repository name.");
 		setPending(true);
 		setError(undefined);
-		lookup({ payload: { repository: trimmed } })
+		lookup({ payload: { ...on(machineId), repository: trimmed } })
 			.then((repo) => {
 				const name = cloneName(repo.nameWithOwner);
 				push(
@@ -518,6 +596,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 	const folders = useFolders(query, target.name);
 	const finish = useFinish(close);
 	const clone = useAtomSet(cloneAtom, { mode: "promise" });
+	const { machineId } = useStartMachine();
 	const [picked, setPicked] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
@@ -537,7 +616,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 		if (!folders.browsing || pending) return;
 		setPending(true);
 		setError(undefined);
-		clone({ payload: { remote: target.remote, path } })
+		clone({ payload: { ...on(machineId), remote: target.remote, path } })
 			.then((cloned) => finish(cloned.path))
 			.catch((cause: unknown) => setError(messageOf(cause)))
 			.finally(() => setPending(false));
@@ -599,7 +678,7 @@ function Destination({ step, setQuery, pop, close, target }: Nav & { target: Ext
 				failed={error !== undefined}
 				action={
 					<Action disabled={!folders.browsing || pending} onClick={submit}>
-						{pending ? "Cloning…" : folders.failure !== undefined ? "Create & Clone" : "Clone"}
+						{pending ? "Cloning…" : folders.reason === "missing" ? "Create & Clone" : "Clone"}
 					</Action>
 				}
 			/>
@@ -723,7 +802,10 @@ function Footer({
 	return (
 		<div className="flex min-h-10 items-center gap-2 border-t px-2 py-1.5">
 			{start}
-			<span className={`min-w-0 flex-1 truncate px-1 text-xs ${failed ? "text-destructive" : "text-ink-muted"}`}>
+			<span
+				data-shown={note !== undefined}
+				className={`min-w-0 flex-1 truncate px-1 text-xs transition-opacity duration-150 ease-out data-[shown=false]:opacity-0 motion-reduce:transition-none ${failed ? "text-destructive" : "text-ink-muted"}`}
+			>
 				{note}
 			</span>
 			{action}

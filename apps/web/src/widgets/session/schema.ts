@@ -58,6 +58,8 @@ export type Place = typeof Place.Type;
 
 export const Create = Schema.Struct({
 	place: Place,
+	/** The machine to create it on, by its row id; the default machine when omitted. */
+	machineId: Schema.optionalKey(Schema.String),
 	/** Chosen by the view: the id of the first user message. */
 	messageId: Schema.String,
 	text: Schema.String,

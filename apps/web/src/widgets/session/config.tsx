@@ -3,7 +3,7 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { Cause, Option, Predicate } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { type ReactNode, useId, useState } from "react";
+import { createContext, type ReactNode, useContext, useId, useState } from "react";
 
 import { ModelPicker, ThinkingPicker } from "@/components/model";
 import { Command, CommandEmpty, CommandInput, CommandList } from "@/components/ui/command";
@@ -21,27 +21,40 @@ type File = "settings" | "mcp";
 /** Settings reads refresh after every write; so does what they feed, such as the model list. */
 const keys = ["settings", ...codeworkKey];
 
-/** One file, keyed `<projectId>:<file>`; an empty project id is the user's file. */
+/**
+ * The machine whose files these are: a project's settings live on the machine the project is on, and
+ * so do the user settings its sessions read there. None is the default machine.
+ */
+export const SettingsMachine = createContext<string | undefined>(undefined);
+
+const on = (machineId: string | undefined) => (machineId === undefined ? {} : { machineId });
+
+/** One file, keyed `[machineId, projectId, file]`; no project id is the user's file. */
+const fileKey = (machineId: string | undefined, projectId: string | undefined, file: File) =>
+	JSON.stringify([machineId ?? null, projectId ?? null, file]);
 const fileAtom = Atom.family((key: string) => {
-	const at = key.lastIndexOf(":");
-	const projectId = key.slice(0, at);
-	const file = key.slice(at + 1) as File;
-	return Server.query("settings.read", projectId === "" ? { file } : { projectId, file }, { reactivityKeys: keys });
+	const [machineId, projectId, file] = JSON.parse(key) as [string | null, string | null, File];
+	return Server.query(
+		"settings.read",
+		{ ...on(machineId ?? undefined), ...(projectId === null ? {} : { projectId }), file },
+		{ reactivityKeys: keys },
+	);
 });
 const setAtom = Server.mutation("settings.set");
 const writeAtom = Server.mutation("settings.write");
 
 const useFile = (projectId: string | undefined, file: File) => {
-	const result = useAtomValue(fileAtom(`${projectId ?? ""}:${file}`));
+	const result = useAtomValue(fileAtom(fileKey(useContext(SettingsMachine), projectId, file)));
 	return AsyncResult.isSuccess(result) ? result.value : undefined;
 };
 
 /** Sets one value in a project file; a refusal is a toast, and the page keeps showing the file. */
 const useSet = (projectId: string, file: File) => {
 	const set = useAtomSet(setAtom, { mode: "promise" });
+	const machineId = useContext(SettingsMachine);
 	return (at: readonly [string | number, ...Array<string | number>], value?: unknown) =>
 		set({
-			payload: { projectId, file, at, ...(value === undefined ? {} : { value }) },
+			payload: { ...on(machineId), projectId, file, at, ...(value === undefined ? {} : { value }) },
 			reactivityKeys: keys,
 		}).catch((error: unknown) => {
 			failed(error);
@@ -123,7 +136,7 @@ export function Tag({ children }: { readonly children: string }) {
 	);
 }
 
-const infoAtom = Server.query("host.info", undefined);
+const infoAtom = Server.query("host.info", {});
 
 /** `path` with the home folder as `~`, once the server has said where home is. */
 export const useTilde = () => {
@@ -134,6 +147,7 @@ export const useTilde = () => {
 
 /** The model new sessions in this project start on, and how often a failed request is tried again. */
 export function General({ projectId, hostDir }: { readonly projectId: string; readonly hostDir: string }) {
+	const machineId = useContext(SettingsMachine);
 	const settings = useFile(projectId, "settings");
 	const set = useSet(projectId, "settings");
 	const retry = record(record(settings?.value).retry);
@@ -145,6 +159,7 @@ export function General({ projectId, hostDir }: { readonly projectId: string; re
 				<div className="flex shrink-0 items-center gap-1">
 					<ModelPicker
 						hostDir={hostDir}
+						machineId={machineId}
 						value={undefined}
 						onChange={(model) =>
 							void set(["model", "provider"], model.provider).then(() => set(["model", "id"], model.id))
@@ -152,6 +167,7 @@ export function General({ projectId, hostDir }: { readonly projectId: string; re
 					/>
 					<ThinkingPicker
 						hostDir={hostDir}
+						machineId={machineId}
 						model={undefined}
 						value={undefined}
 						onChange={(level) => void set(["model", "thinkingLevel"], level)}
@@ -468,7 +484,8 @@ function Editor(props: {
 	readonly onClose: () => void;
 }) {
 	const write = useAtomSet(writeAtom, { mode: "promiseExit" });
-	const refresh = useAtomRefresh(fileAtom(`${props.projectId}:${props.file}`));
+	const machineId = useContext(SettingsMachine);
+	const refresh = useAtomRefresh(fileAtom(fileKey(machineId, props.projectId, props.file)));
 	// The text and the version it was started from, so a reload can start over.
 	const [base, setBase] = useState(props.current);
 	const [draft, setDraft] = useState(props.current.source);
@@ -485,7 +502,13 @@ function Editor(props: {
 	const save = async () => {
 		setSaving(true);
 		const exit = await write({
-			payload: { projectId: props.projectId, file: props.file, source: draft, version: base.version },
+			payload: {
+				...on(machineId),
+				projectId: props.projectId,
+				file: props.file,
+				source: draft,
+				version: base.version,
+			},
 			reactivityKeys: keys,
 		});
 		setSaving(false);

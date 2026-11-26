@@ -1,11 +1,16 @@
 import { Context, Duration, Effect, Layer, Option, Queue, Schema, Semaphore, Stream, SubscriptionRef } from "effect";
 import { DEFAULT_SERVER_HEALTH, ServerHealth, type ServerStatus } from "@codeworksh/contract";
+import { Codework as Client } from "@codeworksh/widget/backend";
 import { Cli } from "./cli.ts";
+import { Codework } from "./codework.ts";
 import { Kv } from "./kv.ts";
 import { Servers } from "./servers.ts";
+import { Sync } from "./sync.ts";
 
 // A server started or stopped outside the app (a terminal's `codework service`) shows quickly.
 const EVERY = Duration.seconds(5);
+// A round trip slower than this is no answer.
+const TIMED_OUT = Duration.seconds(2);
 
 const decodeHealth = Schema.decodeUnknownOption(ServerHealth);
 const store = { package: "@codeworksh/server", key: "health" };
@@ -34,18 +39,53 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const kv = yield* Kv.Service;
 		const servers = yield* Servers.Service;
+		const sync = yield* Sync.Service;
 		const context = yield* Effect.context<Effect.Services<typeof Cli.statuses>>();
 		const current = yield* SubscriptionRef.make<ReadonlyArray<ServerStatus> | undefined>(undefined);
 		const lock = yield* Semaphore.make(1);
 		const pokes = yield* Queue.sliding<void>(1);
 		const settingsChanged = yield* Queue.sliding<void>(1);
 
+		// One cheap call over the connection the app already holds, so timing adds no connection of its own.
+		const roundTrip = (id: string) =>
+			sync.client(id).pipe(
+				Effect.flatMap((client) =>
+					Codework.call((rpc) => rpc("server.info", {}), { timeout: TIMED_OUT }).pipe(
+						Effect.provideService(Client, client),
+						Effect.timed,
+					),
+				),
+				Effect.map(([took]) => Math.round(Duration.toMillis(took))),
+				Effect.orElseSucceed(() => null),
+			);
+		// In memory only: a round trip is as old as the check that took it.
+		const trips = new Map<string, number | null>();
+		const withTrips = (statuses: ReadonlyArray<ServerStatus>) =>
+			statuses.map((status) => ({ ...status, rtt: trips.get(status.id) ?? null }));
+		const timings = yield* Queue.sliding<void>(1);
+
+		// A check never waits on a round trip: one to a machine that just stopped takes the whole timeout.
+		// The statuses go out with the last ones known, and again once timed if any moved.
 		const check = lock.withPermits(1)(
 			Cli.statuses.pipe(
 				Effect.provideContext(context),
-				Effect.flatMap((statuses) => SubscriptionRef.set(current, statuses)),
+				Effect.flatMap((statuses) => SubscriptionRef.set(current, withTrips(statuses))),
+				Effect.andThen(Queue.offer(timings, undefined)),
 			),
 		);
+
+		const time = Effect.gen(function* () {
+			const statuses = yield* SubscriptionRef.get(current);
+			if (statuses === undefined) return;
+			const timed = yield* Effect.forEach(
+				statuses,
+				(status) => Effect.map(roundTrip(status.id), (rtt) => [status.id, rtt] as const),
+				{ concurrency: "unbounded" },
+			);
+			const moved = timed.some(([id, rtt]) => (trips.get(id) ?? null) !== rtt);
+			for (const [id, rtt] of timed) trips.set(id, rtt);
+			if (moved) yield* SubscriptionRef.update(current, (now) => (now === undefined ? now : withTrips(now)));
+		});
 
 		// The default server alone is cheap to ask; only a change is worth a full check. Unless `asked`,
 		// a running one is only looked for at its URL, without a call.
@@ -70,6 +110,7 @@ export const layer = Layer.effect(
 			);
 
 		yield* check.pipe(Effect.forkScoped);
+		yield* Effect.forever(Queue.take(timings).pipe(Effect.andThen(time))).pipe(Effect.forkScoped);
 
 		// A name a server reports, a remote one going on or offline, refusing this app or answering with another key, reaches
 		// Settings without waiting for the next check; the app's own edits are checked by their handlers.

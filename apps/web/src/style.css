@@ -585,6 +585,48 @@
 	}
 }
 
+/*
+ * A typing caret while a conversation loads. Hidden for its first second, so a quick load never shows
+ * it; then a slow blink, on for most of each second. Opacity only, so it composites, and it pauses off
+ * screen and in a hidden window. With reduced motion it simply appears, still.
+ */
+.loading-caret {
+	opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.loading-caret {
+		animation: loading-caret 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1s infinite;
+		animation-play-state: var(--visible-animation-state, paused);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.loading-caret {
+		animation: loading-caret-shown 1ms 1s forwards;
+	}
+}
+
+@keyframes loading-caret {
+	0%,
+	40% {
+		opacity: 1;
+	}
+	50%,
+	90% {
+		opacity: 0.2;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+
+@keyframes loading-caret-shown {
+	to {
+		opacity: 0.6;
+	}
+}
+
 @keyframes pixel-loader {
 	0% {
 		opacity: 1;

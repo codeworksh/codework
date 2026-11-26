@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { toast, Toaster } from "sonner";
 
-import { placeAtom } from "../landing/place";
+import { machineAtom, placeAtom } from "../landing/place";
 import { cloneDisplayName, cloneProgressSummary, failedAction, useCloneActions, useClones } from "./clones";
 
 const DONE_TIMEOUT = 8_000;
@@ -36,8 +36,10 @@ export function Toasts() {
  * page says it there instead, so from then on it toasts only when it fails or is cancelled.
  */
 function CloneToasts() {
-	const clones = useClones();
-	const actions = useCloneActions();
+	// The start page's machine, which Add Project clones onto.
+	const machineId = useAtomValue(machineAtom);
+	const clones = useClones(machineId);
+	const actions = useCloneActions(machineId);
 	const setPlace = useAtomSet(placeAtom);
 	const navigate = useNavigate();
 	const place = useAtomValue(placeAtom);
@@ -84,7 +86,11 @@ function CloneToasts() {
 							label: "Open project",
 							onClick: () => {
 								toast.dismiss(id);
-								setPlace({ kind: "folder", path: clone.path });
+								setPlace({
+									kind: "folder",
+									path: clone.path,
+									...(machineId === undefined ? {} : { machineId }),
+								});
 								void navigate({ to: "/" });
 							},
 						},
