@@ -8,6 +8,7 @@
 			"id": "<id 1>",
 			"name": "Local",
 			"path": "<home>",
+			"onHost": true,
 			"created": "<time>",
 			"sessions": [
 				{
@@ -35,6 +36,7 @@
 			"id": "<id 1>",
 			"name": "Local",
 			"path": "<home>",
+			"onHost": true,
 			"created": "<time>",
 			"sessions": [
 				{
@@ -60,6 +62,7 @@
 			"id": "<id 3>",
 			"name": "Remote",
 			"path": "<home>",
+			"onHost": true,
 			"created": "<time>",
 			"sessions": [
 				{

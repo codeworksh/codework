@@ -1,5 +1,5 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- the suite spawns the real server in a temp dir and reads its database. */
-import { Effect, Option, Stream } from "effect";
+import { Effect, Option, Stream, Struct } from "effect";
 import { RpcClient } from "effect/rpc";
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -133,7 +133,7 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 					status.kind === "local"
 						? { id: status.id, kind: status.kind, name: status.name, isDefault: status.isDefault }
 						: {
-								...status,
+								...Struct.omit(status, ["rtt"]),
 								version: "<version>",
 								seenAt: status.seenAt === null ? null : "<time>",
 								fingerprint: status.fingerprint === null ? null : "<fingerprint>",

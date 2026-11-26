@@ -1,24 +1,30 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { FolderIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, FolderIcon } from "@phosphor-icons/react";
 import { useContext, useState } from "react";
 
 import { NoticeSlot } from "@/components/banner";
 import { Composer, ComposerSubmit } from "@/components/composer";
+import { headerTrigger, MachinePicker, useStartMachine } from "@/components/machine";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { useSent } from "../widgets/session/display";
 import { handoffs } from "../widgets/session/handoff";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
-import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
+import { ModelPicker, ThinkingPicker, useAvailableModel, useChoice, useModelsNotice } from "@/components/model";
 import { Arcade } from "./arcade";
 import { cloneBlock, useClone, useCloneNotice } from "../shell/clones";
 import { useAddProject } from "../shell/palette";
-import { placeAtom, placeLabel } from "./place";
+import { machineAtom, placeAtom, placeLabel } from "./place";
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
+
+// The row of machine and project above the composer: 28px, and 6px to the card.
+const ROW = 34;
+// The tray that held the project under the composer before the row did.
+const TRAY = 30;
 
 /**
  * The start page: pick where to work and send the first prompt. The Session backend creates the
@@ -32,17 +38,25 @@ export function Landing() {
 	const inFlight = useSent();
 	const [query, setQuery] = useState("");
 	const [playing, setPlaying] = useState(false);
-	const place = useAtomValue(placeAtom);
+	const setPicked = useAtomSet(machineAtom);
+	const [chosen, setPlace] = useAtom(placeAtom);
+	const { machines, machine, machineId } = useStartMachine();
+	// A folder belongs to the machine it was picked on; on another one it is not picked.
+	const place =
+		chosen.kind === "folder" && machine !== undefined && chosen.machineId === machine.id
+			? chosen
+			: ({ kind: "none" } as const);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	// Remembered across restarts; an absent pick leaves it to settings.
 	const [choice, setChoice] = useChoice();
-	const { model, thinkingLevel: thinking } = choice;
+	const { thinkingLevel: thinking } = choice;
 	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
-	const notice = useModelsNotice(hostDir);
-	const cloneNotice = useCloneNotice(hostDir);
-	const blocked = cloneBlock(useClone(hostDir));
+	const model = useAvailableModel(hostDir, choice.model, machineId);
+	const notice = useModelsNotice(hostDir, machineId);
+	const cloneNotice = useCloneNotice(hostDir, machineId);
+	const blocked = cloneBlock(useClone(hostDir, machineId));
 
 	const canSend = place.kind !== "none" && query.trim() !== "" && !pending && blocked === undefined;
 
@@ -57,6 +71,7 @@ export function Landing() {
 				topic: topics.create,
 				payload: encodeCreate({
 					place: where,
+					...(machineId === undefined ? {} : { machineId }),
 					messageId: prompt.id,
 					text: prompt.text,
 					...(model === undefined ? {} : { model }),
@@ -77,8 +92,6 @@ export function Landing() {
 	};
 
 	const addProject = useAddProject();
-	const title =
-		place.kind === "folder" ? `What should we work on in ${placeLabel(place)}?` : "What should we work on?";
 
 	return (
 		<div className="relative flex h-full min-h-0 flex-col overflow-y-auto overscroll-none select-none">
@@ -89,9 +102,35 @@ export function Landing() {
 			>
 				<div aria-hidden className="flex-[1_1_0px]" />
 				<div className="pointer-events-auto mb-4 shrink-0 px-2.5">
-					<h1 className="truncate text-lg text-ink" title={place.kind === "folder" ? place.path : undefined}>
-						{title}
-					</h1>
+					<h1 className="truncate text-lg text-ink">What should we work on?</h1>
+				</div>
+				{/* Where the session runs: physical boundaries, so above the conversation's own controls. */}
+				<div className="pointer-events-auto mb-1.5 flex h-7 min-w-0 shrink-0 items-center gap-0.5 px-1">
+					{machine === undefined ? (
+						// Holds the row while the machines load, so nothing below moves.
+						<div className="h-7 w-32" aria-hidden />
+					) : (
+						<MachinePicker
+							machines={machines}
+							value={machine}
+							onChange={(next) => {
+								// Kept even when it is the machine shown: that may be the default standing in for one away.
+								setPicked(next.isDefault ? undefined : next.id);
+								if (next.id !== machine.id) setPlace({ kind: "none" });
+							}}
+						/>
+					)}
+					<button
+						type="button"
+						title={place.kind === "folder" ? place.path : undefined}
+						onClick={addProject}
+						className={headerTrigger}
+					>
+						<FolderIcon className="size-3.5 shrink-0" aria-hidden />
+						<span className="truncate">{placeLabel(place)}</span>
+						<CaretDownIcon className="size-3 shrink-0 text-ink-muted" aria-hidden />
+					</button>
+					{error !== undefined && <span className="ml-auto truncate text-2xs text-destructive">{error}</span>}
 				</div>
 				<div className="pointer-events-auto relative w-full shrink-0">
 					<Composer
@@ -104,11 +143,13 @@ export function Landing() {
 							<>
 								<ModelPicker
 									hostDir={hostDir}
+									machineId={machineId}
 									value={model}
 									onChange={(next) => setChoice({ ...choice, model: next })}
 								/>
 								<ThinkingPicker
 									hostDir={hostDir}
+									machineId={machineId}
 									model={model}
 									value={thinking}
 									onChange={(level) => setChoice({ ...choice, thinkingLevel: level })}
@@ -122,25 +163,11 @@ export function Landing() {
 								{...(blocked === undefined ? {} : { title: blocked })}
 							/>
 						}
-						tray={
-							<>
-								<button
-									type="button"
-									title={place.kind === "folder" ? place.path : undefined}
-									onClick={addProject}
-									className="-ml-1.5 flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md px-1.5 text-ui text-ink-muted outline-none hover:bg-selection hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									<FolderIcon className="size-3.5 shrink-0" aria-hidden />
-									<span className="truncate">{placeLabel(place)}</span>
-								</button>
-								{error !== undefined && (
-									<span className="ml-auto truncate text-2xs text-destructive">{error}</span>
-								)}
-							</>
-						}
 					/>
 					<NoticeSlot notice={cloneNotice ?? notice} />
 				</div>
+				{/* The block is centered, so the row above is matched below, on top of the old tray: the card stays put. */}
+				<div aria-hidden className="shrink-0" style={{ height: ROW + TRAY }} />
 				<div aria-hidden className="flex-[1_1_1.125rem]" />
 			</main>
 		</div>

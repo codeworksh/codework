@@ -225,7 +225,13 @@ export const callHost = <A, E>(
 			use(client).pipe(
 				Effect.map((value) => ({ value })),
 				Effect.catchIf(isHostError, (error) =>
-					Effect.succeed({ failed: new HostError({ message: error.message }) }),
+					Effect.succeed({
+						failed: new HostError(
+							error.reason === undefined
+								? { message: error.message }
+								: { message: error.message, reason: error.reason },
+						),
+					}),
 				),
 			),
 		options,

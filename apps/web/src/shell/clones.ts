@@ -5,30 +5,47 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { toast } from "sonner";
 
 import type { Notice } from "@/components/banner";
+import { useRowId } from "@/components/machine";
 import { messageOf } from "@/lib/utils";
 import { Server } from "../kernel/rpc";
 import { placeAtom } from "../landing/place";
 
-/** Every clone the server tracks, as one list: the current one first, then each change. */
-const clonesAtom = Server.runtime
-	.atom(
-		Stream.unwrap(Server.use((client) => Effect.succeed(client("host.clones", undefined)))).pipe(
+/**
+ * Every clone a machine's server tracks (`""` is the default machine), as one list: the current one
+ * first, then each change. Streamed only while something reads it, so a machine left or removed stops.
+ */
+const clonesAtom = Atom.family((machineId: string) =>
+	Server.runtime.atom(
+		Stream.unwrap(
+			Server.use((client) => Effect.succeed(client("host.clones", machineId === "" ? {} : { machineId }))),
+		).pipe(
 			// A dropped stream is a reconnect; the next list is whole again.
 			Stream.retry(Schedule.spaced("1 second")),
 		),
-	)
-	.pipe(Atom.keepAlive);
+	),
+);
+
+/** The machines a clone was started on while the app runs (`""` is the default machine); the toasts follow each. */
+export const cloneMachinesAtom = Atom.make<ReadonlySet<string>>(new Set([""])).pipe(Atom.keepAlive);
+
+/** Records that a clone starts on `machineId`, so its toasts follow it from then on. */
+export function useWatchClones() {
+	const set = useAtomSet(cloneMachinesAtom);
+	return (machineId: string | undefined) =>
+		set((machines) => (machines.has(machineId ?? "") ? machines : new Set([...machines, machineId ?? ""])));
+}
 
 const NONE: ReadonlyArray<Clone> = [];
 
-export function useClones() {
-	const result = useAtomValue(clonesAtom);
+/** The clones on `machineId`, else the default machine. */
+export function useClones(machineId?: string) {
+	const result = useAtomValue(clonesAtom(machineId ?? ""));
 	return AsyncResult.isSuccess(result) ? result.value : NONE;
 }
 
-/** The clone into `path`, while the server tracks one. */
-export function useClone(path: string | undefined) {
-	const clones = useClones();
+/** The clone into `path` on `machineId`, while its server tracks one. */
+export function useClone(path: string | undefined, machineId?: string) {
+	const clones = useClones(machineId);
 	return path === undefined ? undefined : clones.find((clone) => clone.path === path);
 }
 
@@ -67,17 +84,21 @@ const discardAtom = Server.mutation("host.discard");
  * Cancel, retry, and remove the project a clone was for: its partial checkout goes, and the start
  * page lets go of the folder when it is the one in front.
  */
-export function useCloneActions() {
+export function useCloneActions(machineId?: string) {
 	const cancel = useAtomSet(cancelAtom, { mode: "promise" });
 	const retry = useAtomSet(retryAtom, { mode: "promise" });
 	const discard = useAtomSet(discardAtom, { mode: "promise" });
 	const setPlace = useAtomSet(placeAtom);
+	const rowId = useRowId(machineId);
+	const on = machineId === undefined ? {} : { machineId };
 	return {
-		cancel: (path: string) => cancel({ payload: { path } }),
-		retry: (path: string) => retry({ payload: { path } }),
+		cancel: (path: string) => cancel({ payload: { ...on, path } }),
+		retry: (path: string) => retry({ payload: { ...on, path } }),
 		remove: async (path: string) => {
-			await discard({ payload: { path } });
-			setPlace((place) => (place.kind === "folder" && place.path === path ? { kind: "none" } : place));
+			await discard({ payload: { ...on, path } });
+			setPlace((place) =>
+				place.kind === "folder" && place.path === path && place.machineId === rowId ? { kind: "none" } : place,
+			);
 		},
 	};
 }
@@ -92,10 +113,10 @@ export function cloneBlock(clone: Clone | undefined) {
 	return clone.phase === "running" ? "Cloning repository" : "Repository not cloned";
 }
 
-/** The composer's banner for the clone into `path`, while it isn't done. */
-export function useCloneNotice(path: string | undefined): Notice | undefined {
-	const clone = useClone(path);
-	const actions = useCloneActions();
+/** The composer's banner for the clone into `path` on `machineId`, while it isn't done. */
+export function useCloneNotice(path: string | undefined, machineId?: string): Notice | undefined {
+	const clone = useClone(path, machineId);
+	const actions = useCloneActions(machineId);
 	if (clone === undefined || clone.phase === "done") return undefined;
 	const name = cloneDisplayName(clone);
 	if (clone.phase === "running")

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it, onTestFinished } from "vite-plus/test";
+import { describe, expect, it, onTestFinished } from "vite-plus/test";
 import * as Client from "../src/server/client.ts";
 import type { EventEnvelope } from "../src/server/envelope.ts";
 import { models, serveCli, streaming, toolCalls, writeSettings } from "./fixtures/cli.ts";
@@ -23,6 +23,7 @@ interface Status {
 }
 
 type SessionId = Parameters<Client.Client["thread.prompt"]>[0]["sessionId"];
+type SandboxId = Parameters<Client.Client["sandbox.stop"]>[0]["sandboxId"];
 
 const statusOf = (envelope: EventEnvelope) => envelope.data as Status;
 
@@ -52,7 +53,7 @@ const stable = (status: Status) => {
 /*
  * The git daemon through the real server: `event.subscribe` filtered to its type (nothing else
  * takes the client's queue), the last status replayed to a client that subscribes later, patches
- * pulled with `daemon.call`, and the replay gone after a restart until the next run.
+ * pulled with `daemon.call`, and the last status still replayed after a restart, before the next run.
  */
 it("serves the git daemon over RPC: filtered push, replay, daemon.call and restart", async () => {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-daemon-")));
@@ -178,3 +179,110 @@ it("serves the git daemon over RPC: filtered push, replay, daemon.call and resta
 
 	await expect(JSON.stringify(artifact, null, "\t")).toMatchFileSnapshot("./__artifacts__/daemon.git.rpc.json");
 }, 300_000);
+
+// Each runs when this computer has the driver's credentials; the server reads them from its environment.
+describe.each([
+	{ driver: "daytona", env: "DAYTONA_API_KEY" },
+	{ driver: "vercel", env: "VERCEL_OIDC_TOKEN" },
+] as const)("a $driver sandbox", ({ driver, env }) => {
+	it.skipIf(!process.env[env]?.trim())(
+		"replays its space's last git status after a restart, before any run",
+		async () => {
+			const root = realpathSync(mkdtempSync(join(tmpdir(), `codework-daemon-${driver}-`)));
+			onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+			const home = join(root, "home");
+			mkdirSync(home);
+			let command = "true";
+			const fake = await streaming((body, response) => {
+				if (body.messages.at(-1)?.role === "tool") {
+					response.send({ role: "assistant", content: "done" });
+					response.finish("stop");
+					return;
+				}
+				response.send(toolCalls([{ name: "bash", arguments: { command } }]));
+				response.finish("tool_calls");
+			});
+			writeSettings(home, fake.url);
+			const start = () =>
+				serveCli(["--home", home, "--user-config-dir", home], {
+					cwd: root,
+					env: { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models },
+				});
+			const connect = (server: Client.Target) =>
+				Effect.gen(function* () {
+					const context = yield* Layer.build(Client.layer(server));
+					return yield* Client.make.pipe(Effect.provideContext(context));
+				});
+			const prompt = (rpc: Client.Client, sessionId: SessionId, next: string) =>
+				Effect.gen(function* () {
+					command = next;
+					yield* rpc["thread.prompt"]({ sessionId, text: next });
+					yield* rpc["thread.wait"]({ sessionId });
+				});
+
+			const artifact: Record<string, unknown> = {};
+			let sandboxId: SandboxId | undefined;
+			let spaceId = "";
+			const first = await start();
+			await Effect.runPromise(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const rpc = yield* connect(first);
+						const seen: Array<EventEnvelope> = [];
+						yield* rpc["event.subscribe"]({ types: [STATUS] }).pipe(
+							Stream.runForEach((frame) => Effect.sync(() => seen.push(frame))),
+							Effect.forkScoped,
+						);
+						const sandbox = yield* rpc["sandbox.create"]({ driver });
+						sandboxId = sandbox.id;
+						const cloner = yield* rpc["session.create"]({ sandbox: { id: sandbox.id } });
+						yield* prompt(
+							rpc,
+							cloner.session.id,
+							`git clone -q ${REPO} 69th && git -C 69th checkout -q -B main ${PINNED}`,
+						);
+						const created = yield* rpc["session.create"]({
+							sandbox: { id: sandbox.id },
+							directory: `${cloner.session.directory}/69th`,
+						});
+						yield* prompt(rpc, created.session.id, "printf 'from the sandbox\\n' >> README.md");
+						const edited = yield* settle(
+							seen,
+							(status) =>
+								status.spaceId === created.session.spaceId &&
+								status.files.some((file) => file.file === "README.md"),
+						);
+						spaceId = edited.spaceId;
+						artifact["pushed after an edit"] = stable(edited);
+					}),
+				),
+			);
+			await first.stop();
+
+			const second = await start();
+			await Effect.runPromise(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const rpc = yield* connect(second);
+						const replayed = yield* rpc["event.subscribe"]({ types: [STATUS] }).pipe(
+							Stream.interruptWhen(Effect.sleep("1500 millis")),
+							Stream.runCollect,
+						);
+						artifact["replayed after a restart, before any run"] = [...replayed]
+							.filter((frame) => frame.type === STATUS && statusOf(frame).spaceId === spaceId)
+							.map((frame) => stable(statusOf(frame)));
+						// A remote sandbox outlives the server that made it until it is stopped.
+						if (sandboxId !== undefined) yield* rpc["sandbox.stop"]({ sandboxId });
+					}),
+				),
+			);
+			await second.stop();
+
+			expect(artifact["replayed after a restart, before any run"]).toEqual([artifact["pushed after an edit"]]);
+			await expect(JSON.stringify(artifact, null, "\t")).toMatchFileSnapshot(
+				`./__artifacts__/daemon.git.rpc.${driver}.json`,
+			);
+		},
+		600_000,
+	);
+});

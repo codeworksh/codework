@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 
+import { useMachineName } from "@/components/machine";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useNowMinute } from "@/hooks/now";
 import { capitalized } from "@/lib/utils";
@@ -29,12 +30,18 @@ import { spaceAtom } from "./data";
 /** The end of a branch tells worktrees apart, so a long one is cut in its middle. */
 const TAIL = 7;
 
-/** Where a space is: its sandbox by its driver, else how its folder stands on this machine. */
-const environmentOf = ({ kind, env }: ChangesSpace): { readonly label: string; readonly icon: Icon } => {
-	if (env !== null)
-		return { label: env.driver === undefined ? "Sandbox" : `${capitalized(env.driver)} Sandbox`, icon: CloudIcon };
-	if (kind === "linked") return { label: "Worktree", icon: GitForkIcon };
-	return { label: "Local", icon: DesktopIcon };
+/** Where a space is: its sandbox by its driver, else the machine its folder is on, a worktree said so. */
+const environmentOf = (
+	{ kind, env }: ChangesSpace,
+	machine: string | undefined,
+): { readonly label: string; readonly title: string; readonly icon: Icon } => {
+	if (env !== null) {
+		const label = env.driver === undefined ? "Sandbox" : `${capitalized(env.driver)} Sandbox`;
+		return { label, title: label, icon: CloudIcon };
+	}
+	const on = machine ?? "This Machine";
+	if (kind === "linked") return { label: "Worktree", title: `Worktree on ${on}`, icon: GitForkIcon };
+	return { label: on, title: on, icon: DesktopIcon };
 };
 
 const refOf = (thread: SpaceThread) =>
@@ -49,7 +56,8 @@ export function Space({ space, status }: { readonly space: string; readonly stat
 	const span = ago(status.observedAt, useNowMinute());
 	const branch = status.branch ?? status.head?.slice(0, 7);
 	const cut = branch !== undefined && branch.length > TAIL * 2 ? branch.length - TAIL : branch?.length;
-	const environment = where === null ? undefined : environmentOf(where);
+	const machine = useMachineName(space.split("/")[0] ?? "");
+	const environment = where === null ? undefined : environmentOf(where, machine);
 	return (
 		// Narrow, the freshness goes first, then the environment's name; the branch is cut; the folder stays.
 		<div className="flex h-7 shrink-0 items-center gap-3 border-b border-edge px-3 text-2xs whitespace-nowrap text-ink-muted">
@@ -69,7 +77,7 @@ export function Space({ space, status }: { readonly space: string; readonly stat
 				</span>
 			)}
 			{environment !== undefined && (
-				<span title={environment.label} className="flex shrink-0 items-center gap-1.5">
+				<span title={environment.title} className="flex shrink-0 items-center gap-1.5">
 					<environment.icon className="size-3 shrink-0" aria-hidden />
 					<span className="@max-lg:sr-only">{environment.label}</span>
 				</span>

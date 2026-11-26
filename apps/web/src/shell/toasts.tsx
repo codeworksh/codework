@@ -1,15 +1,25 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import type { Clone } from "@codeworksh/contract";
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef } from "react";
 import { toast, Toaster } from "sonner";
 
-import { placeAtom } from "../landing/place";
-import { cloneDisplayName, cloneProgressSummary, failedAction, useCloneActions, useClones } from "./clones";
+import { useRowId } from "@/components/machine";
+import { serversAtom } from "../kernel/servers";
+import { machineAtom, placeAtom } from "../landing/place";
+import {
+	cloneDisplayName,
+	cloneMachinesAtom,
+	cloneProgressSummary,
+	failedAction,
+	useCloneActions,
+	useClones,
+} from "./clones";
 
 const DONE_TIMEOUT = 8_000;
 
-const toastId = (clone: Clone) => `project-clone:${clone.path}`;
+const toastId = (machineId: string | undefined, path: string) => `project-clone:${machineId ?? ""}:${path}`;
 const renderKey = (clone: Clone) =>
 	`${clone.phase}:${clone.stage}:${clone.percent ?? ""}:${clone.detail ?? ""}:${clone.stalled}:${clone.error ?? ""}`;
 
@@ -31,13 +41,25 @@ export function Toasts() {
 	);
 }
 
-/**
- * Each clone's progress as a toast, kept current. A clone whose folder is in front on the start
- * page says it there instead, so from then on it toasts only when it fails or is cancelled.
- */
+/** The clones of each machine one was started on, while that machine is still listed. */
 function CloneToasts() {
-	const clones = useClones();
-	const actions = useCloneActions();
+	const machines = useAtomValue(cloneMachinesAtom);
+	const servers = useAtomValue(serversAtom);
+	const listed = new Set(AsyncResult.isSuccess(servers) ? servers.value.map((status) => status.id) : []);
+	return [...machines]
+		.filter((machineId) => machineId === "" || listed.has(machineId))
+		.map((machineId) => <MachineCloneToasts key={machineId} machineId={machineId || undefined} />);
+}
+
+/**
+ * Each clone's progress on a machine as a toast, kept current. A clone whose folder is in front on
+ * the start page says it there instead, so from then on it toasts only when it fails or is cancelled.
+ */
+function MachineCloneToasts({ machineId }: { readonly machineId: string | undefined }) {
+	const clones = useClones(machineId);
+	const actions = useCloneActions(machineId);
+	const rowId = useRowId(machineId);
+	const setPicked = useAtomSet(machineAtom);
 	const setPlace = useAtomSet(placeAtom);
 	const navigate = useNavigate();
 	const place = useAtomValue(placeAtom);
@@ -48,11 +70,16 @@ function CloneToasts() {
 	// Toasts live outside React: each new list renders them again.
 	useEffect(() => {
 		const shown = rendered.current;
-		if (onStart && place.kind === "folder" && clones.some((clone) => clone.path === place.path)) {
+		if (
+			onStart &&
+			place.kind === "folder" &&
+			place.machineId === rowId &&
+			clones.some((clone) => clone.path === place.path)
+		) {
 			silenced.current.add(place.path);
 		}
 		for (const clone of clones) {
-			const id = toastId(clone);
+			const id = toastId(machineId, clone.path);
 			const quiet = silenced.current.has(clone.path);
 			if (quiet && (clone.phase === "running" || clone.phase === "done")) {
 				if (shown.get(clone.path)?.phase !== "done") toast.dismiss(id);
@@ -84,7 +111,10 @@ function CloneToasts() {
 							label: "Open project",
 							onClick: () => {
 								toast.dismiss(id);
-								setPlace({ kind: "folder", path: clone.path });
+								if (rowId !== undefined) {
+									setPicked(machineId);
+									setPlace({ kind: "folder", path: clone.path, machineId: rowId });
+								}
 								void navigate({ to: "/" });
 							},
 						},
@@ -113,9 +143,9 @@ function CloneToasts() {
 		for (const [path, entry] of shown) {
 			if (clones.some((clone) => clone.path === path)) continue;
 			shown.delete(path);
-			if (entry.phase !== "done") toast.dismiss(`project-clone:${path}`);
+			if (entry.phase !== "done") toast.dismiss(toastId(machineId, path));
 		}
-	}, [clones, onStart, place]);
+	}, [clones, onStart, place, rowId]);
 
 	return null;
 }

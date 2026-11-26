@@ -1,0 +1,30 @@
+{
+	"pushed after an edit": {
+		"head": "<pinned>",
+		"available": true,
+		"branch": "main",
+		"files": [
+			{
+				"file": "README.md",
+				"status": "modified",
+				"additions": 1,
+				"deletions": 0
+			}
+		]
+	},
+	"replayed after a restart, before any run": [
+		{
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": [
+				{
+					"file": "README.md",
+					"status": "modified",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
+	]
+}

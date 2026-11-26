@@ -1,0 +1,30 @@
+{
+	"open": {
+		"path": "<root>/open",
+		"readable": true,
+		"entries": [
+			"a",
+			"b"
+		]
+	},
+	"locked": {
+		"path": "<root>/locked",
+		"readable": false,
+		"entries": []
+	},
+	"missing": {
+		"_tag": "Server.HostError",
+		"message": "<root>/nowhere does not exist.",
+		"reason": "missing"
+	},
+	"file": {
+		"_tag": "Server.HostError",
+		"message": "<root>/file.txt is not a directory.",
+		"reason": "file"
+	},
+	"addFile": {
+		"_tag": "Server.HostError",
+		"message": "<root>/file.txt is not a directory.",
+		"reason": "file"
+	}
+}

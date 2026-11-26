@@ -63,20 +63,31 @@ export function useChoice() {
 	return [choice, update] as const;
 }
 
-/** The models a session in `hostDir` can use; each folder has its own, since its settings may add some. */
-const modelsAtom = Atom.family((hostDir: string | undefined) =>
-	Server.query("models.list", hostDir === undefined ? {} : { hostDir }, { reactivityKeys: codeworkKey }),
-);
+/**
+ * The models a session in `hostDir` on `machineId` can use: each machine has its own providers and
+ * credentials, and each folder its own, since its settings may add some. Keyed as one string.
+ */
+const modelsAtom = Atom.family((key: string) => {
+	const [machineId, hostDir] = JSON.parse(key) as [string | null, string | null];
+	return Server.query(
+		"models.list",
+		{ ...(machineId === null ? {} : { machineId }), ...(hostDir === null ? {} : { hostDir }) },
+		{ reactivityKeys: codeworkKey },
+	);
+});
+const modelsOf = (hostDir: string | undefined, machineId: string | undefined) =>
+	modelsAtom(JSON.stringify([machineId ?? null, hostDir ?? null]));
 
 /**
  * A broken settings file, as the composer's notice; it names the file, which the reader fixes. Any
  * other failure is the server's, which the pickers' place already points to.
  */
-export function useModelsNotice(hostDir: string | undefined): Notice | undefined {
-	const result = useAtomValue(modelsAtom(hostDir));
+export function useModelsNotice(hostDir: string | undefined, machineId?: string): Notice | undefined {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
 	const error = AsyncResult.isFailure(result) ? Option.getOrUndefined(Cause.findErrorOption(result.cause)) : undefined;
 	if (error?._tag !== "Server.ModelsError" || error.source !== "settings") return undefined;
-	const { reveal } = window.desktopBridge ?? {};
+	// The desktop reveals this computer's files only; another machine's file is fixed there.
+	const reveal = machineId === undefined ? window.desktopBridge?.reveal : undefined;
 	return {
 		title: "Settings Error",
 		description: error.message,
@@ -99,8 +110,12 @@ const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: Model
 };
 
 /** Display name of `value` (or the settings default when `value` is absent), once `models.list` has loaded. */
-export function useModelName(hostDir: string | undefined, value: ModelRef | undefined): string | undefined {
-	const result = useAtomValue(modelsAtom(hostDir));
+export function useModelName(
+	hostDir: string | undefined,
+	value: ModelRef | undefined,
+	machineId?: string,
+): string | undefined {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
 	const list = AsyncResult.isSuccess(result) ? result.value : undefined;
 	const current = value ?? list?.default;
 	if (current === undefined) return undefined;
@@ -121,28 +136,44 @@ export function useModelName(hostDir: string | undefined, value: ModelRef | unde
 }
 
 /**
+ * `value` while the machine's list can call it, else none, so settings pick one this machine has. A
+ * pick made on another machine, for a provider this one is not signed in to, does not carry over.
+ */
+export function useAvailableModel(
+	hostDir: string | undefined,
+	value: ModelRef | undefined,
+	machineId?: string,
+): ModelRef | undefined {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
+	if (value === undefined || !AsyncResult.isSuccess(result)) return value;
+	return lookup(result.value.providers, value) === undefined ? undefined : value;
+}
+
+/**
  * Picks the model a new session uses: providers down a rail on the left, their models on the
  * right, and a search across all of them. `value` undefined means settings decide; the trigger
  * then shows the model they pick, muted when this server has no credentials for it.
  */
 interface ModelPickerProps {
 	readonly hostDir: string | undefined;
+	/** The machine the session is, or will be, on; the default machine when omitted. */
+	readonly machineId?: string | undefined;
 	readonly value: ModelRef | undefined;
 	readonly onChange: (model: ModelRef) => void;
 }
 
-/** The model picker, or, while the default server has a problem, the way to the provider settings. */
+/** The model picker, or, while the default server has a problem, the way to its provider settings. */
 export function ModelPicker(props: ModelPickerProps) {
 	const problem = useAtomValue(problemAtom);
-	return problem === undefined ? (
+	return problem === undefined || props.machineId !== undefined ? (
 		<Models {...props} />
 	) : (
 		<OpenProviderSettings problem={problem} className="h-6.5 shrink-0 rounded-md bg-selection px-1.5 text-2xs" />
 	);
 }
 
-function Models({ hostDir, value, onChange }: ModelPickerProps) {
-	const result = useAtomValue(modelsAtom(hostDir));
+function Models({ hostDir, machineId, value, onChange }: ModelPickerProps) {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [rail, setRail] = useState<string>();
@@ -364,6 +395,7 @@ const clamp = (level: ThinkingLevel, levels: ReadonlyArray<ThinkingLevel>) => {
  */
 interface ThinkingPickerProps {
 	readonly hostDir: string | undefined;
+	readonly machineId?: string | undefined;
 	readonly model: ModelRef | undefined;
 	readonly value: ThinkingLevel | undefined;
 	readonly onChange: (level: ThinkingLevel) => void;
@@ -371,11 +403,12 @@ interface ThinkingPickerProps {
 
 /** The reasoning picker; gone while the default server has a problem, as the model picker is. */
 export function ThinkingPicker(props: ThinkingPickerProps) {
-	return useAtomValue(problemAtom) === undefined ? <Thinking {...props} /> : null;
+	const problem = useAtomValue(problemAtom);
+	return problem === undefined || props.machineId !== undefined ? <Thinking {...props} /> : null;
 }
 
-function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
-	const result = useAtomValue(modelsAtom(hostDir));
+function Thinking({ hostDir, machineId, model, value, onChange }: ThinkingPickerProps) {
+	const result = useAtomValue(modelsOf(hostDir, machineId));
 	const list = AsyncResult.isSuccess(result) ? result.value : undefined;
 	const current = model ?? list?.default;
 	const levels =

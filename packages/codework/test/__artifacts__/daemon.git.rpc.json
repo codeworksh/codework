@@ -59,7 +59,26 @@
 		"invalid input": "invalid_input"
 	},
 	"replayed after a restart, before any run": [
-		"server.connected"
+		"server.connected",
+		{
+			"head": "<pinned>",
+			"available": true,
+			"branch": "main",
+			"files": [
+				{
+					"file": "README.md",
+					"status": "modified",
+					"additions": 1,
+					"deletions": 0
+				},
+				{
+					"file": "added.txt",
+					"status": "added",
+					"additions": 1,
+					"deletions": 0
+				}
+			]
+		}
 	],
 	"pushed after the next run": {
 		"head": "<pinned>",

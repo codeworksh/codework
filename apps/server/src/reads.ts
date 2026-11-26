@@ -73,13 +73,16 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 			id: string;
 			name: string;
 			location: string | null;
+			hostLocation: string | null;
 			createdAt: number;
 			updatedAt: number;
 		}
 	>`
 		SELECT project.machine_id, ${sql.literal(MACHINE)}, project.id, project.name, project.created_at, project.updated_at,
 			(SELECT location FROM space WHERE space.machine_id = project.machine_id AND space.project_id = project.id
-				ORDER BY space.kind = 'primary' DESC, space.created_at LIMIT 1) AS location
+				ORDER BY space.kind = 'primary' DESC, space.created_at LIMIT 1) AS location,
+			(SELECT location FROM space WHERE space.machine_id = project.machine_id AND space.project_id = project.id
+				AND space.env IS NULL ORDER BY space.kind = 'primary' DESC, space.created_at LIMIT 1) AS host_location
 		FROM project JOIN machine ON machine.id = project.machine_id
 		WHERE project.organization_id = ${organizationId} AND project.status = 'active' ${onMachines(sql, machines)}
 		ORDER BY project.updated_at DESC
@@ -92,6 +95,7 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		color: string | null;
 		dir: string;
 		hostdir: string | null;
+		onHost: number;
 		threadId: string;
 		title: string | null;
 		modelProvider: string | null;
@@ -104,7 +108,7 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 	}>`
 		SELECT session.id, session.machine_id, space.project_id, space.kind AS space_kind,
 			COALESCE(thread.color, session.color) AS color,
-			session.dir, session.hostdir, thread.id AS thread_id, thread.title, thread.model_provider,
+			session.dir, session.hostdir, space.env IS NULL AS on_host, thread.id AS thread_id, thread.title, thread.model_provider,
 			thread.model_id, thread.run_state, thread.status, thread.priority, thread.created_at,
 			(SELECT MAX(activity.updated_at) FROM thread AS activity
 				WHERE activity.session_id = session.id AND activity.deleted_at IS NULL) AS updated_at
@@ -116,7 +120,12 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		ORDER BY updated_at DESC
 	`;
 	const byProject = new Map<string, Array<SidebarSession>>();
+	// A session's folder on its machine, when its space is on the host. A sandbox session's host folder
+	// is only where it was started from, such as the CLI's working directory, not its project's folder.
+	const hostPaths = new Map<string, string>();
 	for (const row of sessions) {
+		const path = row.onHost ? (row.hostdir ?? row.dir) : row.dir;
+		if (row.onHost) hostPaths.set(row.id, path);
 		const key = `${row.machineId}/${row.projectId}`;
 		const list = byProject.get(key) ?? [];
 		list.push({
@@ -131,7 +140,7 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 			priority: row.priority,
 			created: row.createdAt,
 			updated: row.updatedAt,
-			path: row.hostdir ?? row.dir,
+			path,
 		});
 		byProject.set(key, list);
 	}
@@ -142,16 +151,19 @@ export const sidebar = Effect.fn("Reads.sidebar")(function* ({
 		.toSorted((a, b) => activity(b) - activity(a))
 		.map((project): SidebarProject => {
 			const list = sessionsOf(project);
+			const primary = list.find((session) => session.spaceKind === "primary");
+			// A worktree session's folder is not the project's, so new threads start in the primary space.
+			// A folder on the machine wins over a sandbox's, which a new session can't start in by path.
+			const hostPath =
+				(primary === undefined ? undefined : hostPaths.get(primary.id)) ??
+				project.hostLocation ??
+				list.map((session) => hostPaths.get(session.id)).find((path) => path !== undefined);
 			return {
 				machine: { id: project.machineId, name: machineName(project) },
 				id: project.id,
 				name: project.name,
-				// A worktree session's folder is not the project's, so new threads start in the primary space.
-				path:
-					list.find((session) => session.spaceKind === "primary")?.path ??
-					project.location ??
-					list[0]?.path ??
-					project.name,
+				path: hostPath ?? primary?.path ?? project.location ?? list[0]?.path ?? project.name,
+				onHost: hostPath !== undefined,
 				created: project.createdAt,
 				sessions: list,
 			};

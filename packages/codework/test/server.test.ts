@@ -8,7 +8,7 @@ import { NodeServices } from "@effect/platform-node";
 import { HttpServer } from "effect/http";
 import { RpcTest } from "effect/rpc";
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -582,6 +582,61 @@ describe("server", () => {
 				),
 			);
 	}, 60_000);
+
+	// Root reads a folder whatever its mode, so the unreadable case needs an ordinary user.
+	it.skipIf(process.getuid?.() === 0)("host.browse says what a path is: listed, unreadable, missing or a file", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-browse-")));
+		homes.push(root);
+		mkdirSync(join(root, "open", "b"), { recursive: true });
+		mkdirSync(join(root, "open", "a"));
+		writeFileSync(join(root, "open", "note.txt"), "");
+		mkdirSync(join(root, "locked", "hidden"), { recursive: true });
+		chmodSync(join(root, "locked"), 0o000);
+		writeFileSync(join(root, "file.txt"), "");
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const relative = (value: string) => value.replace(root, "<root>");
+			const listed = (result: {
+				readonly path: string;
+				readonly entries: ReadonlyArray<Contract.Folder>;
+				readonly readable?: boolean | undefined;
+			}) => ({
+				path: relative(result.path),
+				readable: result.readable,
+				entries: result.entries.map((entry) => entry.name),
+			});
+			const refused = (error: { readonly _tag: string; readonly message: string }) => ({
+				_tag: error._tag,
+				message: relative(error.message),
+				reason: Schema.is(Contract.HostError)(error) ? (error.reason ?? null) : null,
+			});
+			return {
+				open: listed(yield* rpc["host.browse"]({ path: join(root, "open") })),
+				locked: listed(yield* rpc["host.browse"]({ path: join(root, "locked") })),
+				missing: refused(yield* rpc["host.browse"]({ path: join(root, "nowhere") }).pipe(Effect.flip)),
+				file: refused(yield* rpc["host.browse"]({ path: join(root, "file.txt") }).pipe(Effect.flip)),
+				addFile: refused(yield* rpc["host.add"]({ path: join(root, "file.txt") }).pipe(Effect.flip)),
+			};
+		})
+			.pipe(
+				Effect.scoped,
+				Effect.provide(layer()),
+				// Readable again, so the temp folder can be removed.
+				Effect.ensuring(Effect.sync(() => chmodSync(join(root, "locked"), 0o755))),
+				Effect.runPromise,
+			)
+			.then((artifact) => {
+				expect(artifact.open).toEqual({ path: "<root>/open", readable: true, entries: ["a", "b"] });
+				expect(artifact.locked).toEqual({ path: "<root>/locked", readable: false, entries: [] });
+				expect(artifact.missing.reason).toBe("missing");
+				expect(artifact.file.reason).toBe("file");
+				expect(artifact.addFile.reason).toBe("file");
+				return expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.host-browse.json",
+				);
+			});
+	});
 
 	it("model.list lists credentialed providers and the default model, per project", () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-models-")));

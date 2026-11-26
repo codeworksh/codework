@@ -104,6 +104,8 @@ export const codework = async (
 		readonly host?: string | null;
 		readonly relay?: string;
 		readonly skew?: number;
+		/** The OS home its `~` and host folders resolve against; the test runner's when omitted. */
+		readonly osHome?: string;
 	} = {},
 ) => {
 	const args = [fixture, home, String(port), ...(options.older === true ? ["127.0.0.1", "older"] : [])];
@@ -113,6 +115,7 @@ export const codework = async (
 			...(options.host === undefined ? {} : { CODEWORK_FIXTURE_HOST: options.host ?? "" }),
 			...(options.relay === undefined ? {} : { CODEWORK_RELAY_URL: options.relay }),
 			...(options.skew === undefined ? {} : { CODEWORK_FIXTURE_SKEW: String(options.skew) }),
+			...(options.osHome === undefined ? {} : { HOME: options.osHome }),
 		},
 		stdio: ["pipe", "pipe", "inherit"],
 	});
@@ -141,17 +144,23 @@ export const codework = async (
 };
 export type Codework = Awaited<ReturnType<typeof codework>>;
 
-/** A status as an artifact keeps it: a remote one's build, last answer, machine id and key vary per run. */
-export const stable = (status: ServerStatus | undefined) =>
-	status?.kind === "remote"
+/**
+ * A status as an artifact keeps it: a remote one's build, last answer, machine id and key vary per run.
+ * Its round trip is left out: it is timed after each check, so whether one is in yet varies too.
+ */
+export const stable = (status: ServerStatus | undefined) => {
+	if (status === undefined) return undefined;
+	const { rtt: _, ...rest } = status;
+	return rest.kind === "remote"
 		? {
-				...status,
-				version: status.version === null ? null : "<version>",
-				seenAt: status.seenAt === null ? null : "<time>",
-				fingerprint: status.fingerprint === null ? null : "<fingerprint>",
-				machineId: status.machineId === null ? null : "<machine id>",
+				...rest,
+				version: rest.version === null ? null : "<version>",
+				seenAt: rest.seenAt === null ? null : "<time>",
+				fingerprint: rest.fingerprint === null ? null : "<fingerprint>",
+				machineId: rest.machineId === null ? null : "<machine id>",
 			}
-		: status;
+		: rest;
+};
 
 const appClient = RpcClient.make(Contract.Api);
 export type AppRpc = Effect.Success<typeof appClient>;

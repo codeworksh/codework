@@ -8,6 +8,7 @@
 			"id": "<id 2>",
 			"name": "Alpha",
 			"path": "<home>",
+			"onHost": true,
 			"created": "<time>",
 			"sessions": [
 				{
@@ -48,6 +49,7 @@
 			"id": "<id 2>",
 			"name": "Alpha",
 			"path": "<home>",
+			"onHost": true,
 			"created": "<time>",
 			"sessions": [
 				{

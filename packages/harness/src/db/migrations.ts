@@ -391,6 +391,21 @@ export const migrations = {
 			)
 		`;
 	}),
+
+	// The last event of each type a space's daemons published, as they encoded it: the replay a client
+	// subscribing after a restart reads, before the space mounts again.
+	"202611260001_space_state": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE space_state (
+				space_id TEXT NOT NULL REFERENCES space(id) ON DELETE CASCADE,
+				type     TEXT NOT NULL,
+				id       TEXT NOT NULL,
+				data     TEXT NOT NULL,
+				PRIMARY KEY (space_id, type)
+			)
+		`;
+	}),
 };
 
 /**

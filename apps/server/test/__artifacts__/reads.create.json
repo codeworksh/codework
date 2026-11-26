@@ -1,0 +1,51 @@
+{
+	"created": {
+		"_tag": "Created",
+		"sessionId": "<session>"
+	},
+	"threads on the paired machine": 1,
+	"threads on the default machine": 0,
+	"first entry": {
+		"id": "<message>",
+		"role": "user"
+	},
+	"the model replied to it": true,
+	"its row in app.db": [
+		{
+			"machine_id": "<remote>"
+		}
+	],
+	"settings.set on its machine": {
+		"reply": "answered",
+		"written": true
+	},
+	"settings.set without the machine": {
+		"_tag": "Server.ProjectError",
+		"message": "This project is no longer on its server."
+	},
+	"projects.rename on its machine": "Renamed",
+	"host.browse of ~ there": {
+		"path": "<home>",
+		"readable": true
+	},
+	"a machine the app does not know": {
+		"_tag": "Server.CodeworkUnavailable",
+		"message": "That machine is not connected."
+	},
+	"the machine stopped": {
+		"_tag": "Server.CodeworkUnavailable",
+		"message": "Fixture did not answer."
+	},
+	"servers.remove": {
+		"notices": [
+			{
+				"full": true,
+				"removed": [
+					"<session>"
+				],
+				"projects": 1
+			}
+		],
+		"its session in app.db": 0
+	}
+}

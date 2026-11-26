@@ -18,6 +18,7 @@ import {
 } from "react";
 
 import { Logo } from "@/components/logo";
+import { observeVisibleAnimation } from "@/lib/visible";
 import { NoticeLine, noticeSurface, type Notice } from "@/components/banner";
 import { useModelName, useModelsNotice } from "@/components/model";
 import { threadAddress, threadRef } from "./address";
@@ -459,6 +460,9 @@ function Conversation({
 	if (loaded.status === "ready" && sent.length > 0) {
 		const echoed = new Set(loaded.messages.map((message) => message.id));
 		if (sent.some((message) => echoed.has(message.id))) setSent(sent.filter((message) => !echoed.has(message.id)));
+		// A parked prompt waits for the next message as a queue row, with its actions, whichever page shows it first.
+		const parked = new Set(loaded.info.parked ? loaded.queued.map((prompt) => prompt.id) : []);
+		if (sent.some((message) => parked.has(message.id))) setSent(sent.filter((message) => !parked.has(message.id)));
 	}
 	// A run that stops or fails before taking a prompt in leaves it queued for the next wake: its
 	// stand-in goes, so the queue row and its actions show again.
@@ -474,7 +478,10 @@ function Conversation({
 	const [seenOutcome, setSeenOutcome] = useState(outcome);
 	if (outcome !== seenOutcome) {
 		setSeenOutcome(outcome);
-		if (sent.length > 0 && (run?.info.runState === "idle" || failure !== undefined)) setSent([]);
+		// The first state read is no change of run: a new session's row can land idle before its run
+		// takes the first prompt, and dropping its stand-in then would flash an empty conversation.
+		const changed = !seenOutcome.startsWith("undefined|");
+		if (sent.length > 0 && ((changed && run?.info.runState === "idle") || failure !== undefined)) setSent([]);
 	}
 	let state: State = loaded;
 	if (loaded.status === "ready" && sent.length > 0) {
@@ -553,7 +560,10 @@ function Conversation({
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.
-	const models = useModelsNotice(state.status === "ready" ? state.info.hostDir : undefined);
+	const models = useModelsNotice(
+		state.status === "ready" ? state.info.hostDir : undefined,
+		state.status === "ready" ? state.info.machineId : undefined,
+	);
 	const [sendError, setSendError] = useState<string>();
 	// A queued prompt taken back to edit; the composer puts its text above the draft.
 	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
@@ -609,7 +619,7 @@ function Conversation({
 	const stand =
 		state.status === "loading" && !slow && previous !== undefined ? recent.get(previous)?.state : undefined;
 	const view = stand ?? state;
-	if (view.status === "loading") return <Loading slow={slow} />;
+	if (view.status === "loading") return <Loading prompt={sent[0]} />;
 	if (view.status === "failed") return <p className="p-3 text-ink-muted">{view.message}</p>;
 	const running = isRunning(view);
 	return (
@@ -666,7 +676,7 @@ function Conversation({
 	);
 }
 
-/** True once something has been loading for a while, so a quick load never flashes a status line. */
+/** True once something has been loading for a while, so a quick load keeps the thread before it in view. */
 function useSlow(loading: boolean) {
 	const [slow, setSlow] = useState(false);
 	useEffect(() => {
@@ -677,14 +687,40 @@ function useSlow(loading: boolean) {
 	return loading && slow;
 }
 
-/** The frame while a thread it hasn't shown lately loads: empty, then a quiet line if it takes a while. */
-function Loading({ slow }: { readonly slow: boolean }) {
+/**
+ * The frame while a thread it hasn't shown lately loads. A new session already has its first
+ * prompt, so it shows in place at once; the caret below stands where the reply will be.
+ */
+function Loading({ prompt }: { readonly prompt: HistoryEntry | undefined }) {
+	const text = prompt === undefined ? "" : textOf(prompt);
 	return (
-		<div className="flex h-full items-center justify-center text-xs text-ink-muted">
-			{slow && (
-				<span className="transition-opacity duration-150 ease-out starting:opacity-0">Loading messages…</span>
-			)}
+		<div className="flex h-full flex-col overflow-hidden pt-3">
+			<div className={`${contentWidth} px-3`}>
+				{prompt !== undefined && (
+					<Message role="user" at={prompt.createdAt}>
+						{text !== "" && <p className="min-w-0 whitespace-pre-wrap wrap-break-word line-clamp-4">{text}</p>}
+					</Message>
+				)}
+				<div className="px-4 pt-1">
+					<LoadingCaret />
+				</div>
+			</div>
 		</div>
+	);
+}
+
+/**
+ * A typing caret: hidden for its first second, so a quick load never shows it, then a slow blink
+ * (see `.loading-caret`). It runs only while on screen and its window is shown.
+ */
+function LoadingCaret() {
+	return (
+		<span
+			ref={observeVisibleAnimation}
+			role="status"
+			aria-label="Loading messages"
+			className="loading-caret block h-4 w-2 rounded-[2px] bg-ink"
+		/>
 	);
 }
 
@@ -724,7 +760,7 @@ function Transcript({
 	readonly inset: number;
 }) {
 	const [scrolled, setScrolled] = useState(false);
-	const modelName = useModelName(state.info.hostDir, state.info.model);
+	const modelName = useModelName(state.info.hostDir, state.info.model, state.info.machineId);
 	const turns = useTurns(state.messages);
 	const lastUser = turns.at(-1)?.user;
 	// oxlint-disable-next-line react/purity -- useFollow reads what this decides on mount only.

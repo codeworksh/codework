@@ -56,13 +56,20 @@ export interface Interface {
 	readonly page: (
 		ref: SyncThread & { readonly limit: number },
 	) => Effect.Effect<{ readonly entries: number; readonly floor: number | null }, CodeworkUnavailable | SyncError>;
-	/** The connection to a machine's server, for commands to its sessions. */
-	readonly client: (machineId: string) => Effect.Effect<Connection, CodeworkUnavailable>;
-	/** The machine a synced session is on. */
-	readonly machineOf: (sessionId: string) => Effect.Effect<Option.Option<string>>;
 	/**
-	 * Done once the machine a session is on (the default one for a session not synced) has applied
-	 * its index up to the head its store has now; at once while that machine is away.
+	 * The connection to a machine's server, for commands to its sessions. One that waits behind another
+	 * row of the same server (added twice) is refused: what it ran would never be mirrored.
+	 */
+	readonly client: (machineId: string) => Effect.Effect<Connection, CodeworkUnavailable>;
+	/** The machine a session is on: as synced, else as claimed when it was just created. */
+	readonly machineOf: (sessionId: string) => Effect.Effect<Option.Option<string>>;
+	/** Whether a machine waits behind another row of the same server, added twice. */
+	readonly isDuplicate: (machineId: string) => boolean;
+	/** Records the machine a session was just created on (none: the default one), until its index brings the session. */
+	readonly claim: (sessionId: string, machineId: string | undefined) => Effect.Effect<void>;
+	/**
+	 * Done once the machine a session is on (claimed, else the default one, for a session not synced)
+	 * has applied its index up to the head its store has now; at once while that machine is away.
 	 */
 	readonly settle: (sessionId: string) => Effect.Effect<void>;
 }
@@ -76,6 +83,11 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 
 const unavailable = (machineId: string) =>
 	new CodeworkUnavailable({ message: `The CodeWork server of machine ${machineId} is not connected.` });
+
+const duplicated = () =>
+	new CodeworkUnavailable({
+		message: "This machine is already added under another entry, which is the one synced. Use that one.",
+	});
 
 /** The route a connection is made from: a change reconnects the machine. */
 const routeOf = (row: Servers.Row) =>
@@ -141,9 +153,19 @@ export const layer = Layer.effect(
 				),
 			);
 
+		// Sessions created on a machine whose index has not brought them yet; in memory, since a restart
+		// syncs them anyway.
+		const claimed = new Map<string, string>();
+		// Rows waiting behind another row of the same server.
+		const duplicates = new Set<string>();
 		const machineOf = (sessionId: string) =>
 			sql<{ machineId: string }>`SELECT machine_id FROM session WHERE id = ${sessionId}`.pipe(
-				Effect.map((rows) => Option.fromNullishOr(rows[0]?.machineId)),
+				Effect.map((rows) => {
+					const synced = rows[0]?.machineId;
+					if (synced === undefined) return Option.fromNullishOr(claimed.get(sessionId));
+					claimed.delete(sessionId);
+					return Option.some(synced);
+				}),
 				Effect.orDie,
 			);
 
@@ -334,7 +356,8 @@ export const layer = Layer.effect(
 				yield* Effect.logWarning(
 					`Not syncing machine ${machineId}: its store is already synced as machine ${owner.id}`,
 				);
-				return yield* Effect.never;
+				duplicates.add(machineId);
+				return yield* Effect.never.pipe(Effect.ensuring(Effect.sync(() => void duplicates.delete(machineId))));
 			});
 
 		/**
@@ -548,6 +571,14 @@ export const layer = Layer.effect(
 
 		return Service.of({
 			machineOf,
+			isDuplicate: (machineId) => duplicates.has(machineId),
+			// The default machine by its id now, so a later change of default does not move the session.
+			claim: Effect.fn("Sync.claim")(function* (sessionId, machineId) {
+				const id =
+					machineId ??
+					(yield* sql<{ id: string }>`SELECT id FROM machine WHERE is_default = 1`.pipe(Effect.orDie))[0]?.id;
+				if (id !== undefined) claimed.set(sessionId, id);
+			}),
 			settle: Effect.fn("Sync.settle")(function* (sessionId) {
 				const known = yield* machineOf(sessionId);
 				const machineId = Option.isSome(known)
@@ -573,6 +604,7 @@ export const layer = Layer.effect(
 			}),
 			client: (machineId) =>
 				Effect.suspend(() => {
+					if (duplicates.has(machineId)) return Effect.fail(duplicated());
 					const client = clients.get(machineId);
 					return client === undefined ? Effect.fail(unavailable(machineId)) : Effect.succeed(client);
 				}),

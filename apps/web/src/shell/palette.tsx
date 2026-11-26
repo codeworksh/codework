@@ -19,6 +19,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
+import { type MachineEntry, useStartMachine } from "@/components/machine";
 import { isTheme, previewTheme, THEMES, themeAtom } from "../theme";
 import { AddProject, PALETTE_LIST, type View } from "./sources";
 import { paletteShortcut } from "./switcher";
@@ -29,8 +30,15 @@ const GO_THREADS = "navigation:threads";
 const ADD_PROJECT = "projects:add";
 const THEME_SETTINGS = "settings:themes";
 
-/** Whether the palette is open, and the steps opened past its root list, each with what was typed. */
-const paletteAtom = Atom.make<{ open: boolean; stack: ReadonlyArray<{ view: View; query: string }> }>({
+/**
+ * Whether the palette is open, and the steps opened past its root list, each with what was typed.
+ * Add Project's machine is the start page's when it opened: every step adds to that one.
+ */
+const paletteAtom = Atom.make<{
+	open: boolean;
+	stack: ReadonlyArray<{ view: View; query: string }>;
+	machine?: MachineEntry | undefined;
+}>({
 	open: false,
 	stack: [],
 }).pipe(Atom.keepAlive);
@@ -38,7 +46,8 @@ const paletteAtom = Atom.make<{ open: boolean; stack: ReadonlyArray<{ view: View
 /** Opens the palette at Add Project's sources. */
 export function useAddProject() {
 	const setPalette = useAtomSet(paletteAtom);
-	return () => setPalette({ open: true, stack: [{ view: { kind: "sources" }, query: "" }] });
+	const { machine } = useStartMachine();
+	return () => setPalette({ open: true, stack: [{ view: { kind: "sources" }, query: "" }], machine });
 }
 
 /**
@@ -48,7 +57,8 @@ export function useAddProject() {
  */
 export function Palette() {
 	const navigate = useNavigate();
-	const [{ open, stack }, setPalette] = useAtom(paletteAtom);
+	const [{ open, stack, machine }, setPalette] = useAtom(paletteAtom);
+	const start = useStartMachine().machine;
 	const step = stack.at(-1);
 	const [saved, setTheme] = useAtom(themeAtom);
 	// The highlighted item, controlled so each opening starts at the top.
@@ -66,16 +76,17 @@ export function Palette() {
 
 	const push = (view: View, query = "") => {
 		setValue("");
-		setPalette({ open, stack: [...stack, { view, query }] });
+		setPalette({ open, stack: [...stack, { view, query }], machine: stack.length === 0 ? start : machine });
 	};
 	const pop = () => {
 		setValue(stack.length === 1 ? ADD_PROJECT : "");
-		setPalette({ open, stack: stack.slice(0, -1) });
+		setPalette({ open, stack: stack.slice(0, -1), machine });
 	};
 	const setQuery = (query: string) =>
 		setPalette({
 			open,
 			stack: stack.map((entry, index) => (index === stack.length - 1 ? { ...entry, query } : entry)),
+			machine,
 		});
 
 	useEffect(() => {
@@ -115,7 +126,15 @@ export function Palette() {
 			}}
 		>
 			{step !== undefined ? (
-				<AddProject key={stack.length} step={step} setQuery={setQuery} push={push} pop={pop} close={close} />
+				<AddProject
+					key={stack.length}
+					machine={machine}
+					step={step}
+					setQuery={setQuery}
+					push={push}
+					pop={pop}
+					close={close}
+				/>
 			) : (
 				<>
 					<CommandInput placeholder="Type a command or search…" />

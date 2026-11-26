@@ -11,11 +11,11 @@ import {
 	SquaresFourIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import { useAtom, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Option, Schema } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import type { SidebarSession } from "@codeworksh/contract";
+import type { SidebarProject, SidebarSession } from "@codeworksh/contract";
 import { type MouseEvent, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { DisplayMenu } from "@/components/display";
@@ -40,10 +40,10 @@ import { Ago } from "../widgets/time";
 import { OpenProviderSettings } from "@/components/offline";
 import { WorkspaceSwitcher } from "../shell/workspace";
 import { ProviderIcon } from "@/components/provider";
-import { problemAtom } from "../kernel/servers";
+import { problemAtom, serversAtom } from "../kernel/servers";
 import { Empty, EmptyAction } from "./empty";
 import { useAddProject } from "../shell/palette";
-import { placeAtom } from "./place";
+import { machineAtom, placeAtom } from "./place";
 import { useRunDisplay } from "../widgets/session/display";
 import { RunMark } from "../widgets/session/run";
 import { PriorityIcon, StatusIcon } from "../widgets/threads/marks";
@@ -76,28 +76,50 @@ export function SessionsSidebar() {
 	const search = useRef<HTMLInputElement>(null);
 	const openElsewhere = useOpenElsewhere();
 	const [place, setPlace] = useAtom(placeAtom);
+	const setMachine = useAtomSet(machineAtom);
+	const servers = useAtomValue(serversAtom);
+	const defaultId = AsyncResult.isSuccess(servers) ? servers.value.find((server) => server.isDefault)?.id : undefined;
+	// The start page on a project's machine and folder; the default machine is named by no id, as everywhere.
+	// A project only in sandboxes has no folder there to start in, so only its machine carries over.
+	const startOn = useCallback(
+		(project: Pick<SidebarProject, "path" | "name" | "onHost" | "machine">) => {
+			setMachine(project.machine.id === defaultId ? undefined : project.machine.id);
+			setPlace(
+				project.onHost
+					? { kind: "folder", path: project.path, name: project.name, machineId: project.machine.id }
+					: { kind: "none" },
+			);
+		},
+		[defaultId, setMachine, setPlace],
+	);
 	const addProject = useAddProject();
 	const navigate = useNavigate();
 	// The session in front on the tab on screen reads as current; the others it shows, as open.
 	const { tabId } = useParams({ strict: false });
-	const { instances } = useAtomValue(deskAtom);
+	const { instances, order } = useAtomValue(deskAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const tab = useTabs().find((candidate) => candidate.id === tabId);
 	const focusedId = tab === undefined ? undefined : focusedOn.get(tab.id);
-	const current = threadRef(instances.find((instance) => instance.id === focusedId)?.address)?.sessionId;
-	const shown = new Set(
-		tab === undefined
-			? []
-			: instances.flatMap((instance) =>
-					(instance.tags & tabTag(tab)) === 0 ? [] : (threadRef(instance.address)?.sessionId ?? []),
-				),
-	);
+	// A frame in front that is not a session's (Git Changes, shared by a space's sessions) leaves the
+	// session last in front on the tab as current: the user is still working in it.
+	// The tab's session frames, by frame id, read once: the lookups below stay linear in the desk.
+	const sessionFrames = new Map<string, string>();
+	if (tab !== undefined)
+		for (const instance of instances) {
+			const sessionId = (instance.tags & tabTag(tab)) === 0 ? undefined : threadRef(instance.address)?.sessionId;
+			if (sessionId !== undefined) sessionFrames.set(instance.id, sessionId);
+		}
+	const current =
+		(focusedId === undefined ? undefined : sessionFrames.get(focusedId)) ??
+		sessionFrames.get(order.focusOrder.find((id) => sessionFrames.has(id)) ?? "");
+	const shown = new Set(sessionFrames.values());
 	// A new session starts on the start page, in the current session's project when one is in front.
 	const startNew = () => {
 		const project = AsyncResult.isSuccess(result)
 			? result.value.find((candidate) => candidate.sessions.some(({ id }) => id === current))
 			: undefined;
-		if (project !== undefined) setPlace({ kind: "folder", path: project.path });
+		// The folder is on the project's machine, so the start page moves to that machine too.
+		if (project !== undefined) startOn(project);
 		void navigate({ to: "/" });
 	};
 	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
@@ -129,11 +151,11 @@ export function SessionsSidebar() {
 		});
 	}, []);
 	const startIn = useCallback(
-		(path: string) => {
-			setPlace({ kind: "folder", path });
+		(project: Parameters<typeof startOn>[0]) => {
+			startOn(project);
 			void navigate({ to: "/" });
 		},
-		[navigate, setPlace],
+		[navigate, startOn],
 	);
 
 	const [display, changeDisplay] = useDisplay();
@@ -251,7 +273,7 @@ export function SessionsSidebar() {
 								current={current}
 								shown={shown}
 								onToggle={() => toggle(group.key)}
-								onStartNew={group.kind === "project" ? () => startIn(group.project.path) : undefined}
+								onStartNew={group.kind === "project" ? () => startIn(group.project) : undefined}
 								onOpen={open}
 							/>
 						))}

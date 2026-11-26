@@ -19,7 +19,10 @@ interface Interface {
 	readonly info: { readonly home: string; readonly projects: string };
 	readonly browse: (
 		path: string,
-	) => Effect.Effect<{ readonly path: string; readonly entries: ReadonlyArray<Contract.Folder> }, Contract.HostError>;
+	) => Effect.Effect<
+		{ readonly path: string; readonly entries: ReadonlyArray<Contract.Folder>; readonly readable: boolean },
+		Contract.HostError
+	>;
 	readonly add: (path: string) => Effect.Effect<{ readonly path: string }, Contract.HostError>;
 	readonly create: (
 		name: string,
@@ -39,7 +42,8 @@ const LOGIN_GH = "Run `gh auth login` to sign in to GitHub.";
 const NOT_FOUND = "Repository not found. Check the owner and name and try again.";
 const NOT_NAMED = "Repositories are named owner/name.";
 
-const fail = (message: string) => new Contract.HostError({ message });
+const fail = (message: string, reason?: "missing" | "file") =>
+	new Contract.HostError(reason === undefined ? { message } : { message, reason });
 
 const describe = (error: PlatformError.PlatformError, target: string) =>
 	error.reason._tag === "NotFound"
@@ -154,27 +158,27 @@ const make = Effect.gen(function* () {
 
 	const browse = Effect.fn("Host.browse")(function* (input: string) {
 		const directory = resolve(input);
-		const entries = yield* Effect.tryPromise({
+		const listed = yield* Effect.tryPromise({
 			try: () => readdir(directory, { withFileTypes: true }),
 			catch: (cause) => (cause instanceof Error && "code" in cause ? String(cause.code) : undefined),
 		}).pipe(
+			Effect.map((entries) => ({ entries, readable: true })),
 			Effect.catchIf(
 				(code) => code === "EACCES" || code === "EPERM",
-				() => Effect.succeed([]),
+				() => Effect.succeed({ entries: [], readable: false }),
 			),
 			Effect.mapError((code) =>
-				fail(
-					code === "ENOENT"
-						? `${directory} does not exist.`
-						: code === "ENOTDIR"
-							? `${directory} is not a directory.`
-							: `Could not read ${directory}.`,
-				),
+				code === "ENOENT"
+					? fail(`${directory} does not exist.`, "missing")
+					: code === "ENOTDIR"
+						? fail(`${directory} is not a directory.`, "file")
+						: fail(`Could not read ${directory}.`),
 			),
 		);
 		return {
 			path: directory,
-			entries: entries
+			readable: listed.readable,
+			entries: listed.entries
 				.filter((entry) => entry.isDirectory())
 				.map((entry) => ({ name: entry.name, path: path.join(directory, entry.name) }))
 				.toSorted((a, b) => a.name.localeCompare(b.name)),
@@ -187,7 +191,7 @@ const make = Effect.gen(function* () {
 		if (Option.isNone(found)) {
 			yield* fs.makeDirectory(directory, { recursive: true }).pipe(Effect.mapError(failed(directory)));
 		} else if (found.value.type !== "Directory") {
-			return yield* fail(`${directory} is not a directory.`);
+			return yield* fail(`${directory} is not a directory.`, "file");
 		}
 		return { path: directory };
 	});
