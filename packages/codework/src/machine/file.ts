@@ -94,11 +94,15 @@ export const update = <E, R>(
 				onSome: (machine) =>
 					options.machineId === undefined || options.machineId === machine.id
 						? Effect.succeed(machine)
-						: Effect.fail(
-								new MachineError({
-									message: `This home is machine ${machine.id}; its id can't change to ${options.machineId}. Use another --home.`,
-								}),
-							),
+						: // `serve` generates an id at startup, so a rebuilt machine has one before it reclaims its old id;
+							// one no workspace has seen yet can still give way.
+							machine.source === "generated" && Object.keys(machine.workspaces).length === 0
+							? Effect.succeed({ ...machine, id: options.machineId, source: "flag" as const })
+							: Effect.fail(
+									new MachineError({
+										message: `This home is machine ${machine.id}; its id can't change to ${options.machineId}. Use another --home.`,
+									}),
+								),
 			});
 			const identity = machine.identity ?? (yield* newIdentity);
 			const next = yield* change({ ...machine, identity });

@@ -16,7 +16,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { messageOf } from "@/lib/utils";
-import { isSignedInApp } from "../../auth";
 import { machinesAtom, meAtom, reachAtom, relayFailure } from "../../kernel/relay";
 import { Server } from "../../kernel/rpc";
 import { useMachineAtom } from "../../shell/connect";
@@ -67,8 +66,7 @@ export function MachinesSettings() {
 					/>
 				</>
 			) : (
-				// Signed in, the workspace's sections hold their place until the account is known.
-				isSignedInApp &&
+				// The workspace's sections hold their place until the account is known.
 				!ready && (
 					<>
 						<Section title=" " description={"\u00a0"}>
@@ -148,7 +146,7 @@ function ThisMachine({
 					</Row>
 					<Row
 						title="ID"
-						description={status.id === null ? "Assigned when it first connects" : "It never changes"}
+						description={status.id === null ? "Assigned when the CodeWork server starts" : "It never changes"}
 					>
 						{status.id === null ? (
 							<Badge tone="muted">Not Assigned</Badge>

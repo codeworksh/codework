@@ -4,7 +4,6 @@ import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { isSignedInApp } from "../auth";
 import { isSignedOut, isTransient, meAtom, reachAtom } from "../kernel/relay";
 
 type Connection = "ok" | "offline" | "unreachable" | "unavailable" | "signedOut";
@@ -49,11 +48,6 @@ function useConnection(): Connection {
  * the network does; the rest of the app keeps what it last heard.
  */
 export function ConnectionStatus() {
-	if (!isSignedInApp) return null;
-	return <Status />;
-}
-
-function Status() {
 	const connection = useConnection();
 	const refreshMe = useAtomRefresh(meAtom);
 	const clerk = useClerk();

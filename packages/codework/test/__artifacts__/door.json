@@ -27,7 +27,7 @@
 	"a call with another token goes through": false,
 	"sessions made by the refused call": 0,
 	"machineId": {
-		"before": null,
+		"before": "<generated>",
 		"after": "door-machine"
 	},
 	"cli": {

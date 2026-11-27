@@ -1,57 +1,11 @@
 import type { ReactNode } from "react";
 
-const GRID_W = 16;
+import { GLOW, onScreen, spritePath, TERMINAL_HEIGHT, TERMINAL_WIDTH } from "@/components/pixel";
 
-const TERMINAL = [
-	"..############..",
-	".##..........##.",
-	".#............#.",
-	".#..#.........#.",
-	".#...#...###..#.",
-	".#..#....###..#.",
-	".#............#.",
-	".#............#.",
-	".##..........##.",
-	"..############..",
-	"......####......",
-	"....########....",
-] as const;
+// A prompt and its cursor.
+const PROMPT = ["#.......", ".#...###", "#....###"];
 
-const GLOW = [
-	"#.#..........#.#",
-	"................",
-	"#..............#",
-	"................",
-	"................",
-	"................",
-	"................",
-	"#..............#",
-	"................",
-	"#.#..........#.#",
-	"................",
-	"..#..........#..",
-] as const;
-
-/** Merges each row's filled runs into one rect so the path stays short. */
-function spritePath(rows: readonly string[]) {
-	let path = "";
-	rows.forEach((row, y) => {
-		let x = 0;
-		while (x < row.length) {
-			if (row[x] !== "#") {
-				x += 1;
-				continue;
-			}
-			let run = 1;
-			while (row[x + run] === "#") run += 1;
-			path += `M${x} ${y}h${run}v1h-${run}z`;
-			x += run;
-		}
-	});
-	return path;
-}
-
-const TERMINAL_PATH = spritePath(TERMINAL);
+const TERMINAL_PATH = spritePath(onScreen(PROMPT, 4, 3));
 const GLOW_PATH = spritePath(GLOW);
 
 /** The sidebar's message when it has nothing to list: a few quiet lines at the top, and what to do next. */
@@ -61,7 +15,7 @@ export function Empty({ children }: { children: ReactNode }) {
 			<div className="flex flex-col items-center gap-2">{children}</div>
 			<svg
 				aria-hidden
-				viewBox={`0 0 ${GRID_W} ${TERMINAL.length}`}
+				viewBox={`0 0 ${TERMINAL_WIDTH} ${TERMINAL_HEIGHT}`}
 				shapeRendering="crispEdges"
 				className="w-24 text-ink-muted/35"
 				fill="currentColor"

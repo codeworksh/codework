@@ -1,15 +1,26 @@
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** A shell command to run by hand, or a value to paste elsewhere, with a copy button that confirms. */
-export function CopyCommand({ command, label = "Copy command" }: { command: string; label?: string }) {
+/**
+ * A shell command to run by hand, or a value to paste elsewhere, with a copy button that confirms.
+ * `shown` stands in for it on one line, where the full command is too much to read.
+ */
+export function CopyCommand({
+	command,
+	shown = command,
+	label = "Copy command",
+}: {
+	command: string;
+	shown?: ReactNode;
+	label?: string;
+}) {
 	return (
 		<span className="flex min-w-0 items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">
 			<code className="min-w-0 flex-1 truncate font-mono text-xs" title={command}>
-				{command}
+				{shown}
 			</code>
 			<CopyButton value={command} label={label} />
 		</span>

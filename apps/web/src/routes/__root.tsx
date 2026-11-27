@@ -7,6 +7,7 @@ import { SessionsSidebar } from "../landing/sidebar";
 import { SettingsSidebar } from "../settings/layout";
 import { isSettingsPath } from "../settings/sections";
 import { NavigationControls } from "../shell/titlebar";
+import { AppError } from "../shell/fault";
 import { Palette } from "../shell/palette";
 import { Toasts } from "../shell/toasts";
 import { SetupGate } from "../setup";
@@ -54,4 +55,5 @@ function Root() {
 	);
 }
 
-export const Route = createRootRoute({ component: Root });
+// The root has nothing above it to fall back to, so its errors take the whole window.
+export const Route = createRootRoute({ component: Root, errorComponent: AppError });

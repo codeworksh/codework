@@ -27,13 +27,17 @@ The API contract lives in [`packages/schema/src/relay.ts`](../../packages/schema
 
 ## Working Locally
 
-Relay needs Postgres and a Clerk secret key. `pnpm db` starts the local Postgres from [`compose.yaml`](./compose.yaml) on port 55432:
+Relay needs Postgres and a Clerk secret key. `pnpm db` starts the local Postgres from [`compose.yaml`](./compose.yaml) on port 55432, and `pnpm start` serves Relay on it:
 
 ```sh
 cd infra/relay
 pnpm db
-DATABASE_URL=postgres://relay:relay@127.0.0.1:55432/relay CLERK_SECRET_KEY=... pnpm start
+pnpm start
 ```
+
+`pnpm start` reads `CLERK_SECRET_KEY` from the repo root's `.env.local`, as the tests do, and uses the compose database unless `DATABASE_URL` says otherwise. Variables you export win over the file.
+
+Migrations are still edited in place before release, so a database made before one changed can fail with a missing column. `docker compose down -v`, then `pnpm db`, starts over with an empty one.
 
 It listens on `127.0.0.1:8787` by default. Set `HOST=0.0.0.0` so machines on other hosts can reach it, and point a CLI at it with `CODEWORK_RELAY_URL`.
 

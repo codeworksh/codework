@@ -8,7 +8,6 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactNode, useCallback, useContext } from "react";
 
 import { CopyButton } from "@/components/copyable";
-import { isSignedInApp } from "../../auth";
 import { machinesAtom, relayFailure, workspaceAtom } from "../../kernel/relay";
 import { serversAtom } from "../../kernel/servers";
 import { SeenStatus, StatusDot } from "../controls";
@@ -20,13 +19,9 @@ export function usePaired() {
 	return AsyncResult.map(useAtomValue(serversAtom), (servers) => servers.filter(isPaired));
 }
 
-/**
- * The workspace the app works in, and whether that is known yet. An app without sign-in has none, at
- * once; signed in, it waits for the account.
- */
+/** The workspace the app works in, and whether that is known yet: it waits for the account. */
 export function useWorkspace(): { readonly ready: boolean; readonly workspace: Relay.Workspace | undefined } {
 	const current = useAtomValue(workspaceAtom);
-	if (!isSignedInApp) return { ready: true, workspace: undefined };
 	return {
 		ready: !AsyncResult.isInitial(current),
 		workspace: AsyncResult.isSuccess(current) ? current.value : undefined,

@@ -27,7 +27,7 @@ Machines never hold a session. Every machine request body is one compact JWS ([j
 
 ## Identity Key and Link Keys
 
-A home has two kinds of key, both in `<home>/machine.json` ([file.ts](../../packages/codework/src/machine/file.ts)). That file holds private keys, so it is written 0600, atomically, under a lock shared by `serve` and `codework connect`.
+A home has two kinds of key, both in `<home>/machine.json` ([file.ts](../../packages/codework/src/machine/file.ts)). That file holds private keys, so it is written 0600, atomically, under a lock shared by `serve` and `codework connect`. `serve` creates it, with the machine's id and identity key, as it starts, so the local machine has an id before it links or pairs. `codework connect --machine-id` can still replace a generated id that no workspace has seen, which is how a rebuilt machine takes its old id back. Once linked, the id is fixed.
 
 - The **identity key**: one per home. It vouches for link keys, and it signs pairing tickets on the server.
 - A **link key**: one per workspace link. Every request for that link is signed with it and names it by thumbprint.

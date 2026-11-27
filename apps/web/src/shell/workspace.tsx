@@ -16,7 +16,6 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { isSignedInApp } from "../auth";
 import { chooseWorkspaceAtom, meAtom, workspaceAtom } from "../kernel/relay";
 
 /**
@@ -39,15 +38,11 @@ export function WorkspaceSwitcher() {
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="w-56">
 				<DropdownMenuItem onSelect={() => void navigate({ to: "/settings" })}>Settings</DropdownMenuItem>
-				{isSignedInApp && (
-					<>
-						{/* Members come with invites; the row marks where they will live. */}
-						<DropdownMenuItem disabled>Invite & Manage Members</DropdownMenuItem>
-						<DropdownMenuSeparator />
-						<SwitchWorkspace current={workspace?.id} />
-						<SignOut />
-					</>
-				)}
+				{/* Members come with invites; the row marks where they will live. */}
+				<DropdownMenuItem disabled>Invite & Manage Members</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<SwitchWorkspace current={workspace?.id} />
+				<SignOut />
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

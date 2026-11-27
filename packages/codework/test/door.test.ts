@@ -32,6 +32,7 @@ const closedPort = () =>
 	});
 
 const mode = (file: string) => (statSync(file).mode & 0o777).toString(8);
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** A server of `home` on loopback, for as long as the effect given to it runs. */
 const serve = (dir: string) =>
@@ -86,7 +87,8 @@ it("the loopback server opens its socket only to a caller with its home's token"
 			Stream.runCollect,
 		);
 		const before = yield* rpc["server.info"]({});
-		// `codework connect` writes machine.json while the server runs; the next call names it.
+		// The server made a machine at startup; `codework connect --machine-id` replaces its generated id
+		// while the server runs, and the next call names it.
 		yield* MachineFile.update(local, { machineId: "door-machine" }, Effect.succeed).pipe(
 			Effect.provide(NodeServices.layer),
 		);
@@ -157,7 +159,15 @@ it("the loopback server opens its socket only to a caller with its home's token"
 				upgrade,
 				"a call with another token goes through": !refused,
 				"sessions made by the refused call": index.filter((item) => item._tag === "Session").length,
-				machineId: { before: before.machineId ?? null, after: after.machineId ?? null },
+				machineId: {
+					before:
+						before.machineId === undefined
+							? null
+							: uuid.test(before.machineId)
+								? "<generated>"
+								: before.machineId,
+					after: after.machineId ?? null,
+				},
 				cli: {
 					start: scrub(started.stdout),
 					status,

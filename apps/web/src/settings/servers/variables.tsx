@@ -39,10 +39,14 @@ const toSave = (rows: readonly Row[]): CliEnvVar[] =>
 export function Variables({
 	saved,
 	onSave,
+	compact = false,
 }: {
 	saved: readonly CliEnvVar[];
 	onSave: (env: CliEnvVar[]) => Promise<string | undefined>;
+	/** Sized for a step's small text, as in Setup. */
+	compact?: boolean;
 }) {
+	const note = compact ? "text-xs" : "text-sm";
 	const [rows, setRows] = useState<readonly Row[]>(() => saved.map(rowOf));
 	const [error, setError] = useState<string | undefined>(undefined);
 
@@ -58,7 +62,7 @@ export function Variables({
 	return (
 		<div className="flex flex-col gap-2">
 			<Button
-				size="sm"
+				size={compact ? "xs" : "sm"}
 				variant="secondary"
 				className="self-start"
 				onClick={() => setRows((current) => [...current, rowOf({ name: "", value: "", sensitive: false })])}
@@ -124,11 +128,11 @@ export function Variables({
 				</span>
 			))}
 			{rows.some((row) => row.sensitive) && (
-				<span className="text-sm text-ink-muted">
+				<span className={`${note} text-ink-muted`}>
 					Sensitive values stay with the app server and are never shown here again.
 				</span>
 			)}
-			{error !== undefined && <span className="text-sm text-destructive">{error}</span>}
+			{error !== undefined && <span className={`${note} text-destructive`}>{error}</span>}
 		</div>
 	);
 }

@@ -20,7 +20,6 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar";
 import { ConnectionStatus } from "../shell/status";
-import { isSignedInApp } from "../auth";
 import { workspaceAtom } from "../kernel/relay";
 import { useTabReturn } from "../wm/tabs";
 import { search } from "./sections";
@@ -33,10 +32,8 @@ export function SettingsSidebar() {
 	const [query, setQuery] = useState("");
 	const current = useAtomValue(workspaceAtom);
 	const workspaceId = AsyncResult.isSuccess(current) ? current.value?.id : undefined;
-	// The account's pages sit under the workspace, so they wait for it; signed out, there is no account.
-	const matches = search(query).filter(
-		(section) => !section.to.includes("$workspaceId") || (isSignedInApp && workspaceId !== undefined),
-	);
+	// The account's pages sit under the workspace, so they wait for it.
+	const matches = search(query).filter((section) => !section.to.includes("$workspaceId") || workspaceId !== undefined);
 	const params = { workspaceId: workspaceId ?? "" };
 	const groups = [...new Set(matches.map((section) => section.group))];
 	return (
@@ -121,7 +118,7 @@ export function SettingsLayout() {
 	useScrollFade(viewport);
 	return (
 		<main ref={viewport} className="scroll-fade h-full min-h-0 min-w-0 overflow-auto">
-			<div>
+			<div className="flex min-h-full flex-col">
 				<Outlet />
 			</div>
 		</main>

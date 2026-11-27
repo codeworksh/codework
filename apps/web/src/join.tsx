@@ -14,7 +14,6 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { isSignedInApp } from "./auth";
 import { Frame } from "./frame";
 import { createWorkspaceAtom, meAtom, relayFailure } from "./kernel/relay";
 
@@ -27,7 +26,7 @@ export function Join() {
 	const [error, setError] = useState<string | null>(null);
 	const trimmed = name.trim();
 	return (
-		<Frame end={isSignedInApp && <Account />}>
+		<Frame end={<Account />}>
 			{/* Extra room below lifts the form a little above center, where it reads as centered. */}
 			<main className="flex flex-1 flex-col items-center overflow-auto px-4 pb-24">
 				<form

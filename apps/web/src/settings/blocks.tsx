@@ -161,6 +161,7 @@ export function Keys({ children }: { children: ReactNode }) {
 
 /** A field that saves itself: Enter or leaving it passes on a changed value, trimmed; Escape puts the saved one back. */
 export function SavingInput({
+	id,
 	value,
 	label,
 	placeholder,
@@ -168,6 +169,7 @@ export function SavingInput({
 	className,
 	onCommit,
 }: {
+	id?: string | undefined;
 	value: string;
 	label: string;
 	placeholder?: string | undefined;
@@ -184,6 +186,7 @@ export function SavingInput({
 	};
 	return (
 		<Input
+			id={id}
 			aria-label={label}
 			value={draft ?? value}
 			placeholder={placeholder}

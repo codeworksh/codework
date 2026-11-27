@@ -1,5 +1,5 @@
 import { Control, Global, Harness, Sandbox, Settings } from "@codeworksh/harness/effect";
-import { NodeHttpServer } from "@effect/platform-node";
+import { NodeHttpServer, NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
 import type * as IpNetwork from "effect/net/IpNetwork";
@@ -7,6 +7,7 @@ import * as NetAddress from "effect/net/NetAddress";
 import { type Rpc, type RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
+import * as MachineFile from "../machine/file.ts";
 import * as Heartbeat from "../machine/heartbeat.ts";
 import * as Clones from "./clones.ts";
 import * as Contract from "./contract.ts";
@@ -60,6 +61,18 @@ const managedShutdown = Layer.unwrap(
 
 /** Ends the stored runs the last server left open, before the listener opens: a client never sees them live. */
 const sweep = Layer.effectDiscard(Effect.flatMap(Control.Service, (control) => control.sweep));
+
+/**
+ * This computer is a machine from the moment its server runs: `machine.json`, with the id and identity key,
+ * is made at startup rather than on the first connect or pairing, so This Machine always has an id. A file
+ * it can't read or write is logged, not fatal; local work doesn't need it.
+ */
+const machine = Layer.effectDiscard(
+	Effect.flatMap(Global.Service, (global) => MachineFile.identity(global.home)).pipe(
+		Effect.provide(NodeServices.layer),
+		Effect.catch((error) => Effect.logWarning("Could not set up this machine's id", error)),
+	),
+);
 
 /**
  * Resumes the runs the last server left unfinished, whether it crashed or shut down, and the prompts
@@ -149,6 +162,7 @@ export const layer = (options: {
 		Layer.provide(Principal.layerToken),
 		// Built after the harness and before everything above it, the listener included.
 		Layer.provide(sweep),
+		Layer.provide(machine),
 		Layer.provide(Harness.layer(options.harness)),
 	);
 };

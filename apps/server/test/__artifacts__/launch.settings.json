@@ -1,0 +1,158 @@
+{
+	"before": {
+		"cli": null,
+		"home": {
+			"path": "<default home>",
+			"custom": false,
+			"fallback": "<default home>"
+		},
+		"args": "",
+		"env": [],
+		"server": {
+			"_tag": "Stopped"
+		}
+	},
+	"saved": {
+		"cli": {
+			"path": "<bin>/codework",
+			"custom": true,
+			"version": "<version>"
+		},
+		"home": {
+			"path": "<custom home>",
+			"custom": true,
+			"fallback": "<default home>"
+		},
+		"args": "--port <port 1>",
+		"env": [
+			{
+				"name": "PLAIN_SETTING",
+				"sensitive": false,
+				"value": "plain value"
+			},
+			{
+				"name": "SECRET_KEY",
+				"sensitive": true
+			}
+		],
+		"server": {
+			"_tag": "Stopped"
+		}
+	},
+	"afterStart": {
+		"cli": {
+			"path": "<bin>/codework",
+			"custom": true,
+			"version": "<version>"
+		},
+		"home": {
+			"path": "<custom home>",
+			"custom": true,
+			"fallback": "<default home>"
+		},
+		"args": "--port <port 1>",
+		"env": [
+			{
+				"name": "PLAIN_SETTING",
+				"sensitive": false,
+				"value": "plain value"
+			},
+			{
+				"name": "SECRET_KEY",
+				"sensitive": true
+			}
+		],
+		"server": {
+			"_tag": "Running",
+			"url": "ws://127.0.0.1:<port 1>/rpc/v1"
+		}
+	},
+	"callsAfterStart": [
+		"args: service start --port <port 1>",
+		"  PLAIN_SETTING=plain value",
+		"  SECRET_KEY=s3cret",
+		"  CODEWORK_HOME_DIR=<custom home>"
+	],
+	"afterRestart": {
+		"cli": {
+			"path": "<bin>/codework",
+			"custom": true,
+			"version": "<version>"
+		},
+		"home": {
+			"path": "<custom home>",
+			"custom": true,
+			"fallback": "<default home>"
+		},
+		"args": "--port <port 2>",
+		"env": [
+			{
+				"name": "PLAIN_SETTING",
+				"sensitive": false,
+				"value": "changed"
+			},
+			{
+				"name": "SECRET_KEY",
+				"sensitive": true
+			}
+		],
+		"server": {
+			"_tag": "Running",
+			"url": "ws://127.0.0.1:<port 2>/rpc/v1"
+		}
+	},
+	"afterStop": {
+		"cli": {
+			"path": "<bin>/codework",
+			"custom": true,
+			"version": "<version>"
+		},
+		"home": {
+			"path": "<custom home>",
+			"custom": true,
+			"fallback": "<default home>"
+		},
+		"args": "--port <port 2>",
+		"env": [
+			{
+				"name": "PLAIN_SETTING",
+				"sensitive": false,
+				"value": "changed"
+			},
+			{
+				"name": "SECRET_KEY",
+				"sensitive": true
+			}
+		],
+		"server": {
+			"_tag": "Stopped"
+		}
+	},
+	"calls": [
+		"args: service start --port <port 1>",
+		"  PLAIN_SETTING=plain value",
+		"  SECRET_KEY=s3cret",
+		"  CODEWORK_HOME_DIR=<custom home>",
+		"args: service restart --port <port 2>",
+		"  PLAIN_SETTING=changed",
+		"  SECRET_KEY=s3cret",
+		"  CODEWORK_HOME_DIR=<custom home>",
+		"args: service stop",
+		"  PLAIN_SETTING=changed",
+		"  SECRET_KEY=s3cret",
+		"  CODEWORK_HOME_DIR=<custom home>"
+	],
+	"reset": {
+		"cli": null,
+		"home": {
+			"path": "<default home>",
+			"custom": false,
+			"fallback": "<default home>"
+		},
+		"args": "",
+		"env": [],
+		"server": {
+			"_tag": "Stopped"
+		}
+	}
+}

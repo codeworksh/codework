@@ -140,19 +140,23 @@ const StatusLine = ({ status }: { status: LocalServerStatus }) => {
 };
 
 /** A local server: its name, its state and controls, then how it runs and what it starts with. */
-export function LocalDetail({ status }: { status: LocalServerStatus }) {
+/** Saves part of a server's settings; resolves to the failure's message, or nothing once saved. */
+export function useConfigure(id: string) {
 	const update = useAtomSet(updateAtom, { mode: "promise" });
+	return (patch: Omit<ServerUpdate, "id">) =>
+		update({ payload: { id, ...patch } }).then(
+			() => undefined,
+			(cause: unknown) => messageOf(cause),
+		);
+}
+
+export function LocalDetail({ status }: { status: LocalServerStatus }) {
 	const { running, error: actionError, act: run } = useServerAction();
 	const [error, setError] = useState<string | null>(null);
 	const [nameError, setNameError] = useState<string | null>(null);
 	const { id, server, cli } = status;
 	const usable = cli !== null && "version" in cli;
-
-	const configure = (patch: Omit<ServerUpdate, "id">) =>
-		update({ payload: { id, ...patch } }).then(
-			() => undefined,
-			(cause: unknown) => messageOf(cause),
-		);
+	const configure = useConfigure(id);
 
 	const act = (action: CliAction) => {
 		setError(null);
@@ -365,25 +369,32 @@ function Field({ title, description, children }: { title: ReactNode; description
  */
 function SettingField({
 	title,
-	label,
 	description,
-	value,
-	placeholder,
-	resettable = true,
-	onSave,
 	children,
-}: {
-	title: ReactNode;
+	...input
+}: SettingInputProps & { title: ReactNode; description: ReactNode; children?: ReactNode }) {
+	return (
+		<Field title={title} description={description}>
+			<SettingInput {...input} />
+			{children}
+		</Field>
+	);
+}
+
+interface SettingInputProps {
+	/** For a visible label that points at the field. */
+	id?: string;
 	/** The field's name for screen readers, when the title is more than text. */
 	label: string;
-	description: ReactNode;
 	value: string;
 	placeholder: string;
 	/** Whether a set value can go back to the default; an added server's home has none. */
 	resettable?: boolean;
 	onSave: (value: string) => Promise<string | undefined>;
-	children?: ReactNode;
-}) {
+}
+
+/** A setting's field with its Reset, and the error from saving it until the next save. */
+export function SettingInput({ id, label, value, placeholder, resettable = true, onSave }: SettingInputProps) {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 	const save = (next: string) => {
@@ -395,9 +406,10 @@ function SettingField({
 		});
 	};
 	return (
-		<Field title={title} description={description}>
+		<>
 			<span className="flex items-center gap-2">
 				<SavingInput
+					id={id}
 					label={label}
 					value={value}
 					placeholder={placeholder}
@@ -418,8 +430,7 @@ function SettingField({
 				)}
 			</span>
 			{error !== undefined && <span className="text-sm text-destructive">{error}</span>}
-			{children}
-		</Field>
+		</>
 	);
 }
 

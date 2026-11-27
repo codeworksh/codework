@@ -6,6 +6,7 @@ import { createBrowserHistory, createHashHistory, RouterProvider } from "@tansta
 import { Auth } from "./auth";
 import { isElectron } from "./env";
 import { getRouter } from "./router";
+import { CrashBoundary } from "./shell/fault";
 import "./style.css";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path
@@ -18,11 +19,13 @@ const router = getRouter(history);
 export const startup = router.load().then(() => {
 	ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 		<React.StrictMode>
-			<Auth>
-				<RegistryProvider>
-					<RouterProvider router={router} />
-				</RegistryProvider>
-			</Auth>
+			<CrashBoundary>
+				<Auth>
+					<RegistryProvider>
+						<RouterProvider router={router} />
+					</RegistryProvider>
+				</Auth>
+			</CrashBoundary>
 		</React.StrictMode>,
 	);
 });
