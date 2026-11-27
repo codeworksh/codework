@@ -1,4 +1,4 @@
-import { DesktopTowerIcon, HardDrivesIcon, type Icon, PaletteIcon, StackIcon, UserIcon } from "@phosphor-icons/react";
+import { DesktopTowerIcon, type Icon, PaletteIcon, StackIcon, UserIcon } from "@phosphor-icons/react";
 
 /** Whether a path is a settings page: the app's own, or the account's and workspace's under a workspace. */
 export const isSettingsPath = (pathname: string) =>
@@ -9,7 +9,6 @@ export interface SettingsSection {
 		| "/workspaces/$workspaceId/settings/account/profile"
 		| "/settings/tabs"
 		| "/settings/themes"
-		| "/settings/servers"
 		| "/settings/machines";
 	readonly label: string;
 	readonly icon: Icon;
@@ -42,13 +41,6 @@ const sections: readonly SettingsSection[] = [
 		keywords: ["appearance", "colors", "dark", "light"],
 	},
 	{
-		to: "/settings/servers",
-		label: "Providers",
-		icon: HardDrivesIcon,
-		group: "Application",
-		keywords: ["servers", "provider", "local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
-	},
-	{
 		to: "/settings/machines",
 		label: "Machines",
 		icon: DesktopTowerIcon,
@@ -79,6 +71,21 @@ const sections: readonly SettingsSection[] = [
 			"install",
 			"cli",
 			"server",
+			"start",
+			"stop",
+			"restart",
+			"executable",
+			"home",
+			"arguments",
+			"environment",
+			"variables",
+			"provider",
+			"providers",
+			"version",
+			"rpc",
+			"health",
+			"interval",
+			"check",
 		],
 	},
 ];

@@ -4,6 +4,7 @@ import type { Relay } from "@codeworksh/schema";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 
+import { BusyLabel } from "@/components/busy";
 import { Collapse } from "@/components/collapse";
 import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
@@ -99,11 +100,16 @@ export function Waiting({ workspace }: { readonly workspace: Relay.Workspace }) 
 									</Button>
 									<Button
 										size="sm"
-										className="min-w-24"
+										// Wide enough for its longest label, Connecting…, so it never grows mid-approval.
+										className="min-w-32"
 										disabled={working}
 										onClick={() => act(pairing, "approve")}
 									>
-										{approved ? "Connecting…" : working ? "Approving…" : "Approve"}
+										<BusyLabel
+											busy={working}
+											idle="Approve"
+											working={approved ? "Connecting…" : "Approving…"}
+										/>
 									</Button>
 								</div>
 							</Row>
@@ -199,7 +205,7 @@ function ManualCode({ workspace, onAdded }: { readonly workspace: Relay.Workspac
 						{added !== null && error === null && <Done key={added}>Approved {added}</Done>}
 					</div>
 					<Button type="submit" size="sm" className="min-w-20" disabled={busy}>
-						{busy ? "Adding…" : "Add"}
+						<BusyLabel busy={busy} idle="Add" working="Adding…" />
 					</Button>
 				</form>
 			</Collapse>

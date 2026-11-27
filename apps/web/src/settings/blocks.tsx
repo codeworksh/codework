@@ -165,6 +165,7 @@ export function SavingInput({
 	value,
 	label,
 	placeholder,
+	title,
 	autoFocus = false,
 	className,
 	onCommit,
@@ -173,6 +174,8 @@ export function SavingInput({
 	value: string;
 	label: string;
 	placeholder?: string | undefined;
+	/** The whole value on hover, for one longer than the field. */
+	title?: string | undefined;
 	autoFocus?: boolean;
 	className?: string;
 	onCommit: (name: string) => void;
@@ -190,6 +193,7 @@ export function SavingInput({
 			aria-label={label}
 			value={draft ?? value}
 			placeholder={placeholder}
+			title={title}
 			autoFocus={autoFocus}
 			onFocus={(event) => autoFocus && event.currentTarget.select()}
 			className={className}
@@ -208,8 +212,3 @@ export function SavingInput({
 
 /** The quiet look of a settings field on every theme; the stock input fills in dark ones. */
 export const quietField = "rounded-lg border-edge shadow-none";
-
-/** A name as it is typed in a shell: a variable, a command or a flag. */
-export const Code = ({ children }: { children: ReactNode }) => (
-	<code className="rounded bg-ink/8 px-1 py-px font-mono text-[0.9em] text-ink">{children}</code>
-);

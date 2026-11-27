@@ -16,8 +16,8 @@ import { Frame } from "./frame";
 import { workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
 import { type Membership, useMembership } from "./settings/machines/shared";
-import { SettingInput, useConfigure } from "./settings/servers/local";
-import { Variables } from "./settings/servers/variables";
+import { LaunchCommand, SettingInput, tilde, useConfigure } from "./settings/machines/service";
+import { Variables } from "./settings/machines/variables";
 import { approveLabel, canAct, CodeSlot, useMachineAtom, useConnect } from "./shell/connect";
 
 /** Set Up Later or Skip, per workspace: the app stops opening this page for it. */
@@ -438,49 +438,7 @@ function Disclosure({
 	);
 }
 
-/**
- * The command that starts this server, as the app runs it: its variables, binary, home and arguments.
- * One line, cut short where it runs out, what the user changed in ink; the copy is the whole command.
- * Secrets never reach the app, so the copy reads them from the shell.
- */
-function LaunchCommand({ status }: { readonly status: LocalServerStatus }) {
-	const { cli, home, args, env } = status;
-	const parts = [
-		...env.map(({ name, value, sensitive }) => ({
-			shown: `${name}=${sensitive ? "••••" : shellQuoted(value ?? "")}`,
-			copied: `${name}=${sensitive ? `"$${name}"` : shellQuoted(value ?? "")}`,
-			changed: true,
-		})),
-		{
-			shown: `${cli?.custom ? shellQuoted(tilde(cli.path)) : "codework"} service start`,
-			copied: `${cli?.custom ? shellQuoted(cli.path) : "codework"} service start`,
-			changed: cli?.custom === true,
-		},
-		...(home.custom
-			? [
-					{
-						shown: `--home ${shellQuoted(tilde(home.path))}`,
-						copied: `--home ${shellQuoted(home.path)}`,
-						changed: true,
-					},
-				]
-			: []),
-		...(args === "" ? [] : [{ shown: args, copied: args, changed: true }]),
-	];
-	return (
-		<CopyCommand
-			command={parts.map((part) => part.copied).join(" ")}
-			shown={parts.map((part, i) => (
-				<span key={i} className={part.changed ? "text-ink" : "text-ink-secondary"}>
-					{i > 0 && " "}
-					{part.shown}
-				</span>
-			))}
-		/>
-	);
-}
-
-/** Advanced: the server's runtime settings from Providers, saved as each is left. */
+/** Advanced: the server's runtime settings, as This Machine's page has them, saved as each is left. */
 function LaunchSettings({ status }: { readonly status: LocalServerStatus }) {
 	const [open, setOpen] = useState(false);
 	const configure = useConfigure(status.id);
@@ -529,6 +487,8 @@ function LaunchSettings({ status }: { readonly status: LocalServerStatus }) {
 								label="Launch Arguments"
 								value={status.args}
 								placeholder="--port 7433"
+								// Its placeholder is an example, not a default.
+								hover={status.args}
 								onSave={(next) => configure({ args: next })}
 							/>
 						)}
@@ -546,8 +506,6 @@ function LaunchSettings({ status }: { readonly status: LocalServerStatus }) {
 		</>
 	);
 }
-
-const tilde = (path: string) => path.replace(/^\/(Users|home)\/[^/]+/, "~");
 
 /** A setting with its hint; one taking its input's id gets a label that focuses it. */
 function LaunchField({

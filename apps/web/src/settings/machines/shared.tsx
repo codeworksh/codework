@@ -1,15 +1,16 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { RemoteServerStatus, ServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
-import { CaretRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { type ReactNode, useCallback, useContext } from "react";
+import { type ReactNode, useCallback, useContext, useEffect, useRef } from "react";
 
 import { CopyButton } from "@/components/copyable";
 import { machinesAtom, relayFailure, workspaceAtom } from "../../kernel/relay";
 import { serversAtom } from "../../kernel/servers";
+import { Page } from "../blocks";
 import { SeenStatus, StatusDot } from "../controls";
 
 const isPaired = (server: ServerStatus): server is RemoteServerStatus => server.kind === "remote";
@@ -29,6 +30,9 @@ export function useWorkspace(): { readonly ready: boolean; readonly workspace: R
 }
 
 /** A machine id kept short: they share their leading timestamp, so the end is kept too, where they differ. */
+/** The address of this machine’s page, where a paired machine’s id would be. */
+export const THIS_MACHINE = "localhost";
+
 export const shortId = (id: string) => (id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id);
 
 /** Whether a paired machine answers as itself, so what it says about its links holds. */
@@ -184,25 +188,19 @@ export function MachineRow({
 					)}
 					{marks}
 				</span>
-				<span className="flex min-w-0 items-center gap-1 text-xs font-book text-ink-muted">
-					{/* With an id, the description takes a fixed width, so the ids and their buttons line up down the list as a column of their own. */}
-					<span className={`truncate ${id === undefined ? "" : "w-56"}`} title={description}>
-						{description}
-					</span>
-					{id !== undefined && (
-						<>
-							<span className="w-28 shrink-0 truncate tabular-nums" title={id}>
-								{shortId(id)}
-							</span>
-							<CopyButton
-								value={id}
-								label={`Copy ID of ${name}`}
-								className="-my-1 size-5 shrink-0 before:-inset-2.5"
-							/>
-						</>
-					)}
+				<span className="truncate text-xs font-book text-ink-muted" title={description}>
+					{description}
 				</span>
 			</span>
+			{/* A column of its own, centred in the row like the status, so the ids line up down the list. */}
+			{id !== undefined && (
+				<span className="flex w-36 shrink-0 items-center gap-1 text-xs font-book text-ink-muted">
+					<span className="truncate tabular-nums" title={id}>
+						{shortId(id)}
+					</span>
+					<CopyButton value={id} label={`Copy ID of ${name}`} className="size-5 shrink-0 before:-inset-2.5" />
+				</span>
+			)}
 			<span className="w-32 shrink-0">{status}</span>
 			{open === undefined ? (
 				<span className="relative flex w-7 shrink-0 justify-end">{menu}</span>
@@ -231,5 +229,47 @@ export function Failure({ id, children }: { readonly id?: string; readonly child
 			<WarningCircleIcon size={14} weight="fill" className="mt-px shrink-0" aria-hidden />
 			<span>{children}</span>
 		</p>
+	);
+}
+
+/** The way back to the list, in the panel's top-left corner, outside the content column. */
+export function Back({ focus = false }: { readonly focus?: boolean }) {
+	const back = useRef<HTMLAnchorElement>(null);
+	// The link that led here is gone with the list; focus lands on the way back instead of the page.
+	useEffect(() => {
+		if (focus) back.current?.focus({ preventScroll: true });
+	}, [focus]);
+	return (
+		<Link
+			ref={back}
+			to="/settings/machines"
+			className="absolute top-2.5 left-2 flex h-7 items-center gap-1 rounded-full pr-2.5 pl-1.5 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]"
+		>
+			<CaretLeftIcon size={14} className="shrink-0" aria-hidden />
+			Machines
+		</Link>
+	);
+}
+
+/**
+ * A page under the list. The way back sits in the panel's top-left corner, outside the column, so the
+ * title stays where the list's title is.
+ */
+export function Sub({
+	title,
+	description,
+	children,
+}: {
+	readonly title: string;
+	readonly description?: ReactNode;
+	readonly children?: ReactNode;
+}) {
+	return (
+		<div className="relative">
+			<Back focus />
+			<Page title={title} description={description}>
+				{children}
+			</Page>
+		</div>
 	);
 }

@@ -208,16 +208,35 @@ export const service = Effect.fn("Cli.service")(function* (row: Servers.LocalRow
 	// `stop` takes no server options, so the arguments go only to what starts a server.
 	const args = action === "stop" ? [] : Servers.splitArgs(row.args);
 	const { file, prefix } = row.executable === null ? { file: cli.path, prefix: [] } : split(row.executable);
+	const home = servers.homeOf(row).path;
+	// What a stop or restart must end; a CLI that can't reach it reports success and leaves it running.
+	const before = action === "start" ? Option.none() : yield* liveAt(home);
 	const { output, code } = yield* run(file, [...prefix, "service", action, ...args], "30 seconds", {
 		...env,
-		CODEWORK_HOME_DIR: servers.homeOf(row).path,
+		CODEWORK_HOME_DIR: home,
 	}).pipe(
 		Effect.mapError((error) => new ServersError({ message: `Couldn't ${action} the server: ${error.message}` })),
 	);
 	if (code !== 0)
 		return yield* new ServersError({ message: `Couldn't ${action} the server: ${reason(output, code)}` });
+	if (Option.isSome(before) && isAlive(before.value.pid)) {
+		const { url, pid, version } = before.value;
+		return yield* new ServersError({
+			message: `codework v${cli.version} left the server at ${new URL(url).host} (pid ${pid}, v${version}) running: it can't reach that build. Stop pid ${pid}, or set Executable to a codework v${version}.`,
+		});
+	}
 	if (row.isDefault && action !== "stop") yield* awaitConnection;
 });
+
+/** Whether a process is still there; one owned by another user still counts. */
+const isAlive = (pid: number) => {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+};
 
 // The script `curl -fsSL https://codework.sh/install | sh` runs; overridable so a test serves its own.
 const installScript = Config.String("CODEWORK_INSTALL_SCRIPT").pipe(

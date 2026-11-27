@@ -420,10 +420,6 @@ export const layer = Contract.Api.toLayer(
 					.pipe(Effect.catchTag("SqlError", Effect.die));
 				yield* health.check;
 			}),
-			"servers.setDefault": Effect.fn("servers.setDefault")(function* ({ id }: { readonly id: string }) {
-				yield* changingDefault(servers.setDefault(id));
-				yield* health.check;
-			}),
 			"servers.install": Effect.fn("servers.install")(function* ({ id }: { readonly id: string }) {
 				yield* Cli.install(yield* servers.getLocal(id)).pipe(Effect.ensuring(health.check));
 			}),

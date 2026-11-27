@@ -242,7 +242,6 @@ export class Service extends Context.Service<
 		/** This app's own key, the one every remote server pairs. */
 		readonly deviceKey: Jws.PrivateKey;
 		readonly remove: (id: string) => Effect.Effect<void, ServersError>;
-		readonly setDefault: (id: string) => Effect.Effect<void, ServersError>;
 	}
 >()("@codeworksh/server/servers/Service") {}
 
@@ -440,23 +439,15 @@ export const layer = Layer.effect(
 
 			add: Effect.fn("Servers.add")(function* (input) {
 				const id = yield* Effect.sync(() => crypto.randomUUID().slice(0, 8));
-				const home = input.kind === "local" ? yield* chosenPath(input.home) : null;
-				if (input.kind === "local" && home === null) return yield* fail("A new server needs a home of its own.");
-				const route =
-					input.kind === "local"
-						? { executable: yield* chosenCommand(fs, input.executable), home, args: input.args.trim() }
-						: yield* Effect.gen(function* () {
-								const url = yield* chosenUrl(input.url);
-								return { url, ...(yield* pair(url, input.code)) };
-							});
+				const url = yield* chosenUrl(input.url);
+				const route = { url, ...(yield* pair(url, input.code)) };
 				yield* transaction(
 					Effect.gen(function* () {
-						if (home !== null) yield* ensureOwnHome(null, home);
 						const [last] = yield* sql<{ pos: number }>`SELECT COALESCE(MAX(pos), 0) AS pos FROM machine`;
 						yield* sql`INSERT INTO machine ${sql.insert({
 							id,
 							kind: input.kind,
-							name: input.kind === "local" ? override(input.name) : null,
+							name: null,
 							...route,
 							namespace: "codework",
 							pos: (last?.pos ?? 0) + 1,
@@ -539,16 +530,6 @@ export const layer = Layer.effect(
 				if (row.isDefault) return yield* fail("Make another server the default before removing this one.");
 				yield* sql`DELETE FROM machine WHERE id = ${id}`.pipe(Effect.orDie);
 				mismatches.delete(id);
-				yield* announce;
-			}),
-
-			setDefault: Effect.fn("Servers.setDefault")(function* (id) {
-				yield* transaction(
-					Effect.gen(function* () {
-						yield* getLocal(id);
-						yield* sql`UPDATE machine SET is_default = CASE WHEN id = ${id} THEN 1 ELSE 0 END`;
-					}),
-				);
 				yield* announce;
 			}),
 		});

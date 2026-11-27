@@ -1,10 +1,10 @@
 import { useAtomRefresh, useAtomSet } from "@effect/atom-react";
 import type { RemoteServerStatus } from "@codeworksh/contract";
 import type { Relay } from "@codeworksh/schema";
-import { CaretLeftIcon, LinkBreakIcon } from "@phosphor-icons/react";
+import { LinkBreakIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { BusyLabel } from "@/components/busy";
 import { CopyCommand } from "@/components/copyable";
@@ -24,12 +24,13 @@ import { machinesAtom } from "../../kernel/relay";
 import { Server } from "../../kernel/rpc";
 import { removeAtom, updateAtom } from "../../kernel/servers";
 import { useConnect } from "../../shell/connect";
-import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
+import { Group, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
 import { EmptyState } from "../controls";
-import { Badge } from "../servers/local";
+import { Badge } from "./service";
 import { Notice } from "./notice";
 import { addressOf, isPlain, NOT_ENCRYPTED, urlOf } from "./pair";
 import {
+	Back,
 	Failure,
 	isReachable,
 	linkText,
@@ -37,6 +38,7 @@ import {
 	membershipNote,
 	RELAY_REFRESH_MS,
 	Status,
+	Sub,
 	useMembership,
 	usePaired,
 	useWorkspace,
@@ -51,8 +53,9 @@ export function PairedMachine({ id }: { readonly id: string }) {
 	const { ready, workspace } = useWorkspace();
 	if (!AsyncResult.isSuccess(paired) || !ready) {
 		return (
-			// A blank title holds its line, so nothing moves when the machine arrives.
-			<Sub title={" "}>
+			// A no-break space holds the title and status lines, so nothing moves when the machine arrives;
+			// plain whitespace collapses.
+			<Sub title={"\u00a0"} description={"\u00a0"}>
 				{AsyncResult.isFailure(paired) ? (
 					<p role="alert" className="text-xs font-book text-ink-muted">
 						The app server did not answer.
@@ -90,48 +93,6 @@ function Missing() {
 					}
 				/>
 			</div>
-		</div>
-	);
-}
-
-/** The way back to the list, in the panel's top-left corner, outside the content column. */
-function Back({ focus = false }: { readonly focus?: boolean }) {
-	const back = useRef<HTMLAnchorElement>(null);
-	// The link that led here is gone with the list; focus lands on the way back instead of the page.
-	useEffect(() => {
-		if (focus) back.current?.focus({ preventScroll: true });
-	}, [focus]);
-	return (
-		<Link
-			ref={back}
-			to="/settings/machines"
-			className="absolute top-2.5 left-2 flex h-7 items-center gap-1 rounded-full pr-2.5 pl-1.5 text-ui font-medium text-ink-muted outline-none hover:bg-selection-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]"
-		>
-			<CaretLeftIcon size={14} className="shrink-0" aria-hidden />
-			Machines
-		</Link>
-	);
-}
-
-/**
- * A page under the list. The way back sits in the panel's top-left corner, outside the column, so the
- * title stays where the list's title is.
- */
-function Sub({
-	title,
-	description,
-	children,
-}: {
-	readonly title: string;
-	readonly description?: ReactNode;
-	readonly children?: ReactNode;
-}) {
-	return (
-		<div className="relative">
-			<Back focus />
-			<Page title={title} description={description}>
-				{children}
-			</Page>
 		</div>
 	);
 }
@@ -188,13 +149,25 @@ function Detail({
 							}}
 						/>
 					</Row>
-					<Row title="Hostname" description="The computer’s own name">
+					<Row title="Hostname" description="Used when the label is empty">
 						{server.host ? (
 							<div className="w-full min-w-0 shrink-0 @min-[560px]:w-auto @min-[560px]:max-w-64">
 								<CopyCommand command={server.host} label="Copy Hostname" />
 							</div>
 						) : (
 							<Badge tone="muted">Unknown</Badge>
+						)}
+					</Row>
+					<Row
+						title="ID"
+						description={server.machineId === null ? "Shown once the machine answers" : "It never changes"}
+					>
+						{server.machineId === null ? (
+							<Badge tone="muted">Unknown</Badge>
+						) : (
+							<div className="w-full shrink-0 @min-[560px]:w-auto">
+								<CopyCommand command={server.machineId} label="Copy ID" />
+							</div>
 						)}
 					</Row>
 					<Row

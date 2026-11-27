@@ -177,3 +177,74 @@ it(
 		);
 	},
 );
+
+/** A `codework` like an older release: it runs, but its `service` calls can't reach the server and do nothing. */
+const blind = (dir: string) => {
+	const file = join(dir, "blind");
+	writeFileSync(
+		file,
+		[
+			"#!/bin/sh",
+			'if [ "$1" = service ]; then exit 0; fi',
+			`exec '${process.execPath}' --conditions=development '${cli}' "$@"`,
+			"",
+		].join("\n"),
+	);
+	chmodSync(file, 0o755);
+	return file;
+};
+
+it("says so when the CLI leaves the server running after a stop or restart", { timeout: 180_000 }, async () => {
+	const appHome = tempDir("launch-app");
+	const osHome = tempDir("launch-os");
+	const bin = tempDir("launch-bin");
+	const home = tempDir("launch-home");
+	started.add(home);
+	const codework = wrapper(bin);
+	const port = await freePort();
+	const desk = await app(appHome, {
+		HOME: osHome,
+		SHELL: "/usr/bin/false",
+		CODEWORK_INSTALL_DIR: join(osHome, "bin"),
+		CODEWORK_MODELS_FILE: models,
+	});
+	// A message names the pid and versions, which change from run to run.
+	const mask = (message: string) =>
+		message
+			.replaceAll(`:${port}`, ":<port>")
+			.replace(/pid \d+/g, "pid <pid>")
+			.replace(/v\d+\.\d+\.\d+(?:-[\w.]+)?/g, "v<version>");
+	const update = (patch: Omit<ServerUpdate, "id">) =>
+		desk.run((rpc) => rpc["servers.update"]({ id: Contract.LOCAL_SERVER, ...patch }));
+	// The failure's message, or "ok" when the action reports success.
+	const act = (action: CliAction) =>
+		desk.run((rpc) =>
+			rpc["servers.service"]({ id: Contract.LOCAL_SERVER, action }).pipe(
+				Effect.as("ok"),
+				Effect.catch((error) => Effect.succeed(mask(error.message))),
+			),
+		);
+	const state = async () => {
+		const now = await desk.run(localOf);
+		return now.server._tag;
+	};
+
+	await update({ executable: codework.file, home, args: `--port ${port}` });
+	await act("start");
+	await waitFor(async () => ((await state()) === "Running" ? true : undefined), "the server to start", 60_000);
+
+	await update({ executable: blind(bin) });
+	const stop = await act("stop");
+	const afterStop = await state();
+	const restart = await act("restart");
+	const afterRestart = await state();
+
+	await update({ executable: codework.file });
+	const realStop = await act("stop");
+	const afterRealStop = await waitFor(
+		async () => ((await state()) === "Stopped" ? "Stopped" : undefined),
+		"the server to stop",
+	);
+
+	await snapshot("blind", { stop, afterStop, restart, afterRestart, realStop, afterRealStop });
+});
