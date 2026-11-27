@@ -534,7 +534,12 @@ function LaunchSettings({ status }: { readonly status: LocalServerStatus }) {
 						)}
 					</LaunchField>
 					<LaunchField label="Environment" hint="API keys, base URLs, and other per-service CLI settings">
-						<Variables key={JSON.stringify(status.env)} saved={status.env} onSave={(env) => configure({ env })} />
+						<Variables
+							key={JSON.stringify(status.env)}
+							saved={status.env}
+							onSave={(env) => configure({ env })}
+							compact
+						/>
 					</LaunchField>
 				</div>
 			</Collapse>
