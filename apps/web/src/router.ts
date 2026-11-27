@@ -1,6 +1,7 @@
 import { createRouter, type RouterHistory } from "@tanstack/react-router";
 
 import { routeTree } from "./routeTree.gen";
+import { NotFound, PageError } from "./shell/fault";
 
 export function getRouter(history: RouterHistory) {
 	return createRouter({
@@ -10,6 +11,8 @@ export function getRouter(history: RouterHistory) {
 		// Route components are split chunks (autoCodeSplitting in vite.config);
 		// fetching them on hover/focus intent hides the load.
 		defaultPreload: "intent",
+		defaultErrorComponent: PageError,
+		defaultNotFoundComponent: NotFound,
 	});
 }
 

@@ -121,7 +121,7 @@ export function SettingsLayout() {
 	useScrollFade(viewport);
 	return (
 		<main ref={viewport} className="scroll-fade h-full min-h-0 min-w-0 overflow-auto">
-			<div>
+			<div className="flex min-h-full flex-col">
 				<Outlet />
 			</div>
 		</main>
