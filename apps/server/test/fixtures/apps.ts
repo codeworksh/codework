@@ -165,10 +165,10 @@ export const stable = (status: ServerStatus | undefined) => {
 const appClient = RpcClient.make(Contract.Api);
 export type AppRpc = Effect.Success<typeof appClient>;
 
-/** The app server with its database in `home`; its own CLI home names no CodeWork server. */
-export const app = async (home: string) => {
+/** The app server with its database in `home`; its own CLI home names no CodeWork server. `env` is added to its own. */
+export const app = async (home: string, env: Record<string, string> = {}) => {
 	const proc = spawn(process.execPath, [appEntry], {
-		env: { ...process.env, CODEWORK_DATABASE: join(home, "app.db"), CODEWORK_HOME_DIR: join(home, "cli") },
+		env: { ...process.env, CODEWORK_DATABASE: join(home, "app.db"), CODEWORK_HOME_DIR: join(home, "cli"), ...env },
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	processes.add(proc);
