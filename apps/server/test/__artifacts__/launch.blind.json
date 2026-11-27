@@ -1,0 +1,8 @@
+{
+	"stop": "codework v<version> left the server at 127.0.0.1:<port> (pid <pid>, v<version>) running: it can't reach that build. Stop pid <pid>, or set Executable to a codework v<version>.",
+	"afterStop": "Running",
+	"restart": "codework v<version> left the server at 127.0.0.1:<port> (pid <pid>, v<version>) running: it can't reach that build. Stop pid <pid>, or set Executable to a codework v<version>.",
+	"afterRestart": "Running",
+	"realStop": "ok",
+	"afterRealStop": "Stopped"
+}

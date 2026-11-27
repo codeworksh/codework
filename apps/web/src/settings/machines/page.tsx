@@ -1,13 +1,11 @@
-import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { RemoteServerStatus } from "@codeworksh/contract";
 import { DevicesIcon, DotsThreeIcon, PlusIcon, UsersThreeIcon } from "@phosphor-icons/react";
 import type { Relay } from "@codeworksh/schema";
-import { Link } from "@tanstack/react-router";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 
-import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -15,31 +13,28 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { messageOf } from "@/lib/utils";
 import { machinesAtom, meAtom, reachAtom, relayFailure } from "../../kernel/relay";
-import { Server } from "../../kernel/rpc";
+import { defaultServerAtom } from "../../kernel/servers";
 import { useMachineAtom } from "../../shell/connect";
-import { Group, Page, Placeholder, quietField, Row, SavingInput, Section } from "../blocks";
+import { Group, Page, Placeholder, Section } from "../blocks";
 import { Done, EmptyState, SeenStatus, StatusDot } from "../controls";
-import { Badge } from "../servers/local";
+import { stateOf } from "./service";
+import { CheckAgain, HealthInterval } from "./health";
 import { isPlain, PairDialog } from "./pair";
 import {
 	linkText,
 	Loaded,
 	MachineRow,
-	membershipNote,
 	RELAY_REFRESH_MS,
 	Status,
+	THIS_MACHINE,
 	useMembership,
 	usePaired,
 	isReachable,
-	useRefreshMachines,
 	useWorkspace,
 } from "./shared";
 import { type Target, UnlinkDialog } from "./unlink";
 import { Waiting } from "./waiting";
-
-const renameAtom = Server.mutation("machine.rename");
 
 /** This machine, the machines this computer is paired with, and those of the workspace the app works in. */
 export function MachinesSettings() {
@@ -48,13 +43,19 @@ export function MachinesSettings() {
 	return (
 		<Page
 			title="Machines"
+			actions={<CheckAgain />}
 			description={
 				workspace === undefined
 					? "Machines this computer is paired with"
 					: `Machines this computer is paired with, and machines linked to ${workspace.name}`
 			}
 		>
-			<ThisMachine workspace={workspace} ready={ready} />
+			<ThisMachine workspace={workspace} />
+			<Section title="Status Checks" description="Applies to every machine">
+				<Group>
+					<HealthInterval />
+				</Group>
+			</Section>
 			<Paired workspace={workspace} ready={ready} />
 			{workspace !== undefined ? (
 				<>
@@ -82,133 +83,40 @@ export function MachinesSettings() {
 	);
 }
 
-function ThisMachine({
-	workspace,
-	ready,
-}: {
-	readonly workspace: Relay.Workspace | undefined;
-	/** Whether the workspace is known yet: the last row depends on it, so the section waits for it. */
-	readonly ready: boolean;
-}) {
-	const machineAtom = useMachineAtom();
-	const machine = useAtomValue(machineAtom);
-	const refresh = useAtomRefresh(machineAtom);
-	const rename = useAtomSet(renameAtom, { mode: "promise" });
-	const [error, setError] = useState<string | null>(null);
-	const [unlinking, setUnlinking] = useState<Target | null>(null);
-	const action = useRef<HTMLDivElement>(null);
-	const membership = useMembership(
-		AsyncResult.isSuccess(machine) ? machine.value.id : null,
-		AsyncResult.isSuccess(machine) ? machine.value.workspaces : [],
-		workspace,
-	);
-	const refreshMachines = useRefreshMachines(workspace);
-	// The rows the answer brings, held from the start so nothing below moves when it lands.
-	if (AsyncResult.isInitial(machine) || !ready || membership?.state === "loading") {
+/** This machine as one row, opening its own page, as a paired machine's row opens its. */
+function ThisMachine({ workspace }: { readonly workspace: Relay.Workspace | undefined }) {
+	const status = useAtomValue(defaultServerAtom);
+	const machine = useAtomValue(useMachineAtom());
+	const identity = AsyncResult.isSuccess(machine) ? machine.value : undefined;
+	const membership = useMembership(identity?.id ?? null, identity?.workspaces ?? [], workspace);
+	if (status === undefined || AsyncResult.isInitial(machine)) {
 		return (
 			<Section title="This Machine" description="The computer this app runs on">
-				<Placeholder rows={workspace === undefined && ready ? 3 : 4} />
+				<Placeholder rows={1} />
 			</Section>
 		);
 	}
-	if (!AsyncResult.isSuccess(machine)) {
-		return (
-			<Section title="This Machine" description="The computer this app runs on">
-				<EmptyState title="Not Running" description="Start the local CodeWork server to name this machine" />
-			</Section>
-		);
-	}
-	const status = machine.value;
-	const machineId = status.id;
-	const name = status.givenName ?? status.localHostName;
+	const { cli } = status;
+	const { tone, text } = stateOf(status);
 	return (
 		<Section title="This Machine" description="The computer this app runs on">
 			<Loaded>
 				<Group>
-					<Row title="Label" description={error ?? "Shown to your linked workspaces"}>
-						<SavingInput
-							label="Machine label"
-							value={status.givenName ?? ""}
-							placeholder={status.localHostName}
-							className={`w-full @min-[560px]:w-64 ${quietField}`}
-							onCommit={(givenName) => {
-								setError(null);
-								rename({ payload: { givenName } })
-									.then(refresh)
-									.catch((cause: unknown) => setError(messageOf(cause)));
-							}}
-						/>
-					</Row>
-					<Row title="Hostname" description="Used when the label is empty">
-						<div className="w-full min-w-0 shrink-0 @min-[560px]:w-auto @min-[560px]:max-w-64">
-							<CopyCommand command={status.localHostName} label="Copy Hostname" />
-						</div>
-					</Row>
-					<Row
-						title="ID"
-						description={status.id === null ? "Assigned when the CodeWork server starts" : "It never changes"}
-					>
-						{status.id === null ? (
-							<Badge tone="muted">Not Assigned</Badge>
-						) : (
-							<div className="w-full shrink-0 @min-[560px]:w-auto">
-								<CopyCommand command={status.id} label="Copy ID" />
-							</div>
-						)}
-					</Row>
-					{workspace !== undefined && membership !== undefined && (
-						<Row
-							title={
-								<span className="block truncate" title={linkText(membership, workspace)}>
-									{linkText(membership, workspace)}
-								</span>
-							}
-							description={
-								membershipNote(membership) ??
-								(membership.state === "linked"
-									? "The workspace this machine belongs to"
-									: `This machine isn’t linked to ${workspace.name} yet`)
-							}
-						>
-							{/* Its control changes with the link; focus comes back to whichever is here. */}
-							<div ref={action} className="contents">
-								{membership.state === "linked" && machineId !== null ? (
-									<Button
-										size="sm"
-										variant="secondary"
-										className="min-w-28"
-										disabled={membership.stale}
-										onClick={() =>
-											setUnlinking({
-												name,
-												workspace,
-												machineId,
-												keyId: membership.keyId,
-												// A key it no longer holds is removed at the relay.
-												via: membership.held ? { kind: "local" } : { kind: "relay" },
-											})
-										}
-									>
-										Unlink…
-									</Button>
-								) : (
-									membership.state === "unlinked" && (
-										<Button size="sm" className="min-w-28" asChild>
-											<Link to="/settings/machines/setup">Link</Link>
-										</Button>
-									)
-								)}
-							</div>
-						</Row>
-					)}
+					<MachineRow
+						name={identity === undefined ? status.name : (identity.givenName ?? identity.localHostName)}
+						// As a paired row reads: its link first, so the list shows a machine still to link.
+						description={[
+							workspace === undefined ? undefined : linkText(membership, workspace),
+							cli !== null && "version" in cli ? `v${cli.version}` : undefined,
+						]
+							.filter(Boolean)
+							.join(" · ")}
+						id={identity?.id ?? undefined}
+						status={<StatusDot tone={tone}>{text}</StatusDot>}
+						open={THIS_MACHINE}
+					/>
 				</Group>
 			</Loaded>
-			<UnlinkDialog
-				target={unlinking}
-				onClose={() => setUnlinking(null)}
-				onDone={refreshMachines}
-				returnFocus={() => action.current?.querySelector<HTMLElement>("a, button")}
-			/>
 		</Section>
 	);
 }

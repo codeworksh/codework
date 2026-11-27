@@ -37,7 +37,7 @@ import { deskAtom } from "../wm/instances";
 import { useTabs, tabTag } from "../wm/tabs";
 import { useOpenElsewhere } from "../wm/open";
 import { Ago } from "../widgets/time";
-import { OpenProviderSettings } from "@/components/offline";
+import { OpenMachineSettings } from "@/components/offline";
 import { WorkspaceSwitcher } from "../shell/workspace";
 import { ProviderIcon } from "@/components/provider";
 import { problemAtom, serversAtom } from "../kernel/servers";
@@ -216,7 +216,7 @@ export function SessionsSidebar() {
 			</SidebarHeader>
 			<SidebarContent className="gap-0 px-2 pb-2">
 				{problem !== undefined ? (
-					<OpenProviderSettings
+					<OpenMachineSettings
 						problem={problem}
 						className="w-full font-normal text-ink-muted hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
 					/>

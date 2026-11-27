@@ -321,7 +321,6 @@
 			"localPatch": "A remote server has no executable, home, arguments or variables.",
 			"urlOnLocal": "Only a remote server has a URL.",
 			"codeOnLocal": "Only a remote server has a pairing code.",
-			"defaultRemote": "Fixture is a remote server.",
 			"serviceRemote": "Fixture is a remote server."
 		},
 		"row": {

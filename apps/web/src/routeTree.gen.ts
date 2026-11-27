@@ -17,13 +17,13 @@ import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellThreadsRouteImport } from './routes/_shell.threads'
 import { Route as WorkspacesJoinRouteImport } from './routes/workspaces.join'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
-import { Route as ShellSettingsServersRouteImport } from './routes/_shell.settings.servers'
 import { Route as ShellSettingsTabsRouteImport } from './routes/_shell.settings.tabs'
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellTabsTabIdRouteImport } from './routes/_shell.tabs.$tabId'
 import { Route as SettingsMachinesSetupRouteImport } from './routes/settings.machines.setup'
 import { Route as ShellSettingsMachinesIndexRouteImport } from './routes/_shell.settings.machines.index'
 import { Route as ShellSettingsMachinesIdRouteImport } from './routes/_shell.settings.machines.$id'
+import { Route as ShellSettingsMachinesLocalhostRouteImport } from './routes/_shell.settings.machines.localhost'
 import { Route as ShellWorkspacesWorkspaceIdSettingsRouteImport } from './routes/_shell.workspaces.$workspaceId.settings'
 import { Route as ShellWorkspacesWorkspaceIdSettingsAccountProfileRouteImport } from './routes/_shell.workspaces.$workspaceId.settings.account.profile'
 
@@ -66,11 +66,6 @@ const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ShellSettingsRoute,
 } as any)
-const ShellSettingsServersRoute = ShellSettingsServersRouteImport.update({
-  id: '/servers',
-  path: '/servers',
-  getParentRoute: () => ShellSettingsRoute,
-} as any)
 const ShellSettingsTabsRoute = ShellSettingsTabsRouteImport.update({
   id: '/tabs',
   path: '/tabs',
@@ -102,6 +97,12 @@ const ShellSettingsMachinesIdRoute = ShellSettingsMachinesIdRouteImport.update({
   path: '/machines/$id',
   getParentRoute: () => ShellSettingsRoute,
 } as any)
+const ShellSettingsMachinesLocalhostRoute =
+  ShellSettingsMachinesLocalhostRouteImport.update({
+    id: '/machines/localhost',
+    path: '/machines/localhost',
+    getParentRoute: () => ShellSettingsRoute,
+  } as any)
 const ShellWorkspacesWorkspaceIdSettingsRoute =
   ShellWorkspacesWorkspaceIdSettingsRouteImport.update({
     id: '/workspaces/$workspaceId/settings',
@@ -122,13 +123,13 @@ export interface FileRoutesByFullPath {
   '/settings': typeof ShellSettingsRouteWithChildren
   '/threads': typeof ShellThreadsRoute
   '/workspaces/join': typeof WorkspacesJoinRoute
-  '/settings/servers': typeof ShellSettingsServersRoute
   '/settings/tabs': typeof ShellSettingsTabsRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/machines/setup': typeof SettingsMachinesSetupRoute
   '/settings/': typeof ShellSettingsIndexRoute
   '/settings/machines/$id': typeof ShellSettingsMachinesIdRoute
+  '/settings/machines/localhost': typeof ShellSettingsMachinesLocalhostRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
   '/settings/machines/': typeof ShellSettingsMachinesIndexRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -139,13 +140,13 @@ export interface FileRoutesByTo {
   '/projects': typeof ShellProjectsRoute
   '/threads': typeof ShellThreadsRoute
   '/workspaces/join': typeof WorkspacesJoinRoute
-  '/settings/servers': typeof ShellSettingsServersRoute
   '/settings/tabs': typeof ShellSettingsTabsRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/machines/setup': typeof SettingsMachinesSetupRoute
   '/settings': typeof ShellSettingsIndexRoute
   '/settings/machines/$id': typeof ShellSettingsMachinesIdRoute
+  '/settings/machines/localhost': typeof ShellSettingsMachinesLocalhostRoute
   '/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
   '/settings/machines': typeof ShellSettingsMachinesIndexRoute
   '/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -159,13 +160,13 @@ export interface FileRoutesById {
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
   '/_shell/threads': typeof ShellThreadsRoute
   '/workspaces/join': typeof WorkspacesJoinRoute
-  '/_shell/settings/servers': typeof ShellSettingsServersRoute
   '/_shell/settings/tabs': typeof ShellSettingsTabsRoute
   '/_shell/settings/themes': typeof ShellSettingsThemesRoute
   '/_shell/tabs/$tabId': typeof ShellTabsTabIdRoute
   '/settings/machines/setup': typeof SettingsMachinesSetupRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
   '/_shell/settings/machines/$id': typeof ShellSettingsMachinesIdRoute
+  '/_shell/settings/machines/localhost': typeof ShellSettingsMachinesLocalhostRoute
   '/_shell/workspaces/$workspaceId/settings': typeof ShellWorkspacesWorkspaceIdSettingsRouteWithChildren
   '/_shell/settings/machines/': typeof ShellSettingsMachinesIndexRoute
   '/_shell/workspaces/$workspaceId/settings/account/profile': typeof ShellWorkspacesWorkspaceIdSettingsAccountProfileRoute
@@ -179,13 +180,13 @@ export interface FileRouteTypes {
     | '/settings'
     | '/threads'
     | '/workspaces/join'
-    | '/settings/servers'
     | '/settings/tabs'
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings/machines/setup'
     | '/settings/'
     | '/settings/machines/$id'
+    | '/settings/machines/localhost'
     | '/workspaces/$workspaceId/settings'
     | '/settings/machines/'
     | '/workspaces/$workspaceId/settings/account/profile'
@@ -196,13 +197,13 @@ export interface FileRouteTypes {
     | '/projects'
     | '/threads'
     | '/workspaces/join'
-    | '/settings/servers'
     | '/settings/tabs'
     | '/settings/themes'
     | '/tabs/$tabId'
     | '/settings/machines/setup'
     | '/settings'
     | '/settings/machines/$id'
+    | '/settings/machines/localhost'
     | '/workspaces/$workspaceId/settings'
     | '/settings/machines'
     | '/workspaces/$workspaceId/settings/account/profile'
@@ -215,13 +216,13 @@ export interface FileRouteTypes {
     | '/_shell/settings'
     | '/_shell/threads'
     | '/workspaces/join'
-    | '/_shell/settings/servers'
     | '/_shell/settings/tabs'
     | '/_shell/settings/themes'
     | '/_shell/tabs/$tabId'
     | '/settings/machines/setup'
     | '/_shell/settings/'
     | '/_shell/settings/machines/$id'
+    | '/_shell/settings/machines/localhost'
     | '/_shell/workspaces/$workspaceId/settings'
     | '/_shell/settings/machines/'
     | '/_shell/workspaces/$workspaceId/settings/account/profile'
@@ -292,13 +293,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsIndexRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
-    '/_shell/settings/servers': {
-      id: '/_shell/settings/servers'
-      path: '/servers'
-      fullPath: '/settings/servers'
-      preLoaderRoute: typeof ShellSettingsServersRouteImport
-      parentRoute: typeof ShellSettingsRoute
-    }
     '/_shell/settings/tabs': {
       id: '/_shell/settings/tabs'
       path: '/tabs'
@@ -341,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsMachinesIdRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
+    '/_shell/settings/machines/localhost': {
+      id: '/_shell/settings/machines/localhost'
+      path: '/machines/localhost'
+      fullPath: '/settings/machines/localhost'
+      preLoaderRoute: typeof ShellSettingsMachinesLocalhostRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
     '/_shell/workspaces/$workspaceId/settings': {
       id: '/_shell/workspaces/$workspaceId/settings'
       path: '/workspaces/$workspaceId/settings'
@@ -359,20 +360,20 @@ declare module '@tanstack/react-router' {
 }
 
 interface ShellSettingsRouteChildren {
-  ShellSettingsServersRoute: typeof ShellSettingsServersRoute
   ShellSettingsTabsRoute: typeof ShellSettingsTabsRoute
   ShellSettingsThemesRoute: typeof ShellSettingsThemesRoute
   ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
   ShellSettingsMachinesIdRoute: typeof ShellSettingsMachinesIdRoute
+  ShellSettingsMachinesLocalhostRoute: typeof ShellSettingsMachinesLocalhostRoute
   ShellSettingsMachinesIndexRoute: typeof ShellSettingsMachinesIndexRoute
 }
 
 const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
-  ShellSettingsServersRoute: ShellSettingsServersRoute,
   ShellSettingsTabsRoute: ShellSettingsTabsRoute,
   ShellSettingsThemesRoute: ShellSettingsThemesRoute,
   ShellSettingsIndexRoute: ShellSettingsIndexRoute,
   ShellSettingsMachinesIdRoute: ShellSettingsMachinesIdRoute,
+  ShellSettingsMachinesLocalhostRoute: ShellSettingsMachinesLocalhostRoute,
   ShellSettingsMachinesIndexRoute: ShellSettingsMachinesIndexRoute,
 }
 

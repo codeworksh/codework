@@ -167,7 +167,6 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 		const localPatch = yield* refused(rpc["servers.update"]({ id, home: "/tmp" }));
 		const urlOnLocal = yield* refused(rpc["servers.update"]({ id: "local", url: "wss://x.test/rpc" }));
 		const codeOnLocal = yield* refused(rpc["servers.update"]({ id: "local", code }));
-		const defaultRemote = yield* refused(rpc["servers.setDefault"]({ id }));
 		const serviceRemote = yield* refused(rpc["servers.service"]({ id, action: "start" }));
 		const stored = all("SELECT * FROM machine WHERE id = ?", id)[0]!;
 		const row: Row = {
@@ -198,7 +197,7 @@ it("creates the sync tables, seeds them, and cascades a removed machine, keeping
 			badCode,
 			added,
 			updated,
-			refused: { nameOnRemote, localPatch, urlOnLocal, codeOnLocal, defaultRemote, serviceRemote },
+			refused: { nameOnRemote, localPatch, urlOnLocal, codeOnLocal, serviceRemote },
 			row,
 			cascade: { before, after, remoteLeft },
 			removed,

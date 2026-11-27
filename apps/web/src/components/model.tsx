@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Server } from "../kernel/rpc";
 import { codeworkKey, problemAtom } from "../kernel/servers";
 import type { Notice } from "./banner";
-import { OpenProviderSettings } from "./offline";
+import { OpenMachineSettings } from "./offline";
 import { ProviderIcon } from "./provider";
 
 export interface ModelRef {
@@ -168,7 +168,7 @@ export function ModelPicker(props: ModelPickerProps) {
 	return problem === undefined || props.machineId !== undefined ? (
 		<Models {...props} />
 	) : (
-		<OpenProviderSettings problem={problem} className="h-6.5 shrink-0 rounded-md bg-selection px-1.5 text-2xs" />
+		<OpenMachineSettings problem={problem} className="h-6.5 shrink-0 rounded-md bg-selection px-1.5 text-2xs" />
 	);
 }
 

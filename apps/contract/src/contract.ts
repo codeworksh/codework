@@ -486,24 +486,14 @@ export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
 /**
- * A new server. A local one needs a home of its own, since a home names one server; a blank or absent
- * `name` is no override. A remote one needs its WebSocket URL and a pairing code from
- * `codework service pair` on that machine; it is named by its own label.
+ * A paired machine: its WebSocket URL and a pairing code from `codework service pair` on that machine;
+ * it is named by its own label. Another server on this computer is paired the same way, at localhost.
  */
-export const ServerAdd = Schema.Union([
-	Schema.Struct({
-		kind: Schema.Literal("local"),
-		name: Schema.optionalKey(Schema.String),
-		executable: Schema.NullOr(Schema.String),
-		home: Schema.String,
-		args: Schema.String,
-	}),
-	Schema.Struct({
-		kind: Schema.Literal("remote"),
-		url: Schema.String,
-		code: Schema.String,
-	}),
-]);
+export const ServerAdd = Schema.Struct({
+	kind: Schema.Literal("remote"),
+	url: Schema.String,
+	code: Schema.String,
+});
 export type ServerAdd = typeof ServerAdd.Type;
 
 /**
@@ -1090,12 +1080,6 @@ export const Api = RpcGroup.make(
 	}),
 	/** The default server and the built-in one stay. */
 	Rpc.make("servers.remove", {
-		payload: ServerId,
-		success: Schema.Void,
-		error: ServersError,
-	}),
-	/** The app reconnects through the new default's home at once; only a local server can be the default. */
-	Rpc.make("servers.setDefault", {
 		payload: ServerId,
 		success: Schema.Void,
 		error: ServersError,

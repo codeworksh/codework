@@ -16,10 +16,14 @@ const DOTS: Record<StatusTone, string> = {
 
 /** A compact status dot paired with a text label. */
 export function StatusDot({ tone, children }: { readonly tone: StatusTone; readonly children: ReactNode }) {
+	// Cut short in a narrow column; the whole status shows on hover.
+	const title = typeof children === "string" ? children : undefined;
 	return (
-		<span className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
+		<span className="inline-flex max-w-full min-w-0 items-center gap-1.5 text-xs text-ink-muted">
 			<span className={`size-1.5 shrink-0 rounded-full ${DOTS[tone]}`} aria-hidden />
-			<span className="truncate">{children}</span>
+			<span className="truncate" title={title}>
+				{children}
+			</span>
 		</span>
 	);
 }
