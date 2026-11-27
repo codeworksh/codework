@@ -188,25 +188,19 @@ export function MachineRow({
 					)}
 					{marks}
 				</span>
-				<span className="flex min-w-0 items-center gap-1 text-xs font-book text-ink-muted">
-					{/* With an id, the description takes a fixed width, so the ids and their buttons line up down the list as a column of their own. */}
-					<span className={`truncate ${id === undefined ? "" : "w-56"}`} title={description}>
-						{description}
-					</span>
-					{id !== undefined && (
-						<>
-							<span className="w-28 shrink-0 truncate tabular-nums" title={id}>
-								{shortId(id)}
-							</span>
-							<CopyButton
-								value={id}
-								label={`Copy ID of ${name}`}
-								className="-my-1 size-5 shrink-0 before:-inset-2.5"
-							/>
-						</>
-					)}
+				<span className="truncate text-xs font-book text-ink-muted" title={description}>
+					{description}
 				</span>
 			</span>
+			{/* A column of its own, centred in the row like the status, so the ids line up down the list. */}
+			{id !== undefined && (
+				<span className="flex w-36 shrink-0 items-center gap-1 text-xs font-book text-ink-muted">
+					<span className="truncate tabular-nums" title={id}>
+						{shortId(id)}
+					</span>
+					<CopyButton value={id} label={`Copy ID of ${name}`} className="size-5 shrink-0 before:-inset-2.5" />
+				</span>
+			)}
 			<span className="w-32 shrink-0">{status}</span>
 			{open === undefined ? (
 				<span className="relative flex w-7 shrink-0 justify-end">{menu}</span>
