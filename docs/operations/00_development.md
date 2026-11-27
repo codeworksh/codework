@@ -26,7 +26,17 @@ Start from an empty home. Copy the real database in only when the flow under tes
 
 Start them in this order, each in its own shell with the dev home exported.
 
-### 1. CodeWork RPC Server
+### 1. Relay
+
+The desktop app signs everyone in and asks Relay for their workspaces, so it needs a Relay it can reach. Please run one locally, as [Relay's README](../../infra/relay/README.md#working-locally) describes; it listens on `127.0.0.1:8787`. Then export its address next to the dev home in the shells for the RPC server and the desktop app, so both talk to it:
+
+```sh
+export CODEWORK_RELAY_URL=http://127.0.0.1:8787
+```
+
+Every checkout shares Relay's one local database, and its README has the fix for when a changed migration leaves that database behind.
+
+### 2. CodeWork RPC Server
 
 ```sh
 vp run dev:cli serve --port 0
@@ -36,7 +46,7 @@ This runs `packages/codework/src/index.ts` from source with the `development` co
 
 Flags after the task name go to the CLI. Any other command runs against the same home, for example `vp run dev:cli run "hello"` or `vp run dev:cli thread list`. Restart the server after changing harness or codework code; nothing reloads it.
 
-### 2. Desktop App and App Server
+### 3. Desktop App and App Server
 
 ```sh
 vp run dev:desktop
@@ -48,10 +58,6 @@ vp run dev:desktop
 - Quitting the app window ends the dev session. Ctrl+C in the shell stops every child.
 - Port 5173 is fixed, so only one checkout can run the desktop app at a time.
 - The app never starts a server on its own. Do not press Install or Start in the dev app. Install downloads the latest release into `~/.codework/bin` and starts it. Start runs that installed `codework`, else the one on your login shell's `PATH`, against the dev home. To let the app manage the dev server, set its executable in Settings → Machines to `node --conditions=development <repo>/packages/codework/src/index.ts`.
-
-### Relay (Optional)
-
-Only for workspace and machine-link work. See [running Relay](../internals/10_relay.md#running-relay).
 
 ## Checks
 

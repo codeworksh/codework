@@ -6,7 +6,7 @@
 	"type": "module",
 	"scripts": {
 		"db": "docker compose up -d --wait",
-		"start": "node src/main.ts",
+		"start": "node --env-file-if-exists=../../.env.local src/main.ts",
 		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
