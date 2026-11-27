@@ -146,7 +146,7 @@ function ThisMachine({
 					</Row>
 					<Row
 						title="ID"
-						description={status.id === null ? "Assigned when it first connects" : "It never changes"}
+						description={status.id === null ? "Assigned when the CodeWork server starts" : "It never changes"}
 					>
 						{status.id === null ? (
 							<Badge tone="muted">Not Assigned</Badge>

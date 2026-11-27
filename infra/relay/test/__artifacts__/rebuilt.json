@@ -1,0 +1,27 @@
+{
+	"startup": {
+		"source": "generated",
+		"idIsUuid": true,
+		"hasIdentity": true,
+		"workspaces": 0,
+		"mode": "600"
+	},
+	"reclaim": {
+		"exitCode": 0,
+		"approveStatus": 200,
+		"approved": {
+			"id": "e2e-rebuilt",
+			"source": "flag"
+		},
+		"machineFile": {
+			"id": "e2e-rebuilt",
+			"source": "flag"
+		},
+		"identityKept": true
+	},
+	"afterLink": {
+		"exitCode": 1,
+		"refused": true,
+		"machineFileId": "e2e-rebuilt"
+	}
+}

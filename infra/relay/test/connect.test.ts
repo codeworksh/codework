@@ -2,7 +2,7 @@
 import { Jws, Relay } from "@codeworksh/schema";
 import { Effect, Schema } from "effect";
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -25,13 +25,13 @@ const children: Array<ChildProcess> = [];
 
 /**
  * `stderr` pipes it for {@link finished} to read; a long-running server leaves it inherited. `relayUrl`
- * points the CLI's new connects at another relay.
+ * points the CLI's new connects at another relay, and `home` runs it in another home.
  */
 const codework = (
 	args: ReadonlyArray<string>,
-	options: { readonly stderr?: boolean; readonly relayUrl?: string } = {},
+	options: { readonly stderr?: boolean; readonly relayUrl?: string; readonly home?: string } = {},
 ) => {
-	const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "--home", home], {
+	const child = spawn(process.execPath, ["--conditions=development", cli, ...args, "--home", options.home ?? home], {
 		env: { ...process.env, CODEWORK_RELAY_URL: options.relayUrl ?? relay.base },
 		stdio: ["ignore", "pipe", options.stderr === true ? "pipe" : "inherit"],
 	});
@@ -496,4 +496,64 @@ describe.skipIf(secretKey === undefined)("codework connect", () => {
 		};
 		await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/identity.json");
 	}, 60_000);
+
+	it("gives a home an id when its server starts, which --machine-id replaces until the home links", async () => {
+		const workspace = decodeMe(await (await asPerson("/v1/me")).json()).workspaces[0]!;
+		const rebuilt = mkdtempSync(join(tmpdir(), "codework-rebuilt-"));
+		const file = () => JSON.parse(readFileSync(join(rebuilt, "machine.json"), "utf8"));
+		try {
+			// A fresh home's server makes the machine before anything connects or pairs.
+			const serve = codework(["serve", "--port", "0"], { home: rebuilt });
+			await until(async () => (existsSync(join(rebuilt, "machine.json")) ? true : undefined));
+			serve.kill("SIGTERM");
+			const started = file();
+
+			// A rebuilt machine takes its old id back over the generated one, keeping the identity key.
+			const connect = codework(["connect", "--workspace", workspace.id, "--machine-id", "e2e-rebuilt"], {
+				home: rebuilt,
+			});
+			const done = finished(connect);
+			const userCode = await waitForLine(connect, (line) => /code ([A-Z]{4}-[A-Z]{4})/.exec(line)?.[1]);
+			const approve = await asPerson(`/v1/workspaces/${workspace.id}/pairings/approve`, {
+				method: "POST",
+				body: JSON.stringify({ userCode }),
+			});
+			const approved = decodeApproved(await approve.json()).machine;
+			const reclaimed = await done;
+			const linked = file();
+
+			// Once a workspace has seen the id, it stays.
+			const again = await finished(
+				codework(["connect", "--workspace", workspace.id, "--machine-id", "e2e-other"], {
+					home: rebuilt,
+					stderr: true,
+				}),
+			);
+
+			const artifact = {
+				startup: {
+					source: started.source,
+					idIsUuid: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(started.id),
+					hasIdentity: started.identity?.keyId !== undefined,
+					workspaces: Object.keys(started.workspaces).length,
+					mode: (statSync(join(rebuilt, "machine.json")).mode & 0o777).toString(8),
+				},
+				reclaim: {
+					exitCode: reclaimed.code,
+					approveStatus: approve.status,
+					approved: { id: approved.id, source: approved.source },
+					machineFile: { id: linked.id, source: linked.source },
+					identityKept: linked.identity.keyId === started.identity.keyId,
+				},
+				afterLink: {
+					exitCode: again.code,
+					refused: (again.err + again.out).includes("its id can't change to e2e-other"),
+					machineFileId: file().id,
+				},
+			};
+			await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/rebuilt.json");
+		} finally {
+			rmSync(rebuilt, { recursive: true, force: true });
+		}
+	});
 });
