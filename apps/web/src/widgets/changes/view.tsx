@@ -520,16 +520,20 @@ function Alone(props: {
 	return <Diff patch={entry.patch} style={props.style} />;
 }
 
-/** Why the patches could not be read. */
+/** Why the patches could not be read, with the server's reason when it gave one. */
 const failureOf = (
 	error: { readonly _tag: string },
 	where: ChangesSpace | null,
-): { readonly title: string; readonly detail?: string } => {
+): { readonly title: string; readonly detail?: string; readonly reason?: ChangesError["reason"] } => {
 	if (!(error instanceof ChangesError)) return { title: "The CodeWork Server Is Not Reachable" };
-	if (error.reason === "failed") return { title: "Git Failed", detail: error.message };
-	if (error.reason === "detached" && where?.env?.status === "offline") return { title: "The Sandbox Is Stopped" };
-	return { title: "Diffs Appear During the Next Run" };
+	const { reason } = error;
+	if (reason === "failed") return { title: "Git Failed", detail: error.message, reason };
+	if (reason === "detached" && where?.env?.status === "offline") return { title: "The Sandbox Is Stopped", reason };
+	return { title: "Diffs Appear During the Next Run", reason };
 };
+
+/** No git daemon in the space, or no mount: only a run brings the patches back, and a run reads them again. */
+const waitsForRun = (reason: ChangesError["reason"] | undefined) => reason === "unavailable" || reason === "detached";
 
 /**
  * Why the patches are not there, in a row under the space that opens when they fail and closes when
@@ -542,7 +546,12 @@ function Problem(props: {
 }) {
 	// Kept while it closes, so the row leaves showing what it said.
 	const [last, setLast] = useState(props.failure);
-	if (props.failure !== undefined && (props.failure.title !== last?.title || props.failure.detail !== last.detail))
+	if (
+		props.failure !== undefined &&
+		(props.failure.title !== last?.title ||
+			props.failure.detail !== last.detail ||
+			props.failure.reason !== last.reason)
+	)
 		setLast(props.failure);
 	const open = props.failure !== undefined;
 	return (
@@ -563,8 +572,8 @@ function Problem(props: {
 					<span className="shrink-0 font-medium">Diffs Unavailable</span>
 					<span aria-hidden>·</span>
 					<span className="min-w-0 truncate">{last.title}</span>
-					<span aria-hidden>·</span>
-					{props.retrying ? (
+					{!waitsForRun(last.reason) && <span aria-hidden>·</span>}
+					{waitsForRun(last.reason) ? null : props.retrying ? (
 						<span className="shrink-0">Retrying…</span>
 					) : (
 						<button
