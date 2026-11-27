@@ -2,7 +2,6 @@ import { useUser } from "@clerk/electron/react";
 import { useRef, useState } from "react";
 
 import { messageOf } from "@/lib/utils";
-import { isSignedInApp } from "../auth";
 import { Group, Page, quietField, Row, SavingInput } from "./blocks";
 import { EmptyState } from "./controls";
 
@@ -10,11 +9,7 @@ import { EmptyState } from "./controls";
 export function ProfileSettings() {
 	return (
 		<Page title="Profile">
-			{isSignedInApp ? (
-				<Account />
-			) : (
-				<EmptyState title="Not Signed In" description="This build runs without an account" />
-			)}
+			<Account />
 		</Page>
 	);
 }

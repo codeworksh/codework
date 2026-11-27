@@ -1,15 +1,11 @@
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk } from "@clerk/electron/react";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { isElectron } from "./env";
 import { setSession } from "./kernel/relay";
 import { reveal } from "./splash";
 
 const key: unknown = import.meta.env.CLERK_PUBLISHABLE_KEY;
 const publishableKey = typeof key === "string" && key !== "" ? key : undefined;
-
-/** Whether this app signs people in: the desktop app, built with a publishable key. */
-export const isSignedInApp = isElectron && publishableKey !== undefined;
 
 // Signing in and up live on these paths of the app's own origin. Clerk's default, its hosted Account
 // Portal, cannot return to an Electron window. The app's router reads only the hash, so these paths
@@ -18,22 +14,20 @@ const SIGN_IN = "/sign-in";
 const SIGN_UP = "/sign-up";
 const HOME = "/#/";
 
-/**
- * The desktop app requires a signed-in account. A browser build of the web app, or a build without a
- * publishable key, runs without one.
- */
+/** The app requires a signed-in account. */
 export function Auth({ children }: { readonly children: ReactNode }) {
+	// Vite refuses to start without the key; a build made around that check says so on the crash page.
+	if (publishableKey === undefined) throw new Error("CLERK_PUBLISHABLE_KEY was not set when this app was built");
 	// Clerk moves between sign-in, sign-up and their steps through these, so the gate re-renders.
 	// The app opens at its root; Clerk's forms render only on their own paths, so it starts on sign-in.
 	// The hash, which is the app's route, is kept.
 	const [path, setPath] = useState(() => {
 		const { pathname, hash } = window.location;
-		if (isSignedInApp && !pathname.startsWith(SIGN_IN) && !pathname.startsWith(SIGN_UP)) {
+		if (!pathname.startsWith(SIGN_IN) && !pathname.startsWith(SIGN_UP)) {
 			window.history.replaceState(null, "", `${SIGN_IN}${hash}`);
 		}
 		return window.location.pathname;
 	});
-	if (!isSignedInApp || publishableKey === undefined) return children;
 	const navigate = (replace: boolean) => (to: string) => {
 		window.history[replace ? "replaceState" : "pushState"](null, "", to);
 		setPath(window.location.pathname);

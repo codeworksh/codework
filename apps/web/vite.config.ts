@@ -6,6 +6,18 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
 	plugins: [
+		// The desktop app signs everyone in, so a dev server or build without Clerk's key stops here rather
+		// than start an app that can't. Tests load this config too, and need no key.
+		{
+			name: "codework:require-clerk-key",
+			configResolved(config) {
+				const key: unknown = config.env.CLERK_PUBLISHABLE_KEY;
+				if (config.mode === "test" || (typeof key === "string" && key !== "")) return;
+				throw new Error(
+					`CLERK_PUBLISHABLE_KEY is not set. Add it to ${fileURLToPath(new URL("../../.env.local", import.meta.url))}, or export it, and start again.`,
+				);
+			},
+		},
 		// Route components load as split chunks so feature code stays out of the
 		// cold-start payload; the router prefetches them on navigation intent.
 		tanstackRouter({ autoCodeSplitting: true }),

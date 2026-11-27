@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
-import { isSignedInApp } from "./auth";
 import { serversAtom } from "./kernel/servers";
 import { settledAtom } from "./setup";
 
@@ -26,8 +25,7 @@ export function reveal() {
 export function Splash() {
 	const status = useAtomValue(serversAtom);
 	const settled = useAtomValue(settledAtom);
-	// Without sign-in there is no setup check to wait for.
-	const known = status._tag !== "Initial" && (settled || !isSignedInApp);
+	const known = status._tag !== "Initial" && settled;
 	useEffect(() => {
 		if (known) return reveal();
 		const timer = setTimeout(reveal, LONGEST);

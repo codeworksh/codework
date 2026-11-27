@@ -167,6 +167,8 @@ jobs:
                  args: --win --x64
       env:
          CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+         # Built into the app, which signs everyone in; the web build stops without it. Public, so a variable.
+         CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       # Windows runners default to PowerShell, which reads "$CHANNEL" as its own variable.
       defaults:
          run:

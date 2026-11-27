@@ -12,7 +12,6 @@ import { CopyCommand } from "@/components/copyable";
 import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import { Frame } from "./frame";
-import { isSignedInApp } from "./auth";
 import { workspaceAtom } from "./kernel/relay";
 import { defaultServerAtom, INSTALL, installAtom, serviceAtom } from "./kernel/servers";
 import { type Membership, useMembership } from "./settings/machines/shared";
@@ -79,7 +78,7 @@ export function SetupGate() {
 						? false
 						: !isLinked(membership);
 	useEffect(() => {
-		if (checked || !isSignedInApp || workspace === undefined || needs === undefined) return;
+		if (checked || workspace === undefined || needs === undefined) return;
 		setChecked(true);
 		if (needs && !putOff(workspace.id)) {
 			void navigate({ to: "/settings/machines/setup", replace: true }).finally(() => settle(true));
