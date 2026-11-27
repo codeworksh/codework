@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { messageOf } from "@/lib/utils";
 import { Server } from "../../kernel/rpc";
 import { serversAtom } from "../../kernel/servers";
-import { quietField, Row, SavingInput } from "../blocks";
+import { Row, SavingInput } from "../blocks";
 
 const checkAtom = Server.mutation("servers.check");
 const healthKey = ["health"];
@@ -79,16 +79,18 @@ export function HealthInterval() {
 					</Button>
 				</span>
 			}
-			description={error ?? "Refresh this machine’s CLI and every machine’s response time, or set 0 to turn it off"}
+			description={error ?? "Refreshes CLI versions and response times; 0 turns it off"}
 		>
 			{interval !== undefined && (
 				<div className="flex shrink-0 items-center gap-2">
-					<div className="flex items-center">
+					{/* One control: the buttons share the field's border, so − 300 + reads as a single stepper. */}
+					<div className="flex h-8 items-stretch rounded-lg border border-edge transition-[color,box-shadow] has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-[3px] has-[input:focus-visible]:ring-ring/50">
 						<Button
-							size="icon-xs"
+							size="icon"
 							variant="ghost"
 							aria-label="Decrease health check interval"
 							disabled={interval === 0}
+							className="h-full w-8 rounded-none rounded-l-[7px] text-ink-muted hover:text-ink focus-visible:ring-inset [&_svg]:size-3.5"
 							onClick={() => set(Math.max(0, interval - STEP))}
 						>
 							<MinusIcon />
@@ -96,13 +98,14 @@ export function HealthInterval() {
 						<SavingInput
 							value={String(interval)}
 							label="Health check interval in seconds"
-							className={`${quietField} h-7 w-16 text-center`}
+							className="h-full w-14 rounded-none border-0 border-x border-edge bg-transparent px-1 text-center tabular-nums shadow-none focus-visible:border-edge focus-visible:ring-0 dark:bg-transparent"
 							onCommit={commit}
 						/>
 						<Button
-							size="icon-xs"
+							size="icon"
 							variant="ghost"
 							aria-label="Increase health check interval"
+							className="h-full w-8 rounded-none rounded-r-[7px] text-ink-muted hover:text-ink focus-visible:ring-inset [&_svg]:size-3.5"
 							onClick={() => set(interval + STEP)}
 						>
 							<PlusIcon />
